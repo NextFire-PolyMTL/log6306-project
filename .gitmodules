@@ -1,0 +1,30 @@
+[submodule "bitnami"]
+	path = bitnami
+	url = https://github.com/bitnami/charts.git
+[submodule "helm"]
+	path = helm
+	url = https://github.com/helm/charts.git
+[submodule "k8s-at-home"]
+	path = k8s-at-home
+	url = https://github.com/k8s-at-home/charts.git
+[submodule "prometheus-community"]
+	path = prometheus-community
+	url = https://github.com/prometheus-community/helm-charts.git
+[submodule "ingress-nginx"]
+	path = ingress-nginx
+	url = https://github.com/kubernetes/ingress-nginx.git
+[submodule "cert-manager"]
+	path = cert-manager
+	url = https://github.com/cert-manager/cert-manager.git
+[submodule "argoproj"]
+	path = argoproj
+	url = https://github.com/argoproj/argo-helm.git
+[submodule "grafana"]
+	path = grafana
+	url = https://github.com/grafana/helm-charts.git
+[submodule "kubernetes-dashboard"]
+	path = kubernetes-dashboard
+	url = https://github.com/kubernetes/dashboard.git
+[submodule "metrics-server"]
+	path = metrics-server
+	url = https://github.com/kubernetes-sigs/metrics-server.git
