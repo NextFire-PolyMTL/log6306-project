@@ -1,0 +1,223 @@
+commit 2584adbdab1f09db084ade5f3034e826da67a13f
+Author: Lukasz Dobrzanski <code@lukmdo.com>
+Date:   Sat Dec 15 09:50:10 2018 +0100
+
+    Unify labels v2 (#9803)
+    
+    * refactor: missed unified labels
+    
+    - alertmanager-networkpolicy.yaml
+    - server-networkpolicy.yaml
+    - kube-state-metrics-networkpolicy.yaml
+    
+    Signed-off-by: Lukasz Dobrzanski <code@lukmdo.com>
+    
+    * refactor: unified labels in headless
+    
+    - alertmanager-service-headless.yaml
+    - server-service-headless.yaml
+    - alertmanager-statefulset.yaml
+    - server-statefulset.yaml
+    
+    Signed-off-by: Lukasz Dobrzanski <code@lukmdo.com>
+    
+    * chore: bump version: 8.1.1
+    
+    Signed-off-by: Lukasz Dobrzanski <code@lukmdo.com>
+
+diff --git a/stable/prometheus/Chart.yaml b/stable/prometheus/Chart.yaml
+index d5dcca2e6..ffa79e276 100755
+--- a/stable/prometheus/Chart.yaml
++++ b/stable/prometheus/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: prometheus
+-version: 8.1.0
++version: 8.1.1
+ appVersion: 2.5.0
+ description: Prometheus is a monitoring system and time series database.
+ home: https://prometheus.io/
+diff --git a/stable/prometheus/templates/alertmanager-networkpolicy.yaml b/stable/prometheus/templates/alertmanager-networkpolicy.yaml
+index 7568a1155..0bcbd27d4 100644
+--- a/stable/prometheus/templates/alertmanager-networkpolicy.yaml
++++ b/stable/prometheus/templates/alertmanager-networkpolicy.yaml
+@@ -8,15 +8,12 @@ metadata:
+ spec:
+   podSelector:
+     matchLabels:
+-      app: {{ template "prometheus.name" . }}
+-      component: "{{ .Values.alertmanager.name }}"
+-      release: {{ .Release.Name }}
++      {{- include "prometheus.alertmanager.matchLabels" . | nindent 6 }}
+   ingress:
+     - from:
+       - podSelector:
+           matchLabels:
+-            release: {{ .Release.Name }}
+-            component: "{{ .Values.server.name }}"
++            {{- include "prometheus.server.matchLabels" . | nindent 12 }}
+     - ports:
+       - port: 9093
+ {{- end -}}
+diff --git a/stable/prometheus/templates/alertmanager-service-headless.yaml b/stable/prometheus/templates/alertmanager-service-headless.yaml
+index ef922bce3..8d619e891 100644
+--- a/stable/prometheus/templates/alertmanager-service-headless.yaml
++++ b/stable/prometheus/templates/alertmanager-service-headless.yaml
+@@ -7,11 +7,7 @@ metadata:
+ {{ toYaml .Values.alertmanager.statefulSet.headless.annotations | indent 4 }}
+ {{- end }}
+   labels:
+-    app: {{ template "prometheus.name" . }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+-    component: "{{ .Values.alertmanager.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++    {{- include "prometheus.alertmanager.labels" . | nindent 4 }}
+ {{- if .Values.alertmanager.statefulSet.headless.labels }}
+ {{ toYaml .Values.alertmanager.statefulSet.headless.labels | indent 4 }}
+ {{- end }}
+@@ -30,7 +26,5 @@ spec:
+       targetPort: 6783
+ {{- end }}
+   selector:
+-    app: {{ template "prometheus.name" . }}
+-    component: "{{ .Values.alertmanager.name }}"
+-    release: {{ .Release.Name }}
++    {{- include "prometheus.alertmanager.matchLabels" . | nindent 4 }}
+ {{- end }}
+diff --git a/stable/prometheus/templates/alertmanager-statefulset.yaml b/stable/prometheus/templates/alertmanager-statefulset.yaml
+index 826dfb761..002a7fcf5 100644
+--- a/stable/prometheus/templates/alertmanager-statefulset.yaml
++++ b/stable/prometheus/templates/alertmanager-statefulset.yaml
+@@ -3,19 +3,13 @@ apiVersion: apps/v1
+ kind: StatefulSet
+ metadata:
+   labels:
+-    app: {{ template "prometheus.name" . }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+-    component: "{{ .Values.alertmanager.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++    {{- include "prometheus.alertmanager.labels" . | nindent 4 }}
+   name: {{ template "prometheus.alertmanager.fullname" . }}
+ spec:
+   serviceName: {{ template "prometheus.alertmanager.fullname" . }}-headless
+   selector:
+     matchLabels:
+-      app: {{ template "prometheus.name" . }}
+-      component: "{{ .Values.alertmanager.name }}"
+-      release: {{ .Release.Name }}
++      {{- include "prometheus.alertmanager.matchLabels" . | nindent 6 }}
+   replicas: {{ .Values.alertmanager.replicaCount }}
+   podManagementPolicy: {{ .Values.alertmanager.statefulSet.podManagementPolicy }}
+   template:
+@@ -25,9 +19,7 @@ spec:
+ {{ toYaml .Values.alertmanager.podAnnotations | indent 8 }}
+     {{- end }}
+       labels:
+-        app: {{ template "prometheus.name" . }}
+-        component: "{{ .Values.alertmanager.name }}"
+-        release: {{ .Release.Name }}
++        {{- include "prometheus.alertmanager.labels" . | nindent 8 }}
+     spec:
+ {{- if .Values.alertmanager.affinity }}
+       affinity:
+diff --git a/stable/prometheus/templates/kube-state-metrics-networkpolicy.yaml b/stable/prometheus/templates/kube-state-metrics-networkpolicy.yaml
+index 35e9d6036..56893cec6 100644
+--- a/stable/prometheus/templates/kube-state-metrics-networkpolicy.yaml
++++ b/stable/prometheus/templates/kube-state-metrics-networkpolicy.yaml
+@@ -8,15 +8,12 @@ metadata:
+ spec:
+   podSelector:
+     matchLabels:
+-      app: {{ template "prometheus.name" . }}
+-      component: "{{ .Values.kubeStateMetrics.name }}"
+-      release: {{ .Release.Name }}
++      {{- include "prometheus.kubeStateMetrics.matchLabels" . | nindent 6 }}
+   ingress:
+   - from:
+     - podSelector:
+         matchLabels:
+-          release: {{ .Release.Name }}
+-          component: "{{ .Values.server.name }}"
++          {{- include "prometheus.server.matchLabels" . | nindent 10 }}
+   - ports:
+     - port: 8080
+ {{- end -}}
+diff --git a/stable/prometheus/templates/server-networkpolicy.yaml b/stable/prometheus/templates/server-networkpolicy.yaml
+index 2b1746af3..4f71146b6 100644
+--- a/stable/prometheus/templates/server-networkpolicy.yaml
++++ b/stable/prometheus/templates/server-networkpolicy.yaml
+@@ -8,9 +8,7 @@ metadata:
+ spec:
+   podSelector:
+     matchLabels:
+-      app: {{ template "prometheus.name" . }}
+-      component: "{{ .Values.server.name }}"
+-      release: {{ .Release.Name }}
++      {{- include "prometheus.server.matchLabels" . | nindent 6 }}
+   ingress:
+     - ports:
+       - port: 9090
+diff --git a/stable/prometheus/templates/server-service-headless.yaml b/stable/prometheus/templates/server-service-headless.yaml
+index e505e8e35..cf82b5d10 100644
+--- a/stable/prometheus/templates/server-service-headless.yaml
++++ b/stable/prometheus/templates/server-service-headless.yaml
+@@ -7,11 +7,7 @@ metadata:
+ {{ toYaml .Values.server.statefulSet.headless.annotations | indent 4 }}
+ {{- end }}
+   labels:
+-    app: {{ template "prometheus.name" . }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+-    component: "{{ .Values.server.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++    {{- include "prometheus.server.labels" . | nindent 4 }}
+ {{- if .Values.server.statefulSet.headless.labels }}
+ {{ toYaml .Values.server.statefulSet.headless.labels | indent 4 }}
+ {{- end }}
+@@ -24,7 +20,5 @@ spec:
+       protocol: TCP
+       targetPort: 9090
+   selector:
+-    app: {{ template "prometheus.name" . }}
+-    component: "{{ .Values.server.name }}"
+-    release: {{ .Release.Name }}
++    {{- include "prometheus.server.matchLabels" . | nindent 4 }}
+ {{- end -}}
+diff --git a/stable/prometheus/templates/server-statefulset.yaml b/stable/prometheus/templates/server-statefulset.yaml
+index 57913b310..dcb1274b2 100644
+--- a/stable/prometheus/templates/server-statefulset.yaml
++++ b/stable/prometheus/templates/server-statefulset.yaml
+@@ -7,19 +7,13 @@ metadata:
+ {{ toYaml .Values.server.statefulSet.annotations | indent 4 }}
+ {{- end }}
+   labels:
+-    app: {{ template "prometheus.name" . }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+-    component: "{{ .Values.server.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++    {{- include "prometheus.server.labels" . | nindent 4 }}
+   name: {{ template "prometheus.server.fullname" . }}
+ spec:
+   serviceName: {{ template "prometheus.server.fullname" . }}-headless
+   selector:
+     matchLabels:
+-      app: {{ template "prometheus.name" . }}
+-      component: "{{ .Values.server.name }}"
+-      release: {{ .Release.Name }}
++      {{- include "prometheus.server.matchLabels" . | nindent 6 }}
+   replicas: {{ .Values.server.replicaCount }}
+   podManagementPolicy: {{ .Values.server.statefulSet.podManagementPolicy }}
+   template:
+@@ -29,9 +23,7 @@ spec:
+ {{ toYaml .Values.server.podAnnotations | indent 8 }}
+     {{- end }}
+       labels:
+-        app: {{ template "prometheus.name" . }}
+-        component: "{{ .Values.server.name }}"
+-        release: {{ .Release.Name }}
++        {{- include "prometheus.server.labels" . | nindent 8 }}
+     spec:
+ {{- if .Values.server.affinity }}
+       affinity:

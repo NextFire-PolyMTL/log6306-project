@@ -1,0 +1,80 @@
+commit 3a4baae95d4df8e35aecc1a5079637651b486bdb
+Author: Piotr Kowalczyk <nicon@bash.org.pl>
+Date:   Mon Aug 23 19:23:07 2021 +0200
+
+    feat(argo-cd): Parameterizing dex ports names due to istio 403 errors (#889)
+    
+    * refactor: Parameterizing dex ports names due to istio 403 errors
+    
+    Signed-off-by: Piotr Kowalczyk <kowalczyk.p.4@pg.com>
+    
+    * fix: updating default http port name to http
+    
+    Signed-off-by: Piotr Kowalczyk <kowalczyk.p.4@pg.com>
+
+diff --git a/charts/argo-cd/Chart.yaml b/charts/argo-cd/Chart.yaml
+index 90543f56..72f417a7 100644
+--- a/charts/argo-cd/Chart.yaml
++++ b/charts/argo-cd/Chart.yaml
+@@ -2,7 +2,7 @@ apiVersion: v2
+ appVersion: 2.1.0
+ description: A Helm chart for ArgoCD, a declarative, GitOps continuous delivery tool for Kubernetes.
+ name: argo-cd
+-version: 3.13.1
++version: 3.13.2
+ home: https://github.com/argoproj/argo-helm
+ icon: https://argoproj.github.io/argo-cd/assets/logo.png
+ keywords:
+@@ -21,4 +21,4 @@ dependencies:
+     condition: redis-ha.enabled
+ annotations:
+   artifacthub.io/changes: |
+-    - "[Fixed]: Updated README.md for ArgoCD"
++    - "[Changed]: Parameterized dex service port names for istio-ingress 403 error"
+diff --git a/charts/argo-cd/README.md b/charts/argo-cd/README.md
+index 48676ca7..151285c1 100644
+--- a/charts/argo-cd/README.md
++++ b/charts/argo-cd/README.md
+@@ -397,7 +397,9 @@ NAME: my-release
+ | dex.serviceAccount.create | Create dex service account | `true` |
+ | dex.serviceAccount.name | Dex service account name | `"argocd-dex-server"` |
+ | dex.servicePortGrpc | Server GRPC port | `5557` |
++| dex.servicePortGrpcName | Server GRPC port name | `grpc` |
+ | dex.servicePortHttp | Server HTTP port | `5556` |
++| dex.servicePortHttpName | Server GRPC port name | `http` |
+ | dex.tolerations | [Tolerations for use with node taints](https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/) | `[]` |
+ | dex.volumeMounts | Dex volume mounts | `"/shared"` |
+ | dex.volumes | Dex volumes | `{}` |
+diff --git a/charts/argo-cd/templates/dex/service.yaml b/charts/argo-cd/templates/dex/service.yaml
+index 6fa77c4e..c93b085e 100644
+--- a/charts/argo-cd/templates/dex/service.yaml
++++ b/charts/argo-cd/templates/dex/service.yaml
+@@ -16,11 +16,11 @@ metadata:
+ {{- end }}
+ spec:
+   ports:
+-  - name: http
++  - name: {{ .Values.dex.servicePortHttpName }}
+     protocol: TCP
+     port: {{ .Values.dex.servicePortHttp }}
+     targetPort: http
+-  - name: grpc
++  - name: {{ .Values.dex.servicePortGrpcName }}
+     protocol: TCP
+     port: {{ .Values.dex.servicePortGrpc }}
+     targetPort: grpc
+diff --git a/charts/argo-cd/values.yaml b/charts/argo-cd/values.yaml
+index 8e637966..e1d67d71 100755
+--- a/charts/argo-cd/values.yaml
++++ b/charts/argo-cd/values.yaml
+@@ -280,8 +280,10 @@ dex:
+   ## Dex deployment container ports
+   containerPortHttp: 5556
+   servicePortHttp: 5556
++  servicePortHttpName: http
+   containerPortGrpc: 5557
+   servicePortGrpc: 5557
++  servicePortGrpcName: grpc
+   containerPortMetrics: 5558
+   servicePortMetrics: 5558
+ 

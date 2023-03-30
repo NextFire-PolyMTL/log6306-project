@@ -1,0 +1,149 @@
+commit f8c82d05992060fa9c4d1d6f20ecf82a5285957a
+Author: André Bauer <monotek@users.noreply.github.com>
+Date:   Mon Aug 20 17:00:06 2018 +0200
+
+    [incubator/cassandra] small chart refactoring (#6824)
+    
+    * merged master
+    
+    * raised cahrt version
+
+diff --git a/incubator/cassandra/Chart.yaml b/incubator/cassandra/Chart.yaml
+index 8f18bc9c7..e717fdcd3 100644
+--- a/incubator/cassandra/Chart.yaml
++++ b/incubator/cassandra/Chart.yaml
+@@ -1,6 +1,6 @@
+ name: cassandra
+-version: 0.5.1
+-appVersion: 3
++version: 0.5.2
++appVersion: 3.11.2
+ description: Apache Cassandra is a free and open-source distributed database management
+   system designed to handle large amounts of data across many commodity servers, providing
+   high availability with no single point of failure.
+diff --git a/incubator/cassandra/templates/service.yaml b/incubator/cassandra/templates/service.yaml
+new file mode 100644
+index 000000000..cf7f94b30
+--- /dev/null
++++ b/incubator/cassandra/templates/service.yaml
+@@ -0,0 +1,36 @@
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ template "cassandra.fullname" . }}
++  labels:
++    app: {{ template "cassandra.name" . }}
++    chart: {{ template "cassandra.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++spec:
++  clusterIP: None
++  type: {{ .Values.service.type }}
++  ports:
++  - name: intra
++    port: 7000
++    targetPort: 7000
++  - name: tls
++    port: 7001
++    targetPort: 7001
++  - name: jmx
++    port: 7199
++    targetPort: 7199
++  - name: cql
++    port: {{ default 9042 .Values.config.ports.cql }}
++    targetPort: {{ default 9042 .Values.config.ports.cql }}
++  - name: thrift
++    port: {{ default 9160 .Values.config.ports.thrift }}
++    targetPort: {{ default 9160 .Values.config.ports.thrift }}
++  {{- if .Values.config.ports.agent }}
++  - name: agent
++    port: {{ .Values.config.ports.agent }}
++    targetPort: {{ .Values.config.ports.agent }}
++  {{- end }}
++  selector:
++    app: {{ template "cassandra.name" . }}
++    release: {{ .Release.Name }}
+diff --git a/incubator/cassandra/templates/cassandra-statefulset.yaml b/incubator/cassandra/templates/statefulset.yaml
+similarity index 83%
+rename from incubator/cassandra/templates/cassandra-statefulset.yaml
+rename to incubator/cassandra/templates/statefulset.yaml
+index 531c3c7b7..e114202a7 100644
+--- a/incubator/cassandra/templates/cassandra-statefulset.yaml
++++ b/incubator/cassandra/templates/statefulset.yaml
+@@ -1,41 +1,4 @@
+-apiVersion: v1
+-kind: Service
+-metadata:
+-  name: {{ template "cassandra.fullname" . }}
+-  labels:
+-    app: {{ template "cassandra.name" . }}
+-    chart: {{ template "cassandra.chart" . }}
+-    release: {{ .Release.Name }}
+-    heritage: {{ .Release.Service }}
+-spec:
+-  clusterIP: None
+-  type: {{ .Values.service.type }}
+-  ports:
+-  - name: intra
+-    port: 7000
+-    targetPort: 7000
+-  - name: tls
+-    port: 7001
+-    targetPort: 7001
+-  - name: jmx
+-    port: 7199
+-    targetPort: 7199
+-  - name: cql
+-    port: {{ default 9042 .Values.config.ports.cql }}
+-    targetPort: {{ default 9042 .Values.config.ports.cql }}
+-  - name: thrift
+-    port: {{ default 9160 .Values.config.ports.thrift }}
+-    targetPort: {{ default 9160 .Values.config.ports.thrift }}
+-  {{- if .Values.config.ports.agent }}
+-  - name: agent
+-    port: {{ .Values.config.ports.agent }}
+-    targetPort: {{ .Values.config.ports.agent }}
+-  {{- end }}
+-  selector:
+-    app: {{ template "cassandra.name" . }}
+-    release: {{ .Release.Name }}
+----
+-apiVersion: apps/v1beta1
++apiVersion: apps/v1
+ kind: StatefulSet
+ metadata:
+   name: {{ template "cassandra.fullname" . }}
+diff --git a/incubator/cassandra/values.yaml b/incubator/cassandra/values.yaml
+index 41362e4b4..d37f0045e 100644
+--- a/incubator/cassandra/values.yaml
++++ b/incubator/cassandra/values.yaml
+@@ -2,7 +2,7 @@
+ ## ref: https://hub.docker.com/r/library/cassandra/
+ image:
+   repo: "cassandra"
+-  tag: "3"
++  tag: "3.11.2"
+   pullPolicy: IfNotPresent
+   ## Specify ImagePullSecrets for Pods
+   ## ref: https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
+@@ -32,13 +32,13 @@ persistence:
+ ## Minimum memory for development is 4GB and 2 CPU cores
+ ## Minimum memory for production is 8GB and 4 CPU cores
+ ## ref: http://docs.datastax.com/en/archived/cassandra/2.0/cassandra/architecture/architecturePlanningHardware_c.html
+-resources:
+-  requests:
+-    memory: 4Gi
+-    cpu: 2
+-  limits:
+-    memory: 4Gi
+-    cpu: 2
++resources: {}
++  # requests:
++  #   memory: 4Gi
++  #   cpu: 2
++  # limits:
++  #   memory: 4Gi
++  #   cpu: 2
+ 
+ ## Change cassandra configuration parameters below:
+ ## ref: http://docs.datastax.com/en/cassandra/3.0/cassandra/configuration/configCassandra_yaml.html

@@ -1,0 +1,126 @@
+commit 630e5b8159acafcddb8f6b32c74a2226e2ed1907
+Author: Kubernetes Prow Robot <k8s-ci-robot@users.noreply.github.com>
+Date:   Wed Mar 4 21:48:37 2020 -0800
+
+    [stable/cluster-autoscaler] reuse existing service account (#21204)
+    
+    * [stable/cluster-autoscaler] reuse existing service account
+    
+    Signed-off-by: Nicolas Degory <nicolas.degory@gmail.com>
+    
+    * refactor service account name in values.yaml
+    
+    Signed-off-by: Nicolas Degory <nicolas.degory@gmail.com>
+
+diff --git a/stable/cluster-autoscaler/Chart.yaml b/stable/cluster-autoscaler/Chart.yaml
+index 769cbb28a..2f7cd2d83 100644
+--- a/stable/cluster-autoscaler/Chart.yaml
++++ b/stable/cluster-autoscaler/Chart.yaml
+@@ -2,7 +2,7 @@ apiVersion: v1
+ description: Scales worker nodes within autoscaling groups.
+ icon: https://github.com/kubernetes/kubernetes/blob/master/logo/logo.png
+ name: cluster-autoscaler
+-version: 6.6.1
++version: 7.0.0
+ appVersion: 1.14.6
+ home: https://github.com/kubernetes/autoscaler
+ sources:
+diff --git a/stable/cluster-autoscaler/README.md b/stable/cluster-autoscaler/README.md
+index 10adaf8a5..ac1a7a092 100644
+--- a/stable/cluster-autoscaler/README.md
++++ b/stable/cluster-autoscaler/README.md
+@@ -167,7 +167,8 @@ Parameter | Description | Default
+ `nodeSelector` | node labels for pod assignment | `{}`
+ `podAnnotations` | annotations to add to each pod | `{}`
+ `rbac.create` | If true, create & use RBAC resources | `false`
+-`rbac.serviceAccountName` | existing ServiceAccount to use (ignored if rbac.create=true) | `default`
++`rbac.serviceAccount.create` | If true and rbac.create is also true, a service account will be created | `true`
++`rbac.serviceAccount.name` | existing ServiceAccount to use (ignored if rbac.create=true and rbac.serviceAccount.create=true) | `default`
+ `rbac.serviceAccountAnnotations` | Additional Service Account annotations	| `{}`
+ `rbac.pspEnabled` | Must be used with `rbac.create` true. If true, creates & uses RBAC resources required in the cluster with [Pod Security Policies](https://kubernetes.io/docs/concepts/policy/pod-security-policy/) enabled. | `false`
+ `replicaCount` | desired number of pods | `1`
+diff --git a/stable/cluster-autoscaler/templates/_helpers.tpl b/stable/cluster-autoscaler/templates/_helpers.tpl
+index 14e3dc361..1ab8dfdc5 100644
+--- a/stable/cluster-autoscaler/templates/_helpers.tpl
++++ b/stable/cluster-autoscaler/templates/_helpers.tpl
+@@ -71,3 +71,14 @@ Return the appropriate apiVersion for podsecuritypolicy.
+ {{- print "policy/v1beta1" -}}
+ {{- end -}}
+ {{- end -}}
++
++{{/*
++Return the service account name used by the pod.
++*/}}
++{{- define "serviceaccount.name" -}}
++{{- if and .Values.rbac.create .Values.rbac.serviceAccount.create -}}
++{{ include "cluster-autoscaler.fullname" . }}
++{{- else -}}
++{{ .Values.rbac.serviceAccount.name }}
++{{- end -}}
++{{- end -}}
+diff --git a/stable/cluster-autoscaler/templates/clusterrolebinding.yaml b/stable/cluster-autoscaler/templates/clusterrolebinding.yaml
+index 665e6ed53..414c12779 100644
+--- a/stable/cluster-autoscaler/templates/clusterrolebinding.yaml
++++ b/stable/cluster-autoscaler/templates/clusterrolebinding.yaml
+@@ -11,6 +11,6 @@ roleRef:
+   name: {{ template "cluster-autoscaler.fullname" . }}
+ subjects:
+   - kind: ServiceAccount
+-    name: {{ template "cluster-autoscaler.fullname" . }}
++    name: {{ template "serviceaccount.name" . }}
+     namespace: {{ .Release.Namespace }}
+ {{- end -}}
+diff --git a/stable/cluster-autoscaler/templates/deployment.yaml b/stable/cluster-autoscaler/templates/deployment.yaml
+index 89dc70666..5c1ba4ba3 100644
+--- a/stable/cluster-autoscaler/templates/deployment.yaml
++++ b/stable/cluster-autoscaler/templates/deployment.yaml
+@@ -191,7 +191,7 @@ spec:
+       nodeSelector:
+ {{ toYaml .Values.nodeSelector | indent 8 }}
+     {{- end }}
+-      serviceAccountName: {{ if .Values.rbac.create }}{{ template "cluster-autoscaler.fullname" . }}{{ else }}"{{ .Values.rbac.serviceAccountName }}"{{ end }}
++      serviceAccountName: {{ template "serviceaccount.name" . }}
+       tolerations:
+ {{ toYaml .Values.tolerations | indent 8 }}
+       {{- if .Values.securityContext }}
+diff --git a/stable/cluster-autoscaler/templates/rolebinding.yaml b/stable/cluster-autoscaler/templates/rolebinding.yaml
+index d2cbe2c8e..e978d3cec 100644
+--- a/stable/cluster-autoscaler/templates/rolebinding.yaml
++++ b/stable/cluster-autoscaler/templates/rolebinding.yaml
+@@ -11,6 +11,6 @@ roleRef:
+   name: {{ template "cluster-autoscaler.fullname" . }}
+ subjects:
+   - kind: ServiceAccount
+-    name: {{ template "cluster-autoscaler.fullname" . }}
++    name: {{ template "serviceaccount.name" . }}
+     namespace: {{ .Release.Namespace }}
+ {{- end -}}
+diff --git a/stable/cluster-autoscaler/templates/serviceaccount.yaml b/stable/cluster-autoscaler/templates/serviceaccount.yaml
+index cc306eb4e..cb412c94e 100644
+--- a/stable/cluster-autoscaler/templates/serviceaccount.yaml
++++ b/stable/cluster-autoscaler/templates/serviceaccount.yaml
+@@ -1,4 +1,4 @@
+-{{- if .Values.rbac.create -}}
++{{- if and .Values.rbac.create .Values.rbac.serviceAccount.create -}}
+ apiVersion: v1
+ kind: ServiceAccount
+ metadata:
+diff --git a/stable/cluster-autoscaler/values.yaml b/stable/cluster-autoscaler/values.yaml
+index aa18085cc..4b3ea9948 100644
+--- a/stable/cluster-autoscaler/values.yaml
++++ b/stable/cluster-autoscaler/values.yaml
+@@ -111,9 +111,11 @@ rbac:
+   ## If true, create & use Pod Security Policy resources
+   ## https://kubernetes.io/docs/concepts/policy/pod-security-policy/
+   pspEnabled: false
+-  ## Ignored if rbac.create is true
+-  ##
+-  serviceAccountName: default
++  ## if rbac.create is false or (if rbac.create is true and rbac.serviceAccount.create is false)
++  ## the service account rbac.serviceAccount.name will be used instead
++  serviceAccount:
++    create: true
++    name: default
+   ## Annotations for the Service Account
+   ##
+   serviceAccountAnnotations: {}

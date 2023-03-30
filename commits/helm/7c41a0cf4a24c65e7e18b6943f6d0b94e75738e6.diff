@@ -1,0 +1,1009 @@
+commit 7c41a0cf4a24c65e7e18b6943f6d0b94e75738e6
+Author: jeff-knurek <j.knurek@travelaudience.com>
+Date:   Fri Apr 20 15:50:59 2018 +0200
+
+    [stable/sonatype-nexus] a significant refactor of the nexus chart that allows for easy backups and proxy (#3617)
+    
+    * [stable/sonatype-nexus] a significant refactor of the nexus chart that allows for easy backups and proxy
+    
+    Makes the chart more production ready from install
+    
+    * [sonatype-nexus] add in the template changes from Helm 2.8.1
+    
+    * [sonatype-nexus] implement as a deployment instead of statefulset
+    
+    stable storage is a requirement, but couldn't find a reason why it still needed to be a statefulset
+    
+    * [sonatype-nexus] increase k8s version as prerequisite
+    
+    * [sonatype-nexus] fix the other PR comments, namely keeping the storage class settings consistent
+    
+    * [sonatype-nexus] rename the port values, and make it clearer how they are used
+    
+    * [sonatype-nexus] remove dependency of cert-manager
+    
+    * [sonatype-nexus] during merge conflicts, almost lost latest change of pv annotations
+    
+    * [sonatype-nexus] update nexus version to 3.9.0
+    
+    * [sonatype-nexus] add option for securityContext to allow for official sonatype/nexus3 image to start up
+    
+    * [sonatype-nexus] add option for disabling the backup container (and it's resources)
+    
+    * [sonatype-nexus] add option for using an existing PV
+    
+    * [sonatype-nexus] use an empty dir for backup if backup container isn't enabled
+    
+    * [sonatype-nexus] update NOTES.txt to use the actual value of admin pwd instead of hardcoded default
+    
+    * [sonatype-nexus] add the liveness/readiness probe back in
+    
+    * [sonatype-nexus] Backup is currently only works with GCP at the moment, so disable it by default
+    
+    * [sonatype-nexus] Add a link to the repo that is used for the nexusBackup container
+
+diff --git a/stable/sonatype-nexus/.helmignore b/stable/sonatype-nexus/.helmignore
+index 46fd89965..9301b24db 100644
+--- a/stable/sonatype-nexus/.helmignore
++++ b/stable/sonatype-nexus/.helmignore
+@@ -21,3 +21,4 @@
+ *.tmproj
+ # OWNERS file for Kubernetes
+ OWNERS
++*.tar
+diff --git a/stable/sonatype-nexus/Chart.yaml b/stable/sonatype-nexus/Chart.yaml
+index c1353f4b0..769073c2d 100644
+--- a/stable/sonatype-nexus/Chart.yaml
++++ b/stable/sonatype-nexus/Chart.yaml
+@@ -1,16 +1,21 @@
+ name: sonatype-nexus
+-version: 0.2.2
++version: 1.0.0
+ appVersion: 3.9.0
+ description: Sonatype Nexus is an open source repository manager
+ keywords:
++  - artifacts
+   - dependency
+   - management
+   - sonatype
++  - nexus
+   - repository
+ home: https://www.sonatype.com/nexus-repository-oss
+-icon: https://www.sonatype.com/hs-fs/hubfs/Sonatype_Logos/SON_logo_main.png?t=1504013727967&width=212&name=SON_logo_main.png
++icon: http://www.sonatype.org/nexus/content/uploads/2015/06/Nexus-Logo.jpg
+ sources:
+-  - https://github.com/clearent/nexus
++  - https://github.com/sonatype/nexus-public
++  - https://github.com/travelaudience/docker-nexus
++  - https://github.com/travelaudience/kubernetes-nexus
++  - https://github.com/travelaudience/docker-nexus-backup
+ maintainers:
+   - name: rjkernick
+     email: rjkernick@gmail.com
+diff --git a/stable/sonatype-nexus/README.md b/stable/sonatype-nexus/README.md
+index 9715e9875..121267ee9 100644
+--- a/stable/sonatype-nexus/README.md
++++ b/stable/sonatype-nexus/README.md
+@@ -1,14 +1,35 @@
+ # Nexus
+ 
+-[Nexus](https://www.sonatype.com/nexus-repository-oss) is the world's only repository manager with FREE support for popular formats
++[Nexus OSS](https://www.sonatype.com/nexus-repository-oss) is a free open source repository manager. It supports a wide range of package formats and it's used by hundreds of tech companies.
+ 
+ ## Introduction
+ 
+-This chart bootstraps a sonatype nexus instance
++This chart bootstraps a Nexus OSS deployment on a cluster using Helm.
++This setup is best configuted in [GCP](https://cloud.google.com/) since:
++- [google cloud storage](https://cloud.google.com/storage/) is used for backups
++- [GCE Ingress controller](https://github.com/kubernetes/ingress/blob/master/docs/faq/gce.md) is used for using a pre-allocated static IP in GCE.
++
++There is also the option of using a [proxy for Nexus](https://github.com/travelaudience/nexus-proxy) that authenticates Nexus against an external identity provider (only GCP IAM at the moment) which is **disabled** by default.
+ 
+ ## Prerequisites
+ 
+-- Kubernetes 1.6+
++- Kubernetes 1.8+ with Beta APIs enabled
++- PV provisioner support in the underlying infrastructure
++- [Fulfill Nexus kubernetes requirements](https://github.com/travelaudience/kubernetes-nexus#pre-requisites)
++
++### With GCP IAM enabled
++All the [Prerequisites](#Prerequisites) should be in place, plus:
++- [Fulfill GCP IAM requirements](https://github.com/travelaudience/kubernetes-nexus/blob/master/docs/admin/configuring-nexus-proxy.md#pre-requisites)
++
++## Testing the Chart
++To test the chart:
++```bash
++$ helm install --dry-run --debug ./
++```
++To test the chart with your own values:
++```bash
++$ helm install --dry-run --debug -f my_values.yaml ./
++```
+ 
+ ## Installing the Chart
+ 
+@@ -29,7 +50,7 @@ To uninstall/delete the deployment:
+ ```bash
+ $ helm list
+ NAME           	REVISION	UPDATED                 	STATUS  	CHART      	NAMESPACE
+-plinking-gopher	1       	Fri Sep  1 13:19:50 2017	DEPLOYED	nexus-0.1.0	default
++plinking-gopher	1       	Fri Sep  1 13:19:50 2017	DEPLOYED	sonatype-nexus-0.1.0	default
+ $ helm delete plinking-gopher
+ ```
+ 
+@@ -39,48 +60,141 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following table lists the configurable parameters of the Nexus chart and their default values.
+ 
+-| Parameter                                   | Description                         | Default                                    |
+-| ------------------------------------------  | ----------------------------------  | -------------------------------------------|
+-| `image.repository`                          | `nexus` image repository.           | cavemandaveman/nexus                       |
+-| `image.tag`                                 | `nexus` image tag.                  | 3.9.0-01                                   |
+-| `image.pullPolicy`                          | Image pull policy                   | `IfNotPresent`                             |
+-| `nodeSelector`                              | Node labels for pod assignment      | {}                                         |
+-| `ingress.enabled`                           | Flag for enabling ingress           | false                                      |
+-| `persistence.enabled`                       | Create a volume to store data       | true                                       |
+-| `persistence.size`                          | Size of persistent volume to claim  | 8Gi RW                                     |
+-| `persistence.storageClass`                  | Type of persistent volume claim     | nil  (uses alpha storage class annotation) |
+-| `persistence.accessMode`                    | ReadWriteOnce or ReadOnly           | ReadWriteOnce                              |
+-| `persistence.annotations`                   | Persistent Volume annotations       | {}                                         |
+-| `persistence.existingClaim`                 | Existing persistent volume name     | ""                                         |
+-| `service.type`                              | Kubernetes Service type             | `LoadBalancer`                             |
+-| `service.readinessProbe.initialDelaySeconds`| ReadinessProbe initial delay        | 30                                         |
+-| `service.readinessProbe.periodSeconds`      | Seconds between polls               | 30                                         |
+-| `service.readinessProbe.failureThreshold`   | Number of attempts before failure   | 6                                          |
+-| `service.livenessProbe.initialDelaySeconds` | livenessProbe initial delay         | 30                                         |
+-| `service.livenessProbe.periodSeconds`       | Seconds between polls               | 30                                         |
+-
+-Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
++| Parameter                                   | Description                         | Default                                 |
++| ------------------------------------------  | ----------------------------------  | ----------------------------------------|
++| `replicaCount`                              | Number of Nexus service replicas    | `1`                                     |
++| `nexus.imageName`                           | Nexus image                         | `quay.io/travelaudience/docker-nexus`   |
++| `nexus.imageTag`                            | Version of Nexus                    | `3.9.0`                                 |
++| `nexus.imagePullPolicy`                     | Nexus image pull policy             | `IfNotPresent`                          |
++| `nexus.env.install4jAddVmParams`            | JVM options                         | `-Xms1200M -Xmx1200M -XX:MaxDirectMemorySize=2G -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap`  |
++| `nexus.resources`                           | Nexus resource requests and limits  | `{}`                                    |
++| `nexus.dockerPort`                          | Port to access docker               | `5003`                                  |
++| `nexus.nexusPort`                           | Internal port for Nexus service     | `8081`                                  |
++| `nexus.serviceType`                         | Service for Nexus                   | `NodePort`                              |
++| `nexus.securityContext`                     | Security Context (for enabling official image use `fsGroup: 2000`) | `{}`     |
++| `nexus.livenessProbe.initialDelaySeconds`   | LivenessProbe initial delay         | 30                                      |
++| `nexus.livenessProbe.periodSeconds`         | Seconds between polls               | 30                                      |
++| `nexus.livenessProbe.failureThreshold`      | Number of attempts before failure   | 6                                       |
++| `nexus.readinessProbe.initialDelaySeconds`  | ReadinessProbe initial delay        | 30                                      |
++| `nexus.readinessProbe.periodSeconds`        | Seconds between polls               | 30                                      |
++| `nexus.readinessProbe.failureThreshold`     | Number of attempts before failure   | 6                                       |
++| `nexusProxy.port`                           | Port for exposing Nexus             | `8080`                                  |
++| `nexusProxy.imageName`                      | Proxy image                         | `quay.io/travelaudience/docker-nexus-proxy` |
++| `nexusProxy.imageTag`                       | Proxy image verion                  | `2.1.0`                                 |
++| `nexusProxy.imagePullPolicy`                | Proxy image pull policy             | `IfNotPresent`                          |
++| `nexusProxy.env.nexusHttpHost`              | Nexus url to access Nexus           | `nil`                                   |
++| `nexusProxy.env.nexusDockerHost`            | Containers url to be used with docker | `nil`                                 |
++| `nexusProxy.env.enforceHttps`               | Allow only https access or not      | `false`                                 |
++| `nexusProxy.env.cloudIamAuthEnabled`        | Enable GCP IAM authentication in Nexus proxy  | `false`                       |
++| `persistence.enabled`                       | Create a volume for storage         | `true`                                  |
++| `persistence.accessMode`                    | ReadWriteOnce or ReadOnly           | `ReadWriteOnce`                         |
++| `persistence.storageClass`                  | Storage class of Nexus PVC          | `nil`                                   |
++| `persistence.storageSize`                   | Size of Nexus data volume           | `8Gi`                                   |
++| `persistence.annotations`                   | Persistent Volume annotations       | `{}`                                    |
++| `persistence.existingClaim`                 | Existing persistent volume name     | `nil`                                   |
++| `nexusBackup.enabled`                       | Nexus backup process                | `false`                                 |
++| `nexusBackup.imageName`                     | Nexus backup image                  | `quay.io/travelaudience/docker-nexus-backup` |
++| `nexusBackup.imageTag`                      | Nexus backup image version          | `1.2.0`                                 |
++| `nexusBackup.imagePullPolicy`               | Backup image pull policy            | `IfNotPresent`                          |
++| `nexusBackup.env.targetBucket`              | Required if `nexusBackup` is enabled. Google Cloud Storage bucker for backups format `gs://BACKUP_BUCKET`  | `nil`  |
++| `nexusBackup.nexusAdminPassword`            | Nexus admin password used by the backup container to access Nexus API. This password should match the one that gets chosen by the user to replace the default admin password after the first login  | `admin123`                |
++| `nexusBackup.persistence.enabled`           | Create a volume for backing Nexus configuration  | `true`                     |
++| `nexusBackup.persistence.accessMode`        | ReadWriteOnce or ReadOnly           | `ReadWriteOnce`                         |
++| `nexusBackup.persistence.storageClass`      | Storage class of Nexus backup PVC   | `nil`                                   |
++| `nexusBackup.persistence.storageSize`       | Size of Nexus backup data volume    | `8Gi`                                   |
++| `nexusBackup.persistence.annotations`       | PV annotations for backup           | `{}`                                    |
++| `nexusBackup.persistence.existingClaim`     | Existing PV name for backup         | `nil`                                   |
++| `ingress.enabled`                           | Create an ingress for Nexus         | `true`                                  |
++| `ingress.annotations`                       | Annotations to enhance ingress configuration  | `{}`                          |
++| `ingress.tls.enabled`                       | Enable TLS                          | `false`                                 |
++| `ingress.tls.secretName`                    | Name of the secret storing TLS cert | `nexus-tls`                             |
++
++If `nexusProxy.env.cloudIamAuthEnabled` is set to `true` the following variables need to be configured
++
++| Parameter                        | Description                        | Default                                              |
++| -----------------------------    | ---------------------------------- | ---------------------------------------------------- |
++| `nexusProxy.env.clientId`        | GCP OAuth client ID                | `nil`                                                |
++| `nexusProxy.env.clientSecret`    | GCP OAuth client Secret            | `nil`                                                |
++| `nexusProxy.env.organizationId`  | GCP organization ID                | `nil`                                                |
++| `nexusProxy.env.redirectUrl`     | OAuth callback url. example `https://nexus.example.com/oauth/callback` | `nil`            |
++| `nexusProxy.secrets.keystore`    | base-64 encoded value of the keystore file needed for the proxy to sign user tokens. Example: cat keystore.jceks &#124; base64 | `nil`  |
++| `nexusProxy.secrets.password`    | Password to the Java Keystore file | `nil`                                                |
+ 
+ ```bash
+-$ helm install --name my-release \
+-  --set persistence.enabled=false \
+-    stable/sonatype-nexus
++$ helm install --name my-release --set persistence.enabled=false stable/sonatype-nexus
+ ```
+ The above example turns off the persistence. Data will not be kept between restarts or deployments
+ 
+ Alternatively, a YAML file that specifies the values for the parameters can be provided while installing the chart. For example,
+ 
+ ```bash
+-$ helm install --name my-release -f values.yaml stable/sonatype-nexus
++$ helm install --name my-release -f my-values.yaml stable/sonatype-nexus
++```
++
++### Persistence
++
++By default a PersistentVolumeClaim is created and mounted into the `/nexus-data` directory. In order to disable this functionality
++you can change the `values.yaml` to disable persistence which will use an `emptyDir` instead.
++
++> *"An emptyDir volume is first created when a Pod is assigned to a Node, and exists as long as that Pod is running on that node. When a Pod is removed from a node for any reason, the data in the emptyDir is deleted forever."*
++
++### Recommended settings
++
++As a minimum for running in production, the following settings are advised:
++
++```yaml
++nexusProxy:
++  env:
++    nexusDockerHost: container.example.com
++    nexusHttpHost: nexus.example.com
++
++nexusBackup:
++  env:
++    targetBucket: "gs://my-nexus-backup"
++  persistence:
++    storageClass: standard
++
++ingress:
++  enabled: true
++  annotations:
++    kubernetes.io/ingress.class: gce
++    kubernetes.io/tls-acme: true
++
++persistence:
++  storageClass: standard
++  storageSize: 1024Gi
++
++resources:
++  requests:
++    cpu: 250m
++    # Based on https://support.sonatype.com/hc/en-us/articles/115006448847#mem
++    # and https://twitter.com/analytically/status/894592422382063616:
++    #   Xms == Xmx
++    #   Xmx <= 4G
++    #   MaxDirectMemory >= 2G
++    #   Xmx + MaxDirectMemory <= RAM * 2/3 (hence the request for 4800Mi)
++    #   MaxRAMFraction=1 is not being set as it would allow the heap
++    #     to use all the available memory.
++    memory: 4800Mi
+ ```
+ 
+-> **Tip**: You can use the default [values.yaml](values.yaml)
++## After Installing the Chart
++After installing the chart a couple of actions need still to be done in order to use nexus. Please follow the instructions below.
+ 
+-## Persistence
++### Nexus Configuration
++The following steps need to be executed in order to use Nexus:
+ 
+-The [Nexus](https://github.com/clearent/nexus) image stores its data and configurations at the `/nexus-data` path of the container.
++- [Configure Nexus](https://github.com/travelaudience/kubernetes-nexus/blob/master/docs/admin/configuring-nexus.md)
++- [Configure Backups](https://github.com/travelaudience/kubernetes-nexus/blob/master/docs/admin/configuring-nexus.md#configure-backup)
+ 
+-By default a PersistentVolumeClaim is created and mounted into that directory. In order to disable this functionality
+-you can change the values.yaml to disable persistence and use an emptyDir instead.
++and if GCP IAM authentication is enabled, please also check:
++- [Enable GCP IAM authentication in Nexus ](https://github.com/travelaudience/kubernetes-nexus/blob/master/docs/admin/configuring-nexus-proxy.md#enable-gcp-iam-auth)
+ 
+-> *"An emptyDir volume is first created when a Pod is assigned to a Node, and exists as long as that Pod is running on that node. When a Pod is removed from a node for any reason, the data in the emptyDir is deleted forever."*
++### Nexus Usage
++To see how to use Nexus with different tools like Docker, Maven, Python, and so on please check:
++
++- [Nexus Usage](https://github.com/travelaudience/kubernetes-nexus#usage)
++
++### Disaster Recovery
++In a disaster recovery scenario, the latest backup made by the nexus-backup container should be restored. In order to achieve this please follow the procedure described bellow:
++- [Restore Backups](https://github.com/travelaudience/kubernetes-nexus#restore)
+diff --git a/stable/sonatype-nexus/templates/NOTES.txt b/stable/sonatype-nexus/templates/NOTES.txt
+index a8ad40eb8..23d7aa33a 100644
+--- a/stable/sonatype-nexus/templates/NOTES.txt
++++ b/stable/sonatype-nexus/templates/NOTES.txt
+@@ -1,19 +1,30 @@
+-1. Get the application URL by running these commands:
+-{{- if .Values.ingress.enabled }}
+-{{- range .Values.ingress.hosts }}
+-  http://{{ . }}
+-{{- end }}
+-{{- else if contains "NodePort" .Values.service.type }}
+-  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ template "fullname" . }})
+-  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+-  echo http://$NODE_IP:$NODE_PORT
+-{{- else if contains "LoadBalancer" .Values.service.type }}
+-     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+-           You can watch the status of by running 'kubectl get svc -w {{ template "fullname" . }}'
+-  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "fullname" . }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+-  echo http://$SERVICE_IP:{{ .Values.service.externalPort }}
+-{{- else if contains "ClusterIP" .Values.service.type }}
+-  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app={{ template "name" . }},release={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+-  echo "Visit http://127.0.0.1:8081 to use your application"
+-  kubectl port-forward $POD_NAME 8081:{{ .Values.service.externalPort }}
+-{{- end }}
++1. To access Nexus:
++
++   NOTE: It may take a few minutes for the ingress load balancer to become available or the backends to become HEALTHY.
++         You can watch the status of the backends by running:
++         `kubectl get ingress -o jsonpath='{.items[*].metadata.annotations.ingress\.kubernetes\.io/backends}'`
++
++   To access Nexus you can check:
++   {{- if .Values.nexusProxy.env.enforceHttps }}
++     https://{{ .Values.nexusProxy.env.nexusHttpHost }}
++   {{- else }}
++     http://{{ .Values.nexusProxy.env.nexusHttpHost }}
++   {{- end }}
++
++2. Login with the following credentials
++
++   username: admin
++   password: {{ .Values.nexusBackup.nexusAdminPassword }}
++
++3. Change Your password after the first login
++
++  {{- if .Values.nexusBackup.enabled }}
++   Once you login you should change your admin password to match the value of `nexusBackup.env.nexusAdminPassword`
++   This is important for security reasons and also because backup container needs this password set for admin user
++   to access Nexus API to run backups.
++  {{- end }}
++
++4. Next steps in configuration
++
++   Please follow the link below for nexus configuration, usage, backups and DR info:
++   https://github.com/travelaudience/core-nexus-kubernetes/tree/create-helm-chart/helm/nexus#after-installing-the-chart
+diff --git a/stable/sonatype-nexus/templates/_helpers.tpl b/stable/sonatype-nexus/templates/_helpers.tpl
+index f0d83d2ed..f60b262c6 100644
+--- a/stable/sonatype-nexus/templates/_helpers.tpl
++++ b/stable/sonatype-nexus/templates/_helpers.tpl
+@@ -2,15 +2,49 @@
+ {{/*
+ Expand the name of the chart.
+ */}}
+-{{- define "name" -}}
++{{- define "nexus.name" -}}
+ {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
+ 
+ {{/*
+ Create a default fully qualified app name.
+ We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
++If release name contains chart name it will be used as a full name.
+ */}}
+-{{- define "fullname" -}}
++{{- define "nexus.fullname" -}}
++{{- if .Values.fullnameOverride -}}
++{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
+ {{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
+ {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Create chart name and version as used by the chart label.
++*/}}
++{{- define "nexus.chart" -}}
++{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*
++Create a default fully qualified name for proxy keystore secret.
++We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
++*/}}
++{{- define "nexus.proxy-ks.name" -}}
++{{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- printf "%s-%s-%s"  $name .Release.Name "-proxy-ks" | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*  Manage the labels for each entity  */}}
++{{- define "nexus.labels" -}}
++app: {{ template "nexus.name" . }}
++fullname: {{ template "nexus.fullname" . }}
++chart: {{ template "nexus.chart" . }}
++release: {{ .Release.Name }}
++heritage: {{ .Release.Service }}
++{{- end -}}
+diff --git a/stable/sonatype-nexus/templates/backup-pvc.yaml b/stable/sonatype-nexus/templates/backup-pvc.yaml
+new file mode 100644
+index 000000000..356b38c36
+--- /dev/null
++++ b/stable/sonatype-nexus/templates/backup-pvc.yaml
+@@ -0,0 +1,26 @@
++{{- if and .Values.nexusBackup.enabled (and .Values.nexusBackup.persistence.enabled (not .Values.nexusBackup.persistence.existingClaim)) }}
++kind: PersistentVolumeClaim
++apiVersion: v1
++metadata:
++  name: {{ template "nexus.fullname" . }}-backup
++  labels:
++{{ include "nexus.labels" . | indent 4 }}
++{{- if .Values.nexusBackup.persistence.annotations }}
++  annotations:
++{{ toYaml .Values.nexusBackup.persistence.annotations | indent 4 }}
++{{- end }}
++spec:
++  accessModes:
++    - {{ .Values.nexusBackup.persistence.accessMode }}
++  resources:
++    requests:
++      storage: {{ .Values.nexusBackup.persistence.storageSize | quote }}
++{{- if .Values.nexusBackup.persistence.storageClass }}
++{{- if (eq "-" .Values.nexusBackup.persistence.storageClass) }}
++  storageClassName: ""
++{{- else }}
++  storageClassName: "{{ .Values.nexusBackup.persistence.storageClass }}"
++{{- end }}
++{{- end }}
++{{- end }}
++
+diff --git a/stable/sonatype-nexus/templates/backup-secret.yaml b/stable/sonatype-nexus/templates/backup-secret.yaml
+new file mode 100644
+index 000000000..510673da1
+--- /dev/null
++++ b/stable/sonatype-nexus/templates/backup-secret.yaml
+@@ -0,0 +1,11 @@
++{{- if .Values.nexusBackup.enabled }}
++apiVersion: v1
++kind: Secret
++metadata:
++  name: {{ template "nexus.fullname" . }}
++  labels:
++{{ include "nexus.labels" . | indent 4 }}
++type: Opaque
++data:
++  nexus.nexusAdminPassword: {{ printf "%s-%s" "Basic admin:" .Values.nexusBackup.nexusAdminPassword | cat | b64enc | quote }}
++{{- end }}
+diff --git a/stable/sonatype-nexus/templates/deployment.yaml b/stable/sonatype-nexus/templates/deployment.yaml
+index 27c9e5960..ebeb888dc 100644
+--- a/stable/sonatype-nexus/templates/deployment.yaml
++++ b/stable/sonatype-nexus/templates/deployment.yaml
+@@ -1,62 +1,163 @@
+-apiVersion: extensions/v1beta1
++apiVersion: apps/v1beta2
+ kind: Deployment
+ metadata:
+-  name: {{ template "fullname" . }}
++  name: {{ template "nexus.fullname" . }}
+   labels:
+-    app: {{ template "name" . }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+-    release: {{ .Release.Name }}
+-    heritage: {{ .Release.Service }}
++{{ include "nexus.labels" . | indent 4 }}
+ spec:
++  replicas: {{ .Values.replicaCount }}
+   selector:
+     matchLabels:
+-      app: {{ template "name" . }}
++      app: {{ template "nexus.name" . }}
+       release: {{ .Release.Name }}
+-  replicas: {{ .Values.replicaCount }}
+   template:
+     metadata:
+       labels:
+-        app: {{ template "name" . }}
+-        chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
++        app: {{ template "nexus.name" . }}
+         release: {{ .Release.Name }}
+-        heritage: {{ .Release.Service }}
+     spec:
+-     {{- if .Values.nodeSelector }}
++      {{- if .Values.nexus.nodeSelector }}
+       nodeSelector:
+-{{ toYaml .Values.nodeSelector | indent 8 }}
+-    {{- end }}
++{{ toYaml .Values.nexus.nodeSelector | indent 8 }}
++      {{- end }}
+       containers:
+-        - name: {{ .Chart.Name }}
+-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+-          imagePullPolicy: {{ .Values.image.pullPolicy }}
++        - name: nexus
++          image: {{ .Values.nexus.imageName }}:{{ .Values.nexus.imageTag }}
++          imagePullPolicy: {{ .Values.nexus.imagePullPolicy }}
++          env:
++            - name: INSTALL4J_ADD_VM_PARAMS
++              value: {{ .Values.nexus.env.install4jAddVmParams | quote }}
++          resources:
++{{ toYaml .Values.resources | indent 12 }}
+           ports:
+-            - containerPort: {{ .Values.service.internalPort }}
+-            {{- if .Values.docker.enabled }}
+-            - containerPort: {{ .Values.docker.port }}
+-            {{- end }}
++            - containerPort: {{ .Values.nexus.dockerPort }}
++              name: nexus-docker-g
++            - containerPort: {{ .Values.nexus.nexusPort }}
++              name: nexus-http
+           livenessProbe:
+             httpGet:
+               path: /
+-              port: {{ .Values.service.internalPort }}
+-            initialDelaySeconds: {{ .Values.service.livenessProbe.initialDelaySeconds }}
+-            periodSeconds: {{ .Values.service.livenessProbe.periodSeconds }}
++              port: {{ .Values.nexus.nexusPort }}
++            initialDelaySeconds: {{ .Values.nexus.livenessProbe.initialDelaySeconds }}
++            periodSeconds: {{ .Values.nexus.livenessProbe.periodSeconds }}
++            failureThreshold: {{ .Values.nexus.livenessProbe.failureThreshold }}
+           readinessProbe:
+             httpGet:
+               path: /
+-              port: {{ .Values.service.internalPort }}
+-            initialDelaySeconds: {{ .Values.service.readinessProbe.initialDelaySeconds }}
+-            periodSeconds: {{ .Values.service.readinessProbe.periodSeconds }}
+-            failureThreshold: {{ .Values.service.readinessProbe.failureThreshold }}
+-          resources:
+-{{ toYaml .Values.resources | indent 12 }}
++              port: {{ .Values.nexus.nexusPort }}
++            initialDelaySeconds: {{ .Values.nexus.readinessProbe.initialDelaySeconds }}
++            periodSeconds: {{ .Values.nexus.readinessProbe.periodSeconds }}
++            failureThreshold: {{ .Values.nexus.readinessProbe.failureThreshold }}
+           volumeMounts:
+             - mountPath: /nexus-data
+-              name: nexus-data-volume
++              name: nexus-data
++            - mountPath: /nexus-data/backup
++              name: nexus-backup
++        - name: nexus-proxy
++          image: {{ .Values.nexusProxy.imageName }}:{{ .Values.nexusProxy.imageTag }}
++          imagePullPolicy: {{ .Values.nexusProxy.imagePullPolicy }}
++          env:
++            - name: ALLOWED_USER_AGENTS_ON_ROOT_REGEX
++              value: "GoogleHC"
++            - name: CLOUD_IAM_AUTH_ENABLED
++              value: {{ .Values.nexusProxy.env.cloudIamAuthEnabled | quote }}
++            - name: BIND_PORT
++              value: {{ .Values.nexusProxy.port | quote }}
++            - name: ENFORCE_HTTPS
++              value: {{ .Values.nexusProxy.env.enforceHttps | quote }}
++            - name: NEXUS_DOCKER_HOST
++              value: {{ .Values.nexusProxy.env.nexusDockerHost | quote }}
++            - name: NEXUS_HTTP_HOST
++              value: {{ .Values.nexusProxy.env.nexusHttpHost | quote }}
++            - name: UPSTREAM_DOCKER_PORT
++              value: {{ .Values.nexus.dockerPort | quote }}
++            - name: UPSTREAM_HTTP_PORT
++              value: {{ .Values.nexus.nexusPort | quote }}
++            - name: UPSTREAM_HOST
++              value: "localhost"
++            {{- if .Values.nexusProxy.env.cloudIamAuthEnabled }}
++            - name: NEXUS_RUT_HEADER
++              value: "X-Forwarded-User"
++            - name: CLIENT_ID
++              value: {{ .Values.nexusProxy.env.clientId | quote }}
++            - name: CLIENT_SECRET
++              value: {{ .Values.nexusProxy.env.clientSecret | quote }}
++            - name: ORGANIZATION_ID
++              value: {{ .Values.nexusProxy.env.organizationId | quote }}
++            - name: REDIRECT_URL
++              value: {{ .Values.nexusProxy.env.redirectUrl | quote }}
++            - name: KEYSTORE_PASS
++              valueFrom:
++                secretKeyRef:
++                  name: {{ template "nexus.proxy-ks.name" . }}
++                  key: password
++            - name: KEYSTORE_PATH
++              value: "/nexus-proxy-ks/keystore"
++            - name: AUTH_CACHE_TTL
++              value: "60000"
++            - name: SESSION_TTL
++              value: "86400000"
++            {{- end }}
++          ports:
++            - containerPort: {{ .Values.nexusProxy.port }}
++              name: nexus-proxy
++          {{- if .Values.nexusProxy.env.cloudIamAuthEnabled }}
++          volumeMounts:
++            - mountPath: /nexus-proxy-ks
++              name: {{ template "nexus.proxy-ks.name" . }}
++              readOnly: true
++          {{- end }}
++        {{- if .Values.nexusBackup.enabled }}
++        - name: nexus-backup
++          image: {{ .Values.nexusBackup.imageName }}:{{ .Values.nexusBackup.imageTag }}
++          imagePullPolicy: {{ .Values.nexusBackup.imagePullPolicy }}
++          env:
++            - name: NEXUS_AUTHORIZATION
++              valueFrom:
++                secretKeyRef:
++                  key: nexus.nexusAdminPassword
++                  name: {{ template "nexus.fullname" . }}
++            - name: NEXUS_BACKUP_DIRECTORY
++              value: /nexus-data/backup
++            - name: NEXUS_DATA_DIRECTORY
++              value: /nexus-data
++            - name: NEXUS_LOCAL_HOST_PORT
++              value: "localhost:{{ .Values.nexus.nexusPort }}"
++            - name: OFFLINE_REPOS
++              value: "maven-central maven-public maven-releases maven-snapshots"
++            - name: TARGET_BUCKET
++              value: {{ .Values.nexusBackup.env.targetBucket | quote }}
++            - name: GRACE_PERIOD
++              value: "60"
++            - name: TRIGGER_FILE
++              value: .backup
++          volumeMounts:
++            - mountPath: /nexus-data
++              name: nexus-data
++            - mountPath: /nexus-data/backup
++              name: nexus-backup
++        {{- end }}
++      {{- if .Values.nexus.securityContext }}
++      securityContext:
++{{ toYaml .Values.nexus.securityContext | indent 8 }}
++      {{- end }}
+       volumes:
+-        - name: nexus-data-volume
++        {{- if .Values.nexusProxy.env.cloudIamAuthEnabled }}
++        - name: {{ template "nexus.proxy-ks.name" . }}
++          secret:
++            secretName: {{ template "nexus.proxy-ks.name" . }}
++        {{- end }}
++        - name: nexus-data
+           {{- if .Values.persistence.enabled }}
+           persistentVolumeClaim:
+-            claimName: {{ .Values.persistence.existingClaim | default (print (include "fullname" .)) }}
++            claimName: {{ .Values.persistence.existingClaim | default (printf "%s-%s" (include "nexus.fullname" .) "data") }}
++          {{- else }}
++          emptyDir: {}
++          {{- end }}
++        - name: nexus-backup
++          {{- if and .Values.nexusBackup.enabled (.Values.nexusBackup.persistence.enabled) }}
++          persistentVolumeClaim:
++            claimName: {{ .Values.nexusBackup.persistence.existingClaim | default (printf "%s-%s" (include "nexus.fullname" .) "backup") }}
+           {{- else }}
+           emptyDir: {}
+-          {{- end -}}
++          {{- end }}
+diff --git a/stable/sonatype-nexus/templates/ingress.yaml b/stable/sonatype-nexus/templates/ingress.yaml
+index d33d906da..bb5026031 100644
+--- a/stable/sonatype-nexus/templates/ingress.yaml
++++ b/stable/sonatype-nexus/templates/ingress.yaml
+@@ -1,41 +1,35 @@
+ {{- if .Values.ingress.enabled -}}
+-{{- $serviceName := include "fullname" . -}}
+-{{- $servicePort := .Values.service.externalPort -}}
+ apiVersion: extensions/v1beta1
+ kind: Ingress
+ metadata:
+-  name: {{ template "fullname" . }}
++  name: {{ template "nexus.fullname" . }}
+   labels:
+-    app: {{ template "name" . }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+-    release: {{ .Release.Name }}
+-    heritage: {{ .Release.Service }}
++{{ include "nexus.labels" . | indent 4 }}
+   annotations:
+     {{- range $key, $value := .Values.ingress.annotations }}
+-      {{ $key }}: {{ $value | quote }}
++    {{ $key }}: {{ $value | quote }}
+     {{- end }}
+ spec:
+   rules:
+-    {{- if .Values.docker.enabled }}
+-    - host: {{ .Values.docker.host }}
++    - host: {{ .Values.nexusProxy.env.nexusDockerHost }}
+       http:
+         paths:
+-          - path: /
+-            backend:
+-              serviceName: {{ $serviceName }}
+-              servicePort: {{ .Values.docker.port }}
+-    {{- end }}
+-    {{- range $host := .Values.ingress.hosts }}
+-    - host: {{ $host }}
++          - backend:
++              serviceName: {{ template "nexus.fullname" . }}
++              servicePort: {{ .Values.nexusProxy.port }}
++            path: /*
++    - host: {{ .Values.nexusProxy.env.nexusHttpHost }}
+       http:
+         paths:
+-          - path: /
+-            backend:
+-              serviceName: {{ $serviceName }}
+-              servicePort: {{ $servicePort }}
+-    {{- end -}}
+-  {{- if .Values.ingress.tls }}
++          - backend:
++              serviceName: {{ template "nexus.fullname" . }}
++              servicePort: {{ .Values.nexusProxy.port }}
++            path: /*
++{{- if .Values.ingress.tls }}
+   tls:
+-{{ toYaml .Values.ingress.tls | indent 4 }}
+-  {{- end -}}
++    - hosts:
++        - {{ .Values.nexusProxy.env.nexusDockerHost }}
++        - {{ .Values.nexusProxy.env.nexusHttpHost }}
++      secretName: {{ .Values.ingress.tls.secretName | quote }}
+ {{- end -}}
++{{- end }}
+diff --git a/stable/sonatype-nexus/templates/proxy-ks-secret.yaml b/stable/sonatype-nexus/templates/proxy-ks-secret.yaml
+new file mode 100644
+index 000000000..94b9ecdf3
+--- /dev/null
++++ b/stable/sonatype-nexus/templates/proxy-ks-secret.yaml
+@@ -0,0 +1,12 @@
++{{- if .Values.nexusProxy.env.cloudIamAuthEnabled }}
++apiVersion: v1
++kind: Secret
++metadata:
++  name: {{ template "nexus.proxy-ks.name" . }}
++  labels:
++{{ include "nexus.labels" . | indent 4 }}
++type: Opaque
++data:
++  keystore: {{ .Values.nexusProxy.secrets.keystore }}
++  password: {{ .Values.nexusProxy.secrets.password | b64enc }}
++{{- end}}
+diff --git a/stable/sonatype-nexus/templates/proxy-svc.yaml b/stable/sonatype-nexus/templates/proxy-svc.yaml
+new file mode 100644
+index 000000000..28008f9d7
+--- /dev/null
++++ b/stable/sonatype-nexus/templates/proxy-svc.yaml
+@@ -0,0 +1,16 @@
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ template "nexus.fullname" . }}
++  labels:
++{{ include "nexus.labels" . | indent 4 }}
++spec:
++  ports:
++    - name: {{ .Values.nexusProxy.name }}
++      port: {{ .Values.nexusProxy.port }}
++      protocol: TCP
++      targetPort: {{ .Values.nexusProxy.port }}
++  selector:
++    app: {{ template "nexus.name" . }}
++    release: {{ .Release.Name }}
++  type: {{ .Values.nexus.serviceType }}
+diff --git a/stable/sonatype-nexus/templates/pvc.yaml b/stable/sonatype-nexus/templates/pvc.yaml
+index 64b67d25d..c53661c9a 100644
+--- a/stable/sonatype-nexus/templates/pvc.yaml
++++ b/stable/sonatype-nexus/templates/pvc.yaml
+@@ -2,12 +2,9 @@
+ kind: PersistentVolumeClaim
+ apiVersion: v1
+ metadata:
+-  name: {{ template "fullname" . }}
++  name: {{ template "nexus.fullname" . }}-data
+   labels:
+-    app: {{ template "name" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
++{{ include "nexus.labels" . | indent 4 }}
+ {{- if .Values.persistence.annotations }}
+   annotations:
+ {{ toYaml .Values.persistence.annotations | indent 4 }}
+@@ -17,7 +14,7 @@ spec:
+     - {{ .Values.persistence.accessMode | quote }}
+   resources:
+     requests:
+-      storage: {{ .Values.persistence.size | quote }}
++      storage: {{ .Values.persistence.storageSize | quote }}
+ {{- if .Values.persistence.storageClass }}
+ {{- if (eq "-" .Values.persistence.storageClass) }}
+   storageClassName: ""
+@@ -25,4 +22,4 @@ spec:
+   storageClassName: "{{ .Values.persistence.storageClass }}"
+ {{- end }}
+ {{- end }}
+-{{- end }}
++{{- end }}
+\ No newline at end of file
+diff --git a/stable/sonatype-nexus/templates/service.yaml b/stable/sonatype-nexus/templates/service.yaml
+deleted file mode 100644
+index 9374f49ff..000000000
+--- a/stable/sonatype-nexus/templates/service.yaml
++++ /dev/null
+@@ -1,33 +0,0 @@
+-apiVersion: v1
+-kind: Service
+-metadata:
+-  name: {{ template "fullname" . }}
+-  labels:
+-    app: {{ template "name" . }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+-    release: {{ .Release.Name }}
+-    heritage: {{ .Release.Service }}
+-{{- if .Values.service.annotations }}
+-  annotations:
+-{{ toYaml .Values.service.annotations | indent 4 }}
+-{{- end }}
+-spec:
+-  type: {{ .Values.service.type }}
+-  ports:
+-    - port: {{ .Values.service.externalPort }}
+-{{- if ne .Values.service.type "ClusterIP" }}
+-      targetPort: {{ .Values.service.internalPort }}
+-{{- end }}
+-      protocol: TCP
+-      name: {{ .Values.service.name }}
+-    {{- if .Values.docker.enabled }}
+-    - port: {{ .Values.docker.port }}
+-{{- if ne .Values.service.type "ClusterIP" }}
+-      targetPort: {{ .Values.docker.port }}
+-{{- end }}
+-      protocol: TCP
+-      name: {{ .Values.service.name }}-docker
+-    {{- end }}
+-  selector:
+-    app: {{ template "name" . }}
+-    release: {{ .Release.Name }}
+diff --git a/stable/sonatype-nexus/values.yaml b/stable/sonatype-nexus/values.yaml
+index 275b64157..22406899c 100644
+--- a/stable/sonatype-nexus/values.yaml
++++ b/stable/sonatype-nexus/values.yaml
+@@ -1,71 +1,100 @@
+-# Default values for nexus.
+-# This is a YAML-formatted file.
+-# Declare variables to be passed into your templates.
+ replicaCount: 1
+-image:
+-  repository: cavemandaveman/nexus
+-  tag: 3.9.0-01
+ 
+-# node labels for node selection
+-# nodeSelector:
+-#   cloud.google.com/gke-nodepool: default-pool
+-
+-service:
+-  name: nexus
+-  type: LoadBalancer
+-  externalPort: 8081
+-  internalPort: 8081
+-  readinessProbe:
++nexus:
++  imageName: quay.io/travelaudience/docker-nexus
++  imageTag: 3.9.0
++  imagePullPolicy: IfNotPresent
++  env:
++    install4jAddVmParams: "-Xms1200M -Xmx1200M -XX:MaxDirectMemorySize=2G -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap"
++  # nodeSelector:
++  #   cloud.google.com/gke-nodepool: default-pool
++  resources: {}
++    # requests:
++      ## Based on https://support.sonatype.com/hc/en-us/articles/115006448847#mem
++      ## and https://twitter.com/analytically/status/894592422382063616:
++      ##   Xms == Xmx
++      ##   Xmx <= 4G
++      ##   MaxDirectMemory >= 2G
++      ##   Xmx + MaxDirectMemory <= RAM * 2/3 (hence the request for 4800Mi)
++      ##   MaxRAMFraction=1 is not being set as it would allow the heap
++      ##     to use all the available memory.
++      # cpu: 250m
++      # memory: 4800Mi
++  # The ports should only be changed if the nexus image uses a different port
++  dockerPort: 5003
++  nexusPort: 8081
++  serviceType: NodePort
++  # securityContext:
++  #   fsGroup: 2000
++  livenessProbe:
+     initialDelaySeconds: 30
+     periodSeconds: 30
+     failureThreshold: 6
+-  livenessProbe:
++  readinessProbe:
+     initialDelaySeconds: 30
+     periodSeconds: 30
+-  annotations: {}
+-  # foo.io/bar: "true"
+-ingress:
+-  enabled: false
+-  # Used to create an Ingress record.
+-  # hosts:
+-  #  - nexus.local
+-  # annotations:
+-  #  kubernetes.io/ingress.class: nginx
+-  #  kubernetes.io/tls-acme: "true"
+-  # tls: {}
+-  # Secrets must be manually created in the namespace.
+-  #  - secretName: nexus-tls
+-  #    hosts:
+-  #      - nexus.local
+-## Configuration if choosing to host docker registry
+-docker:
+-  enabled: false
+-  # Used to enable a docker registry
+-  # port: 5509
+-  # host: docker.local
+-## Persist data to a persitent volume
++    failureThreshold: 6
++
++nexusProxy:
++  imageName: quay.io/travelaudience/docker-nexus-proxy
++  imageTag: 2.1.0
++  imagePullPolicy: IfNotPresent
++  port: 8080
++  env:
++    nexusDockerHost:
++    nexusHttpHost:
++    enforceHttps: false
++    cloudIamAuthEnabled: false
++## If cloudIamAuthEnabled is set to true uncomment the variables bellow and remove this line
++  #   clientId: ""
++  #   clientSecret: ""
++  #   organizationId: ""
++  #   redirectUrl: ""
++  # secrets:
++  #   keystore: ""
++  #   password: ""
++
+ persistence:
+   enabled: true
+-  ## If defined, storageClassName: <storageClass>
+-  ## If set to "-", storageClassName: "", which disables dynamic provisioning
+-  ## If undefined (the default) or set to null, no storageClassName spec is
++  accessMode: ReadWriteOnce
++  ## If defined, storageClass: <storageClass>
++  ## If set to "-", storageClass: "", which disables dynamic provisioning
++  ## If undefined (the default) or set to null, no storageClass spec is
+   ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+   ##   GKE, AWS & OpenStack)
+   ##
+-  # existingClaim: ""
+-  # storageClass: "-"
++  # existingClaim:
+   # annotations:
+   #  "helm.sh/resource-policy": keep
+-  accessMode: ReadWriteOnce
+-  size: 8Gi
+-resources: {}
+-  # We usually recommend not to specify default resources and to leave this as a conscious
+-  # choice for the user. This also increases chances charts run on environments with little
+-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+-  # limits:
+-  #  cpu: "1"
+-  #  memory: "1Gi"
+-  # requests:
+-  #  cpu: "100m"
+-  #  memory: "128Mi"
++  # storageClass: "-"
++  storageSize: 8Gi
++
++nexusBackup:
++  enabled: false
++  imageName: quay.io/travelaudience/docker-nexus-backup
++  imageTag: 1.2.0
++  imagePullPolicy: IfNotPresent
++  env:
++    targetBucket:
++  nexusAdminPassword: "admin123"
++  persistence:
++    enabled: true
++    # existingClaim:
++    # annotations:
++    #  "helm.sh/resource-policy": keep
++    accessMode: ReadWriteOnce
++    # See comment above for information on setting the backup storageClass
++    # storageClass: "-"
++    storageSize: 8Gi
++
++ingress:
++  enabled: false
++  annotations: {}
++  # # NOTE: Can't use 'false' due to https://github.com/jetstack/kube-lego/issues/173.
++  # kubernetes.io/ingress.allow-http: true
++  # kubernetes.io/ingress.class: gce
++  # kubernetes.io/ingress.global-static-ip-name: ""
++  # kubernetes.io/tls-acme: true
++  tls:
++    enabled: true
++    secretName: nexus-tls

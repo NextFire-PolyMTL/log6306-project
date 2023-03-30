@@ -1,0 +1,2537 @@
+commit b5af62f49110d03ccbed547acbab4ca58f4471f8
+Author: Kai Ren <tyranron@gmail.com>
+Date:   Tue Dec 3 19:56:58 2019 +0200
+
+    [stable/cockroachdb] Complete refactor and capabilities extension (#18993)
+    
+    - refactor chart values to be more idiomatic and document them more precisely
+    - rename k8s labels to namespaced ones
+    - refactor template names and make them more readable
+    - support 'nameOverride' and 'fullnameOverride' values
+    - make StatefulSet 'replicas' configurable
+    - make affinity, tolerations and nodeSelector configurable for StatefulSet and init Job
+    - make labels and annotations configurable for Pods of StatefulSet and init Job
+    - make init Job idempotent for already initialized clusters
+    - add ability to persist data in hostPath and emptyDir
+    - add ability to configure NetworkPolicy with custom ingress rules
+    - add ability to specify credentials for private registries of Docker images
+    - support running in standalone mode (start-single-node)
+    - provide more configuration parameters in chart values
+    - reuse entrypoint of the used Docker image instead of overwriting it
+    - bump chart's version to 3.0.0
+    - update README and add upgrading instructions for 3.0.0
+    
+    Signed-off-by: tyranron <tyranron@gmail.com>
+
+diff --git a/stable/cockroachdb/Chart.yaml b/stable/cockroachdb/Chart.yaml
+index 93808a6db..228a6ff29 100755
+--- a/stable/cockroachdb/Chart.yaml
++++ b/stable/cockroachdb/Chart.yaml
+@@ -1,7 +1,7 @@
+ apiVersion: v1
+ name: cockroachdb
+ home: https://www.cockroachlabs.com
+-version: 2.1.17
++version: 3.0.0
+ appVersion: 19.2.1
+ description: CockroachDB is a scalable, survivable, strongly-consistent SQL database.
+ icon: https://raw.githubusercontent.com/cockroachdb/cockroach/master/docs/media/cockroach_db.png
+diff --git a/stable/cockroachdb/README.md b/stable/cockroachdb/README.md
+index 478e22c26..afa8c982f 100644
+--- a/stable/cockroachdb/README.md
++++ b/stable/cockroachdb/README.md
+@@ -1,27 +1,47 @@
+ # CockroachDB Helm Chart
+ 
++
++
++
+ ## Documentation
+-Below is a brief overview of operating the CockroachDB Helm Chart and some specific implementation details.  For additional information, please see https://www.cockroachlabs.com/docs/v19.1/orchestrate-cockroachdb-with-kubernetes-insecure.html
++
++Below is a brief overview of operating the CockroachDB Helm Chart and some specific implementation details. For additional information, please see:
++> https://www.cockroachlabs.com/docs/v19.2/orchestrate-cockroachdb-with-kubernetes-insecure.html
++
++
++
+ 
+ ## Prerequisites Details
++
+ * Kubernetes 1.8
+-* PV support on the underlying infrastructure. [Docker for windows hostpath provisioner is not supported](https://github.com/cockroachdb/docs/issues/3184).
+-* If you want to secure your cluster to use TLS certificates for all network
+-  communication, [Helm must be installed with RBAC
+-  privileges](https://github.com/kubernetes/helm/blob/master/docs/rbac.md)
+-  or else you will get an "attempt to grant extra privileges" error.
++* PV support on the underlying infrastructure (only if using `storage.persistentVolume`). [Docker for windows hostpath provisioner is not supported](https://github.com/cockroachdb/docs/issues/3184).
++* If you want to secure your cluster to use TLS certificates for all network communication, [Helm must be installed with RBAC privileges](https://github.com/kubernetes/helm/blob/master/docs/rbac.md) or else you will get an "attempt to grant extra privileges" error.
++
++
++
+ 
+ ## StatefulSet Details
++
+ * http://kubernetes.io/docs/concepts/abstractions/controllers/statefulsets/
+ 
++
++
++
+ ## StatefulSet Caveats
++
+ * http://kubernetes.io/docs/concepts/abstractions/controllers/statefulsets/#limitations
+ 
++
++
++
+ ## Chart Details
+ 
+ This chart will do the following:
+ 
+-* Set up a dynamically scalable CockroachDB cluster using a Kubernetes StatefulSet
++* Set up a dynamically scalable CockroachDB cluster using a Kubernetes StatefulSet.
++
++
++
+ 
+ ## Installing the Chart
+ 
+@@ -31,23 +51,11 @@ To install the chart with the release name `my-release`:
+ helm install --name my-release stable/cockroachdb
+ ```
+ 
+-Note that for a production cluster, you are very likely to want to modify the
+-`Storage` and `StorageClass` parameters. This chart defaults to 100 GiB of
+-disk space per pod, but you may want more or less depending on your use case,
+-and the default persistent volume `StorageClass` in your environment may not be
+-what you want for a database (e.g. on GCE and Azure the default is not SSD).
++Note that for a production cluster, you are very likely to want to modify the `storage.persistentVolume.size` and `storage.persistentVolume.storageClass` parameters. This chart defaults to `100 GiB` of disk space per Pod, but you may want more or less depending on your use case, and the default PersistentVolume `storageClass` in your environment may not be what you want for a database (e.g. on GCE and Azure the default is not SSD).
+ 
+-If you are running in secure mode (with configuration parameter `Secure.Enabled`
+-set to `true`), then you will have to manually approve the cluster's security
+-certificates as the pods are created. You can see the pending
+-certificate-signing requests by running `kubectl get csr`, and approve them by
+-running `kubectl certificate approve <csr-name>`. You'll have to approve one
+-certificate for each node (e.g.  `default.node.eerie-horse-cockroachdb-0` and
+-one client certificate for the job that initializes the cluster (e.g.
+-`default.node.root`).
+-
+-Confirm that three pods are ```running``` successfully and init has completed:
++If you are running in secure mode (with configuration parameter `tls.enabled` set to `yes`/`true`), then you will have to manually approve the cluster's security certificates as the Pods are created. You can see the pending CSRs (certificate-signing requests) by running `kubectl get csr`, and approve them by running `kubectl certificate approve <csr-name>`. You'll have to approve one certificate for each Node (e.g. `default.node.eerie-horse-cockroachdb-0` and one client certificate for the Job that initializes the cluster (e.g. `default.node.root`).
+ 
++Confirm that all Pods are `Running` successfully and init has been completed:
+ ```shell
+ kubectl get pods
+ ```
+@@ -59,7 +67,7 @@ my-release-cockroachdb-2            1/1       Running     0          1m
+ my-release-cockroachdb-init-k6jcr   0/1       Completed   0          1m
+ ```
+ 
+-Confirm that persistent volumes are created and claimed for each pod:
++Confirm that PersistentVolumes are created and claimed for each Pod:
+ ```shell
+ kubectl get persistentvolumes
+ ```
+@@ -69,40 +77,44 @@ pvc-64878ebf-f3f0-11e8-ab5b-42010a8e0035   100Gi      RWO            Delete
+ pvc-64945b4f-f3f0-11e8-ab5b-42010a8e0035   100Gi      RWO            Delete           Bound     default/datadir-my-release-cockroachdb-1   standard                 51s
+ pvc-649d920d-f3f0-11e8-ab5b-42010a8e0035   100Gi      RWO            Delete           Bound     default/datadir-my-release-cockroachdb-2   standard                 51s
+ ```
++
++
++
++
+ ## Upgrading
+-### From 2.0.0 on
+-Launch a temporary interactive pod and start the built-in SQL client:
+ 
++
++### From 3.0.0 on
++
++Launch a temporary interactive Pod and start the built-in SQL client:
+ ```shell
+-kubectl run cockroachdb -it \
++kubectl run cockroachdb --rm -it \
+ --image=cockroachdb/cockroach \
+---rm \
+ --restart=Never \
+--- sql \
+---insecure \
+---host=my-release-cockroachdb-public
++-- sql --insecure --host=my-release-cockroachdb-public
+ ```
+ 
+-Set the  ```cluster.preserve_downgrade_option``` cluster setting where $current_version = the version of CRDB currently running, e.g. 2.1:
+-```> SET CLUSTER SETTING cluster.preserve_downgrade_option = '$current_version';```
+-
+-Exit the shell and delete the temp pod:
+-```> \q ```
++Set the `cluster.preserve_downgrade_option` cluster setting, where `$current_version` is the version of CockroachDB currently running (e.g. `2.1`):
++```sql
++> SET CLUSTER SETTING cluster.preserve_downgrade_option = '$current_version';
++```
+ 
+-Kick off the upgrade process by changing to the new Docker image, where $new_version is the version being upgraded to:
++Exit the shell and delete the temp Pod:
++```sql
++> \q 
++```
+ 
++Kick off the upgrade process by changing to the new Docker image, where `$new_version` is the version being upgraded to:
+ ```shell
+ kubectl delete job my-release-cockroachdb-init
+ ```
+ ```shell
+-helm upgrade \
+-my-release \
+-stable/cockroachdb \
+---set ImageTag=$new_version \
++helm upgrade my-release stable/cockroachdb \
++--set image.tag=$new_version \
+ --reuse-values
+ ```
+-Monitor the cluster's pods until all have been successfully restarted:
+ 
++Monitor the cluster's Pods until all have been successfully restarted:
+ ```shell
+ kubectl get pods
+ ```
+@@ -125,118 +137,165 @@ my-release-cockroachdb-2    cockroachdb/cockroach:v19.2.1
+ my-release-cockroachdb-3    cockroachdb/cockroach:v19.2.1
+ ```
+ 
+-Resume normal operations.  Once you are comfortable that the stability and performance of the cluster is what you'd expect post upgrade, finalize it by running the following:
+-
++Resume normal operations. Once you are comfortable that the stability and performance of the cluster is what you'd expect post upgrade, finalize it by running the following:
+ ```shell
+-kubectl run cockroachdb -it \
++kubectl run cockroachdb --rm -it \
+ --image=cockroachdb/cockroach \
+---rm \
+ --restart=Never \
+--- sql \
+---insecure \
+---host=my-release-cockroachdb-public
+-```
++-- sql --insecure --host=my-release-cockroachdb-public
+ ```
++```sql
+ > RESET CLUSTER SETTING cluster.preserve_downgrade_option;
++> \q
+ ```
+-```
+-\q
+-```
++
++
+ ### To 2.0.0
+-Due to having no explicit selector set for the StatefulSet before version 2.0.0 of
+-this chart, upgrading from any version that uses a version of kubernetes that locks
+-the selector labels to any other version is impossible without deleting the StatefulSet.
+-Luckily there is a way to do it without actually deleting all the resources managed
+-by the StatefulSet. Use the workaround below to upgrade from charts versions previous
+-to 2.0.0. The following example assumes that the release name is crdb:
+ 
+-```console
+-$ kubectl delete statefulset crdb-cockroachdb --cascade=false
++Due to having no explicit selector set for the StatefulSet before version 2.0.0 of this chart, upgrading from any version that uses a version of Kubernetes that locks the selector labels to any other version is impossible without deleting the StatefulSet. Luckily there is a way to do it without actually deleting all the resources managed by the StatefulSet. Use the workaround below to upgrade from charts versions previous to 2.0.0:
++```shell
++kubectl delete statefulset my-release-cockroachdb --cascade=false
+ ```
+ 
+-Verify that no pod is deleted and then upgrade as normal. A new StatefulSet will
+-be created taking over the management of the existing pods upgrading them if needed.
++Verify that no Pod is deleted and then upgrade as normal. A new StatefulSet will be created taking over the management of the existing Pods upgrading them if needed.
+ 
+ For more information about the upgrading bug see https://github.com/helm/charts/issues/7680.
+ 
++
++### To 3.0.0
++
++Due changing in labels format in 3.0.0 version of this chart, upgrading requires deleting the StatefulSet. Luckily there is a way to do it without actually deleting all the resources managed by the StatefulSet. Use the workaround below to upgrade from charts versions previous to 3.0.0:
++
++Get the new labels from specs rendered by Helm:
++```shell
++helm template -f deploy.vals.yml stable/cockroachdb -x templates/statefulset.yaml \
++| yq r - spec.template.metadata.labels
++```
++```
++app.kubernetes.io/name: cockroachdb
++app.kubernetes.io/instance: my-release
++app.kubernetes.io/component: cockroachdb
++```
++
++Place the new labels to all Pods of the StatefulSet (change `my-release-cockroachdb-0` with each Pod's name):
++```shell
++kubectl label pods my-release-cockroachdb-0 \
++app.kubernetes.io/name=cockroachdb \
++app.kubernetes.io/instance=my-release \
++app.kubernetes.io/component=cockroachdb
++```
++
++Delete the StatefulSet without deleting Pods:
++```shell
++kubectl delete statefulset my-release-cockroachdb --cascade=false
++```
++
++Verify that no Pod is deleted and then upgrade as normal. A new StatefulSet will be created taking over the management of the existing Pods upgrading them if needed.
++
++
++
++
+ ## Configuration
+ 
+ The following table lists the configurable parameters of the CockroachDB chart and their default values.
+-
+-| Parameter                      | Description                                      | Default                                   |
+-| ------------------------------ | ------------------------------------------------ | ----------------------------------------- |
+-| `Name`                         | Chart name                                       | `cockroachdb`                             |
+-| `Image`                        | Container image name                             | `cockroachdb/cockroach`                   |
+-| `ImageTag`                     | Container image tag                              | `v19.2.1`                                 |
+-| `ImagePullPolicy`              | Container pull policy                            | `Always`                                  |
+-| `Replicas`                     | k8s statefulset replicas                         | `3`                                       |
+-| `MaxUnavailable`               | k8s PodDisruptionBudget parameter                | `1`                                       |
+-| `Component`                    | k8s selector key                                 | `cockroachdb`                             |
+-| `ExternalGrpcPort`             | CockroachDB primary serving port                 | `26257`                                   |
+-| `ExternalGrpcName`             | CockroachDB primary serving port name            | `grpc`                                    |
+-| `InternalGrpcPort`             | CockroachDB inter-cockroachdb port               | `26257`                                   |
+-| `InternalGrpcName`             | CockroachDB inter-cockroachdb port name          | `grpc`                                    |
+-| `InternalHttpPort`             | CockroachDB HTTP port                            | `8080`                                    |
+-| `ExternalHttpPort`             | CockroachDB HTTP port on service                 | `8080`                                    |
+-| `HttpName`                     | Name given to the http service port              | `http`                                    |
+-| `Resources`                    | Resource requests and limits                     | `{}`                                      |
+-| `InitPodResources`             | Resource requests and limits for the short-lived init pod | `{}`                             |
+-| `Storage`                      | Persistent volume size                           | `100Gi`                                   |
+-| `StorageClass`                 | Persistent volume class                          | `null`                                    |
+-| `CacheSize`                    | Size of CockroachDB's in-memory cache            | `25%`                                     |
+-| `MaxSQLMemory`                 | Max memory to use processing SQL queries         | `25%`                                     |
+-| `ClusterDomain`                | Cluster's default DNS domain                     | `cluster.local`                           |
+-| `NetworkPolicy.Enabled`        | Enable NetworkPolicy                             | `false`                                   |
+-| `NetworkPolicy.AllowExternal`  | Don't require client label for connections       | `true`                                    |
+-| `Service.Type`                 | Public service type                              | `ClusterIP`                               |
+-| `Service.Annotations`          | Annotations to apply to the service              | `{}`                                      |
+-| `Service.labels`               | Labels to apply to the service                   | `{}`                                      |
+-| `ServiceDiscovery.labels`      | Labels to apply to the service for discovery     | `{}`                                      |
+-| `PodManagementPolicy`          | `OrderedReady` or `Parallel` pod creation/deletion order | `Parallel`                        |
+-| `UpdateStrategy.type`          | allows setting of RollingUpdate strategy         | `RollingUpdate`                           |
+-| `NodeSelector`                 | Node labels for pod assignment                   | `{}`                                      |
+-| `Tolerations`                  | List of node taints to tolerate                  | `{}`                                      |
+-| `Secure.Enabled`               | Whether to run securely using TLS certificates   | `false`                                   |
+-| `Secure.RequestCertsImage`     | Image to use for requesting TLS certificates     | `cockroachdb/cockroach-k8s-request-cert`  |
+-| `Secure.RequestCertsImageTag`  | Image tag to use for requesting TLS certificates | `0.4`                                     |
+-| `Secure.ServiceAccount.Create` | Whether to create a new RBAC service account     | `true`                                    |
+-| `Secure.ServiceAccount.Name`   | Name of RBAC service account to use              | `""`                                      |
+-| `JoinExisting`                 | List of already-existing cockroach instances     | `[]`                                      |
+-| `Locality`                     | Locality attribute for this deployment           | `""`                                      |
+-| `ExtraArgs`                    | Additional command-line arguments                | `[]`                                      |
+-| `ExtraSecretMounts`            | Additional secrets to mount at cluster members   | `[]`                                      |
+-| `ExtraEnvArgs`                 | Allows to set extra ENV args                     | `[]`                                      |
+-| `ExtraAnnotations`             | Allows to set extra Annotations                  | `[]`                                      |
+-| `ExtraInitAnnotations`         | Allows to set extra Annotations to init pod      | `[]`                                      |
++For details see the `values.yml` file.
++
++| Parameter | Description | Default |
++| --------- | ----------- | ------- |
++| `clusterDomain` | Cluster's default DNS domain | `cluster.local` |
++| `conf.attrs`                 | CockroachDB node attributes                      | `[]`    |
++| `conf.cache`                 | Size of CockroachDB's in-memory cache            | `25%`   |
++| `conf.cluster-name`          | Name of CockroachDB cluster                      | `""`    |
++| `conf.disable-cluster-name-verification` | Disable CockroachDB cluster name verification | `no` |
++| `conf.join`                  | List of already-existing CockroachDB instances   | `[]`    |
++| `conf.max-disk-temp-storage` | Max storage capacity for temp data               | `0`     |
++| `conf.max-offset`            | Max allowed clock offset for CockroachDB cluster | `500ms` |
++| `conf.max-sql-memory`        | Max memory to use processing SQL querie          | `25%`   |
++| `conf.locality`              | Locality attribute for this deployment           | `""`    |
++| `conf.single-node`           | Disable CockroachDB clustering (standalone mode) | `no`    |
++| `conf.sql-audit-dir`         | Directory for SQL audit log                      | `""`    |
++| `conf.port`                  | CockroachDB primary serving port in Pods         | `26257` |
++| `conf.http-port`             | CockroachDB HTTP port in Pods                    | `8080`  |
++| `image.repository`  | Container image name  | `cockroachdb/cockroach` |
++| `image.tag`         | Container image tag   | `v19.2.1`               |
++| `image.pullPolicy`  | Container pull policy | `IfNotPresent`          |
++| `image.credentials` | `registry`, `user` and `pass` credentials to pull private image | `{}` |
++| `statefulset.replicas`              | StatefulSet replicas number                            | `3`        |
++| `statefulset.updateStrategy`        | Update strategy for StatefulSet Pods                   | `{"type": "RollingUpdate"}` |
++| `statefulset.podManagementPolicy`   | `OrderedReady`/`Parallel` Pods creation/deletion order | `Parallel` |
++| `statefulset.budget.maxUnavailable` | k8s PodDisruptionBudget parameter                      | `1`        |
++| `statefulset.args`                | Extra command-line arguments                   | `[]` |
++| `statefulset.env`                 | Extra env vars                                 | `[]` |
++| `statefulset.secretMounts`        | Additional Secrets to mount at cluster members | `[]` |
++| `statefulset.labels`      | Additional labels of StatefulSet and its Pods | `{"app.kubernetes.io/component": "cockroachdb"}` |
++| `statefulset.annotations` | Additional annotations of StatefulSet Pods    | `{}` |
++| `statefulset.nodeAffinity`           | [Node affinity rules][2] of StatefulSet Pods      | `{}`   |
++| `statefulset.podAffinity`            | [Inter-Pod affinity rules][1] of StatefulSet Pods | `{}`   |
++| `statefulset.podAntiAffinity`        | [Anti-affinity rules][1] of StatefulSet Pods      | auto   |
++| `statefulset.podAntiAffinity.type`   | Type of auto [anti-affinity rules][1]             | `soft` |
++| `statefulset.podAntiAffinity.weight` | Weight for `soft` auto [anti-affinity rules][1]   | `100`  |
++| `statefulset.nodeSelector`           | Node labels for StatefulSet Pods assignment       | `{}`   |
++| `statefulset.tolerations`            | Node taints to tolerate by StatefulSet Pods       | `[]`   |
++| `statefulset.resources`              | Resource requests and limits for StatefulSet Pods | `{}`   |
++| `service.ports.grpc.external.port` | CockroachDB primary serving port in Services          | `26257`         |
++| `service.ports.grpc.external.name` | CockroachDB primary serving port name in Services     | `grpc`          |
++| `service.ports.grpc.internal.port` | CockroachDB inter-communication port in Services      | `26257`         |
++| `service.ports.grpc.internal.name` | CockroachDB inter-communication port name in Services | `grpc-internal` |
++| `service.ports.http.port`          | CockroachDB HTTP port in Services                     | `8080`          |
++| `service.ports.http.name`          | CockroachDB HTTP port name in Services                | `http`          |
++| `service.public.type`        | Public Service type                      | `ClusterIP` |
++| `service.public.labels`      | Additional labels of public Service      | `{"app.kubernetes.io/component": "cockroachdb"}` |
++| `service.public.annotations` | Additional annotations of public Service | `{}`        |
++| `service.discovery.labels`      | Additional labels of discovery Service      | `{"app.kubernetes.io/component": "cockroachdb"}` |
++| `service.discovery.annotations` | Additional annotations of discovery Service | `{}` |
++| `storage.hostPath`                      | Absolute path on host to store data             | `""`    |
++| `storage.persistentVolume.enabled`      | Whether to use PersistentVolume to store data   | `yes`   |
++| `storage.persistentVolume.size`         | PersistentVolume size                           | `100Gi` |
++| `storage.persistentVolume.storageClass` | PersistentVolume class                          | `""`    |
++| `storage.persistentVolume.labels`       | Additional labels of PersistentVolumeClaim      | `{}`    |
++| `storage.persistentVolume.annotations`  | Additional annotations of PersistentVolumeClaim | `{}`    |
++| `init.labels`       | Additional labels of init Job and its Pod            | `{"app.kubernetes.io/component": "init"}` |
++| `init.annotations`  | Additional labels of the Pod of init Job             | `{}` |
++| `init.affinity`     | [Affinity rules][2] of init Job Pod                  | `{}` |
++| `init.nodeSelector` | Node labels for init Job Pod assignment              | `{}` |
++| `init.tolerations`  | Node taints to tolerate by init Job Pod              | `[]` |
++| `init.resources`    | Resource requests and limits for the Pod of init Job | `{}` |
++| `tls.enabled`                | Whether to run securely using TLS certificates    | `no`  |
++| `tls.serviceAccount.create`  | Whether to create a new RBAC service account      | `yes` |
++| `tls.serviceAccount.name`    | Name of RBAC service account to use               | `""`  |
++| `tls.init.image.repository`  | Image to use for requesting TLS certificates      | `cockroachdb/cockroach-k8s-request-cert` |
++| `tls.init.image.tag`         | Image tag to use for requesting TLS certificates  | `0.4`          |
++| `tls.init.image.pullPolicy`  | Requesting TLS certificates container pull policy | `IfNotPresent` |
++| `tls.init.image.credentials` | `registry`, `user` and `pass` credentials to pull private image | `{}` |
++| `networkPolicy.enabled`      | Enable NetworkPolicy for CockroachDB's Pods                   | `no` |
++| `networkPolicy.ingress.grpc` | Whitelist resources to access gRPC port of CockroachDB's Pods | `[]` |
++| `networkPolicy.ingress.http` | Whitelist resources to access gRPC port of CockroachDB's Pods | `[]` |
+ 
+ Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`.
+ 
+-Alternatively, a YAML file that specifies the values for the parameters can be provided while installing the chart. For example,
+-
++Alternatively, a YAML file that specifies the values for the parameters can be provided while installing the chart. For example:
+ ```shell
+ helm install --name my-release -f values.yaml stable/cockroachdb
+ ```
+ 
+ > **Tip**: You can use the default [values.yaml](values.yaml)
+ 
+-# Deep dive
+ 
+-## Connecting to the CockroachDB cluster
+ 
+-Once you've created the cluster, you can start talking to it by connecting
+-to its "public" service. CockroachDB is PostgreSQL wire protocol compatible so
+-there's a [wide variety of supported
+-clients](https://www.cockroachlabs.com/docs/install-client-drivers.html). For
+-the sake of example, we'll open up a SQL shell using CockroachDB's built-in
+-shell and play around with it a bit, like this (likely needing to replace
+-"my-release-cockroachdb-public" with the name of the "-public" service that
+-was created with your installed chart):
+ 
+-```console
+-$ kubectl run -it --rm cockroach-client \
+-    --image=cockroachdb/cockroach \
+-    --restart=Never \
+-    --command -- ./cockroach sql --insecure --host my-release-cockroachdb-public
++## Deep dive
++
++
++### Connecting to the CockroachDB cluster
++
++Once you've created the cluster, you can start talking to it by connecting to its `-public` Service. CockroachDB is PostgreSQL wire protocol compatible, so there's a [wide variety of supported clients](https://www.cockroachlabs.com/docs/install-client-drivers.html). For the sake of example, we'll open up a SQL shell using CockroachDB's built-in shell and play around with it a bit, like this (likely needing to replace `my-release-cockroachdb-public` with the name of the `-public` Service that was created with your installed chart):
++```shell
++kubectl run cockroach-client --rm -it \
++--image=cockroachdb/cockroach \
++--restart=Never \
++-- sql --insecure --host my-release-cockroachdb-public
++```
++```
+ Waiting for pod default/cockroach-client to be running, status is Pending,
+ pod ready: false
+ If you don't see a command prompt, try pressing enter.
+@@ -269,68 +328,58 @@ Waiting for pod default/cockroach-client to terminate, status is Running
+ pod "cockroach-client" deleted
+ ```
+ 
+-If you are running in secure mode, you will have to provide a client certificate
+-to the cluster in order to authenticate, so the above command will not work. See
+-[here](https://github.com/cockroachdb/cockroach/blob/master/cloud/kubernetes/client-secure.yaml)
+-for an example of how to set up an interactive SQL shell against a secure
+-cluster or
+-[here](https://github.com/cockroachdb/cockroach/blob/master/cloud/kubernetes/example-app-secure.yaml)
+-for an example application connecting to a secure cluster.
++If you are running in secure mode, you will have to provide a client certificate to the cluster in order to authenticate, so the above command will not work. See [here](https://github.com/cockroachdb/cockroach/blob/master/cloud/kubernetes/client-secure.yaml) for an example of how to set up an interactive SQL shell against a secure cluster or [here](https://github.com/cockroachdb/cockroach/blob/master/cloud/kubernetes/example-app-secure.yaml) for an example application connecting to a secure cluster.
+ 
+-## Cluster health
+ 
+-Because our pod spec includes regular health checks of the CockroachDB processes,
+-simply running `kubectl get pods` and looking at the `STATUS` column is sufficient
+-to determine the health of each instance in the cluster.
++### Cluster health
+ 
+-If you want more detailed information about the cluster, the best place to look
+-is the admin UI.
++Because our Pod spec includes regular health checks of the CockroachDB processes, simply running `kubectl get pods` and looking at the `STATUS` column is sufficient to determine the health of each instance in the cluster.
+ 
+-## Accessing the admin UI
++If you want more detailed information about the cluster, the best place to look is the admin UI.
+ 
+-If you want to see information about how the cluster is doing, you can try
+-pulling up the CockroachDB admin UI by port-forwarding from your local machine
+-to one of the pods (replacing "my-release-cockroachdb-0" with one of your pods'
+-names):
+ 
++### Accessing the admin UI
++
++If you want to see information about how the cluster is doing, you can try pulling up the CockroachDB admin UI by port-forwarding from your local machine to one of the Pods (replacing `my-release-cockroachdb-0` with one of your Pods'
++names):
+ ```shell
+ kubectl port-forward my-release-cockroachdb-0 8080
+ ```
+ 
+-Once you’ve done that, you should be able to access the admin UI by visiting
+-http://localhost:8080/ in your web browser.
++Once you’ve done that, you should be able to access the admin UI by visiting http://localhost:8080/ in your web browser.
+ 
+-## Failover
+ 
+-If any CockroachDB member fails it gets restarted or recreated automatically by
+-the Kubernetes infrastructure, and will rejoin the cluster automatically when
+-it comes back up. You can test this scenario by killing any of the pods:
++### Failover
+ 
++If any CockroachDB member fails it gets restarted or recreated automatically by the Kubernetes infrastructure, and will re-join the cluster automatically when it comes back up. You can test this scenario by killing any of the Pods:
+ ```shell
+ kubectl delete pod my-release-cockroachdb-1
+ ```
+-
+ ```shell
+-$ kubectl get pods -l "component=my-release-cockroachdb"
++kubectl get pods -l "app.kubernetes.io/instance=my-release,app.kubernetes.io/component=cockroachdb"
++```
++```
+ NAME                      READY     STATUS        RESTARTS   AGE
+ my-release-cockroachdb-0  1/1       Running       0          5m
+ my-release-cockroachdb-2  1/1       Running       0          5m
+ ```
+ 
+ After a while:
+-
+-```console
+-$ kubectl get pods -l "component=my-release-cockroachdb"
++```shell
++kubectl get pods -l "app.kubernetes.io/instance=my-release,app.kubernetes.io/component=cockroachdb"
++```
++```
+ NAME                      READY     STATUS        RESTARTS   AGE
+ my-release-cockroachdb-0  1/1       Running       0          5m
+ my-release-cockroachdb-1  1/1       Running       0          20s
+ my-release-cockroachdb-2  1/1       Running       0          5m
+ ```
+ 
+-You can check state of re-joining from the new pod's logs:
+-
+-```console
+-$ kubectl logs my-release-cockroachdb-1
++You can check state of re-joining from the new Pod's logs:
++```shell
++kubectl logs my-release-cockroachdb-1
++```
++```
+ [...]
+ I161028 19:32:09.754026 1 server/node.go:586  [n1] node connected via gossip and
+ verified as part of cluster {"35ecbc27-3f67-4e7d-9b8f-27c31aae17d6"}
+@@ -348,33 +397,31 @@ nodeID:     2
+ [...]
+ ```
+ 
+-## NetworkPolicy
+ 
+-To enable network policy for CockroachDB,
+-install [a networking plugin that implements the Kubernetes
+-NetworkPolicy spec](https://kubernetes.io/docs/tasks/administer-cluster/declare-network-policy#before-you-begin),
+-and set `NetworkPolicy.Enabled` to `true`.
++### NetworkPolicy
+ 
+-For Kubernetes v1.5 & v1.6, you must also turn on NetworkPolicy by setting
+-the DefaultDeny namespace annotation. Note: this will enforce policy for _all_ pods in the namespace:
++To enable NetworkPolicy for CockroachDB, install [a networking plugin that implements the Kubernetes NetworkPolicy spec](https://kubernetes.io/docs/tasks/administer-cluster/declare-network-policy#before-you-begin), and set `networkPolicy.enabled` to `yes`/`true`.
+ 
+-    kubectl annotate namespace default "net.beta.kubernetes.io/network-policy={\"ingress\":{\"isolation\":\"DefaultDeny\"}}"
++For Kubernetes v1.5 & v1.6, you must also turn on NetworkPolicy by setting the `DefaultDeny` Namespace annotation. Note: this will enforce policy for _all_ Pods in the Namespace:
++```shell
++kubectl annotate namespace default "net.beta.kubernetes.io/network-policy={\"ingress\":{\"isolation\":\"DefaultDeny\"}}"
++```
+ 
+-For more precise policy, set `networkPolicy.allowExternal=false`. This will
+-only allow pods with the generated client label to connect to CockroachDB.
+-This label will be displayed in the output of a successful install.
++For more precise policy, set `networkPolicy.ingress.grpc` and `networkPolicy.ingress.http` rules. This will only allow Pods which match the provided rules to connect to CockroachDB.
+ 
+-## Scaling
+ 
+-Scaling should typically be managed via the `helm upgrade` command, but StatefulSets
+-don't yet work with `helm upgrade`. In the meantime until `helm upgrade` works,
+-if you want to change the number of replicas, you can use the `kubectl scale`
+-as shown below:
++### Scaling
+ 
++Scaling should typically be managed via the `helm upgrade` command, but StatefulSets don't yet work with `helm upgrade`. In the meantime until `helm upgrade` works, if you want to change the number of replicas, you can use the `kubectl scale` as shown below:
+ ```shell
+ kubectl scale statefulset my-release-cockroachdb --replicas=4
+ ```
+ 
+-Note that if you are running in secure mode and increase the size of your
+-cluster, you will also have to approve the certificate-signing request of each
+-new node (using `kubectl get csr` and `kubectl certificate approve`).
++Note, that if you are running in secure mode (`tls.enabled` is `yes`/`true`) and increase the size of your cluster, you will also have to approve the CSR (certificate-signing request) of each new node (using `kubectl get csr` and `kubectl certificate approve`).
++
++
++
++
++
++[1]: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#inter-pod-affinity-and-anti-affinity
++[2]: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#node-affinity
+diff --git a/stable/cockroachdb/templates/NOTES.txt b/stable/cockroachdb/templates/NOTES.txt
+index ecd94b2a5..797d5292d 100644
+--- a/stable/cockroachdb/templates/NOTES.txt
++++ b/stable/cockroachdb/templates/NOTES.txt
+@@ -1,24 +1,27 @@
+-CockroachDB can be accessed via port {{ .Values.ExternalGrpcPort }} at the
++CockroachDB can be accessed via port {{ .Values.service.ports.grpc.external.port }} at the
+ following DNS name from within your cluster:
+ 
+-{{ .Release.Name }}-public.{{ .Release.Namespace }}.svc.cluster.local
++{{ template "cockroachdb.fullname" . }}-public.{{ .Release.Namespace }}.svc.cluster.local
+ 
+ Because CockroachDB supports the PostgreSQL wire protocol, you can connect to
+ the cluster using any available PostgreSQL client.
+ 
+-{{- if not .Values.Secure.Enabled }}
++{{- if not .Values.tls.enabled }}
+ 
+ For example, you can open up a SQL shell to the cluster by running:
+ 
+     kubectl run -it --rm cockroach-client \
+         --image=cockroachdb/cockroach \
+-        --restart=Never \{{- if and (.Values.NetworkPolicy.Enabled) (not .Values.NetworkPolicy.AllowExternal) }}
+-        --labels="{{.Release.Name}}-{{.Values.Component}}-client=true" \{{- end }}
+-        --command -- ./cockroach sql --insecure --host {{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}-public.{{ .Release.Namespace }}
+-
+-From there, you can interact with the SQL shell as you would any other SQL shell,
+-confident that any data you write will be safe and available even if parts of
+-your cluster fail.
++        --restart=Never \
++      {{- if .Values.networkPolicy.enabled }}
++        --labels="{{ template "cockroachdb.fullname" . }}-client=true" \
++      {{- end }}
++        --command -- \
++        ./cockroach sql --insecure --host={{ template "cockroachdb.fullname" . }}-public.{{ .Release.Namespace }}
++
++From there, you can interact with the SQL shell as you would any other SQL
++shell, confident that any data you write will be safe and available even if
++parts of your cluster fail.
+ {{- else }}
+ 
+ Note that because the cluster is running in secure mode, any client application
+@@ -26,25 +29,22 @@ that you attempt to connect will either need to have a valid client certificate
+ or a valid username and password.
+ {{- end }}
+ 
+-{{- if and (.Values.NetworkPolicy.Enabled) (not .Values.NetworkPolicy.AllowExternal) }}
++{{- if and (.Values.networkPolicy.enabled) (not (empty .Values.networkPolicy.ingress.grpc)) }}
++
++Note: Since NetworkPolicy is enabled, the only Pods allowed to connect to this
++CockroachDB cluster are:
+ 
+-Note: Since NetworkPolicy is enabled, only pods with label
+-{{.Release.Name}}-{{.Values.Component}}-client=true"
+-will be able to connect to this cockroachdb cluster.
++1. Having the label: "{{ template "cockroachdb.fullname" . }}-client=true"
++
++2. Matching the following rules: {{- toYaml .Values.networkPolicy.ingress.grpc | nindent 0 }}
+ {{- end }}
+ 
+ Finally, to open up the CockroachDB admin UI, you can port-forward from your
+ local machine into one of the instances in the cluster:
+ 
+-    kubectl port-forward {{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}-0 {{ .Values.InternalHttpPort }}
+-
+-{{- if not .Values.Secure.Enabled }}
++    kubectl port-forward {{ template "cockroachdb.fullname" . }}-0 {{ index .Values.conf `http-port` | int64 }}
+ 
+-Then you can access the admin UI at http://localhost:{{ .Values.InternalHttpPort }}/ in your web browser.
+-{{- else }}
+-
+-Then you can access the admin UI at https://localhost:{{ .Values.InternalHttpPort }}/ in your web browser.
+-{{- end }}
++Then you can access the admin UI at http{{ if .Values.tls.enabled }}s{{ end }}://localhost:{{ index .Values.conf `http-port` | int64 }}/ in your web browser.
+ 
+-For more information on using CockroachDB, please see the project's docs at
++For more information on using CockroachDB, please see the project's docs at:
+ https://www.cockroachlabs.com/docs/
+diff --git a/stable/cockroachdb/templates/_helpers.tpl b/stable/cockroachdb/templates/_helpers.tpl
+index 7f62ebea0..5de031357 100644
+--- a/stable/cockroachdb/templates/_helpers.tpl
++++ b/stable/cockroachdb/templates/_helpers.tpl
+@@ -1,32 +1,64 @@
+ {{/*
+-Return the appropriate apiVersion for networkpolicy.
++Expand the name of the chart.
+ */}}
+-{{- define "cockroachdb.networkPolicy.apiVersion" -}}
+-{{- if semverCompare ">=1.4-0, <=1.7-0" .Capabilities.KubeVersion.GitVersion -}}
+-{{- print "extensions/v1beta1" -}}
+-{{- else if semverCompare "^1.7-0" .Capabilities.KubeVersion.GitVersion -}}
+-{{- print "networking.k8s.io/v1" -}}
++{{- define "cockroachdb.name" -}}
++{{- default .Chart.Name .Values.nameOverride | trunc 56 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*
++Create a default fully qualified app name.
++We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
++If release name contains chart name it will be used as a full name.
++*/}}
++{{- define "cockroachdb.fullname" -}}
++{{- if .Values.fullnameOverride -}}
++    {{- .Values.fullnameOverride | trunc 56 | trimSuffix "-" -}}
++{{- else -}}
++    {{- $name := default .Chart.Name .Values.nameOverride -}}
++    {{- if contains $name .Release.Name -}}
++        {{- .Release.Name | trunc 56 | trimSuffix "-" -}}
++    {{- else -}}
++        {{- printf "%s-%s" .Release.Name $name | trunc 56 | trimSuffix "-" -}}
++    {{- end -}}
+ {{- end -}}
+ {{- end -}}
+ 
+ {{/*
+-Create the name of the service account to use
++Create chart name and version as used by the chart label.
++*/}}
++{{- define "cockroachdb.chart" -}}
++{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 56 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*
++Create the name of the ServiceAccount to use.
+ */}}
+-{{- define "cockroachdb.serviceAccountName" -}}
+-{{- if .Values.Secure.ServiceAccount.Create -}}
+-    {{ default (printf "%s-%s" .Release.Name .Values.Name | trunc 56) .Values.Secure.ServiceAccount.Name }}
++{{- define "cockroachdb.tls.serviceAccount.name" -}}
++{{- if .Values.tls.serviceAccount.create -}}
++    {{- default (include "cockroachdb.fullname" .) .Values.tls.serviceAccount.name -}}
+ {{- else -}}
+-    {{ default "default" .Values.Secure.ServiceAccount.Name }}
++    {{- default "default" .Values.tls.serviceAccount.name -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Return the appropriate apiVersion for NetworkPolicy.
++*/}}
++{{- define "cockroachdb.networkPolicy.apiVersion" -}}
++{{- if semverCompare ">=1.4-0, <=1.7-0" .Capabilities.KubeVersion.GitVersion -}}
++    {{- print "extensions/v1beta1" -}}
++{{- else if semverCompare "^1.7-0" .Capabilities.KubeVersion.GitVersion -}}
++    {{- print "networking.k8s.io/v1" -}}
+ {{- end -}}
+ {{- end -}}
+ 
+ {{/*
+ Return the appropriate apiVersion for StatefulSets
+ */}}
+-{{- define "statefulset.apiVersion" -}}
++{{- define "cockroachdb.statefulset.apiVersion" -}}
+ {{- if semverCompare "<1.12-0" .Capabilities.KubeVersion.GitVersion -}}
+-{{- print "apps/v1beta1" -}}
++    {{- print "apps/v1beta1" -}}
+ {{- else -}}
+-{{- print "apps/v1" -}}
++    {{- print "apps/v1" -}}
+ {{- end -}}
+ {{- end -}}
+diff --git a/stable/cockroachdb/templates/cluster-init.yaml b/stable/cockroachdb/templates/cluster-init.yaml
+deleted file mode 100644
+index edc28cbde..000000000
+--- a/stable/cockroachdb/templates/cluster-init.yaml
++++ /dev/null
+@@ -1,73 +0,0 @@
+-apiVersion: batch/v1
+-kind: Job
+-metadata:
+-  name: "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}-init"
+-  labels:
+-    heritage: {{.Release.Service | quote }}
+-    release: {{.Release.Name | quote }}
+-    chart: "{{.Chart.Name}}-{{.Chart.Version}}"
+-spec:
+-  template:
+-    metadata:
+-{{- if and (.Values.NetworkPolicy.Enabled) (not .Values.NetworkPolicy.AllowExternal) }}
+-      labels:
+-        {{.Release.Name}}-{{.Values.Component}}-client: "true"
+-{{- end }}
+-{{- if .Values.ExtraInitAnnotations }}
+-      annotations:
+-{{ toYaml .Values.ExtraInitAnnotations | indent 8 }}
+-{{- end }}
+-    spec:
+-{{- if .Values.Secure.Enabled }}
+-      serviceAccountName: {{ template "cockroachdb.serviceAccountName" . }}
+-      initContainers:
+-      # The init-certs container sends a certificate signing request to the
+-      # kubernetes cluster.
+-      # You can see pending requests using: kubectl get csr
+-      # CSRs can be approved using:         kubectl certificate approve <csr name>
+-      #
+-      # In addition to the client certificate and key, the init-certs entrypoint will symlink
+-      # the cluster CA to the certs directory.
+-      - name: init-certs
+-        image: "{{ .Values.Secure.RequestCertsImage }}:{{ .Values.Secure.RequestCertsImageTag }}"
+-        imagePullPolicy: "{{ .Values.ImagePullPolicy }}"
+-        command:
+-        - "/bin/ash"
+-        - "-ecx"
+-        - "/request-cert -namespace=${POD_NAMESPACE} -certs-dir=/cockroach-certs -type=client -user=root -symlink-ca-from=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+-        env:
+-        - name: POD_NAMESPACE
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: metadata.namespace
+-        volumeMounts:
+-        - name: client-certs
+-          mountPath: /cockroach-certs
+-{{- end }}
+-      containers:
+-      - name: cluster-init
+-        image: "{{ .Values.Image }}:{{ .Values.ImageTag }}"
+-        imagePullPolicy: "{{ .Values.ImagePullPolicy }}"
+-        resources:
+-{{ toYaml .Values.InitPodResources | indent 10 }}
+-{{- if .Values.Secure.Enabled }}
+-        volumeMounts:
+-        - name: client-certs
+-          mountPath: /cockroach-certs
+-{{- end }}
+-        # Run the command in an `until` loop because this job is bound to come
+-        # up before the cockroach pods (due to the time needed to get
+-        # persistent volumes attached to nodes), and sleeping 5 seconds between
+-        # attempts is much better than letting the pod fail when the init
+-        # command does and waiting out Kubernetes' non-configurable exponential
+-        # backoff for pod restarts.
+-        command:
+-          - "/bin/bash"
+-          - "-ecx"
+-          - "until /cockroach/cockroach init {{ if .Values.Secure.Enabled }}--certs-dir=/cockroach-certs{{ else }}--insecure{{ end }} --host={{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}-0.{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }} --port {{ .Values.InternalGrpcPort }}; do sleep 5; done"
+-      restartPolicy: OnFailure
+-{{- if .Values.Secure.Enabled }}
+-      volumes:
+-      - name: client-certs
+-        emptyDir: {}
+-{{- end }}
+diff --git a/stable/cockroachdb/templates/clusterrole.yaml b/stable/cockroachdb/templates/clusterrole.yaml
+index a1bc5a650..0d2d3736e 100644
+--- a/stable/cockroachdb/templates/clusterrole.yaml
++++ b/stable/cockroachdb/templates/clusterrole.yaml
+@@ -1,20 +1,19 @@
+-{{- if .Values.Secure.Enabled }}
+-apiVersion: rbac.authorization.k8s.io/v1beta1
++{{- if .Values.tls.enabled }}
+ kind: ClusterRole
++apiVersion: rbac.authorization.k8s.io/v1
+ metadata:
+-  name: "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}"
++  name: {{ template "cockroachdb.fullname" . }}
++  namespace: {{ .Release.Namespace | quote }}
+   labels:
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
++    helm.sh/chart: {{ template "cockroachdb.chart" . }}
++    app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++    app.kubernetes.io/instance: {{ .Release.Name | quote }}
++    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
++  {{- with .Values.labels }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+ rules:
+-- apiGroups:
+-  - certificates.k8s.io
+-  resources:
+-  - certificatesigningrequests
+-  verbs:
+-  - create
+-  - get
+-  - watch
+-{{- end }}
+\ No newline at end of file
++  - apiGroups: ["certificates.k8s.io"]
++    resources: ["certificatesigningrequests"]
++    verbs: ["create", "get", "watch"]
++{{- end }}
+diff --git a/stable/cockroachdb/templates/clusterrolebinding.yaml b/stable/cockroachdb/templates/clusterrolebinding.yaml
+index 2629ea946..b2d7cf9fe 100644
+--- a/stable/cockroachdb/templates/clusterrolebinding.yaml
++++ b/stable/cockroachdb/templates/clusterrolebinding.yaml
+@@ -1,19 +1,23 @@
+-{{- if .Values.Secure.Enabled }}
+-apiVersion: rbac.authorization.k8s.io/v1beta1
++{{- if .Values.tls.enabled }}
+ kind: ClusterRoleBinding
++apiVersion: rbac.authorization.k8s.io/v1
+ metadata:
+-  name: "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}"
++  name: {{ template "cockroachdb.fullname" . }}
++  namespace: {{ .Release.Namespace | quote }}
+   labels:
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
++    helm.sh/chart: {{ template "cockroachdb.chart" . }}
++    app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++    app.kubernetes.io/instance: {{ .Release.Name | quote }}
++    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
++  {{- with .Values.labels }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: ClusterRole
+-  name: "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}"
++  name: {{ template "cockroachdb.fullname" . }}
+ subjects:
+-- kind: ServiceAccount
+-  name: {{ template "cockroachdb.serviceAccountName" . }}
+-  namespace: {{ .Release.Namespace | quote }}
+-{{- end }}
+\ No newline at end of file
++  - kind: ServiceAccount
++    name: {{ template "cockroachdb.tls.serviceAccount.name" . }}
++    namespace: {{ .Release.Namespace | quote }}
++{{- end }}
+diff --git a/stable/cockroachdb/templates/job.init.yaml b/stable/cockroachdb/templates/job.init.yaml
+new file mode 100644
+index 000000000..b17f0c68f
+--- /dev/null
++++ b/stable/cockroachdb/templates/job.init.yaml
+@@ -0,0 +1,131 @@
++{{- if not (index .Values.conf `single-node`) }}
++kind: Job
++apiVersion: batch/v1
++metadata:
++  name: {{ template "cockroachdb.fullname" . }}-init
++  namespace: {{ .Release.Namespace | quote }}
++  labels:
++    helm.sh/chart: {{ template "cockroachdb.chart" . }}
++    app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++    app.kubernetes.io/instance: {{ .Release.Name | quote }}
++    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
++  {{- with .Values.init.labels }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++  {{- with .Values.labels }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++spec:
++  template:
++    metadata:
++      labels:
++        app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++        app.kubernetes.io/instance: {{ .Release.Name | quote }}
++      {{- with .Values.init.labels }}
++        {{- toYaml . | nindent 8 }}
++      {{- end }}
++    {{- with .Values.init.annotations }}
++      annotations: {{- toYaml . | nindent 8 }}
++    {{- end }}
++    spec:
++      restartPolicy: OnFailure
++      terminationGracePeriodSeconds: 0
++    {{- if or .Values.image.credentials (and .Values.tls.enabled .Values.tls.init.image.credentials) }}
++      imagePullSecrets:
++      {{- if .Values.image.credentials }}
++        - name: {{ template "cockroachdb.fullname" . }}.db.registry
++      {{- end }}
++      {{- if and .Values.tls.enabled .Values.tls.init.image.credentials }}
++        - name: {{ template "cockroachdb.fullname" . }}.init-certs.registry
++      {{- end }}
++    {{- end }}
++    {{- if .Values.tls.enabled }}
++      serviceAccountName: {{ template "cockroachdb.tls.serviceAccount.name" . }}
++      initContainers:
++        # The init-certs container sends a CSR (certificate signing request) to
++        # the Kubernetes cluster.
++        # You can see pending requests using:
++        #   kubectl get csr
++        # CSRs can be approved using:
++        #   kubectl certificate approve <csr-name>
++        #
++        # In addition to the Node certificate and key, the init-certs entrypoint
++        # will symlink the cluster CA to the certs directory.
++        - name: init-certs
++          image: "{{ .Values.tls.init.image.repository }}:{{ .Values.tls.init.image.tag }}"
++          imagePullPolicy: {{ .Values.tls.init.image.pullPolicy | quote }}
++          command:
++            - /bin/ash
++            - -ecx
++            - >-
++              /request-cert
++              -namespace=${POD_NAMESPACE}
++              -certs-dir=/cockroach-certs/
++              -symlink-ca-from=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
++              -type=client
++              -user=root
++          env:
++            - name: POD_NAMESPACE
++              valueFrom:
++                fieldRef:
++                  fieldPath: metadata.namespace
++          volumeMounts:
++            - name: client-certs
++              mountPath: /cockroach-certs/
++    {{- end }}
++    {{- with .Values.init.affinity }}
++      affinity: {{- toYaml . | nindent 8 }}
++    {{- end }}
++    {{- with .Values.init.nodeSelector }}
++      nodeSelector: {{- toYaml . | nindent 8 }}
++    {{- end }}
++    {{- with .Values.init.tolerations }}
++      tolerations: {{- toYaml . | nindent 8 }}
++    {{- end }}
++      containers:
++        - name: cluster-init
++          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++          imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
++          # Run the command in an `while true` loop because this Job is bound
++          # to come up before the CockroachDB Pods (due to the time needed to
++          # get PersistentVolumes attached to Nodes), and sleeping 5 seconds
++          # between attempts is much better than letting the Pod fail when
++          # the init command does and waiting out Kubernetes' non-configurable
++          # exponential back-off for Pod restarts.
++          # Command completes either when cluster initialization succeeds,
++          # or when cluster has been initialized already.
++          command:
++            - /bin/bash
++            - -c
++            - >-
++              while true; do
++              initOUT=$(set -x;
++              /cockroach/cockroach init
++              {{- if .Values.tls.enabled }}
++              --certs-dir=/cockroach-certs/
++              {{- else }}
++              --insecure
++              {{- end }}
++              --host={{ template "cockroachdb.fullname" . }}-0.{{ template "cockroachdb.fullname" . -}}
++                     :{{ .Values.service.ports.grpc.internal.port | int64 }}
++              2>&1);
++              initRC="$?";
++              echo $initOUT;
++              [[ "$initRC" == "0" ]] && exit 0;
++              [[ "$initOUT" == *"cluster has already been initialized"* ]] && exit 0;
++              sleep 5;
++              done
++        {{- if .Values.tls.enabled }}
++          volumeMounts:
++            - name: client-certs
++              mountPath: /cockroach-certs/
++        {{- end }}
++        {{- with .Values.init.resources }}
++          resources: {{- toYaml . | nindent 12 }}
++        {{- end }}
++    {{- if .Values.tls.enabled }}
++      volumes:
++        - name: client-certs
++          emptyDir: {}
++    {{- end }}
++{{- end }}
+diff --git a/stable/cockroachdb/templates/networkpolicy.yaml b/stable/cockroachdb/templates/networkpolicy.yaml
+index c85a33f27..1739c45e5 100644
+--- a/stable/cockroachdb/templates/networkpolicy.yaml
++++ b/stable/cockroachdb/templates/networkpolicy.yaml
+@@ -1,44 +1,59 @@
+-{{- if .Values.NetworkPolicy.Enabled }}
++{{- if .Values.networkPolicy.enabled }}
+ kind: NetworkPolicy
+ apiVersion: {{ template "cockroachdb.networkPolicy.apiVersion" . }}
+ metadata:
+-  name: "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}"
++  name: {{ template "cockroachdb.tls.serviceAccount.name" . }}
++  namespace: {{ .Release.Namespace | quote }}
+   labels:
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
++    helm.sh/chart: {{ template "cockroachdb.chart" . }}
++    app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++    app.kubernetes.io/instance: {{ .Release.Name | quote }}
++    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
++  {{- with .Values.labels }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+ spec:
+   podSelector:
+     matchLabels:
+-      component: "{{.Release.Name}}-{{.Values.Component}}"
++      app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++      app.kubernetes.io/instance: {{ .Release.Name | quote }}
++    {{- with .Values.statefulset.labels }}
++      {{- toYaml . | nindent 6 }}
++    {{- end }}
+   ingress:
+-  - ports:
+-    - port: {{ .Values.ExternalGrpcPort}}
+-    {{- if not .Values.NetworkPolicy.AllowExternal }}
+-    from:
+-    # Allow clients to connect.
+-    - podSelector:
+-        matchLabels:
+-          {{.Release.Name}}-{{.Values.Component}}-client: "true"
+-    # Allow other cockroachdb's to connect to form cluster.
+-    - podSelector:
+-        matchLabels:
+-          component: "{{.Release.Name}}-{{.Values.Component}}"
++    - ports:
++        - port: grpc
++    {{- with .Values.networkPolicy.ingress.grpc }}
++      from:
++        # Allow connections via custom rules.
++        {{- toYaml . | nindent 8 }}
++        # Allow client connection via pre-considered label.
++        - podSelector:
++            matchLabels:
++              {{ template "cockroachdb.fullname" . }}-client: "true"
++        # Allow other CockroachDBs to connect to form a cluster.
++        - podSelector:
++            matchLabels:
++              app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++              app.kubernetes.io/instance: {{ .Release.Name | quote }}
++            {{- with .Values.statefulset.labels }}
++              {{- toYaml . | nindent 14 }}
++            {{- end }}
++      {{- if gt (.Values.statefulset.replicas | int64) 1 }}
++        # Allow init Job to connect to bootstrap a cluster.
++        - podSelector:
++            matchLabels:
++              app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++              app.kubernetes.io/instance: {{ .Release.Name | quote }}
++            {{- with .Values.init.labels }}
++              {{- toYaml . | nindent 14 }}
++            {{- end }}
++      {{- end }}
++    {{- end }}
++    # Allow connections to admin UI and for Prometheus.
++    - ports:
++        - port: http
++    {{- with .Values.networkPolicy.ingress.http }}
++      from: {{- toYaml . | nindent 8 }}
+     {{- end }}
+-  {{- if ne .Values.InternalGrpcPort .Values.ExternalGrpcPort }}
+-  - ports:
+-    - port: {{ .Values.InternalGrpcPort}}
+-    from:
+-    # Allow other cockroachdb's to connect to form cluster.
+-    - podSelector:
+-        matchLabels:
+-          component: "{{.Release.Name}}-{{.Values.Component}}"
+-  {{- end }}
+-  # Allow connections to admin UI.
+-  - ports:
+-    - port: {{.Values.ExternalHttpPort}}
+-  # Allow connections from Prometheus.
+-  - ports:
+-    - port: {{.Values.ExternalHttpPort}}
+ {{- end }}
+diff --git a/stable/cockroachdb/templates/pdb.yaml b/stable/cockroachdb/templates/pdb.yaml
+deleted file mode 100644
+index c6089f45b..000000000
+--- a/stable/cockroachdb/templates/pdb.yaml
++++ /dev/null
+@@ -1,14 +0,0 @@
+-apiVersion: policy/v1beta1
+-kind: PodDisruptionBudget
+-metadata:
+-  name: "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}-budget"
+-  labels:
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
+-spec:
+-  selector:
+-    matchLabels:
+-      component: "{{ .Release.Name }}-{{ .Values.Component }}"
+-  maxUnavailable: {{ .Values.MaxUnavailable }}
+\ No newline at end of file
+diff --git a/stable/cockroachdb/templates/poddisruptionbudget.yaml b/stable/cockroachdb/templates/poddisruptionbudget.yaml
+new file mode 100644
+index 000000000..e49431f89
+--- /dev/null
++++ b/stable/cockroachdb/templates/poddisruptionbudget.yaml
+@@ -0,0 +1,22 @@
++kind: PodDisruptionBudget
++apiVersion: policy/v1beta1
++metadata:
++  name: {{ template "cockroachdb.fullname" . }}-budget
++  namespace: {{ .Release.Namespace | quote }}
++  labels:
++    helm.sh/chart: {{ template "cockroachdb.chart" . }}
++    app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++    app.kubernetes.io/instance: {{ .Release.Name | quote }}
++    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
++  {{- with .Values.labels }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++spec:
++  selector:
++    matchLabels:
++      app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++      app.kubernetes.io/instance: {{ .Release.Name | quote }}
++    {{- with .Values.statefulset.labels }}
++      {{- toYaml . | nindent 6 }}
++    {{- end }}
++  maxUnavailable: {{ .Values.statefulset.budget.maxUnavailable | int64 }}
+diff --git a/stable/cockroachdb/templates/role.yaml b/stable/cockroachdb/templates/role.yaml
+index a9e72fdd9..e9f5e861e 100644
+--- a/stable/cockroachdb/templates/role.yaml
++++ b/stable/cockroachdb/templates/role.yaml
+@@ -1,19 +1,19 @@
+-{{- if .Values.Secure.Enabled }}
+-apiVersion: rbac.authorization.k8s.io/v1beta1
++{{- if .Values.tls.enabled }}
+ kind: Role
++apiVersion: rbac.authorization.k8s.io/v1
+ metadata:
+-  name: "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}"
++  name: {{ template "cockroachdb.fullname" . }}
++  namespace: {{ .Release.Namespace | quote }}
+   labels:
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
++    helm.sh/chart: {{ template "cockroachdb.chart" . }}
++    app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++    app.kubernetes.io/instance: {{ .Release.Name | quote }}
++    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
++  {{- with .Values.labels }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+ rules:
+-- apiGroups:
+-  - ""
+-  resources:
+-  - secrets
+-  verbs:
+-  - create
+-  - get
+-{{- end }}
+\ No newline at end of file
++  - apiGroups: [""]
++    resources: ["secrets"]
++    verbs: ["create", "get"]
++{{- end }}
+diff --git a/stable/cockroachdb/templates/rolebinding.yaml b/stable/cockroachdb/templates/rolebinding.yaml
+index 536917c1f..c65441b42 100644
+--- a/stable/cockroachdb/templates/rolebinding.yaml
++++ b/stable/cockroachdb/templates/rolebinding.yaml
+@@ -1,19 +1,23 @@
+-{{- if .Values.Secure.Enabled }}
+-apiVersion: rbac.authorization.k8s.io/v1beta1
++{{- if .Values.tls.enabled }}
+ kind: RoleBinding
++apiVersion: rbac.authorization.k8s.io/v1
+ metadata:
+-  name: "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}"
++  name: {{ template "cockroachdb.fullname" . }}
++  namespace: {{ .Release.Namespace | quote }}
+   labels:
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
++    helm.sh/chart: {{ template "cockroachdb.chart" . }}
++    app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++    app.kubernetes.io/instance: {{ .Release.Name | quote }}
++    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
++  {{- with .Values.labels }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: Role
+-  name: "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}"
++  name: {{ template "cockroachdb.fullname" . }}
+ subjects:
+-- kind: ServiceAccount
+-  name: {{ template "cockroachdb.serviceAccountName" . }}
+-  namespace: {{ .Release.Namespace | quote }}
+-{{- end }}
+\ No newline at end of file
++  - kind: ServiceAccount
++    name: {{ template "cockroachdb.tls.serviceAccount.name" . }}
++    namespace: {{ .Release.Namespace | quote }}
++{{- end }}
+diff --git a/stable/cockroachdb/templates/secret.registry.yaml b/stable/cockroachdb/templates/secret.registry.yaml
+new file mode 100644
+index 000000000..3dc34f386
+--- /dev/null
++++ b/stable/cockroachdb/templates/secret.registry.yaml
+@@ -0,0 +1,23 @@
++{{- range $name, $cred := dict "db" (.Values.image.credentials) "init-certs" (.Values.tls.init.image.credentials) }}
++{{- if not (empty $cred) }}
++{{- if or (and (eq $name "init-certs") $.Values.tls.enabled) (ne $name "init-certs") }}
++---
++kind: Secret
++apiVersion: v1
++metadata:
++  name: {{ template "cockroachdb.fullname" $ }}.{{ $name }}.registry
++  namespace: {{ $.Release.Namespace | quote }}
++  labels:
++    helm.sh/chart: {{ template "cockroachdb.chart" $ }}
++    app.kubernetes.io/name: {{ template "cockroachdb.name" $ }}
++    app.kubernetes.io/instance: {{ $.Release.Name | quote }}
++    app.kubernetes.io/managed-by: {{ $.Release.Service | quote }}
++  {{- with $.Values.labels }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++type: kubernetes.io/dockerconfigjson
++data:
++  .dockerconfigjson: {{ printf `{"auths":{%s:{"auth":"%s"}}}` ($cred.registry | quote) (printf "%s:%s" $cred.username $cred.password | b64enc) | b64enc | quote }}
++{{- end }}
++{{- end }}
++{{- end }}
+diff --git a/stable/cockroachdb/templates/service-discovery.yaml b/stable/cockroachdb/templates/service-discovery.yaml
+deleted file mode 100644
+index abb568375..000000000
+--- a/stable/cockroachdb/templates/service-discovery.yaml
++++ /dev/null
+@@ -1,47 +0,0 @@
+-apiVersion: v1
+-kind: Service
+-metadata:
+-  # This service only exists to create DNS entries for each pod in the stateful
+-  # set such that they can resolve each other's IP addresses. It does not
+-  # create a load-balanced ClusterIP and should not be used directly by clients
+-  # in most circumstances.
+-  name: "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}"
+-  labels:
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
+-{{- if .Values.ServiceDiscovery.labels }}
+-{{ toYaml .Values.ServiceDiscovery.labels | indent 4 }}
+-{{- end }}
+-  annotations:
+-    # Use this annotation in addition to the actual field below because the
+-    # annotation will stop being respected soon but the field is broken in
+-    # some versions of Kubernetes:
+-    # https://github.com/kubernetes/kubernetes/issues/58662
+-    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+-    # Enable automatic monitoring of all instances when Prometheus is running in the cluster.
+-    prometheus.io/scrape: "true"
+-    prometheus.io/path: "_status/vars"
+-    prometheus.io/port: "{{ .Values.ExternalHttpPort }}"
+-spec:
+-  ports:
+-  - port: {{ .Values.ExternalGrpcPort }}
+-    targetPort: {{ .Values.InternalGrpcPort }}
+-    name: {{ .Values.ExternalGrpcName }}
+-  # The secondary port serves the UI as well as health and debug endpoints.
+-  - port: {{ .Values.ExternalHttpPort }}
+-    targetPort: {{ .Values.InternalHttpPort }}
+-    name: {{ .Values.HttpName }}
+-    {{- if ne .Values.InternalGrpcPort .Values.ExternalGrpcPort }}
+-  - port: {{ .Values.InternalGrpcPort }}
+-    targetPort: {{ .Values.InternalGrpcPort }}
+-    name: {{ .Values.InternalGrpcName }}
+-    {{- end }}
+-  # We want all pods in the StatefulSet to have their addresses published for
+-  # the sake of the other CockroachDB pods even before they're ready, since they
+-  # have to be able to talk to each other in order to become ready.
+-  publishNotReadyAddresses: true
+-  clusterIP: None
+-  selector:
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
+\ No newline at end of file
+diff --git a/stable/cockroachdb/templates/service.discovery.yaml b/stable/cockroachdb/templates/service.discovery.yaml
+new file mode 100644
+index 000000000..3b7f5d0e7
+--- /dev/null
++++ b/stable/cockroachdb/templates/service.discovery.yaml
+@@ -0,0 +1,62 @@
++# This service only exists to create DNS entries for each pod in
++# the StatefulSet such that they can resolve each other's IP addresses.
++# It does not create a load-balanced ClusterIP and should not be used directly
++# by clients in most circumstances.
++kind: Service
++apiVersion: v1
++metadata:
++  name: {{ template "cockroachdb.fullname" . }}
++  namespace: {{ .Release.Namespace | quote }}
++  labels:
++    helm.sh/chart: {{ template "cockroachdb.chart" . }}
++    app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++    app.kubernetes.io/instance: {{ .Release.Name | quote }}
++    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
++  {{- with .Values.service.discovery.labels }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++  {{- with .Values.labels }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++  annotations:
++    # Use this annotation in addition to the actual field below because the
++    # annotation will stop being respected soon, but the field is broken in
++    # some versions of Kubernetes:
++    # https://github.com/kubernetes/kubernetes/issues/58662
++    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
++    # Enable automatic monitoring of all instances when Prometheus is running
++    # in the cluster.
++    prometheus.io/scrape: "true"
++    prometheus.io/path: _status/vars
++    prometheus.io/port: {{ .Values.service.ports.http.port | quote }}
++  {{- with .Values.service.discovery.annotations }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++spec:
++  clusterIP: None
++  # We want all Pods in the StatefulSet to have their addresses published for
++  # the sake of the other CockroachDB Pods even before they're ready, since they
++  # have to be able to talk to each other in order to become ready.
++  publishNotReadyAddresses: true
++  ports:
++  {{- $ports := .Values.service.ports }}
++    # The main port, served by gRPC, serves Postgres-flavor SQL, inter-node
++    # traffic and the CLI.
++    - name: {{ $ports.grpc.external.name | quote }}
++      port: {{ $ports.grpc.external.port | int64 }}
++      targetPort: grpc
++  {{- if ne ($ports.grpc.internal.port | int64) ($ports.grpc.external.port | int64) }}
++    - name: {{ $ports.grpc.internal.name | quote }}
++      port: {{ $ports.grpc.internal.port | int64 }}
++      targetPort: grpc
++  {{- end }}
++    # The secondary port serves the UI as well as health and debug endpoints.
++    - name: {{ $ports.http.name | quote }}
++      port: {{ $ports.http.port | int64 }}
++      targetPort: http
++  selector:
++    app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++    app.kubernetes.io/instance: {{ .Release.Name | quote }}
++  {{- with .Values.statefulset.labels }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+diff --git a/stable/cockroachdb/templates/service.public.yaml b/stable/cockroachdb/templates/service.public.yaml
+new file mode 100644
+index 000000000..529b89d83
+--- /dev/null
++++ b/stable/cockroachdb/templates/service.public.yaml
+@@ -0,0 +1,46 @@
++# This Service is meant to be used by clients of the database.
++# It exposes a ClusterIP that will automatically load balance connections
++# to the different database Pods.
++kind: Service
++apiVersion: v1
++metadata:
++  name: {{ template "cockroachdb.fullname" . }}-public
++  namespace: {{ .Release.Namespace | quote }}
++  labels:
++    helm.sh/chart: {{ template "cockroachdb.chart" . }}
++    app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++    app.kubernetes.io/instance: {{ .Release.Name | quote }}
++    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
++  {{- with .Values.service.public.labels }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++  {{- with .Values.labels }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++{{- with .Values.service.public.annotations }}
++  annotations: {{- toYaml . | nindent 4 }}
++{{- end }}
++spec:
++  type: {{ .Values.service.public.type | quote }}
++  ports:
++  {{- $ports := .Values.service.ports }}
++    # The main port, served by gRPC, serves Postgres-flavor SQL, inter-node
++    # traffic and the CLI.
++    - name: {{ $ports.grpc.external.name | quote }}
++      port: {{ $ports.grpc.external.port | int64 }}
++      targetPort: grpc
++  {{- if ne ($ports.grpc.internal.port | int64) ($ports.grpc.external.port | int64) }}
++    - name: {{ $ports.grpc.internal.name | quote }}
++      port: {{ $ports.grpc.internal.port | int64 }}
++      targetPort: grpc
++  {{- end }}
++    # The secondary port serves the UI as well as health and debug endpoints.
++    - name: {{ $ports.http.name | quote }}
++      port: {{ $ports.http.port | int64 }}
++      targetPort: http
++  selector:
++    app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++    app.kubernetes.io/instance: {{ .Release.Name | quote }}
++  {{- with .Values.statefulset.labels }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+diff --git a/stable/cockroachdb/templates/service.yaml b/stable/cockroachdb/templates/service.yaml
+deleted file mode 100644
+index a5295051b..000000000
+--- a/stable/cockroachdb/templates/service.yaml
++++ /dev/null
+@@ -1,35 +0,0 @@
+-apiVersion: v1
+-kind: Service
+-metadata:
+-  # This service is meant to be used by clients of the database. It exposes a ClusterIP that will
+-  # automatically load balance connections to the different database pods.
+-  name: "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}-public"
+-  annotations:
+-{{ toYaml .Values.Service.annotations | indent 4 }}
+-  labels:
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
+-{{- if .Values.Service.labels }}
+-{{ toYaml .Values.Service.labels | indent 4 }}
+-{{- end }}
+-spec:
+-  type: {{ .Values.Service.type }}
+-  ports:
+-  # The main port, served by gRPC, serves Postgres-flavor SQL, internode
+-  # traffic and the cli.
+-  - port: {{ .Values.ExternalGrpcPort }}
+-    targetPort: {{ .Values.InternalGrpcPort }}
+-    name: {{ .Values.ExternalGrpcName }}
+-  # The secondary port serves the UI as well as health and debug endpoints.
+-  - port: {{ .Values.ExternalHttpPort }}
+-    targetPort: {{ .Values.InternalHttpPort }}
+-    name: {{ .Values.HttpName }}
+-    {{- if ne .Values.InternalGrpcPort .Values.ExternalGrpcPort }}
+-  - port: {{ .Values.InternalGrpcPort }}
+-    targetPort: {{ .Values.InternalGrpcPort }}
+-    name: {{ .Values.InternalGrpcName }}
+-    {{- end }}
+-  selector:
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
+\ No newline at end of file
+diff --git a/stable/cockroachdb/templates/serviceaccount.yaml b/stable/cockroachdb/templates/serviceaccount.yaml
+index b53cf4e2d..45c3fe09c 100644
+--- a/stable/cockroachdb/templates/serviceaccount.yaml
++++ b/stable/cockroachdb/templates/serviceaccount.yaml
+@@ -1,11 +1,15 @@
+-{{- if and .Values.Secure.Enabled .Values.Secure.ServiceAccount.Create }}
+-apiVersion: v1
++{{- if and .Values.tls.enabled .Values.tls.serviceAccount.create }}
+ kind: ServiceAccount
++apiVersion: v1
+ metadata:
+-  name: {{ template "cockroachdb.serviceAccountName" . }}
++  name: {{ template "cockroachdb.tls.serviceAccount.name" . }}
++  namespace: {{ .Release.Namespace | quote }}
+   labels:
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
+-{{- end }}
+\ No newline at end of file
++    helm.sh/chart: {{ template "cockroachdb.chart" . }}
++    app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++    app.kubernetes.io/instance: {{ .Release.Name | quote }}
++    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
++  {{- with .Values.labels }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++{{- end }}
+diff --git a/stable/cockroachdb/templates/statefulset.yaml b/stable/cockroachdb/templates/statefulset.yaml
+index 1d8b04aaa..b35fa0f93 100644
+--- a/stable/cockroachdb/templates/statefulset.yaml
++++ b/stable/cockroachdb/templates/statefulset.yaml
+@@ -1,165 +1,306 @@
+-apiVersion: {{ template "statefulset.apiVersion" . }}
+ kind: StatefulSet
++apiVersion: {{ template "cockroachdb.statefulset.apiVersion" . }}
+ metadata:
+-  name: "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}"
++  name: {{ template "cockroachdb.fullname" . }}
++  namespace: {{ .Release.Namespace | quote }}
++  labels:
++    helm.sh/chart: {{ template "cockroachdb.chart" . }}
++    app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++    app.kubernetes.io/instance: {{ .Release.Name | quote }}
++    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
++  {{- with .Values.statefulset.labels }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++  {{- with .Values.labels }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+ spec:
+-  serviceName: "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}"
+-  replicas: {{ default 3 .Values.Replicas }}
++  serviceName: {{ template "cockroachdb.fullname" . }}
++  replicas: {{ .Values.statefulset.replicas | int64 }}
++  updateStrategy: {{- toYaml .Values.statefulset.updateStrategy | nindent 4 }}
++  podManagementPolicy: {{ .Values.statefulset.podManagementPolicy | quote }}
+   selector:
+     matchLabels:
+-      heritage: {{ .Release.Service | quote }}
+-      release: {{ .Release.Name | quote }}
+-      component: "{{ .Release.Name }}-{{ .Values.Component }}"
++      app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++      app.kubernetes.io/instance: {{ .Release.Name | quote }}
++    {{- with .Values.statefulset.labels }}
++      {{- toYaml . | nindent 6 }}
++    {{- end }}
+   template:
+     metadata:
+-{{- if .Values.ExtraAnnotations }}
+-      annotations:
+-{{ toYaml .Values.ExtraAnnotations | indent 8 }}
+-{{- end }}
+       labels:
+-        heritage: {{ .Release.Service | quote }}
+-        release: {{ .Release.Name | quote }}
+-        chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-        component: "{{ .Release.Name }}-{{ .Values.Component }}"
++        app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++        app.kubernetes.io/instance: {{ .Release.Name | quote }}
++      {{- with .Values.statefulset.labels }}
++        {{- toYaml . | nindent 8 }}
++      {{- end }}
++      {{- with .Values.labels }}
++        {{- toYaml . | nindent 8 }}
++      {{- end }}
++    {{- with .Values.statefulset.annotations }}
++      annotations: {{- toYaml . | nindent 8 }}
++    {{- end }}
+     spec:
+-{{- if .Values.Secure.Enabled }}
+-      serviceAccountName: {{ template "cockroachdb.serviceAccountName" . }}
++    {{- if or .Values.image.credentials (and .Values.tls.enabled .Values.tls.init.image.credentials) }}
++      imagePullSecrets:
++      {{- if .Values.image.credentials }}
++        - name: {{ template "cockroachdb.fullname" . }}.db.registry
++      {{- end }}
++      {{- if and .Values.tls.enabled .Values.tls.init.image.credentials }}
++        - name: {{ template "cockroachdb.fullname" . }}.init-certs.registry
++      {{- end }}
++    {{- end }}
++    {{- if .Values.tls.enabled }}
++      serviceAccountName: {{ template "cockroachdb.tls.serviceAccount.name" . }}
+       initContainers:
+-      # The init-certs container sends a certificate signing request to the
+-      # kubernetes cluster.
+-      # You can see pending requests using: kubectl get csr
+-      # CSRs can be approved using:         kubectl certificate approve <csr name>
+-      #
+-      # All addresses used to contact a node must be specified in the --addresses arg.
+-      #
+-      # In addition to the node certificate and key, the init-certs entrypoint will symlink
+-      # the cluster CA to the certs directory.
+-      - name: init-certs
+-        image: "{{ .Values.Secure.RequestCertsImage }}:{{ .Values.Secure.RequestCertsImageTag }}"
+-        imagePullPolicy: "{{ .Values.ImagePullPolicy }}"
+-        command:
+-        - "/bin/ash"
+-        - "-ecx"
+-        - "/request-cert -namespace=${POD_NAMESPACE} -certs-dir=/cockroach-certs -type=node -addresses=localhost,127.0.0.1,$(hostname -f),$(hostname -f|cut -f 1-2 -d '.'),{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}-public,{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}-public.$(hostname -f|cut -f 3- -d '.') -symlink-ca-from=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+-        env:
+-        - name: POD_NAMESPACE
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: metadata.namespace
+-        volumeMounts:
+-        - name: certs
+-          mountPath: /cockroach-certs
+-{{- end }}
++        # The init-certs container sends a CSR (certificate signing request) to
++        # the Kubernetes cluster.
++        # You can see pending requests using:
++        #   kubectl get csr
++        # CSRs can be approved using:
++        #   kubectl certificate approve <csr-name>
++        #
++        # All addresses used to contact a Node must be specified in the
++        # `--addresses` arg.
++        #
++        # In addition to the Node certificate and key, the init-certs entrypoint
++        # will symlink the cluster CA to the certs directory.
++        - name: init-certs
++          image: "{{ .Values.tls.init.image.repository }}:{{ .Values.tls.init.image.tag }}"
++          imagePullPolicy: {{ .Values.tls.init.image.pullPolicy | quote }}
++          command:
++            - /bin/ash
++            - -ecx
++            - >-
++              /request-cert
++              -namespace=${POD_NAMESPACE}
++              -certs-dir=/cockroach-certs/
++              -symlink-ca-from=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
++              -type=node
++              -addresses=localhost,127.0.0.1,$(hostname -f),$(hostname -f|cut -f 1-2 -d '.'),{{ template "cockroachdb.fullname" . }}-public,{{ template "cockroachdb.fullname" . }}-public.$(hostname -f|cut -f 3- -d '.')
++          env:
++            - name: POD_NAMESPACE
++              valueFrom:
++                fieldRef:
++                  fieldPath: metadata.namespace
++          volumeMounts:
++            - name: certs
++              mountPath: /cockroach-certs/
++    {{- end }}
++    {{- if or .Values.statefulset.nodeAffinity .Values.statefulset.podAffinity .Values.statefulset.podAntiAffinity }}
+       affinity:
++      {{- with .Values.statefulset.nodeAffinity }}
++        nodeAffinity: {{- toYaml . | nindent 10 }}
++      {{- end }}
++      {{- with .Values.statefulset.podAffinity }}
++        podAffinity: {{- toYaml . | nindent 10 }}
++      {{- end }}
++      {{- if .Values.statefulset.podAntiAffinity }}
+         podAntiAffinity:
+-          preferredDuringSchedulingIgnoredDuringExecution:
+-          - weight: 100
+-            podAffinityTerm:
++        {{- if .Values.statefulset.podAntiAffinity.type }}
++        {{- if eq .Values.statefulset.podAntiAffinity.type "hard" }}
++          requiredDuringSchedulingIgnoredDuringExecution:
++            - topologyKey: kubernetes.io/hostname
+               labelSelector:
+-                matchExpressions:
+-                - key: component
+-                  operator: In
+-                  values:
+-                  - "{{ .Release.Name }}-{{ .Values.Component }}"
+-              topologyKey: kubernetes.io/hostname
+-      {{- if .Values.NodeSelector }}
+-      nodeSelector:
+-{{ toYaml .Values.NodeSelector | indent 8 }}
++                matchLabels:
++                  app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++                  app.kubernetes.io/instance: {{ .Release.Name | quote }}
++                {{- with .Values.statefulset.labels }}
++                  {{- toYaml . | nindent 18 }}
++                {{- end }}
++        {{- else if eq .Values.statefulset.podAntiAffinity.type "soft" }}
++          preferredDuringSchedulingIgnoredDuringExecution:
++            - weight: {{ .Values.statefulset.podAntiAffinity.weight | int64 }}
++              podAffinityTerm:
++                topologyKey: kubernetes.io/hostname
++                labelSelector:
++                  matchLabels:
++                    app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++                    app.kubernetes.io/instance: {{ .Release.Name | quote }}
++                  {{- with .Values.statefulset.labels }}
++                    {{- toYaml . | nindent 20 }}
++                  {{- end }}
++        {{- end }}
++        {{- else }}
++          {{- toYaml .Values.statefulset.podAntiAffinity | nindent 10 }}
++        {{- end }}
+       {{- end }}
+-{{- if .Values.Tolerations }}
+-      tolerations:
+-{{ toYaml .Values.Tolerations | indent 8 }}
+-{{- end }}
+-      containers:
+-      - name: "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}"
+-        image: "{{ .Values.Image }}:{{ .Values.ImageTag }}"
+-        imagePullPolicy: "{{ .Values.ImagePullPolicy }}"
+-        ports:
+-        - containerPort: {{ .Values.InternalGrpcPort }}
+-          name: grpc
+-        - containerPort: {{ .Values.InternalHttpPort }}
+-          name: http
+-        livenessProbe:
+-          httpGet:
+-            path: "/health"
+-            port: http
+-{{- if .Values.Secure.Enabled }}
+-            scheme: HTTPS
+-{{- end }}
+-          initialDelaySeconds: 30
+-          periodSeconds: 5
+-        readinessProbe:
+-          httpGet:
+-            path: "/health?ready=1"
+-            port: http
+-{{- if .Values.Secure.Enabled }}
+-            scheme: HTTPS
+-{{- end }}
+-          initialDelaySeconds: 10
+-          periodSeconds: 5
+-          failureThreshold: 2
+-        resources:
+-{{ toYaml .Values.Resources | indent 10 }}
+-        env:
+-        - name: STATEFULSET_NAME
+-          value: "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}"
+-        - name: STATEFULSET_FQDN
+-          value: "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}.{{ .Release.Namespace }}.svc.{{ .Values.ClusterDomain }}"
+-        - name: COCKROACH_CHANNEL
+-          value: kubernetes-helm
+-{{- if .Values.ExtraEnvArgs }}
+-{{ toYaml .Values.ExtraEnvArgs | indent 8 }}
+-{{- end }}
+-        volumeMounts:
+-        - name: datadir
+-          mountPath: /cockroach/cockroach-data
+-{{- if .Values.Secure.Enabled }}
+-        - name: certs
+-          mountPath: /cockroach/cockroach-certs
+-{{- end }}
+-{{- range .Values.ExtraSecretMounts }}
+-        - name: extra-secret-{{ . }}
+-          mountPath: /etc/cockroach/secrets/{{ . }}
+-          readOnly: true
+-{{- end }}
+-        command:
+-          - "/bin/bash"
+-          - "-ecx"
+-            # The use of qualified `hostname -f` is crucial:
+-            # Other nodes aren't able to look up the unqualified hostname.
+-          - "exec /cockroach/cockroach start --logtostderr {{ if .Values.Secure.Enabled }}--certs-dir /cockroach/cockroach-certs{{ else }}--insecure{{ end }} --advertise-host $(hostname).${STATEFULSET_FQDN} --http-host 0.0.0.0 --http-port {{ .Values.InternalHttpPort }} --port {{ .Values.InternalGrpcPort }} --cache {{ .Values.CacheSize }} --max-sql-memory {{ .Values.MaxSQLMemory }} {{ if .Values.Locality }}--locality={{.Values.Locality }}{{ end }} --join {{ if .Values.JoinExisting }}{{ join "," .Values.JoinExisting }}{{ else }}${STATEFULSET_NAME}-0.${STATEFULSET_FQDN}:{{ .Values.InternalGrpcPort }},${STATEFULSET_NAME}-1.${STATEFULSET_FQDN}:{{ .Values.InternalGrpcPort }},${STATEFULSET_NAME}-2.${STATEFULSET_FQDN}:{{ .Values.InternalGrpcPort }}{{ end }}{{ range .Values.ExtraArgs }} {{ . }}{{ end }}"
++    {{- end }}
++    {{- with .Values.statefulset.nodeSelector }}
++      nodeSelector: {{- toYaml . | nindent 8 }}
++    {{- end }}
++    {{- with .Values.statefulset.tolerations }}
++      tolerations: {{- toYaml . | nindent 8 }}
++    {{- end }}
+       # No pre-stop hook is required, a SIGTERM plus some time is all that's
+       # needed for graceful shutdown of a node.
+       terminationGracePeriodSeconds: 60
++      containers:
++        - name: db
++          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++          imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
++          args:
++            - shell
++            - -ecx
++            # The use of qualified `hostname -f` is crucial:
++            # Other nodes aren't able to look up the unqualified hostname.
++            #
++            # `--join` CLI flag is hardcoded to exactly 3 Pods, because:
++            # 1. Having `--join` value depending on `statefulset.replicas`
++            #    will trigger undesired restart of existing Pods when
++            #    StatefulSet is scaled up/down. We want to scale without
++            #    restarting existing Pods.
++            # 2. At least one Pod in `--join` is enough to successfully
++            #    join CockroachDB cluster and gossip with all other existing
++            #    Pods, even if there are 3 or more Pods.
++            # 3. It's harmless for `--join` to have 3 Pods even for 1-Pod
++            #    clusters, while it gives us opportunity to scale up even if
++            #    some Pods of existing cluster are down (for whatever reason).
++            # See details explained here:
++            # https://github.com/helm/charts/pull/18993#issuecomment-558795102
++            - >-
++              exec /cockroach/cockroach
++            {{- if index .Values.conf `single-node` }}
++              start-single-node
++            {{- else }}
++              start --join=
++              {{- if .Values.conf.join }}
++                {{- join `,` .Values.conf.join -}}
++              {{- else }}
++                {{- range $i, $_ := until 3 -}}
++                  {{- if gt $i 0 -}},{{- end -}}
++                  ${STATEFULSET_NAME}-{{ $i }}.${STATEFULSET_FQDN}:{{ $.Values.service.ports.grpc.internal.port | int64 -}}
++                {{- end -}}
++              {{- end }}
++              --advertise-host=$(hostname).${STATEFULSET_FQDN}
++            {{- with index .Values.conf `cluster-name` }}
++              --cluster-name={{ . }}
++            {{- if index $.Values.conf `disable-cluster-name-verification` }}
++              --disable-cluster-name-verification
++            {{- end }}
++            {{- end }}
++            {{- end }}
++              --logtostderr={{ .Values.conf.logtostderr }}
++            {{- if .Values.tls.enabled }}
++              --certs-dir=/cockroach/cockroach-certs/
++            {{- else }}
++              --insecure
++            {{- end }}
++            {{- with .Values.conf.attrs }}
++              --attrs={{ join `:` . }}
++            {{- end }}
++              --http-port={{ index .Values.conf `http-port` | int64 }}
++              --port={{ .Values.conf.port | int64 }}
++              --cache={{ .Values.conf.cache }}
++              --max-disk-temp-storage={{ index .Values.conf `max-disk-temp-storage` }}
++              --max-offset={{ index .Values.conf `max-offset` }}
++              --max-sql-memory={{ index .Values.conf `max-sql-memory` }}
++            {{- with .Values.conf.locality }}
++              --locality={{ . }}
++            {{- end }}
++            {{- with index .Values.conf `sql-audit-dir` }}
++              --sql-audit-dir={{ . }}
++            {{- end }}
++            {{- range .Values.statefulset.args }}
++              {{ . }}
++            {{- end }}
++          env:
++            - name: STATEFULSET_NAME
++              value: {{ template "cockroachdb.fullname" . }}
++            - name: STATEFULSET_FQDN
++              value: {{ template "cockroachdb.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
++            - name: COCKROACH_CHANNEL
++              value: kubernetes-helm
++          {{- with .Values.statefulset.env }}
++            {{- toYaml . | nindent 12 }}
++          {{- end }}
++          ports:
++            - name: grpc
++              containerPort: {{ .Values.conf.port | int64 }}
++              protocol: TCP
++            - name: http
++              containerPort: {{ index .Values.conf `http-port` | int64 }}
++              protocol: TCP
++          volumeMounts:
++            - name: datadir
++              mountPath: /cockroach/cockroach-data/
++          {{- if .Values.tls.enabled }}
++            - name: certs
++              mountPath: /cockroach/cockroach-certs/
++          {{- end }}
++          {{- range .Values.statefulset.secretMounts }}
++            - name: {{ printf "secret-%s" . | quote }}
++              mountPath: {{ printf "/etc/cockroach/secrets/%s" . | quote }}
++              readOnly: true
++          {{- end }}
++          livenessProbe:
++            httpGet:
++              path: /health
++              port: http
++            {{- if .Values.tls.enabled }}
++              scheme: HTTPS
++            {{- end }}
++            initialDelaySeconds: 30
++            periodSeconds: 5
++          readinessProbe:
++            httpGet:
++              path: /health?ready=1
++              port: http
++            {{- if .Values.tls.enabled }}
++              scheme: HTTPS
++            {{- end }}
++            initialDelaySeconds: 10
++            periodSeconds: 5
++            failureThreshold: 2
++        {{- with .Values.statefulset.resources }}
++          resources: {{- toYaml . | indent 12 }}
++        {{- end }}
+       volumes:
+-      - name: datadir
+-        persistentVolumeClaim:
+-          claimName: datadir
+-{{- if .Values.Secure.Enabled }}
+-      - name: certs
+-        emptyDir: {}
+-{{- end }}
+-{{- range .Values.ExtraSecretMounts }}
+-      - name: extra-secret-{{ . }}
+-        secret:
+-          secretName: {{ . }}
+-{{- end }}
+-  podManagementPolicy: {{ .Values.PodManagementPolicy }}
+-  updateStrategy:
+-{{ toYaml .Values.UpdateStrategy | indent 4 }}
++        - name: datadir
++        {{- if .Values.storage.persistentVolume.enabled }}
++          persistentVolumeClaim:
++            claimName: datadir
++        {{- else if .Values.storage.hostPath }}
++          hostPath:
++            path: {{ .Values.storage.hostPath | quote }}
++        {{- else }}
++          emptyDir: {}
++        {{- end }}
++      {{- if .Values.tls.enabled }}
++        - name: certs
++          emptyDir: {}
++      {{- end }}
++      {{- range .Values.statefulset.secretMounts }}
++        - name: {{ printf "secret-%s" . | quote }}
++          secret:
++            secretName: {{ . | quote }}
++      {{- end }}
++{{- if .Values.storage.persistentVolume.enabled }}
+   volumeClaimTemplates:
+-  - metadata:
+-      name: datadir
+-    spec:
+-      accessModes:
+-        - "ReadWriteOnce"
+-{{- if .Values.StorageClass }}
+-{{- if (eq "-" .Values.StorageClass) }}
+-      storageClassName: ""
+-{{- else }}
+-      storageClassName: "{{ .Values.StorageClass }}"
+-{{- end }}
++    - metadata:
++        name: datadir
++        labels:
++          app.kubernetes.io/name: {{ template "cockroachdb.name" . }}
++          app.kubernetes.io/instance: {{ .Release.Name | quote }}
++        {{- with .Values.storage.persistentVolume.labels }}
++          {{- toYaml . | nindent 10 }}
++        {{- end }}
++        {{- with .Values.labels }}
++          {{- toYaml . | nindent 10 }}
++        {{- end }}
++      {{- with .Values.storage.persistentVolume.annotations }}
++        annotations: {{- toYaml . | nindent 10 }}
++      {{- end }}
++      spec:
++        accessModes: ["ReadWriteOnce"]
++      {{- if .Values.storage.persistentVolume.storageClass }}
++      {{- if (eq "-" .Values.storage.persistentVolume.storageClass) }}
++        storageClassName: ""
++      {{- else }}
++        storageClassName: {{ .Values.storage.persistentVolume.storageClass | quote}}
++      {{- end }}
++      {{- end }}
++        resources:
++          requests:
++            storage: {{ .Values.storage.persistentVolume.size | quote }}
+ {{- end }}
+-      resources:
+-        requests:
+-          storage: "{{ .Values.Storage }}"
+diff --git a/stable/cockroachdb/templates/tests/client-test.yaml b/stable/cockroachdb/templates/tests/client-test.yaml
+deleted file mode 100644
+index a65e196b4..000000000
+--- a/stable/cockroachdb/templates/tests/client-test.yaml
++++ /dev/null
+@@ -1,26 +0,0 @@
+-apiVersion: v1
+-kind: Pod
+-metadata:
+-  name: "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}-test"
+-  annotations:
+-    "helm.sh/hook": test-success
+-{{- if and (.Values.NetworkPolicy.Enabled) (not .Values.NetworkPolicy.AllowExternal) }}
+-  labels:
+-    "{{.Release.Name}}-{{.Values.Component}}-client": true
+-{{- end }}
+-spec:
+-  containers:
+-  - name: "client-test"
+-    image: "{{ .Values.Image }}:{{ .Values.ImageTag }}"
+-    imagePullPolicy: "{{ .Values.ImagePullPolicy }}"
+-    command:
+-      - "/cockroach/cockroach"
+-      - "sql"
+-      - "--insecure"
+-      - "--host"
+-      - "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 56 }}-public.{{ .Release.Namespace }}"
+-      - "--port"
+-      - "{{ .Values.ExternalGrpcPort }}"
+-      - "-e"
+-      - "SHOW DATABASES;"
+-  restartPolicy: Never
+diff --git a/stable/cockroachdb/templates/tests/client.yaml b/stable/cockroachdb/templates/tests/client.yaml
+new file mode 100644
+index 000000000..9ed947b33
+--- /dev/null
++++ b/stable/cockroachdb/templates/tests/client.yaml
+@@ -0,0 +1,31 @@
++kind: Pod
++apiVersion: v1
++metadata:
++  name: {{ template "cockroachdb.fullname" . }}-test
++  namespace: {{ .Release.Namespace | quote }}
++{{- if .Values.networkPolicy.enabled }}
++  labels:
++    {{ template "cockroachdb.fullname" . }}-client: "true"
++{{- end }}
++  annotations:
++    helm.sh/hook: test-success
++spec:
++  restartPolicy: Never
++{{- if .Values.image.credentials }}
++  imagePullSecrets:
++    - name: {{ template "cockroachdb.fullname" . }}.db.registry
++{{- end }}
++  containers:
++    - name: client-test
++      image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++      imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
++      command:
++        - /cockroach/cockroach
++        - sql
++        - --insecure
++        - --host
++        - {{ template "cockroachdb.fullname" . }}-public.{{ .Release.Namespace }}
++        - --port
++        - {{ .Values.service.ports.grpc.external.port | quote }}
++        - -e
++        - SHOW DATABASES;
+diff --git a/stable/cockroachdb/values.yaml b/stable/cockroachdb/values.yaml
+index 3228b0fde..d4d894a9c 100644
+--- a/stable/cockroachdb/values.yaml
++++ b/stable/cockroachdb/values.yaml
+@@ -1,105 +1,353 @@
+-# Default values for cockroachdb.
+-# This is a YAML-formatted file.
+-# Declare name/value pairs to be passed into your templates.
+-# name: value
+-
+-Name: "cockroachdb"
+-Image: "cockroachdb/cockroach"
+-ImageTag: "v19.2.1"
+-ImagePullPolicy: "Always"
+-Replicas: 3
+-MaxUnavailable: 1
+-Component: "cockroachdb"
+-
+-# You can set a different external and internal GRPC port and service name. If using istio set InternalGrpcName to "cockroach"
+-InternalGrpcPort: 26257
+-ExternalGrpcPort: 26257
+-
+-# If the port numbers are different then then port names must be different as well.
+-InternalGrpcName: grpc
+-ExternalGrpcName: grpc
+-
+-InternalHttpPort: 8080
+-ExternalHttpPort: 8080
+-HttpName: http
+-
+-# Uncomment the following resources definitions or pass them from command line
+-# to control the cpu and memory resources allocated by the Kubernetes cluster
+-Resources: {}
+-  # requests:
+-  #   cpu: "100m"
+-  #   memory: "512Mi"
+-# The init pod runs at cluster creation to initialize CockroachDB. It finishes
+-# quickly and doesn't continue to consume resources in the Kubernetes
+-# cluster. Normally, you should leave this section commented out, but if your
+-# Kubernetes cluster uses Resource Quotas and requires all pods to specify
+-# resource requests or limits, you can set those here.
+-InitPodResources: {}
+-  # requests:
+-  #   cpu: "10m"
+-  #   memory: "128Mi"
+-  # limits:
+-  #   cpu: "10m"
+-  #   memory: "128Mi"
+-Storage: "100Gi"
+-## Persistent Volume Storage Class for database data
+-## If defined, storageClassName: <StorageClass>
+-## If set to "-", storageClassName: "", which disables dynamic provisioning
+-## If undefined or set to null, no storageClassName spec is
+-##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+-##   GKE, AWS & OpenStack)
+-##
+-StorageClass: null
+-CacheSize: "25%"
+-MaxSQLMemory: "25%"
+-ClusterDomain: "cluster.local"
+-NetworkPolicy:
+-  Enabled: false
+-  AllowExternal: true
+-Service:
+-  type: ClusterIP
++image:
++  repository: cockroachdb/cockroach
++  tag: v19.2.1
++  pullPolicy: IfNotPresent
++  credentials: {}
++    # registry: docker.io
++    # username: john_doe
++    # password: changeme
++
++
++# Additional labels to apply to all Kubernetes resources created by this chart.
++labels: {}
++  # app.kubernetes.io/part-of: my-app
++
++
++# Cluster's default DNS domain.
++# You should overwrite it if you're using a different one,
++# otherwise CockroachDB nodes discovery won't work.
++clusterDomain: cluster.local
++
++
++conf:
++  # An ordered list of CockroachDB node attributes.
++  # Attributes are arbitrary strings specifying machine capabilities.
++  # Machine capabilities might include specialized hardware or number of cores
++  # (e.g. "gpu", "x16c").
++  attrs: []
++    # - x16c
++    # - gpu
++
++  # Total size in bytes for caches, shared evenly if there are multiple
++  # storage devices. Size suffixes are supported (e.g. `1GB` and `1GiB`).
++  # A percentage of physical memory can also be specified (e.g. `.25`).
++  cache: 25%
++
++  # Sets a name to verify the identity of a cluster.
++  # The value must match between all nodes specified via `conf.join`.
++  # This can be used as an additional verification when either the node or
++  # cluster, or both, have not yet been initialized and do not yet know their
++  # cluster ID.
++  # To introduce a cluster name into an already-initialized cluster, pair this
++  # option with `conf.disable-cluster-name-verification: yes`.
++  cluster-name: ""
++
++  # Tell the server to ignore `conf.cluster-name` mismatches.
++  # This is meant for use when opting an existing cluster into starting to use
++  # cluster name verification, or when changing the cluster name.
++  # The cluster should be restarted once with `conf.cluster-name` and
++  # `conf.disable-cluster-name-verification: yes` combined, and once all nodes
++  # have been updated to know the new cluster name, the cluster can be restarted
++  # again with `conf.disable-cluster-name-verification: no`.
++  # This option has no effect if `conf.cluster-name` is not specified.
++  disable-cluster-name-verification: no
++
++  # The addresses for connecting a CockroachDB nodes to an existing cluster.
++  # If you are deploying a second CockroachDB instance that should join a first
++  # one, use the below list to join to the existing instance.
++  # Each item in the array should be a FQDN (and port if needed) resolvable by
++  # new Pods.
++  join: []
++
++  # Logs at or above this threshold to STDERR.
++  logtostderr: INFO
++
++  # Maximum storage capacity available to store temporary disk-based data for
++  # SQL queries that exceed the memory budget (e.g. join, sorts, etc are
++  # sometimes able to spill intermediate results to disk).
++  # Accepts numbers interpreted as bytes, size suffixes (e.g. `32GB` and
++  # `32GiB`) or a percentage of disk size (e.g. `10%`).
++  # The location of the temporary files is within the first store dir.
++  # If expressed as a percentage, `max-disk-temp-storage` is interpreted
++  # relative to the size of the storage device on which the first store is
++  # placed. The temp space usage is never counted towards any store usage
++  # (although it does share the device with the first store) so, when
++  # configuring this, make sure that the size of this temp storage plus the size
++  # of the first store don't exceed the capacity of the storage device.
++  # If the first store is an in-memory one (i.e. `type=mem`), then this
++  # temporary "disk" data is also kept in-memory.
++  # A percentage value is interpreted as a percentage of the available internal
++  # memory.
++  max-disk-temp-storage: 0
++
++  # Maximum allowed clock offset for the cluster. If observed clock offsets
++  # exceed this limit, servers will crash to minimize the likelihood of
++  # reading inconsistent data. Increasing this value will increase the time
++  # to recovery of failures as well as the frequency of uncertainty-based
++  # read restarts.
++  # Note, that this value must be the same on all nodes in the cluster.
++  # In order to change it, all nodes in the cluster must be stopped
++  # simultaneously and restarted with the new value.
++  max-offset: 500ms
++
++  # Maximum memory capacity available to store temporary data for SQL clients,
++  # including prepared queries and intermediate data rows during query
++  # execution. Accepts numbers interpreted as bytes, size suffixes
++  # (e.g. `1GB` and `1GiB`) or a percentage of physical memory (e.g. `.25`).
++  max-sql-memory: 25%
++
++  # An ordered, comma-separated list of key-value pairs that describe the
++  # topography of the machine. Topography might include country, datacenter
++  # or rack designations. Data is automatically replicated to maximize
++  # diversities of each tier. The order of tiers is used to determine
++  # the priority of the diversity, so the more inclusive localities like
++  # country should come before less inclusive localities like datacenter.
++  # The tiers and order must be the same on all nodes. Including more tiers
++  # is better than including fewer. For example:
++  #   locality: country=us,region=us-west,datacenter=us-west-1b,rack=12
++  #   locality: country=ca,region=ca-east,datacenter=ca-east-2,rack=4
++  #   locality: planet=earth,province=manitoba,colo=secondary,power=3
++  locality: ""
++
++  # Run CockroachDB instances in standalone mode with replication disabled
++  # (replication factor = 1).
++  # Enabling this option makes the following values to be ignored:
++  # - `conf.cluster-name`
++  # - `conf.disable-cluster-name-verification`
++  # - `conf.join`
++  #
++  # WARNING: Enabling this option makes each deployed Pod as a STANDALONE
++  #          CockroachDB instance, so the StatefulSet does NOT FORM A CLUSTER.
++  #          Don't use this option for production deployments unless you clearly
++  #          understand what you're doing.
++  #          Usually, this option is intended to be used in conjunction with
++  #          `statefulset.replicas: 1` for temporary one-time deployments (like
++  #          running E2E tests, for example).
++  single-node: no
++
++  # If non-empty, create a SQL audit log in the specified directory.
++  sql-audit-dir: ""
++
++  # CockroachDB's port to listen to inter-communications and client connections.
++  port: 26257
++
++  # CockroachDB's port to listen to HTTP requests.
++  http-port: 8080
++
++
++statefulset:
++  replicas: 3
++  updateStrategy:
++    type: RollingUpdate
++  podManagementPolicy: Parallel
++  budget:
++    maxUnavailable: 1
++
++  # List of additional command-line arguments you want to pass to the
++  # `cockroach start` command.
++  args: []
++    # - --disable-cluster-name-verification
++
++  # List of extra environment variables to pass into container
++  env: []
++    # - name: COCKROACH_ENGINE_MAX_SYNC_DURATION
++    #   value: "24h"
++
++  # List of Secrets names in the same Namespace as the CockroachDB cluster,
++  # which shall be mounted into `/etc/cockroach/secrets/` for every cluster
++  # member.
++  secretMounts: []
++
++  # Additional labels to apply to this StatefulSet and all its Pods.
++  labels:
++    app.kubernetes.io/component: cockroachdb
++
++  # Additional annotations to apply to the Pods of this StatefulSet.
++  annotations: {}
++
++  # Affinity rules for scheduling Pods of this StatefulSet on Nodes.
++  # https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#node-affinity
++  nodeAffinity: {}
++  # Inter-Pod Affinity rules for scheduling Pods of this StatefulSet.
++  # https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#inter-pod-affinity-and-anti-affinity
++  podAffinity: {}
++  # Anti-affinity rules for scheduling Pods of this StatefulSet.
++  # https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#inter-pod-affinity-and-anti-affinity
++  # You may either toggle options below for default anti-affinity rules,
++  # or specify the whole set of anti-affinity rules instead of them.
++  podAntiAffinity:
++    # Type of anti-affinity rules: either `soft`, `hard` or empty value (which
++    # disables anti-affinity rules).
++    type: soft
++    # Weight for `soft` anti-affinity rules.
++    # Does not apply for other anti-affinity types.
++    weight: 100
++
++  # Node selection constraints for scheduling Pods of this StatefulSet.
++  # https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
++  nodeSelector: {}
++
++  # Taints to be tolerated by Pods of this StatefulSet.
++  # https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
++  tolerations: []
++
++  # Uncomment the following resources definitions or pass them from
++  # command line to control the CPU and memory resources allocated
++  # by Pods of this StatefulSet.
++  resources: {}
++    # limits:
++    #   cpu: 100m
++    #   memory: 512Mi
++    # requests:
++    #   cpu: 100m
++    #   memory: 512Mi
++
++
++service:
++  ports:
++    # You can set a different external and internal gRPC ports and their name.
++    grpc:
++      external:
++        port: 26257
++        name: grpc
++      # If the port number is different than `external.port`, then it will be
++      # named as `internal.name` in Service.
++      internal:
++        port: 26257
++        # If using Istio set it to `cockroach`.
++        name: grpc-internal
++    http:
++      port: 8080
++      name: http
++
++  # This Service is meant to be used by clients of the database.
++  # It exposes a ClusterIP that will automatically load balance connections
++  # to the different database Pods.
++  public:
++    type: ClusterIP
++    # Additional labels to apply to this Service.
++    labels:
++      app.kubernetes.io/component: cockroachdb
++    # Additional annotations to apply to this Service.
++    annotations: {}
++
++  # This service only exists to create DNS entries for each pod in
++  # the StatefulSet such that they can resolve each other's IP addresses.
++  # It does not create a load-balanced ClusterIP and should not be used directly
++  # by clients in most circumstances.
++  discovery:
++    # Additional labels to apply to this Service.
++    labels:
++      app.kubernetes.io/component: cockroachdb
++    # Additional annotations to apply to this Service.
++    annotations: {}
++
++
++# CockroachDB's data persistence.
++# If neither `persistentVolume` nor `hostPath` is used, then data will be
++# persisted in ad-hoc `emptyDir`.
++storage:
++  # Absolute path on host to store CockroachDB's data.
++  # If not specified, then `emptyDir` will be used instead.
++  # If specified, but `persistentVolume.enabled` is `true`, then has no effect.
++  hostPath: ""
++
++  # If `enabled` is `true` then a PersistentVolumeClaim will be created and
++  # used to store CockroachDB's data, otherwise `hostPath` is used.
++  persistentVolume:
++    enabled: yes
++
++    size: 100Gi
++
++    # If defined, then `storageClassName: <storageClass>`.
++    # If set to "-", then `storageClassName: ""`, which disables dynamic
++    # provisioning.
++    # If undefined or empty (default), then no `storageClassName` spec is set,
++    # so the default provisioner will be chosen (gp2 on AWS, standard on
++    # GKE, AWS & OpenStack).
++    storageClass: ""
++
++    # Additional labels to apply to the created PersistentVolumeClaims.
++    labels: {}
++    # Additional annotations to apply to the created PersistentVolumeClaims.
++    annotations: {}
++
++
++# Kubernetes Job which initializes multi-node CockroachDB cluster.
++# It's not created if `statefulset.replicas` is `1`.
++init:
++  # Additional labels to apply to this Job and its Pod.
++  labels:
++    app.kubernetes.io/component: init
++
++  # Additional annotations to apply to the Pod of this Job.
+   annotations: {}
+-  labels: {}
+-ServiceDiscovery:
+-  labels: {}
+-PodManagementPolicy: Parallel
+-UpdateStrategy:
+-  type: RollingUpdate
+-NodeSelector: {}
+-Tolerations: {}
+-Secure:
+-  Enabled: false
+-  RequestCertsImage: "cockroachdb/cockroach-k8s-request-cert"
+-  RequestCertsImageTag: "0.4"
+-  ServiceAccount:
+-    # Specifies whether a service account should be created.
+-    Create: true
+-    # The name of the service account to use.
+-    # If not set and create is true, a name is generated.
+-    Name:
+-
+-# If you are deploying a second cockroach instance that should join a first, use the below list to join to the existing instance.
+-# Each item in the array should be a FQDN (and port if needed) resolvable by the new pods.
+-JoinExisting: []
+-# Set a locality (e.g. "region=us-central1,datacenter=us-centra1-a") if you're doing multi-cluster so data is distributed properly
+-Locality: ""
+-# Additional command-line arguments you want to pass to the `cockroach start` commands
+-ExtraArgs: []
+-# ExtraSecretMounts is a list of names from secrets in the same namespace as the cockroachdb cluster, which shall be mounted into /etc/cockroach/secrets/ for every cluster member.
+-ExtraSecretMounts: []
+-# ExtraEnvArgs is a list of name,value tuples providing extra ENV variables.
+-# e.g.:
+-# ExtraEnvArgs:
+-# - name: COCKROACH_ENGINE_MAX_SYNC_DURATION
+-#   value: "24h"
+-ExtraEnvArgs: []
+-# ExtraAnnotations is an object to provide additional annotations to the Statefulset
+-# e.g.:
+-# ExtraAnnotations:
+-#   key: values
+-ExtraAnnotations: {}
+-# ExtraInitAnnotations is an object to provide additional annotations to the ClusterInit Pod
+-# e.g.:
+-# ExtraInitAnnotations:
+-#   key: values
+-ExtraInitAnnotations: {}
++
++  # Affinity rules for scheduling the Pod of this Job.
++  # https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#node-affinity
++  affinity: {}
++
++  # Node selection constraints for scheduling the Pod of this Job.
++  # https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
++  nodeSelector: {}
++
++  # Taints to be tolerated by the Pod of this Job.
++  # https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
++  tolerations: []
++
++  # The init Pod runs at cluster creation to initialize CockroachDB. It finishes
++  # quickly and doesn't continue to consume resources in the Kubernetes
++  # cluster. Normally, you should leave this section commented out, but if your
++  # Kubernetes cluster uses Resource Quotas and requires all pods to specify
++  # resource requests or limits, you can set those here.
++  resources: {}
++    # requests:
++    #   cpu: "10m"
++    #   memory: "128Mi"
++    # limits:
++    #   cpu: "10m"
++    #   memory: "128Mi"
++
++
++# Whether to run securely using TLS certificates.
++tls:
++  enabled: no
++  serviceAccount:
++    # Specifies whether this ServiceAccount should be created.
++    create: yes
++    # The name of this ServiceAccount to use.
++    # If not set and `create` is `true`, then a name is auto-generated.
++    name: ""
++  init:
++    # Image to use for requesting TLS certificates.
++    image:
++      repository: cockroachdb/cockroach-k8s-request-cert
++      tag: "0.4"
++      pullPolicy: IfNotPresent
++      credentials: {}
++        # registry: docker.io
++        # username: john_doe
++        # password: changeme
++
++
++networkPolicy:
++  enabled: no
++
++  ingress:
++    # List of sources which should be able to access the CockroachDB Pods via
++    # gRPC port. Items in this list are combined using a logical OR operation.
++    # Rules for allowing inter-communication are applied automatically.
++    # If empty, then connections from any Pod is allowed.
++    grpc: []
++      # - podSelector:
++      #     matchLabels:
++      #       app.kubernetes.io/name: my-app-django
++      #       app.kubernetes.io/instance: my-app
++
++    # List of sources which should be able to access the CockroachDB Pods via
++    # HTTP port. Items in this list are combined using a logical OR operation.
++    # If empty, then connections from any Pod is allowed.
++    http: []
++      # - namespaceSelector:
++      #     matchLabels:
++      #       project: my-project

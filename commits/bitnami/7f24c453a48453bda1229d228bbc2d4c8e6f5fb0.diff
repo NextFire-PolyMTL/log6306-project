@@ -1,0 +1,510 @@
+commit 7f24c453a48453bda1229d228bbc2d4c8e6f5fb0
+Author: Sergey Shaykhullin <46970457+sergeyshaykhullin@users.noreply.github.com>
+Date:   Fri Nov 12 12:20:29 2021 +0300
+
+    [bitnami/minio] WIP: Minio provisioning (#8043)
+    
+    * Setup provisioning job
+    
+    * Add values, comments, list mc aliases
+    
+    * Fix resources
+    
+    * Setup values for local testing
+    
+    * Bump chart version
+    
+    * Add temp gitignore for charts folder
+    
+    * Update provisioning-job.yaml
+    
+    * Complete job setup
+    
+    * Add groups, users, buckets, retentions provisioning
+    
+    * Add lifecycle rules
+    
+    * Add lifecycle condition
+    
+    * Add bucket quota
+    
+    * Add config options provisioning
+    
+    * Set default values back
+    
+    * Remove mc admin service restart as it restarts all nodes at once
+    
+    * Add group.members, remove user.groups
+    
+    * Add user and group policy assignment
+    
+    * Add tags, refactor script template
+    
+    * Dedupe enable/disable on users and groups
+    
+    * Remove comments, EOF broken
+    
+    * Update values.yaml
+    
+    * Remove retentions
+    
+    * Test distributed mode, fix script
+    
+    * Update .gitignore
+    
+    * Delete templated.yaml
+    
+    * Update provisioning-job.yaml
+    
+    * Add support for credential files
+    
+    * Add docs
+    
+    * Delete .gitignore
+    
+    * Complete todos, use minio image in job init container for wait-for-port
+    
+    * Copy command and args from statefulset. Add provisioning values
+    
+    * Add extraVolumes and extraVolumeMounts
+    
+    * Regenerate readme
+
+diff --git a/bitnami/minio/Chart.yaml b/bitnami/minio/Chart.yaml
+index cd3b1f4f29..7b629b0695 100644
+--- a/bitnami/minio/Chart.yaml
++++ b/bitnami/minio/Chart.yaml
+@@ -25,4 +25,4 @@ name: minio
+ sources:
+   - https://github.com/bitnami/bitnami-docker-minio
+   - https://min.io
+-version: 9.0.7
++version: 9.1.0
+diff --git a/bitnami/minio/README.md b/bitnami/minio/README.md
+index 2cc6bdedb8..da57294af0 100644
+--- a/bitnami/minio/README.md
++++ b/bitnami/minio/README.md
+@@ -114,6 +114,19 @@ The command removes all the Kubernetes components associated with the chart and
+ | `statefulset.replicaCount`              | Number of pods per zone (only for MinIO&reg; distributed mode). Should be even and `>= 4`                                                                                                     | `4`             |
+ | `statefulset.zones`                     | Number of zones (only for MinIO&reg; distributed mode)                                                                                                                                        | `1`             |
+ | `statefulset.drivesPerNode`             | Number of drives attached to every node (only for MinIO&reg; distributed mode)                                                                                                                | `1`             |
++| `provisioning.enabled`                  | Enable MinIO&reg; provisioning Job                                                                                                                                                            | `false`         |
++| `provisioning.schedulerName`            | Name of the k8s scheduler (other than default) for MinIO&reg; provisioning                                                                                                                    | `""`            |
++| `provisioning.podAnnotations`           | Provisioning Pod annotations.                                                                                                                                                                 | `{}`            |
++| `provisioning.command`                  | Default provisioning container command (useful when using custom images). Use array form                                                                                                      | `[]`            |
++| `provisioning.args`                     | Default provisioning container args (useful when using custom images). Use array form                                                                                                         | `[]`            |
++| `provisioning.extraVolumes`             | Optionally specify extra list of additional volumes for MinIO&reg; provisioning pod                                                                                                           | `[]`            |
++| `provisioning.extraVolumeMounts`        | Optionally specify extra list of additional volumeMounts for MinIO&reg; provisioning container                                                                                                | `[]`            |
++| `provisioning.resources.limits`         | The resources limits for the container                                                                                                                                                        | `{}`            |
++| `provisioning.resources.requests`       | The requested resources for the container                                                                                                                                                     | `{}`            |
++| `provisioning.users`                    | MinIO&reg; users provisioning                                                                                                                                                                 | `[]`            |
++| `provisioning.groups`                   | MinIO&reg; groups provisioning                                                                                                                                                                | `[]`            |
++| `provisioning.buckets`                  | MinIO&reg; buckets, lifecycle, quota and tags provisioning                                                                                                                                    | `[]`            |
++| `provisioning.config`                   | MinIO&reg; config provisioning                                                                                                                                                                | `[]`            |
+ | `hostAliases`                           | MinIO&reg; pod host aliases                                                                                                                                                                   | `[]`            |
+ | `containerPorts.api`                    | MinIO&reg; container port to open for MinIO&reg; API                                                                                                                                          | `9000`          |
+ | `containerPorts.console`                | MinIO&reg; container port to open for MinIO&reg; Console                                                                                                                                      | `9001`          |
+diff --git a/bitnami/minio/templates/provisioning-configmap.yaml b/bitnami/minio/templates/provisioning-configmap.yaml
+new file mode 100644
+index 0000000000..86f2488dd4
+--- /dev/null
++++ b/bitnami/minio/templates/provisioning-configmap.yaml
+@@ -0,0 +1,58 @@
++{{- if .Values.provisioning.enabled }}
++{{- $fullname := printf "%s-provisioning" (include "common.names.fullname" .) }}
++{{- $releaseNamespace := .Release.Namespace }}
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  name: {{ $fullname }}
++  namespace: {{ $releaseNamespace }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    app.kubernetes.io/component: minio-provisioning
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
++data:
++  {{- range $bucket := .Values.provisioning.buckets }}
++  {{- if $bucket.lifecycle }}
++  {{ $bucket.name }}.json: |
++    {
++      "Rules": [
++        {{- range $idx, $lifecycle := $bucket.lifecycle }}
++        {{- if not (eq $idx 0) }}
++        ,
++        {{- end }}
++        {
++          "ID": "{{ $lifecycle.id }}",
++          "Status": "{{ ternary "Disabled" "Enabled" (and (not (empty $lifecycle.disabled)) $lifecycle.disabled) }}",
++          {{- if $lifecycle.expiry }}
++          "Expiration": {
++            {{- with $lifecycle.expiry.date }}
++            "Date": "{{ . }}"
++            {{- end }}
++            {{- with $lifecycle.expiry.days }}
++            "Days": {{ . }}
++            {{- end }}
++          }
++          {{- with $lifecycle.expiry.nonconcurrentDays }}
++          ,
++          "NoncurrentVersionExpiration": {
++            "NoncurrentDays": {{ . }}
++          }
++          {{- end }}
++          {{- with $lifecycle.prefix }}
++          ,
++          "Filter": {
++            "Prefix": "{{ . }}"
++          }
++          {{- end }}
++        }
++        {{- end }}
++        {{- end }}
++      ]
++    }
++  {{- end }}
++  {{- end }}
++{{- end }}
+diff --git a/bitnami/minio/templates/provisioning-job.yaml b/bitnami/minio/templates/provisioning-job.yaml
+new file mode 100644
+index 0000000000..28ad920d93
+--- /dev/null
++++ b/bitnami/minio/templates/provisioning-job.yaml
+@@ -0,0 +1,215 @@
++{{- if .Values.provisioning.enabled }}
++{{- $fullname := printf "%s-provisioning" (include "common.names.fullname" .) }}
++{{- $releaseNamespace := .Release.Namespace }}
++{{- $minioAlias := "provisioning" }}
++apiVersion: batch/v1
++kind: Job
++metadata:
++  name: {{ $fullname }}
++  namespace: {{ $releaseNamespace  }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    app.kubernetes.io/component: minio-provisioning
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  annotations: 
++    helm.sh/hook: post-install,post-upgrade
++    helm.sh/hook-delete-policy: before-hook-creation
++    {{- if .Values.commonAnnotations }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++    {{- end }}
++spec:
++  parallelism: 1
++  template:
++    metadata:
++      labels: {{- include "common.labels.standard" . | nindent 8 }}
++        app.kubernetes.io/component: minio-provisioning
++        {{- if .Values.podLabels }}
++        {{- include "common.tplvalues.render" (dict "value" .Values.podLabels "context" $) | nindent 8 }}
++        {{- end }}
++      {{- if .Values.provisioning.podAnnotations }}
++      annotations:
++        {{- include "common.tplvalues.render" ( dict "value" .Values.provisioning.podAnnotations "context" $) | nindent 8 }}
++      {{- end }}
++    spec:
++      {{- include "minio.imagePullSecrets" . | nindent 6 }}
++      {{- if .Values.provisioning.schedulerName }}
++      schedulerName: {{ .Values.provisioning.schedulerName }}
++      {{- end }}
++      restartPolicy: OnFailure
++      terminationGracePeriodSeconds: 0
++      serviceAccountName: {{ template "minio.serviceAccountName" . }}
++      initContainers:
++        - name: wait-for-available-minio
++          image: {{ include "minio.image" . }}
++          imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
++          command:
++            - /bin/bash
++            - -c
++            - >-
++              set -e;
++              echo "Waiting for Minio";
++              wait-for-port \
++                --host={{ include "common.names.fullname" . }} \
++                --state=inuse \
++                --timeout=120 \
++                {{ .Values.service.ports.api | int64 }};
++              echo "Minio is available";
++      containers:
++        - name: minio
++          image: {{ include "minio.image" . }}
++          imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
++          {{- if .Values.provisioning.command }}
++          command: {{- include "common.tplvalues.render" (dict "value" .Values.provisioning.command "context" $) | nindent 12 }}
++          {{- else }}
++          command:
++            - /bin/bash
++            - -c
++            - >-
++              set -e;
++              echo "Start Minio provisioning";
++
++              {{- $minioUrl := printf "$MINIO_SCHEME://%s:%d" (include "common.names.fullname" .) (.Values.service.ports.api | int) }}
++              {{- $minioRootUser := ternary ("$(<$MINIO_ROOT_USER_FILE)") ("$MINIO_ROOT_USER") (.Values.auth.useCredentialsFiles)}}
++              {{- $minioRootPassword := ternary ("$(<$MINIO_ROOT_PASSWORD_FILE)") ("$MINIO_ROOT_PASSWORD") (.Values.auth.useCredentialsFiles)}}
++              mc alias set {{ $minioAlias }} {{ $minioUrl }} {{ $minioRootUser }} {{ $minioRootPassword }};
++
++              {{- range $user := .Values.provisioning.users }}
++              mc admin user add {{ $minioAlias }} {{ $user.username }} {{ $user.password }};
++              {{- range $policy := $user.policies }}
++              mc admin policy update {{ $minioAlias }} {{ $policy }} user={{ $user.username }};
++              {{- end }}
++              {{- $userStatus := ternary ("disable") ("enable") (and (not (empty $user.disabled)) $user.disabled) }}
++              mc admin user {{ $userStatus }} {{ $minioAlias }} {{ $user.username }};
++              {{- end }}
++
++              {{- range $group := .Values.provisioning.groups }}
++              mc admin group add {{ $minioAlias }} {{ $group.name }} {{ join " " $group.members }};
++              {{- range $policy := $group.policies }}
++              mc admin policy update {{ $minioAlias }} {{ $policy }} group={{ $group.name }};
++              {{- end }}
++              {{- $groupStatus := ternary ("disable") ("enable") (and (not (empty $group.disabled)) $group.disabled)}}
++              mc admin group {{ $groupStatus }} {{ $minioAlias }} {{ $group.name }};
++              {{- end }}
++
++              {{- range $bucket := .Values.provisioning.buckets }}
++              {{- $target := printf "%s/%s" $minioAlias $bucket.name }}
++              {{- $region := ternary (printf "--region=%s" $bucket.region) ("") (not (empty $bucket.region)) }}
++              {{- $withLock := ternary ("--with-lock") ("") (and (not (empty $bucket.withLock)) $bucket.withLock) }}
++              mc mb {{ $target }} --ignore-existing {{ $region }} {{ $withLock }};
++
++              {{- if $bucket.lifecycle }}
++              mc ilm import {{ $minioAlias }}/{{ $bucket.name }} < /etc/ilm/{{ $bucket.name }}.json;
++              {{- end }}
++
++              {{- with $bucket.quota }}
++              mc admin bucket quota {{ $minioAlias }}/{{ $bucket.name }} --{{ .type }} {{ .size }};
++              {{- end }}
++
++              {{- if $bucket.tags }}
++              {{- $target := printf "%s/%s" $minioAlias $bucket.name }}
++              {{- $tags := list }}
++              {{- range $name, $value := $bucket.tags }}
++              {{- $tags = (printf "%s=%s" $name $value) | append $tags }}
++              {{- end }}
++              {{- $tags := join "&" $tags | quote }}
++              mc tag set {{ $target }} {{ $tags }};
++              {{- end }}
++              {{- end }}
++
++              {{- range $config := .Values.provisioning.config }}
++              {{- $options := list }}
++              {{- range $name, $value := $config.options }}
++              {{- $options = (printf "%s=%s" $name $value) | append $options }}
++              {{- end }}
++              {{- $options := join " " $options }}
++              mc admin config set {{ $minioAlias }} {{ $config.name }} {{ $options }};
++              {{- end }}
++
++              echo "End Minio provisioning";
++          {{- end }}
++          {{- if .Values.provisioning.args }}
++          args: {{- include "common.tplvalues.render" (dict "value" .Values.provisioning.args "context" $) | nindent 12 }}
++          {{- end }}
++          env:
++            - name: MINIO_SCHEME
++              value: {{ ternary "https" "http" .Values.tls.enabled | quote }}
++            {{- if .Values.auth.useCredentialsFiles }}
++            - name: MINIO_ROOT_USER_FILE
++              value: "/opt/bitnami/minio/secrets/root-user"
++            {{- else }}
++            - name: MINIO_ROOT_USER
++              valueFrom:
++                secretKeyRef:
++                  name: {{ include "minio.secretName" . }}
++                  key: root-user
++            {{- end }}
++            {{- if .Values.auth.useCredentialsFiles }}
++            - name: MINIO_ROOT_PASSWORD_FILE
++              value: "/opt/bitnami/minio/secrets/root-password"
++            {{- else }}
++            - name: MINIO_ROOT_PASSWORD
++              valueFrom:
++                secretKeyRef:
++                  name: {{ include "minio.secretName" . }}
++                  key: root-password
++            {{- end }}
++            {{- if .Values.tls.mountPath }}
++            - name: MINIO_CERTSDIR
++              value: {{ .Values.tls.mountPath | quote }}
++            {{- end }}
++          envFrom:
++            {{- if .Values.extraEnvVarsCM }}
++            - configMapRef:
++                name: {{ include "common.tplvalues.render" (dict "value" .Values.extraEnvVarsCM "context" $) }}
++            {{- end }}
++            {{- if .Values.extraEnvVarsSecret }}
++            - secretRef:
++                name: {{ include "common.tplvalues.render" (dict "value" .Values.extraEnvVarsSecret "context" $) }}
++            {{- end }}
++          {{- if .Values.provisioning.resources }}
++          resources: {{- toYaml .Values.provisioning.resources | nindent 12 }}
++          {{- end }}
++          volumeMounts:
++            {{- if .Values.provisioning.enabled }}
++            - name: minio-provisioning
++              mountPath: /etc/ilm
++            {{- end }}
++            {{- if .Values.auth.useCredentialsFiles }}
++            - name: minio-credentials
++              mountPath: /opt/bitnami/minio/secrets/
++            {{- end }}
++            {{- if .Values.tls.enabled }}
++            - name: minio-certs
++              mountPath: {{ default "/certs" .Values.tls.mountPath }}
++            {{- end }}
++            {{- if .Values.provisioning.extraVolumeMounts }}
++            {{- include "common.tplvalues.render" (dict "value" .Values.provisioning.extraVolumeMounts "context" $) | nindent 12 }}
++            {{- end }}
++      volumes:
++        {{- if .Values.provisioning.enabled }}
++        - name: minio-provisioning
++          configMap:
++            name: {{ $fullname }}
++        {{- end }}
++        {{- if .Values.auth.useCredentialsFiles }}
++        - name: minio-credentials
++          secret:
++            secretName: {{ include "minio.secretName" . }}
++        {{- end }}
++        {{- if .Values.tls.enabled }}
++        - name: minio-certs
++          secret:
++            secretName: {{ include "minio.tlsSecretName" . }}
++            items:
++            - key: tls.crt
++              path: public.crt
++            - key: tls.key
++              path: private.key
++            - key: ca.crt
++              path: CAs/public.crt
++        {{- end }}
++        {{- if .Values.provisioning.extraVolumes }}
++        {{- include "common.tplvalues.render" (dict "value" .Values.provisioning.extraVolumes "context" $) | nindent 8 }}
++        {{- end }}
++{{- end }}
+diff --git a/bitnami/minio/values.yaml b/bitnami/minio/values.yaml
+index 7a26f04816..51934dc0fe 100644
+--- a/bitnami/minio/values.yaml
++++ b/bitnami/minio/values.yaml
+@@ -196,6 +196,114 @@ statefulset:
+   ## @param statefulset.drivesPerNode Number of drives attached to every node (only for MinIO&reg; distributed mode)
+   ##
+   drivesPerNode: 1
++
++## MinIO&reg; provisioning
++##
++provisioning:
++  ## @param provisioning.enabled Enable MinIO&reg; provisioning Job
++  ##
++  enabled: false
++  ## @param provisioning.schedulerName Name of the k8s scheduler (other than default) for MinIO&reg; provisioning
++  ## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
++  ##
++  schedulerName: ""
++  ## @param provisioning.podAnnotations Provisioning Pod annotations.
++  ##
++  podAnnotations: {}
++  ## @param provisioning.command Default provisioning container command (useful when using custom images). Use array form
++  ##
++  command: []
++  ## @param provisioning.args Default provisioning container args (useful when using custom images). Use array form
++  ##
++  args: []
++  ## @param provisioning.extraVolumes Optionally specify extra list of additional volumes for MinIO&reg; provisioning pod
++  ##
++  extraVolumes: []
++  ## @param provisioning.extraVolumeMounts Optionally specify extra list of additional volumeMounts for MinIO&reg; provisioning container
++  ##
++  extraVolumeMounts: []
++  ## We usually recommend not to specify default resources and to leave this as a conscious
++  ## choice for the user. This also increases chances charts run on environments with little
++  ## resources, such as Minikube. If you do want to specify resources, uncomment the following
++  ## lines, adjust them as necessary, and remove the curly braces after 'resources:'.
++  ## @param provisioning.resources.limits The resources limits for the container
++  ## @param provisioning.resources.requests The requested resources for the container
++  ##
++  resources:
++    ## Example:
++    ## limits:
++    ##    cpu: 100m
++    ##    memory: 64Mi
++    limits: {}
++    ## Examples:
++    ## requests:
++    ##    cpu: 200m
++    ##    memory: 128Mi
++    requests: {}
++  ## @param provisioning.users MinIO&reg; users provisioning
++  ## https://docs.min.io/docs/minio-admin-complete-guide.html#user
++  ## e.g.
++  ## users:
++  ##   - username: test-username
++  ##     password: test-password
++  ##     disabled: false
++  ##     policies:
++  ##       - readwrite
++  ##       - consoleAdmin
++  ##       - diagnostics
++  users: []
++  ## @param provisioning.groups MinIO&reg; groups provisioning
++  ## https://docs.min.io/docs/minio-admin-complete-guide.html#group
++  ## e.g.
++  ## groups
++  ##   - name: test-group
++  ##     disabled: false
++  ##     members:
++  ##       - test-username
++  ##     policies:
++  ##       - readwrite
++  groups: []
++  ## @param provisioning.buckets MinIO&reg; buckets, lifecycle, quota and tags provisioning
++  ## Buckets https://docs.min.io/docs/minio-client-complete-guide.html#mb
++  ## Lifecycle https://docs.min.io/docs/minio-client-complete-guide.html#ilm
++  ## Quotas https://docs.min.io/docs/minio-admin-complete-guide.html#bucket
++  ## Tags https://docs.min.io/docs/minio-client-complete-guide.html#tag
++  ## e.g.
++  ## buckets:
++  ##   - name: test-bucket
++  ##     region: us-east-1
++  ##     # Only when mode is 'distributed'
++  ##     # ref: https://docs.minio.io/docs/distributed-minio-quickstart-guide
++  ##     withLock: true
++  ##     # Only when mode is 'distributed'
++  ##     # ref: https://docs.minio.io/docs/distributed-minio-quickstart-guide
++  ##     lifecycle:
++  ##       - id: TestPrefix7dRetention
++  ##         prefix: test-prefix
++  ##         disabled: false
++  ##         expiry:
++  ##           days: 7
++  ##           # Days !OR! date
++  ##           # date: "2021-11-11T00:00:00Z"
++  ##           nonconcurrentDays: 3
++  ##     # Only when mode is 'distributed'
++  ##     # ref: https://docs.minio.io/docs/distributed-minio-quickstart-guide
++  ##     quota:
++  ##       # hard, fifo or clear(+ omit size)
++  ##       type: hard
++  ##       size: 10GiB
++  ##     tags:
++  ##       key1: value1
++  buckets: []
++  ## @param provisioning.config MinIO&reg; config provisioning
++  ## https://docs.min.io/docs/minio-server-configuration-guide.html
++  ## e.g.
++  ## config:
++  ##   - name: region
++  ##     options:
++  ##       name: us-east-1
++  config: []
++
+ ## @param hostAliases MinIO&reg; pod host aliases
+ ## https://kubernetes.io/docs/concepts/services-networking/add-entries-to-pod-etc-hosts-with-host-aliases/
+ ##

@@ -1,0 +1,134 @@
+commit 8ad63802f42e9fbb01e96a8a2af5036b62a6314a
+Author: Marco Capuccini <marco.capuccini@farmbio.uu.se>
+Date:   Wed Dec 12 14:55:43 2018 +0100
+
+    Zeppelin: add Ingress and nodeSelector (#9851)
+    
+    * Zeppelin: add Ingress and nodeSelector
+    
+    Signed-off-by: mcapuccini <marco.capuccini@farmbio.uu.se>
+    
+    * Values linting
+    
+    Signed-off-by: mcapuccini <marco.capuccini@farmbio.uu.se>
+    
+    * Bump up chart
+    
+    Signed-off-by: Marco Capuccini <m.capuccini@gmail.com>
+    
+    * Ingress values refactory
+    
+    Signed-off-by: mcapuccini <marco.capuccini@farmbio.uu.se>
+
+diff --git a/stable/zeppelin/Chart.yaml b/stable/zeppelin/Chart.yaml
+index 532718491..087fa3973 100644
+--- a/stable/zeppelin/Chart.yaml
++++ b/stable/zeppelin/Chart.yaml
+@@ -1,7 +1,7 @@
+ apiVersion: v1
+ description: Web-based notebook that enables data-driven, interactive data analytics and collaborative documents with SQL, Scala and more.
+ name: zeppelin
+-version: 1.0.1
++version: 1.1.0
+ appVersion: 0.7.2
+ home: https://zeppelin.apache.org/
+ sources:
+diff --git a/stable/zeppelin/README.md b/stable/zeppelin/README.md
+index 656a60153..bd2e7731f 100644
+--- a/stable/zeppelin/README.md
++++ b/stable/zeppelin/README.md
+@@ -26,6 +26,12 @@ The following table lists the configurable parameters of the Zeppelin chart and
+ | `hadoop.useConfigMap`                | Use external Hadoop configuration for Spark executors             | `false`                                                    |
+ | `hadoop.configMapName`               | Name of the hadoop config map to use (must be in same namespace)  | `hadoop-config`                                            |
+ | `hadoop.configPath`                  | Path in the Zeppelin image where the Hadoop config is mounted     | `/usr/hadoop-2.7.3/etc/hadoop`                             |
++| `ingress.enabled`                    | Enable ingress                                                    | `false`                                                    |
++| `ingress.annotations`                | Ingress annotations                                               | `{}`                                                       |
++| `ingress.hosts`                      | Ingress Hostnames                                                 | `["zeppelin.local"]`                                       |
++| `ingress.path`                       | Path within the URL structure                                     | `/`                                                        |
++| `ingress.tls`                        | Ingress TLS configuration                                         | `[]`                                                       |
++| `nodeSelecor`                        | Node selector for the Zeppelin deployment                         | `{}`                                                       |
+ 
+ ## Related charts
+ 
+diff --git a/stable/zeppelin/templates/deployment.yaml b/stable/zeppelin/templates/deployment.yaml
+index 61c83076e..54d33f107 100644
+--- a/stable/zeppelin/templates/deployment.yaml
++++ b/stable/zeppelin/templates/deployment.yaml
+@@ -58,4 +58,8 @@ spec:
+         - name: hadoop-config
+           configMap:
+             name: {{ .Values.hadoop.configMapName }}
+-{{- end }}
+\ No newline at end of file
++{{- end }}
++{{- if .Values.nodeSelector }}
++      nodeSelector:
++{{ toYaml .Values.nodeSelector | indent 8 }}
++{{- end }}
+diff --git a/stable/zeppelin/templates/ingress.yaml b/stable/zeppelin/templates/ingress.yaml
+new file mode 100644
+index 000000000..00c48d5bd
+--- /dev/null
++++ b/stable/zeppelin/templates/ingress.yaml
+@@ -0,0 +1,38 @@
++{{- if .Values.ingress.enabled }}
++{{- $ingressPath := .Values.ingress.path -}}
++{{- $fullName := printf "%s-zeppelin" .Release.Name -}}
++apiVersion: extensions/v1beta1
++kind: Ingress
++metadata:
++  name: {{ $fullName }}
++  labels:
++    app: {{ template "zeppelin.name" . }}
++    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++{{- with .Values.ingress.annotations }}
++  annotations:
++{{ toYaml . | indent 4 }}
++{{- end }}
++spec:
++  rules:
++  {{- range .Values.ingress.hosts }}
++  - host: {{ . | quote }}
++    http:
++      paths:
++        - path: {{ $ingressPath }}
++          backend:
++            serviceName: {{ $fullName }}
++            servicePort: 8080
++  {{- end }}
++{{- if .Values.ingress.tls }}
++  tls:
++  {{- range .Values.ingress.tls }}
++    - hosts:
++      {{- range .hosts }}
++        - {{ . | quote }}
++      {{- end }}
++      secretName: {{ .secretName }}
++  {{- end }}
++{{- end }}
++{{- end }}
+diff --git a/stable/zeppelin/values.yaml b/stable/zeppelin/values.yaml
+index cddb6617b..8d006f636 100644
+--- a/stable/zeppelin/values.yaml
++++ b/stable/zeppelin/values.yaml
+@@ -14,3 +14,18 @@ spark:
+   driverMemory: 1g
+   executorMemory: 1g
+   numExecutors: 2
++
++ingress:
++  enabled: false
++  annotations: {}
++    # kubernetes.io/ingress.class: nginx
++    # kubernetes.io/tls-acme: "true"
++    # nginx.ingress.kubernetes.io/auth-secret: zeppelin-tls-secret
++  path: /
++  hosts:
++    - zeppelin.local
++  tls: []
++    # - secretName: zeppelin-tls-secret
++    #   hosts: zeppelin.local
++
++nodeSelector: {}

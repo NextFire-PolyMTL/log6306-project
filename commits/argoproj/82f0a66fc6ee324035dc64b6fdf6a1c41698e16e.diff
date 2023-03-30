@@ -1,0 +1,127 @@
+commit 82f0a66fc6ee324035dc64b6fdf6a1c41698e16e
+Author: yanyx <yixingyan@gmail.com>
+Date:   Tue Mar 29 19:24:04 2022 +0800
+
+    refactor(argo-cd)!: Remove Argo CD notification default notifier (#1201)
+    
+    * remove argocd notification default notifier
+    
+    Signed-off-by: Yixing Yan <yixingyan@gmail.com>
+    
+    * format notification template comment
+    
+    Signed-off-by: Yixing Yan <yixingyan@gmail.com>
+    
+    * Update the argo-cd chart to version 4.3.0
+    
+    Signed-off-by: Yixing Yan <yixingyan@gmail.com>
+    
+    * update changelog
+    
+    Signed-off-by: Yixing Yan <yixingyan@gmail.com>
+    
+    * update readme
+    
+    Signed-off-by: Yixing Yan <yixingyan@gmail.com>
+
+diff --git a/charts/argo-cd/Chart.yaml b/charts/argo-cd/Chart.yaml
+index bc32a964..e69c70c8 100644
+--- a/charts/argo-cd/Chart.yaml
++++ b/charts/argo-cd/Chart.yaml
+@@ -2,7 +2,7 @@ apiVersion: v2
+ appVersion: v2.3.2
+ description: A Helm chart for Argo CD, a declarative, GitOps continuous delivery tool for Kubernetes.
+ name: argo-cd
+-version: 4.2.4
++version: 4.3.0
+ home: https://github.com/argoproj/argo-helm
+ icon: https://argo-cd.readthedocs.io/en/stable/assets/logo.png
+ keywords:
+@@ -21,4 +21,4 @@ dependencies:
+     condition: redis-ha.enabled
+ annotations:
+   artifacthub.io/changes: |
+-    - "[Fixed]: Correct ArgoCD applicationset controller port"
++    - "[Removed]: Remove Argo CD notification default notifier"
+diff --git a/charts/argo-cd/README.md b/charts/argo-cd/README.md
+index 86b6ec1e..ede6960b 100644
+--- a/charts/argo-cd/README.md
++++ b/charts/argo-cd/README.md
+@@ -82,6 +82,10 @@ Changes in the `CustomResourceDefinition` resources shall be fixed easily by cop
+ 
+ ## Upgrading
+ 
++### 4.3.*
++
++With this minor version, the notification notifier's `service.slack` is no longer configured by default.
++
+ ### 4.0.0 and above
+ 
+ This helm chart version deploys Argo CD v2.3. The Argo CD Notifications and ApplicationSet are part of Argo CD now. You no longer need to install them separately. The Notifications and ApplicationSet components **are bundled into default** Argo CD installation.
+diff --git a/charts/argo-cd/README.md.gotmpl b/charts/argo-cd/README.md.gotmpl
+index 0c7eee9f..2ec386c7 100644
+--- a/charts/argo-cd/README.md.gotmpl
++++ b/charts/argo-cd/README.md.gotmpl
+@@ -82,6 +82,10 @@ Changes in the `CustomResourceDefinition` resources shall be fixed easily by cop
+ 
+ ## Upgrading
+ 
++### 4.3.*
++
++With this minor version, the notification notifier's `service.slack` is no longer configured by default.
++
+ ### 4.0.0 and above
+ 
+ This helm chart version deploys Argo CD v2.3. The Argo CD Notifications and ApplicationSet are part of Argo CD now. You no longer need to install them separately. The Notifications and ApplicationSet components **are bundled into default** Argo CD installation.
+diff --git a/charts/argo-cd/values.yaml b/charts/argo-cd/values.yaml
+index 2a207250..cce0c24b 100755
+--- a/charts/argo-cd/values.yaml
++++ b/charts/argo-cd/values.yaml
+@@ -2175,9 +2175,9 @@ notifications:
+   # -- Configures notification services
+   # @default -- See [values.yaml]
+   ## For more information: https://argocd-notifications.readthedocs.io/en/stable/services/overview/
+-  notifiers:
+-    service.slack: |
+-      token: $slack-token
++  notifiers: {}
++    # service.slack: |
++    #   token: $slack-token
+ 
+   # -- Annotations to be applied to the controller Pods
+   podAnnotations: {}
+@@ -2425,7 +2425,33 @@ notifications:
+     #     {{if eq .serviceType "slack"}}:white_check_mark:{{end}} Application {{.app.metadata.name}} has been successfully synced at {{.app.status.operationState.finishedAt}}.
+     #     Sync operation details are available at: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}?operation=true .
+     #   slack:
+-    #     attachments: "[{\n  \"title\": \"{{ .app.metadata.name}}\",\n  \"title_link\":\"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}\",\n  \"color\": \"#18be52\",\n  \"fields\": [\n  {\n    \"title\": \"Sync Status\",\n    \"value\": \"{{.app.status.sync.status}}\",\n    \"short\": true\n  },\n  {\n    \"title\": \"Repository\",\n    \"value\": \"{{.app.spec.source.repoURL}}\",\n    \"short\": true\n  }\n  {{range $index, $c := .app.status.conditions}}\n  {{if not $index}},{{end}}\n  {{if $index}},{{end}}\n  {\n    \"title\": \"{{$c.type}}\",\n    \"value\": \"{{$c.message}}\",\n    \"short\": true\n  }\n  {{end}}\n  ]\n}]    "
++    #     attachments: |-
++    #       [{
++    #         "title": "{{ .app.metadata.name}}",
++    #         "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
++    #         "color": "#18be52",
++    #         "fields": [
++    #         {
++    #           "title": "Sync Status",
++    #           "value": "{{.app.status.sync.status}}",
++    #           "short": true
++    #         },
++    #         {
++    #           "title": "Repository",
++    #           "value": "{{.app.spec.source.repoURL}}",
++    #           "short": true
++    #         }
++    #         {{range $index, $c := .app.status.conditions}}
++    #         {{if not $index}},{{end}}
++    #         {{if $index}},{{end}}
++    #         {
++    #           "title": "{{$c.type}}",
++    #           "value": "{{$c.message}}",
++    #           "short": true
++    #         }
++    #         {{end}}
++    #         ]
++    #       }]
+ 
+   # -- [Tolerations] for use with node taints
+   tolerations: []

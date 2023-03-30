@@ -1,0 +1,796 @@
+commit 4ec06ab31e24bb621c6ffe05e125e2ea351791b9
+Author: Ryan Luckie <rtluckie@users.noreply.github.com>
+Date:   Wed Mar 28 02:52:05 2018 -0500
+
+    [stable/minio] Fix configmap issue, add ingress resource and general refactor (#4281)
+    
+    * Rename manifests to align with best practices
+    
+    * Refactor minio chart
+    
+    - add ingress resource
+    - consolidate svc resource to support all deployment modes
+    - update labels and selectors to align with helm best practices
+    - general cleanup to align with helm best practices/patterns observed in `helm create`
+    - update values, README and _helpers accordingly
+    - bump image tag
+    - bump chart version
+    
+    * Fix issue caused by ConfigMaps now being mounted ReadOnly
+    
+    Tested on:
+    k8s 1.8.10 and 1.9.6
+    
+    Related:
+    https://github.com/kubernetes/kubernetes/pull/58720
+    
+    Fixes:
+    https://github.com/kubernetes/charts/issues/4272
+    
+    * Bump chart version to 1.0.0
+
+diff --git a/stable/minio/Chart.yaml b/stable/minio/Chart.yaml
+index 273a20e5f..b54e9c878 100755
+--- a/stable/minio/Chart.yaml
++++ b/stable/minio/Chart.yaml
+@@ -1,7 +1,7 @@
+ apiVersion: v1
+ description: Distributed object storage server built for cloud applications and devops.
+ name: minio
+-version: 0.5.7
++version: 1.0.0
+ keywords:
+ - storage
+ - object-storage
+diff --git a/stable/minio/README.md b/stable/minio/README.md
+index 19e0dfaad..c3ea59776 100644
+--- a/stable/minio/README.md
++++ b/stable/minio/README.md
+@@ -74,17 +74,21 @@ The following tables lists the configurable parameters of the Minio chart and th
+ 
+ | Parameter                  | Description                         | Default                                                 |
+ |----------------------------|-------------------------------------|---------------------------------------------------------|
+-| `image`                    | Minio image name                    | `minio/minio`                                           |
+-| `imageTag`                 | Minio image tag. Possible values listed [here](https://hub.docker.com/r/minio/minio/tags/).| `RELEASE.2018-03-12T21-25-28Z`|
+-| `imagePullPolicy`          | Image pull policy                   | `IfNotPresent`                                          |
++| `image.repository`         | Image repository                    | `minio/minio`                                           |
++| `image.tag`                | Minio image tag. Possible values listed [here](https://hub.docker.com/r/minio/minio/tags/).| `RELEASE.2018-03-12T21-25-28Z`|
++| `image.pullPolicy`         | Image pull policy                   | `IfNotPresent`                                          |
++| `ingress.enabled`          | Enables Ingress                     | `false`                                                 |
++| `ingress.annotations`      | Ingress annotations                 | `{}`                                                    |
++| `ingress.hosts`            | Ingress accepted hostnames          | `[]`                                                    |
++| `ingress.tls`              | Ingress TLS configuration           | `[]`                                                    |
+ | `mode`                     | Minio server mode (`standalone`, `shared` or `distributed`)| `standalone`                     |
+ | `replicas`                 | Number of nodes (applicable only for Minio distributed mode). Should be 4 <= x <= 16 | `4`    |
+ | `accessKey`                | Default access key (5 to 20 characters) | `AKIAIOSFODNN7EXAMPLE`                              |
+ | `secretKey`                | Default secret key (8 to 40 characters) | `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`          |
+ | `configPath`               | Default config file location        | `~/.minio`                                              |
+ | `mountPath`                | Default mount location for persistent drive| `/export`                                        |
+-| `serviceType`              | Kubernetes service type             | `LoadBalancer`                                          |
+-| `servicePort`              | Kubernetes port where service is exposed| `9000`                                              |
++| `service.type`             | Kubernetes service type             | `ClusterIP`                                             |
++| `service.port`             | Kubernetes port where service is exposed| `9000`                                              |
+ | `persistence.enabled`      | Use persistent volume to store data | `true`                                                  |
+ | `persistence.size`         | Size of persistent volume claim     | `10Gi`                                                  |
+ | `persistence.existingClaim`| Use an existing PVC to persist data | `nil`                                                   |
+diff --git a/stable/minio/templates/NOTES.txt b/stable/minio/templates/NOTES.txt
+index ca80e073c..f5fa5b524 100644
+--- a/stable/minio/templates/NOTES.txt
++++ b/stable/minio/templates/NOTES.txt
+@@ -1,5 +1,5 @@
+-{{- if eq .Values.serviceType "ClusterIP" }}
+-Minio can be accessed via port {{ .Values.servicePort }} on the following DNS name from within your cluster:
++{{- if eq .Values.service.type "ClusterIP" "NodePort" }}
++Minio can be accessed via port {{ .Values.service.port }} on the following DNS name from within your cluster:
+ {{ template "minio.fullname" . }}-svc.{{ .Release.Namespace }}.svc.cluster.local
+ 
+ To access Minio from localhost, run the below commands:
+@@ -20,8 +20,8 @@ You can now access Minio server on http://localhost:9000. Follow the below steps
+ 
+ Alternately, you can use your browser or the Minio SDK to access the server - https://docs.minio.io/categories/17
+ {{- end }}
+-{{- if eq .Values.serviceType "LoadBalancer" }}
+-Minio can be accessed via port {{ .Values.servicePort }} on an external IP address. Get the service external IP address by:
++{{- if eq .Values.service.type "LoadBalancer" }}
++Minio can be accessed via port {{ .Values.service.port }} on an external IP address. Get the service external IP address by:
+ kubectl get svc --namespace {{ .Release.Namespace }} -l app={{ template "minio.fullname" . }}
+ 
+ Note that the public IP may take a couple of minutes to be available.
+@@ -30,7 +30,7 @@ You can now access Minio server on http://<External-IP>:9000. Follow the below s
+ 
+   1. Download the Minio mc client - https://docs.minio.io/docs/minio-client-quickstart-guide
+ 
+-  2. mc config host add {{ template "minio.fullname" . }}-local http://<External-IP>:{{ .Values.servicePort }} {{ .Values.accessKey }} {{ .Values.secretKey }} S3v4
++  2. mc config host add {{ template "minio.fullname" . }}-local http://<External-IP>:{{ .Values.service.port }} {{ .Values.accessKey }} {{ .Values.secretKey }} S3v4
+ 
+   3. mc ls {{ template "minio.fullname" . }}-local
+ 
+diff --git a/stable/minio/templates/_helpers.tpl b/stable/minio/templates/_helpers.tpl
+index 225aeff55..a5b0e6ed1 100644
+--- a/stable/minio/templates/_helpers.tpl
++++ b/stable/minio/templates/_helpers.tpl
+@@ -9,11 +9,27 @@ Expand the name of the chart.
+ {{/*
+ Create a default fully qualified app name.
+ We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
++If release name contains chart name it will be used as a full name.
+ */}}
+ {{- define "minio.fullname" -}}
++{{- if .Values.fullnameOverride -}}
++{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
+ {{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
+ {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Create chart name and version as used by the chart label.
++*/}}
++{{- define "minio.chart" -}}
++{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
+ 
+ {{/*
+ Return the appropriate apiVersion for networkpolicy.
+diff --git a/stable/minio/templates/minioconfig_configmap.yaml b/stable/minio/templates/configmap.yaml
+similarity index 96%
+rename from stable/minio/templates/minioconfig_configmap.yaml
+rename to stable/minio/templates/configmap.yaml
+index 8b6f4da9d..e1467a8b6 100644
+--- a/stable/minio/templates/minioconfig_configmap.yaml
++++ b/stable/minio/templates/configmap.yaml
+@@ -1,12 +1,12 @@
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+-  name: {{ template "minio.fullname" . }}-config-cm
++  name: {{ template "minio.fullname" . }}
+   labels:
+-    app: {{ template "minio.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
++    app: {{ template "minio.name" . }}
++    chart: {{ template "minio.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
+ data:
+   initialize: |-
+ {{ include (print $.Template.BasePath "/_helper_create_bucket.txt") . | indent 4 }}
+diff --git a/stable/minio/templates/minio_deployment.yaml b/stable/minio/templates/deployment.yaml
+similarity index 66%
+rename from stable/minio/templates/minio_deployment.yaml
+rename to stable/minio/templates/deployment.yaml
+index 776e24814..d27da7bee 100644
+--- a/stable/minio/templates/minio_deployment.yaml
++++ b/stable/minio/templates/deployment.yaml
+@@ -1,65 +1,32 @@
+ {{- if eq .Values.mode "standalone" "shared" }}
+-apiVersion: extensions/v1beta1
++apiVersion: apps/v1beta2
+ kind: Deployment
+ metadata:
+   name: {{ template "minio.fullname" . }}
+   labels:
+-    app: {{ template "minio.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
++    app: {{ template "minio.name" . }}
++    chart: {{ template "minio.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
+ spec:
+   {{- if eq .Values.mode "shared" }}
+   replicas: {{ .Values.replicas }}
+   {{- end }}
+   selector:
+     matchLabels:
+-      app: {{ template "minio.fullname" . }}
++      app: {{ template "minio.name" . }}
++      release: {{ .Release.Name }}
+   template:
+     metadata:
+       name: {{ template "minio.fullname" . }}
+       labels:
+-        app: {{ template "minio.fullname" . }}
+-        chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-        release: "{{ .Release.Name }}"
+-        heritage: "{{ .Release.Service }}"
++        app: {{ template "minio.name" . }}
++        release: {{ .Release.Name }}
+     spec:
+-{{- if .Values.nodeSelector }}
+-      nodeSelector:
+-{{ toYaml .Values.nodeSelector | indent 8 }}
+-{{- end }}
+-{{- if .Values.affinity }}
+-      affinity:
+-{{ toYaml .Values.affinity | indent 8 }}
+-{{- end }}
+-{{- if .Values.tolerations }}
+-      tolerations:
+-{{ toYaml .Values.tolerations | indent 8 }}
+-{{- end }}
+-      volumes:
+-        - name: podinfo
+-          downwardAPI:
+-            items:
+-              - path: "labels"
+-                fieldRef:
+-                  fieldPath: metadata.labels
+-        - name: export
+-        {{- if .Values.persistence.enabled }}
+-          persistentVolumeClaim:
+-            claimName: {{ .Values.persistence.existingClaim | default (include "minio.fullname" .) }}
+-        {{- else }}
+-          emptyDir: {}
+-        {{- end }}
+-        - name: minio-server-config
+-          configMap:
+-            name: {{ template "minio.fullname" . }}-config-cm
+-        - name: minio-user
+-          secret:
+-            secretName: {{ template "minio.fullname" . }}-user
+       containers:
+-        - name: minio
+-          image: {{ .Values.image }}:{{ .Values.imageTag }}
+-          imagePullPolicy: {{ .Values.imagePullPolicy }}
++        - name: {{ .Chart.Name }}
++          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++          imagePullPolicy: {{ .Values.image.pullPolicy }}
+           {{- if .Values.azuregateway.enabled }}
+           args: ["gateway", "azure"]
+           {{- else }}
+@@ -76,7 +43,11 @@ spec:
+               subPath: "{{ .Values.persistence.subPath }}"
+               {{- end }}
+             - name: minio-server-config
+-              mountPath: {{ default "/root/.minio/" .Values.configPath | quote }}
++              mountPath: {{ default "/root/.minio/config.json" .Values.configPath | quote }}
++              subPath: config.json
++            - name: minio-server-config
++              mountPath: /root/.minio/initialize
++              subPath: initialize
+             - name: podinfo
+               mountPath: /podinfo
+               readOnly: false
+@@ -87,12 +58,12 @@ spec:
+             - name: MINIO_ACCESS_KEY
+               valueFrom:
+                 secretKeyRef:
+-                  name: {{ template "minio.fullname" . }}-user
++                  name: {{ template "minio.fullname" . }}
+                   key: accesskey
+             - name: MINIO_SECRET_KEY
+               valueFrom:
+                 secretKeyRef:
+-                  name: {{ template "minio.fullname" . }}-user
++                  name: {{ template "minio.fullname" . }}
+                   key: secretkey
+           livenessProbe:
+             tcpSocket:
+@@ -100,4 +71,36 @@ spec:
+             timeoutSeconds: 1
+           resources:
+ {{ toYaml .Values.resources | indent 12 }}
++{{- with .Values.nodeSelector }}
++      nodeSelector:
++{{ toYaml . | indent 8 }}
++{{- end }}
++{{- with .Values.affinity }}
++      affinity:
++{{ toYaml . | indent 8 }}
++{{- end }}
++{{- with .Values.tolerations }}
++      tolerations:
++{{ toYaml . | indent 8 }}
++{{- end }}
++      volumes:
++        - name: podinfo
++          downwardAPI:
++            items:
++              - path: "labels"
++                fieldRef:
++                  fieldPath: metadata.labels
++        - name: export
++        {{- if .Values.persistence.enabled }}
++          persistentVolumeClaim:
++            claimName: {{ .Values.persistence.existingClaim | default (include "minio.fullname" .) }}
++        {{- else }}
++          emptyDir: {}
++        {{- end }}
++        - name: minio-server-config
++          configMap:
++            name: {{ template "minio.fullname" . }}
++        - name: minio-user
++          secret:
++            secretName: {{ template "minio.fullname" . }}
+ {{- end }}
+diff --git a/stable/minio/templates/ingress.yaml b/stable/minio/templates/ingress.yaml
+new file mode 100644
+index 000000000..dddad9618
+--- /dev/null
++++ b/stable/minio/templates/ingress.yaml
+@@ -0,0 +1,39 @@
++{{- if .Values.ingress.enabled -}}
++{{- $fullName := include "minio.fullname" . -}}
++{{- $servicePort := .Values.service.port -}}
++{{- $ingressPath := .Values.ingress.path -}}
++apiVersion: extensions/v1beta1
++kind: Ingress
++metadata:
++  name: {{ $fullName }}
++  labels:
++    app: {{ template "minio.name" . }}
++    chart: {{ template "minio.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++{{- with .Values.ingress.annotations }}
++  annotations:
++{{ toYaml . | indent 4 }}
++{{- end }}
++spec:
++{{- if .Values.ingress.tls }}
++  tls:
++  {{- range .Values.ingress.tls }}
++    - hosts:
++      {{- range .hosts }}
++        - {{ . }}
++      {{- end }}
++      secretName: {{ .secretName }}
++  {{- end }}
++{{- end }}
++  rules:
++  {{- range .Values.ingress.hosts }}
++    - host: {{ . }}
++      http:
++        paths:
++          - path: {{ $ingressPath }}
++            backend:
++              serviceName: {{ $fullName }}
++              servicePort: {{ $servicePort }}
++  {{- end }}
++{{- end }}
+diff --git a/stable/minio/templates/minio_secret.yaml b/stable/minio/templates/minio_secret.yaml
+deleted file mode 100644
+index 1f8574393..000000000
+--- a/stable/minio/templates/minio_secret.yaml
++++ /dev/null
+@@ -1,13 +0,0 @@
+-apiVersion: v1
+-kind: Secret
+-metadata:
+-  name: {{ template "minio.fullname" . }}-user
+-  labels:
+-    app: {{ template "minio.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
+-type: Opaque
+-data:
+-  accesskey: {{ .Values.accessKey | b64enc }}
+-  secretkey: {{ .Values.secretKey | b64enc }}
+diff --git a/stable/minio/templates/minio_svc.yaml b/stable/minio/templates/minio_svc.yaml
+deleted file mode 100644
+index 8db38407f..000000000
+--- a/stable/minio/templates/minio_svc.yaml
++++ /dev/null
+@@ -1,21 +0,0 @@
+-kind: Service
+-apiVersion: v1
+-metadata:
+-  name: {{ template "minio.fullname" . }}-svc
+-  labels:
+-    app: {{ template "minio.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
+-spec:
+-  type: {{ .Values.serviceType }}
+-  {{- if eq .Values.serviceType "LoadBalancer" }}
+-  loadBalancerIP: {{ default "" .Values.minioLoadBalancerIP }}
+-  {{- end }}
+-  selector:
+-    app: {{ template "minio.fullname" . }}
+-  ports:
+-    - name: service
+-      port: 9000
+-      targetPort: {{ .Values.servicePort }}
+-      protocol: TCP
+diff --git a/stable/minio/templates/minio_networkpolicy.yaml b/stable/minio/templates/networkpolicy.yaml
+similarity index 54%
+rename from stable/minio/templates/minio_networkpolicy.yaml
+rename to stable/minio/templates/networkpolicy.yaml
+index a3b45e02b..de57f485f 100644
+--- a/stable/minio/templates/minio_networkpolicy.yaml
++++ b/stable/minio/templates/networkpolicy.yaml
+@@ -4,21 +4,22 @@ apiVersion: {{ template "minio.networkPolicy.apiVersion" . }}
+ metadata:
+   name: {{ template "minio.fullname" . }}
+   labels:
+-    app: {{ template "minio.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
++    app: {{ template "minio.name" . }}
++    chart: {{ template "minio.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
+ spec:
+   podSelector:
+     matchLabels:
+-      app: {{ template "minio.fullname" . }}
++      app: {{ template "minio.name" . }}
++      release: {{ .Release.Name }}
+   ingress:
+     - ports:
+-        - port: {{ .Values.servicePort }}
++        - port: {{ .Values.service.port }}
+       {{- if not .Values.networkPolicy.allowExternal }}
+       from:
+         - podSelector:
+             matchLabels:
+-              {{ template "minio.fullname" . }}-client: "true"
++              {{ template "minio.name" . }}-client: "true"
+       {{- end }}
+ {{- end }}
+diff --git a/stable/minio/templates/post-install-create-bucket-job.yaml b/stable/minio/templates/post-install-create-bucket-job.yaml
+index 00a17104e..e1fc61859 100644
+--- a/stable/minio/templates/post-install-create-bucket-job.yaml
++++ b/stable/minio/templates/post-install-create-bucket-job.yaml
+@@ -4,10 +4,10 @@ kind: Job
+ metadata:
+   name: {{ template "minio.fullname" . }}-make-bucket-job
+   labels:
+-    app: {{ template "minio.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
++    app: {{ template "minio.name" . }}
++    chart: {{ template "minio.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
+   annotations:
+     "helm.sh/hook": post-install,post-upgrade
+     "helm.sh/hook-delete-policy": hook-succeeded
+@@ -15,7 +15,7 @@ spec:
+   template:
+     metadata:
+       labels:
+-        app: {{ template "minio.fullname" . }}
++        app: {{ template "minio.name" . }}
+         release: {{ .Release.Name }}
+     spec:
+       restartPolicy: OnFailure
+@@ -28,18 +28,18 @@ spec:
+           projected:
+             sources:
+             - configMap:
+-                name: {{ template "minio.fullname" . }}-config-cm
++                name: {{ template "minio.fullname" . }}
+             - secret:
+-                name: {{ template "minio.fullname" . }}-user
++                name: {{ template "minio.fullname" . }}
+       containers:
+       - name: minio-mc
+         image: minio/mc
+         command: ["/bin/sh", "/config/initialize"]
+         env:
+           - name: MINIO_ENDPOINT
+-            value: {{ template "minio.fullname" . }}-svc
++            value: {{ template "minio.fullname" . }}
+           - name: MINIO_PORT
+-            value: {{ .Values.servicePort | quote }}
++            value: {{ .Values.service.port | quote }}
+         volumeMounts:
+           - name: minio-configuration
+             mountPath: /config
+diff --git a/stable/minio/templates/minio_pvc.yaml b/stable/minio/templates/pvc.yaml
+similarity index 81%
+rename from stable/minio/templates/minio_pvc.yaml
+rename to stable/minio/templates/pvc.yaml
+index a44c34aba..02787e401 100644
+--- a/stable/minio/templates/minio_pvc.yaml
++++ b/stable/minio/templates/pvc.yaml
+@@ -1,9 +1,14 @@
+ {{- if eq .Values.mode "standalone" "shared" }}
+ {{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
+-kind: PersistentVolumeClaim
+ apiVersion: v1
++kind: PersistentVolumeClaim
+ metadata:
+   name: {{ template "minio.fullname" . }}
++  labels:
++    app: {{ template "minio.name" . }}
++    chart: {{ template "minio.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
+ spec:
+   accessModes:
+     {{- if eq .Values.mode "shared" }}
+diff --git a/stable/minio/templates/secrets.yaml b/stable/minio/templates/secrets.yaml
+new file mode 100644
+index 000000000..8ee63b1d0
+--- /dev/null
++++ b/stable/minio/templates/secrets.yaml
+@@ -0,0 +1,13 @@
++apiVersion: v1
++kind: Secret
++metadata:
++  name: {{ template "minio.fullname" . }}
++  labels:
++    app: {{ template "minio.name" . }}
++    chart: {{ template "minio.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++type: Opaque
++data:
++  accesskey: {{ .Values.accessKey | b64enc }}
++  secretkey: {{ .Values.secretKey | b64enc }}
+diff --git a/stable/minio/templates/service.yaml b/stable/minio/templates/service.yaml
+new file mode 100644
+index 000000000..19ef517ce
+--- /dev/null
++++ b/stable/minio/templates/service.yaml
+@@ -0,0 +1,29 @@
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ template "minio.fullname" . }}
++  labels:
++    app: {{ template "minio.name" . }}
++    chart: {{ template "minio.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++spec:
++{{- if (or (eq .Values.service.type "ClusterIP" "") (empty .Values.service.type)) }}
++  type: ClusterIP
++  {{- if .Values.service.clusterIP }}
++  clusterIP: {{ .Values.service.clusterIP }}
++  {{end}}
++{{- else if eq .Values.service.type "LoadBalancer" }}
++  type: {{ .Values.service.type }}
++  loadBalancerIP: {{ default "" .Values.service.loadBalancerIP }}
++{{- else }}
++  type: {{ .Values.service.type }}
++{{- end }}
++  ports:
++    - name: service
++      port: 9000
++      targetPort: {{ .Values.service.port }}
++      protocol: TCP
++  selector:
++    app: {{ template "minio.name" . }}
++    release: {{ .Release.Name }}
+diff --git a/stable/minio/templates/minio_statefulset.yaml b/stable/minio/templates/statefulset.yaml
+similarity index 60%
+rename from stable/minio/templates/minio_statefulset.yaml
+rename to stable/minio/templates/statefulset.yaml
+index 53806d0c9..ba84c59a8 100644
+--- a/stable/minio/templates/minio_statefulset.yaml
++++ b/stable/minio/templates/statefulset.yaml
+@@ -1,77 +1,32 @@
+ {{- if eq .Values.mode "distributed" }}
+ {{ $nodeCount := .Values.replicas | int }}
+-apiVersion: v1
+-kind: Service
+-metadata:
+-  name: {{ template "minio.fullname" . }}
+-  labels:
+-    app: {{ template "minio.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
+-spec:
+-  clusterIP: None
+-  ports:
+-    - name: service
+-      port: 9000
+-      targetPort: {{ .Values.servicePort }}
+-      protocol: TCP
+-  selector:
+-    app: {{ template "minio.fullname" . }}
+----
+ apiVersion: apps/v1beta1
+ kind: StatefulSet
+ metadata:
+   name: {{ template "minio.fullname" . }}
+   labels:
+-    app: {{ template "minio.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
++    app: {{ template "minio.name" . }}
++    chart: {{ template "minio.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
+ spec:
+   serviceName: {{ template "minio.fullname" . }}
+   replicas: {{ .Values.replicas }}
+   selector:
+     matchLabels:
+-      app: {{ template "minio.fullname" . }}
++      app: {{ template "minio.name" . }}
++      release: {{ .Release.Name }}
+   template:
+     metadata:
+       name: {{ template "minio.fullname" . }}
+       labels:
+-        app: {{ template "minio.fullname" . }}
+-        chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-        release: "{{ .Release.Name }}"
+-        heritage: "{{ .Release.Service }}"
++        app: {{ template "minio.name" . }}
++        release: {{ .Release.Name }}
+     spec:
+-{{- if .Values.nodeSelector }}
+-      nodeSelector:
+-{{ toYaml .Values.nodeSelector | indent 8 }}
+-{{- end }}
+-{{- if .Values.affinity }}
+-      affinity:
+-{{ toYaml .Values.affinity | indent 8 }}
+-{{- end }}
+-{{- if .Values.tolerations }}
+-      tolerations:
+-{{ toYaml .Values.tolerations | indent 8 }}
+-{{- end }}
+-      volumes:
+-        - name: minio-user
+-          secret:
+-            secretName: {{ template "minio.fullname" . }}-user
+-        - name: minio-server-config
+-          configMap:
+-            name: {{ template "minio.fullname" . }}-config-cm
+-        - name: podinfo
+-          downwardAPI:
+-            items:
+-              - path: "labels"
+-                fieldRef:
+-                  fieldPath: metadata.labels
+       containers:
+-        - name: minio
+-          image: {{ .Values.image }}:{{ .Values.imageTag }}
+-          imagePullPolicy: {{ .Values.imagePullPolicy }}
++        - name: {{ .Chart.Name }}
++          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
++          imagePullPolicy: {{ .Values.image.pullPolicy }}
+           {{- if .Values.configPath }}
+           args:
+             - -C {{ .Values.configPath }} server
+@@ -89,7 +44,11 @@ spec:
+               subPath: "{{ .Values.persistence.subPath }}"
+               {{- end }}
+             - name: minio-server-config
+-              mountPath: {{ default "/root/.minio/" .Values.configPath | quote }}
++              mountPath: {{ default "/root/.minio/config.json" .Values.configPath | quote }}
++              subPath: config.json
++            - name: minio-server-config
++              mountPath: /root/.minio/initialize
++              subPath: initialize
+             - name: podinfo
+               mountPath: /podinfo
+               readOnly: false
+@@ -100,15 +59,40 @@ spec:
+             - name: MINIO_ACCESS_KEY
+               valueFrom:
+                 secretKeyRef:
+-                  name: {{ template "minio.fullname" . }}-user
++                  name: {{ template "minio.fullname" . }}
+                   key: accesskey
+             - name: MINIO_SECRET_KEY
+               valueFrom:
+                 secretKeyRef:
+-                  name: {{ template "minio.fullname" . }}-user
++                  name: {{ template "minio.fullname" . }}
+                   key: secretkey
+           resources:
+ {{ toYaml .Values.resources | indent 12 }}
++    {{- with .Values.nodeSelector }}
++      nodeSelector:
++{{ toYaml . | indent 8 }}
++    {{- end }}
++    {{- with .Values.affinity }}
++      affinity:
++{{ toYaml . | indent 8 }}
++    {{- end }}
++    {{- with .Values.tolerations }}
++      tolerations:
++{{ toYaml . | indent 8 }}
++    {{- end }}
++      volumes:
++        - name: minio-user
++          secret:
++            secretName: {{ template "minio.fullname" . }}
++        - name: minio-server-config
++          configMap:
++            name: {{ template "minio.fullname" . }}
++        - name: podinfo
++          downwardAPI:
++            items:
++              - path: "labels"
++                fieldRef:
++                  fieldPath: metadata.labels
+   volumeClaimTemplates:
+     - metadata:
+         name: export
+@@ -120,4 +104,4 @@ spec:
+         resources:
+           requests:
+             storage: {{ .Values.persistence.size }}
+-  {{- end }}
++{{- end }}
+diff --git a/stable/minio/values.yaml b/stable/minio/values.yaml
+index 58e3039af..d16881076 100644
+--- a/stable/minio/values.yaml
++++ b/stable/minio/values.yaml
+@@ -2,10 +2,12 @@
+ ## minio server mode, i.e. standalone or distributed.
+ ## Distributed Minio ref: https://docs.minio.io/docs/distributed-minio-quickstart-guide
+ ##
+-image: "minio/minio"
+-imageTag: "RELEASE.2018-03-12T21-25-28Z"
+-imagePullPolicy: "IfNotPresent"
+-mode: "standalone"
++image:
++  repository: minio/minio
++  tag: RELEASE.2018-03-16T22-52-12Z
++  pullPolicy: IfNotPresent
++
++mode: standalone
+ 
+ ## Set default accesskey, secretkey, Minio config file path, volume mount path and
+ ## number of nodes (only used for Minio distributed mode)
+@@ -17,11 +19,6 @@ configPath: ""
+ mountPath: "/export"
+ replicas: 4
+ 
+-## loadBalancerIP for the Minio Service (optional, cloud specific)
+-## ref: http://kubernetes.io/docs/user-guide/services/#type-loadbalancer
+-##
+-# minioLoadBalancerIP:
+-
+ ## Enable persistence using Persistent Volume Claims
+ ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+ ##
+@@ -53,8 +50,24 @@ subPath: ""
+ ## or access it from within the cluster (ClusterIP service). Set the service type and the port to serve it.
+ ## ref: http://kubernetes.io/docs/user-guide/services/
+ ##
+-serviceType: LoadBalancer
+-servicePort: 9000
++
++service:
++  type: ClusterIP
++  clusterIP: None
++  port: 9000
++
++ingress:
++  enabled: false
++  annotations: {}
++    # kubernetes.io/ingress.class: nginx
++    # kubernetes.io/tls-acme: "true"
++  path: /
++  hosts:
++    - chart-example.local
++  tls: []
++  #  - secretName: chart-example-tls
++  #    hosts:
++  #      - chart-example.local
+ 
+ ## Node labels for pod assignment
+ ## Ref: https://kubernetes.io/docs/user-guide/node-selection/
+@@ -87,7 +100,6 @@ defaultBucket:
+ azuregateway:
+   enabled: false
+ 
+-
+ ## https://docs.minio.io/docs/minio-bucket-notification-guide
+ ##
+ minioConfig:

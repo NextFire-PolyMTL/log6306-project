@@ -1,0 +1,150 @@
+commit f759be60d9a8fc42bf5d412acfe75281caba6abf
+Author: Ivan Shapovalov <intelfx@intelfx.name>
+Date:   Fri Jan 4 10:33:27 2019 +0300
+
+    [stable/postgresql] Fix `initdbScripts`; add `postgresqlExtendedConf` to pass appended configuration via values (#10294)
+    
+    * k8s: chart: postgresql: refactor initialization-configmap
+    
+    Signed-off-by: Ivan Shapovalov <intelfx@intelfx.name>
+    
+    * k8s: chart: postgresql: pass extended configuration via "postgresqlExtendedConf" values
+    
+    Signed-off-by: Ivan Shapovalov <intelfx@intelfx.name>
+    
+    * k8s: chart: postgresql: bump minor version
+    
+    Signed-off-by: Ivan Shapovalov <intelfx@intelfx.name>
+
+diff --git a/stable/postgresql/Chart.yaml b/stable/postgresql/Chart.yaml
+index 5e4c59355..49d3ae0ed 100644
+--- a/stable/postgresql/Chart.yaml
++++ b/stable/postgresql/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: postgresql
+-version: 3.8.0
++version: 3.9.0
+ appVersion: 10.6.0
+ description: Chart for PostgreSQL, an object-relational database management system (ORDBMS) with an emphasis on extensibility and on standards-compliance.
+ keywords:
+diff --git a/stable/postgresql/README.md b/stable/postgresql/README.md
+index a2679e24c..5bb0f07f3 100644
+--- a/stable/postgresql/README.md
++++ b/stable/postgresql/README.md
+@@ -72,6 +72,7 @@ The following tables lists the configurable parameters of the PostgreSQL chart a
+ | `postgresqlPassword`                          | PostgreSQL admin password                                                                                              | _random 10 character alphanumeric string_                |
+ | `postgresqlDatabase`                          | PostgreSQL database                                                                                                    | `nil`                                                    |
+ | `postgresqlConfiguration`                     | Runtime Config Parameters                                                                                              | `nil`                                                    |
++| `postgresqlExtendedConf`                      | Extended Runtime Config Parameters (appended to main or default configuration)                                         | `nil`                                                    |
+ | `pgHbaConfiguration`                          | Content of pg\_hba.conf                                                                                                | `nil (do not create pg_hba.conf)`                        |
+ | `configurationConfigMap`                      | ConfigMap with the PostgreSQL configuration files (Note: Overrides `postgresqlConfiguration` and `pgHbaConfiguration`) | `nil`                                                    |
+ | `extendedConfConfigMap`                       | ConfigMap with the extended PostgreSQL configuration files                                                             | `nil`                                                    |
+diff --git a/stable/postgresql/templates/extended-config-configmap.yaml b/stable/postgresql/templates/extended-config-configmap.yaml
+index 8b92b3ce3..8a4119578 100644
+--- a/stable/postgresql/templates/extended-config-configmap.yaml
++++ b/stable/postgresql/templates/extended-config-configmap.yaml
+@@ -1,4 +1,4 @@
+-{{- if and (.Files.Glob "files/conf.d/*.conf") (not .Values.extendedConfConfigMap)}}
++{{- if and (or (.Files.Glob "files/conf.d/*.conf") .Values.postgresqlExtendedConf) (not .Values.extendedConfConfigMap)}}
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+@@ -9,5 +9,13 @@ metadata:
+     release: {{ .Release.Name | quote }}
+     heritage: {{ .Release.Service | quote }}
+ data:
+-{{ (.Files.Glob "files/conf.d/*.conf").AsConfig | indent 2 }}
++{{- with .Files.Glob "files/conf.d/*.conf" }}
++{{ .AsConfig | indent 2 }}
++{{- end }}
++{{ with .Values.postgresqlExtendedConf }}
++  override.conf: |
++{{- range $key, $value := . }}
++    {{ $key | snakecase }}={{ $value }}
++{{- end }}
++{{- end }}
+ {{- end }}
+diff --git a/stable/postgresql/templates/initialization-configmap.yaml b/stable/postgresql/templates/initialization-configmap.yaml
+index 6223dfec1..8eb5e0588 100644
+--- a/stable/postgresql/templates/initialization-configmap.yaml
++++ b/stable/postgresql/templates/initialization-configmap.yaml
+@@ -8,16 +8,15 @@ metadata:
+     chart: {{ template "postgresql.chart" . }}
+     release: {{ .Release.Name | quote }}
+     heritage: {{ .Release.Service | quote }}
+-{{- if and (.Files.Glob "files/docker-entrypoint-initdb.d/*.sql.gz") (not .Values.initdbScriptsConfigMap) }}
++{{- with .Files.Glob "files/docker-entrypoint-initdb.d/*.sql.gz" }}
+ binaryData:
+-{{- $root := . }}
+-{{- range $path, $bytes := .Files.Glob "files/docker-entrypoint-initdb.d/*.sql.gz" }}
+-  {{ base $path }}: {{ $root.Files.Get $path | b64enc | quote }}
++{{- range $path, $bytes := . }}
++  {{ base $path }}: {{ $.Files.Get $path | b64enc | quote }}
+ {{- end }}
+ {{- end }}
+ data:
+-{{- if and (.Files.Glob "files/docker-entrypoint-initdb.d/*.{sh,sql}") (not .Values.initdbScriptsConfigMap) }}
+-{{ (.Files.Glob "files/docker-entrypoint-initdb.d/*.{sh,sql}").AsConfig | indent 2 }}
++{{- with .Files.Glob "files/docker-entrypoint-initdb.d/*.{sh,sql}" }}
++{{ .AsConfig | indent 2 }}
+ {{- end }}
+ {{- with .Values.initdbScripts }}
+ {{ toYaml . | indent 2 }}
+diff --git a/stable/postgresql/templates/statefulset.yaml b/stable/postgresql/templates/statefulset.yaml
+index 4038d203e..53df8bccb 100644
+--- a/stable/postgresql/templates/statefulset.yaml
++++ b/stable/postgresql/templates/statefulset.yaml
+@@ -169,7 +169,7 @@ spec:
+         - name: custom-init-scripts
+           mountPath: /docker-entrypoint-initdb.d
+         {{- end }}
+-        {{- if or (.Files.Glob "files/conf.d/*.conf") .Values.extendedConfConfigMap }}
++        {{- if or (.Files.Glob "files/conf.d/*.conf") .Values.postgresqlExtendedConf .Values.extendedConfConfigMap }}
+         - name: postgresql-extended-config
+           mountPath: /bitnami/postgresql/conf/conf.d/
+         {{- end }}
+@@ -244,7 +244,7 @@ spec:
+         configMap:
+           name: {{ template "postgresql.configurationCM" . }}
+       {{- end }}
+-      {{- if or (.Files.Glob "files/conf.d/*.conf") .Values.extendedConfConfigMap }}
++      {{- if or (.Files.Glob "files/conf.d/*.conf") .Values.postgresqlExtendedConf .Values.extendedConfConfigMap }}
+       - name: postgresql-extended-config
+         configMap:
+           name: {{ template "postgresql.extendedConfigurationCM" . }}
+diff --git a/stable/postgresql/values-production.yaml b/stable/postgresql/values-production.yaml
+index 204dfe9b0..f53542fb3 100644
+--- a/stable/postgresql/values-production.yaml
++++ b/stable/postgresql/values-production.yaml
+@@ -98,6 +98,13 @@ postgresqlUsername: postgres
+ ##
+ # postgresqlConfiguration:
+ 
++## PostgreSQL extended configuration
++## As above, but _appended_ to the main configuration
++## Alternatively, you can put your *.conf under the files/conf.d/ directory
++## https://github.com/bitnami/bitnami-docker-postgresql#allow-settings-to-be-loaded-from-files-other-than-the-default-postgresqlconf
++##
++# postgresqlExtendedConf:
++
+ ## PostgreSQL client authentication configuration
+ ## Specify content for pg_hba.conf
+ ## Default: do not create pg_hba.conf
+diff --git a/stable/postgresql/values.yaml b/stable/postgresql/values.yaml
+index c6822a752..e25704a56 100644
+--- a/stable/postgresql/values.yaml
++++ b/stable/postgresql/values.yaml
+@@ -98,6 +98,13 @@ postgresqlUsername: postgres
+ ##
+ # postgresqlConfiguration:
+ 
++## PostgreSQL extended configuration
++## As above, but _appended_ to the main configuration
++## Alternatively, you can put your *.conf under the files/conf.d/ directory
++## https://github.com/bitnami/bitnami-docker-postgresql#allow-settings-to-be-loaded-from-files-other-than-the-default-postgresqlconf
++##
++# postgresqlExtendedConf:
++
+ ## PostgreSQL client authentication configuration
+ ## Specify content for pg_hba.conf
+ ## Default: do not create pg_hba.conf

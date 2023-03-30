@@ -1,0 +1,809 @@
+commit 1a7a35e9407b97925dd9766966b790e05b20a39e
+Author: Hiroshi Hatake <cosmo0920.oucc@gmail.com>
+Date:   Fri Sep 27 06:10:10 2019 +0900
+
+    fluent-bit shared object go plugin (#847)
+    
+    * Import fluent-bit-go-loki plugin sources
+    
+    * Add fluent-bit-go package constraint
+    
+    * Ensure dependencies with dep
+    
+    ```
+    $ dep ensure
+    ```
+    
+    * Update .gitignore
+    
+    * Move fluent-bit-go-loki to fluent-bit/fluent-bit-go-loki directory
+    
+    * Add documentation for fluent-bit-go-loki
+    
+    * Fix for lint
+    
+    * Fix for goimports errors
+    
+    * Display fluent-bit-go-loki plugin version
+    
+    * Use more descriptive description for fluent-bit Loki plugin
+    
+    * Remove needless newlines
+    
+    * Rectify fluent-bit-go-loki makefile
+    
+    Remove needless parts and rename meaningless target
+    
+    * Use more descriptive description in README
+    
+    * refactor(fluent-bit): move make targets into root Makefile
+    
+    * Organize imports
+    
+    * Reorder imports with goimports
+    
+    $ goimports -w out_loki.go
+    
+    * Remove needless LICENSE file
+    
+    Because it is the same for Loki repository.
+    
+    * Rely on Loki client retry mechanism
+    
+    * Make descriptions more clearly
+    
+    * Change default unit
+    
+    * BatchWait: msec -> sec
+    * BatchSize: KiB -> Byte
+    
+    * Use logql to parse Loki native labels format
+    
+    * Use logger instead of fmt.Printf
+    
+    * Update documentation to reflect recent changes
+    
+    * Use prometheus version module to print version
+    
+    * Dump error message with logger
+    
+    * Use DYN_GO_FLAGS instead of custom FLAGS for fluent-bit-plugin
+    
+    * Support RemoveKeys parameter
+    
+    * use logql.ParseMatchers()
+    
+    * refactor fluent-bit go plugin
+    
+    * add ci step for docker image
+    
+    * fix lint issues
+    
+    * fix a failing url test
+    
+    * fix a failing url test
+    
+    * add build images for drone ci
+    
+    * Adding labelmap file to complex record to labels
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * Add helm chart and fix a bug with labelmap
+    
+    * New push path
+    
+    * dep sync
+    
+    * Move fluent-bit folder and use jsonnet for drone
+    
+    * fix build
+    
+    * Adds more documentation and include a basic config in the container
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * remove binaries
+    
+    * Some readme grammar fixes
+    
+    * docs: really nitpicky grammar change in clients README
+    
+    * Add helm documentation
+    
+    * fixes bad config
+    
+    * bump chart
+    
+    * fixes .gitignore
+
+diff --git a/charts/README.md b/charts/README.md
+index cf77f9aa..5f850bc7 100644
+--- a/charts/README.md
++++ b/charts/README.md
+@@ -48,6 +48,20 @@ $ helm upgrade --install loki loki/loki
+ $ helm upgrade --install promtail loki/promtail --set "loki.serviceName=loki"
+ ```
+ 
++## Deploy Loki and fluent-bit to your cluster
++
++```bash
++$ helm upgrade --install loki loki/loki-stack \
++    --set fluent-bit.enabled=true,promtail.enabled=false
++```
++
++## Deploy fluent-bit only
++
++```bash
++$ helm upgrade --install fluent-bit loki/fluent-bit \
++    --set "loki.serviceName=loki.svc.cluster.local"
++```
++
+ ## Deploy Grafana to your cluster
+ 
+ To install Grafana on your cluster with helm, use the following command:
+@@ -56,6 +70,8 @@ To install Grafana on your cluster with helm, use the following command:
+ $ helm install stable/grafana -n loki-grafana
+ ```
+ 
++> The chart loki-stack contains a pre-configured Grafana, simply use `--set grafana.enabled=true`
++
+ To get the admin password for the Grafana pod, run the following command:
+ 
+ ```bash
+diff --git a/charts/fluent-bit/.helmignore b/charts/fluent-bit/.helmignore
+new file mode 100644
+index 00000000..50af0317
+--- /dev/null
++++ b/charts/fluent-bit/.helmignore
+@@ -0,0 +1,22 @@
++# Patterns to ignore when building packages.
++# This supports shell glob matching, relative path matching, and
++# negation (prefixed with !). Only one pattern per line.
++.DS_Store
++# Common VCS dirs
++.git/
++.gitignore
++.bzr/
++.bzrignore
++.hg/
++.hgignore
++.svn/
++# Common backup files
++*.swp
++*.bak
++*.tmp
++*~
++# Various IDEs
++.project
++.idea/
++*.tmproj
++.vscode/
+diff --git a/charts/fluent-bit/Chart.yaml b/charts/fluent-bit/Chart.yaml
+new file mode 100644
+index 00000000..ae9b2f8d
+--- /dev/null
++++ b/charts/fluent-bit/Chart.yaml
+@@ -0,0 +1,13 @@
++name: fluent-bit
++version: 0.0.1
++appVersion: v0.0.1
++kubeVersion: "^1.10.0-0"
++description: "Uses fluent-bit Loki go plugin for gathering logs and sending them to Loki"
++home: https://grafana.com/loki
++icon: https://github.com/grafana/loki/raw/master/docs/logo.png
++sources:
++- https://github.com/grafana/loki
++maintainers:
++- name: Loki Maintainers
++  email: lokiproject@googlegroups.com
++engine: gotpl
+diff --git a/charts/fluent-bit/README.md b/charts/fluent-bit/README.md
+new file mode 100644
+index 00000000..c85935a9
+--- /dev/null
++++ b/charts/fluent-bit/README.md
+@@ -0,0 +1,104 @@
++# Fluent-bit Loki chart
++
++This chart install the fluent-bit application to ship logs to Loki. It defines daemonset on a [Kubernetes](http://kubernetes.io) cluster using the [Helm](https://helm.sh) package manager.
++
++## Installing the Chart
++
++> If you don't have `Helm` installed locally, or `Tiller` installed in your Kubernetes cluster, read the [Using Helm](https://docs.helm.sh/using_helm/) documentation to get started.
++To install the chart with the release name `my-release` using our helm repository:
++
++```bash
++helm repo add loki https://grafana.github.io/loki/charts
++helm upgrade --install my-release loki/fluent-bit \
++    --set loki.serviceName=loki.svc.cluster.local
++```
++
++The command deploys fluent-bit on the Kubernetes cluster with the default configuration. The [configuration](#configuration) section lists the parameters that can be configured during installation.
++
++To configure the chart to send to [Grafana Cloud](https://grafana.com/products/cloud) use:
++
++```bash
++helm upgrade --install my-release loki/fluent-bit \
++    --set loki.serviceName=logs-us-west1.grafana.net,loki.servicePort=80,loki.serviceScheme=https \
++    --set loki.user=2830,loki.password=1234
++```
++
++> **Tip**: List all releases using `helm list`
++
++To install a custom tag use the following command:
++
++```bash
++helm upgrade --install my-release loki/fluent-bit \
++    --set image.tag=<custom tag>
++```
++
++The full list of available tags on [docker hub](https://cloud.docker.com/u/grafana/repository/docker/grafana/fluent-bit-plugin-loki).
++
++Alternatively you can install the full [Loki stack](../loki-stack) (Loki + fluent-bit) using:
++
++```bash
++helm upgrade --install my-release loki/loki-stack \
++    --set fluent-bit.enabled=true,promtail.enabled=false
++```
++
++This will automatically configured the `loki.serviceName` configuration field to the newly created Loki instance.
++
++## RBAC
++
++By default, `rbac.create` is set to true. This enable RBAC support in fluent-bit and must be true if RBAC is enabled in your cluster.
++
++The chart will take care of creating the required service accounts and roles for fluent-bit.
++
++If you have RBAC disabled, or to put it another way, ABAC enabled, you should set this value to `false`.
++
++## Uninstalling the Chart
++
++To uninstall/delete the `my-release` deployment:
++
++```bash
++helm delete my-release
++```
++
++The command removes all the Kubernetes components associated with the chart and deletes the release.
++
++## Configuration
++
++The following tables lists the configurable parameters of the fluent-bit chart and their default values.
++
++For more details, read the [fluent-bit documentation](../../../cmd/fluent-bit/README.md)
++
++| Parameter                | Description                                                                                        | Default                          |
++|--------------------------|----------------------------------------------------------------------------------------------------|----------------------------------|
++| `loki.serviceName`       | The address of the Loki service.                                                                   | `"${RELEASE}-loki"`              |
++| `loki.servicePort`       | The port of the Loki service.                                                                      | `3100`                           |
++| `loki.serviceScheme`     | The scheme of the Loki service.                                                                    | `http`                           |
++| `loki.user`              | The http basic auth username to access the Loki service.                                           |                                  |
++| `loki.password`          | The http basic auth password to access the Loki service.                                           |                                  |
++| `config.port`            | the fluent-bit port to listen. (This is mainly used to serve metrics)                              | `2020`                           |
++| `config.loglevel`        | the fluent-bit log level (debug,info,warn,error).                                                  | `warn`                           |
++| `config.lineFormat`      | The line format to use to send a record (json/key_value)                                           | `json`                           |
++| `config.removeKeys`      | The list of key to remove from each record                                                         | `[removeKeys,stream]`            |
++| `config.labels`          | A set of labels to send for every log                                                              | `'{job="fluent-bit"}'`           |
++| `config.labelMap`        | Mapping of labels from a record. See [fluent-bit documentation](../../../cmd/fluent-bit/README.md) |                                  |
++| `affinity`               | [affinity][affinity] settings for pod assignment                                                   | `{}`                             |
++| `annotations`            | Annotations to add to Kubernetes resources.                                                        | `{}`                             |
++| `deploymentStrategy`     | The deployment strategy to use with the daemonset                                                  | `RollingUpdate`                  |
++| `image.repository`       | The fluent-bit docker image repository                                                             | `grafana/fluent-bit-plugin-loki` |
++| `image.tag`              | The fluent-bit docker image tag                                                                    | `0.1`                            |
++| `image.pullPolicy`       | The fluent-bit docker image pull policy                                                            | `IfNotPresent`                   |
++| `nodeSelector`           | fluent-bit [node labels][nodeSelector] for pod assignment                                          | `{}`                             |
++| `podLabels`              | additional fluent-bit pod labels                                                                   | `{}`                             |
++| `podAnnotations`         | additional fluent-bit pod annotations                                                              | `Prometheus discovery`           |
++| `rbac.create`            | Activate support for RBAC                                                                          | `true`                           |
++| `resources`              | Resource requests/limit                                                                            |                                  |
++| `tolerations`            | [Toleration][toleration] labels for pod assignment                                                 | `no schedule on master nodes`    |
++| `volumes`                | [Volume]([volumes]) to mount                                                                       | `host containers log`            |
++| `volumeMounts`           | Volume mount mapping                                                                               |                                  |
++| `serviceMonitor.enabled` | Create a [Prometheus Operator](operator) serviceMonitor resource for fluent-bit                    | `false`                          |
++
++
++[toleration]: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
++[nodeSelector]: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
++[affinity]: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
++[volumes]: https://kubernetes.io/docs/concepts/storage/volumes/
++[operator]: https://github.com/coreos/prometheus-operator
+diff --git a/charts/fluent-bit/templates/NOTES.txt b/charts/fluent-bit/templates/NOTES.txt
+new file mode 100644
+index 00000000..bbb70770
+--- /dev/null
++++ b/charts/fluent-bit/templates/NOTES.txt
+@@ -0,0 +1,3 @@
++Verify the application is working by running these commands:
++  kubectl --namespace {{ .Release.Namespace }} port-forward daemonset/{{ include "fluent-bit-loki.fullname" . }} {{ .Values.config.port }}
++  curl http://127.0.0.1:{{ .Values.config.port }}/api/v1/metrics/prometheus
+diff --git a/charts/fluent-bit/templates/_helpers.tpl b/charts/fluent-bit/templates/_helpers.tpl
+new file mode 100644
+index 00000000..ddbbe85a
+--- /dev/null
++++ b/charts/fluent-bit/templates/_helpers.tpl
+@@ -0,0 +1,66 @@
++{{/* vim: set filetype=mustache: */}}
++{{/*
++Expand the name of the chart.
++*/}}
++{{- define "fluent-bit-loki.name" -}}
++{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*
++Create a default fully qualified app name.
++We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
++If release name contains chart name it will be used as a full name.
++*/}}
++{{- define "fluent-bit-loki.fullname" -}}
++{{- if .Values.fullnameOverride -}}
++{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Create chart name and version as used by the chart label.
++*/}}
++{{- define "fluent-bit-loki.chart" -}}
++{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*
++Create the name of the service account
++*/}}
++{{- define "fluent-bit-loki.serviceAccountName" -}}
++{{- if .Values.serviceAccount.create -}}
++    {{ default (include "fluent-bit-loki.fullname" .) .Values.serviceAccount.name }}
++{{- else -}}
++    {{ default "default" .Values.serviceAccount.name }}
++{{- end -}}
++{{- end -}}
++
++{{/*
++The service name to connect to Loki. Defaults to the same logic as "loki.fullname"
++*/}}
++{{- define "loki.serviceName" -}}
++{{- if .Values.loki.serviceName -}}
++{{- .Values.loki.serviceName -}}
++{{- else if .Values.loki.fullnameOverride -}}
++{{- .Values.loki.fullnameOverride | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- $name := default "loki" .Values.loki.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{- define "helm-toolkit.utils.joinListWithComma" -}}
++{{- $local := dict "first" true -}}
++{{- range $k, $v := . -}}{{- if not $local.first -}},{{- end -}}{{- $v -}}{{- $_ := set $local "first" false -}}{{- end -}}
++{{- end -}}
+diff --git a/charts/fluent-bit/templates/clusterrole.yaml b/charts/fluent-bit/templates/clusterrole.yaml
+new file mode 100644
+index 00000000..ac9239af
+--- /dev/null
++++ b/charts/fluent-bit/templates/clusterrole.yaml
+@@ -0,0 +1,18 @@
++{{- if .Values.rbac.create }}
++kind: ClusterRole
++apiVersion: rbac.authorization.k8s.io/v1
++metadata:
++  labels:
++    app: {{ template "fluent-bit-loki.name" . }}
++    chart: {{ template "fluent-bit-loki.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++  name: {{ template "fluent-bit-loki.fullname" . }}-clusterrole
++  namespace: {{ .Release.Namespace }}
++rules:
++- apiGroups: [""] # "" indicates the core API group
++  resources:
++  - namespaces
++  - pods
++  verbs: ["get", "watch", "list"]
++{{- end }}
+diff --git a/charts/fluent-bit/templates/clusterrolebinding.yaml b/charts/fluent-bit/templates/clusterrolebinding.yaml
+new file mode 100644
+index 00000000..f825c97b
+--- /dev/null
++++ b/charts/fluent-bit/templates/clusterrolebinding.yaml
+@@ -0,0 +1,19 @@
++{{- if .Values.rbac.create }}
++kind: ClusterRoleBinding
++apiVersion: rbac.authorization.k8s.io/v1
++metadata:
++  name: {{ template "fluent-bit-loki.fullname" . }}-clusterrolebinding
++  labels:
++    app: {{ template "fluent-bit-loki.name" . }}
++    chart: {{ template "fluent-bit-loki.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++subjects:
++  - kind: ServiceAccount
++    name: {{ template "fluent-bit-loki.serviceAccountName" . }}
++    namespace: {{ .Release.Namespace }}
++roleRef:
++  kind: ClusterRole
++  name: {{ template "fluent-bit-loki.fullname" . }}-clusterrole
++  apiGroup: rbac.authorization.k8s.io
++{{- end }}
+diff --git a/charts/fluent-bit/templates/configmap.yaml b/charts/fluent-bit/templates/configmap.yaml
+new file mode 100644
+index 00000000..57c44dcd
+--- /dev/null
++++ b/charts/fluent-bit/templates/configmap.yaml
+@@ -0,0 +1,52 @@
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  name: {{ template "fluent-bit-loki.fullname" . }}
++  namespace: {{ .Release.Namespace }}
++  labels:
++    app: {{ template "fluent-bit-loki.name" . }}
++    chart: {{ template "fluent-bit-loki.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++data:
++  fluent-bit.conf: |-
++    [SERVICE]
++        Flush          1
++        Daemon         Off
++        Log_Level      {{ .Values.config.loglevel }}
++        Parsers_File   parsers.conf
++    [INPUT]
++        Name           tail
++        Tag            kube.*
++        Path           /var/log/containers/*.log
++        Parser         docker
++        DB             /run/fluent-bit/flb_kube.db
++        Mem_Buf_Limit  5MB
++    [FILTER]
++        Name           kubernetes
++        Match          kube.*
++        Kube_URL       https://kubernetes.default.svc:443
++        Merge_Log On
++    [Output]
++        Name loki
++        Match *
++        {{- if and .Values.loki.user .Values.loki.password }}
++        Url {{ .Values.loki.serviceScheme }}://{{ .Values.loki.user }}:{{ .Values.loki.password }}@{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}/loki/api/v1/push
++          {{- else }}
++        Url {{ .Values.loki.serviceScheme }}://{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}/loki/api/v1/push
++        {{- end }}
++        Labels {{ .Values.config.labels }}
++        RemoveKeys {{ include "helm-toolkit.utils.joinListWithComma" .Values.config.removeKeys }}
++        LabelMapPath /fluent-bit/etc/labelmap.json
++        LineFormat {{ .Values.config.lineFormat }}
++        LogLevel {{ .Values.config.loglevel }}
++
++  parsers.conf: |-
++    [PARSER]
++        Name        docker
++        Format      json
++        Time_Key    time
++        Time_Format %Y-%m-%dT%H:%M:%S.%L
++
++  labelmap.json: |-
++    {{- .Values.config.labelMap | toPrettyJson | nindent 4}}
+diff --git a/charts/fluent-bit/templates/daemonset.yaml b/charts/fluent-bit/templates/daemonset.yaml
+new file mode 100644
+index 00000000..e57b5323
+--- /dev/null
++++ b/charts/fluent-bit/templates/daemonset.yaml
+@@ -0,0 +1,74 @@
++apiVersion: apps/v1
++kind: DaemonSet
++metadata:
++  name: {{ template "fluent-bit-loki.fullname" . }}
++  namespace: {{ .Release.Namespace }}
++  labels:
++    app: {{ template "fluent-bit-loki.name" . }}
++    chart: {{ template "fluent-bit-loki.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++  annotations:
++    {{- toYaml .Values.annotations | nindent 4 }}
++spec:
++  selector:
++    matchLabels:
++      app: {{ template "fluent-bit-loki.name" . }}
++      release: {{ .Release.Name }}
++  updateStrategy:
++    type: {{ .Values.deploymentStrategy }}
++  {{- if ne .Values.deploymentStrategy "RollingUpdate" }}
++    rollingUpdate: null
++  {{- end }}
++  template:
++    metadata:
++      labels:
++        app: {{ template "fluent-bit-loki.name" . }}
++        release: {{ .Release.Name }}
++        {{- with .Values.podLabels }}
++        {{- toYaml . | nindent 8 }}
++        {{- end }}
++      annotations:
++        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
++        {{- with .Values.podAnnotations }}
++        {{- toYaml . | nindent 8 }}
++        {{- end }}
++    spec:
++      serviceAccountName: {{ template "fluent-bit-loki.serviceAccountName" . }}
++    {{- if .Values.priorityClassName }}
++      priorityClassName: {{ .Values.priorityClassName }}
++    {{- end }}
++      containers:
++        - name: fluent-bit-loki
++          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++          imagePullPolicy: {{ .Values.image.pullPolicy }}
++          volumeMounts:
++            - name: config
++              mountPath: /fluent-bit/etc
++            - name: run
++              mountPath: /run/fluent-bit
++            {{- with .Values.volumeMounts }}
++            {{- toYaml . | nindent 12 }}
++            {{- end }}
++          ports:
++            - containerPort: {{ .Values.config.port }}
++              name: http-metrics
++          resources:
++            {{- toYaml .Values.resources | nindent 12 }}
++      nodeSelector:
++        {{- toYaml .Values.nodeSelector | nindent 8 }}
++      affinity:
++        {{- toYaml .Values.affinity | nindent 8 }}
++      tolerations:
++        {{- toYaml .Values.tolerations | nindent 8 }}
++      terminationGracePeriodSeconds: 10
++      volumes:
++        - name: config
++          configMap:
++            name: {{ template "fluent-bit-loki.fullname" . }}
++        - name: run
++          hostPath:
++            path: /run/fluent-bit
++        {{- with .Values.volumes }}
++        {{- toYaml . | nindent 8 }}
++        {{- end }}
+diff --git a/charts/fluent-bit/templates/service-headless.yaml b/charts/fluent-bit/templates/service-headless.yaml
+new file mode 100644
+index 00000000..332d1063
+--- /dev/null
++++ b/charts/fluent-bit/templates/service-headless.yaml
+@@ -0,0 +1,22 @@
++{{- if .Values.serviceMonitor.enabled }}
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ template "fluent-bit-loki.fullname" . }}-headless
++  namespace: {{ .Release.Namespace }}
++  labels:
++    app: {{ template "fluent-bit-loki.name" . }}
++    chart: {{ template "fluent-bit-loki.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++spec:
++  clusterIP: None
++  ports:
++    - port: {{ .Values.config.port }}
++      protocol: TCP
++      name: http-metrics
++      targetPort: http-metrics
++  selector:
++    app: {{ template "fluent-bit-loki.name" . }}
++    release: {{ .Release.Name }}
++{{- end }}
+diff --git a/charts/fluent-bit/templates/serviceaccount.yaml b/charts/fluent-bit/templates/serviceaccount.yaml
+new file mode 100644
+index 00000000..7933b61e
+--- /dev/null
++++ b/charts/fluent-bit/templates/serviceaccount.yaml
+@@ -0,0 +1,12 @@
++{{- if .Values.serviceAccount.create }}
++apiVersion: v1
++kind: ServiceAccount
++metadata:
++  labels:
++    app: {{ template "fluent-bit-loki.name" . }}
++    chart: {{ template "fluent-bit-loki.chart" . }}
++    heritage: {{ .Release.Service }}
++    release: {{ .Release.Name }}
++  name: {{ template "fluent-bit-loki.serviceAccountName" . }}
++  namespace: {{ .Release.Namespace }}
++{{- end }}
+diff --git a/charts/fluent-bit/templates/servicemonitor.yaml b/charts/fluent-bit/templates/servicemonitor.yaml
+new file mode 100644
+index 00000000..5507bb10
+--- /dev/null
++++ b/charts/fluent-bit/templates/servicemonitor.yaml
+@@ -0,0 +1,30 @@
++{{- if .Values.serviceMonitor.enabled }}
++apiVersion: monitoring.coreos.com/v1
++kind: ServiceMonitor
++metadata:
++  name: {{ template "fluent-bit-loki.fullname" . }}
++  labels:
++    app: {{ template "fluent-bit-loki.name" . }}
++    chart: {{ template "fluent-bit-loki.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++    {{- if .Values.serviceMonitor.additionalLabels }}
++{{ toYaml .Values.serviceMonitor.additionalLabels | indent 4 }}
++    {{- end }}
++spec:
++  selector:
++    matchLabels:
++      app: {{ template "fluent-bit-loki.name" . }}
++      release: {{ .Release.Name | quote }}
++  namespaceSelector:
++    matchNames:
++      - {{ .Release.Namespace | quote }}
++  endpoints:
++  - port: http-metrics
++    {{- if .Values.serviceMonitor.interval }}
++    interval: {{ .Values.serviceMonitor.interval }}
++    {{- end }}
++    {{- if .Values.serviceMonitor.scrapeTimeout }}
++    scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
++    {{- end }}
++{{- end }}
+diff --git a/charts/fluent-bit/values.yaml b/charts/fluent-bit/values.yaml
+new file mode 100644
+index 00000000..1fabc811
+--- /dev/null
++++ b/charts/fluent-bit/values.yaml
+@@ -0,0 +1,96 @@
++---
++loki:
++  serviceName: ""  # Defaults to "${RELEASE}-loki" if not set
++  servicePort: 3100
++  serviceScheme: http
++  # user: user
++  # password: pass
++config:
++  port: 2020
++  loglevel: warn
++  lineFormat: json
++  removeKeys:
++    - kubernetes
++    - stream
++  labels: '{job="fluent-bit"}'
++  labelMap:
++    kubernetes:
++      namespace_name: namespace
++      labels:
++        app: app
++        release: release
++      host: node
++      container_name: container
++      pod_name: instance
++    stream: stream
++
++affinity: {}
++
++annotations: {}
++
++deploymentStrategy: RollingUpdate
++
++image:
++  repository: grafana/fluent-bit-plugin-loki
++  tag: 0.1
++  pullPolicy: IfNotPresent
++
++nameOverride: fluent-bit-loki
++
++## Node labels for pod assignment
++## ref: https://kubernetes.io/docs/user-guide/node-selection/
++nodeSelector: {}
++
++## Pod Labels
++podLabels: {}
++
++podAnnotations:
++  prometheus.io/scrape: "true"
++  prometheus.io/port: "2020"
++  prometheus.io/path: /api/v1/metrics/prometheus
++
++## Assign a PriorityClassName to pods if set
++# priorityClassName:
++
++rbac:
++  create: true
++  pspEnabled: true
++
++resources:
++  limits:
++    memory: 100Mi
++  requests:
++    cpu: 100m
++    memory: 100Mi
++
++serviceAccount:
++  create: true
++  name:
++
++## Tolerations for pod assignment
++## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
++tolerations:
++- key: node-role.kubernetes.io/master
++  effect: NoSchedule
++
++# Extra volumes to scrape logs from
++volumes:
++- name: varlog
++  hostPath:
++    path: /var/log
++- name: varlibdockercontainers
++  hostPath:
++    path: /var/lib/docker/containers
++
++volumeMounts:
++- name: varlog
++  mountPath: /var/log
++- name: varlibdockercontainers
++  mountPath: /var/lib/docker/containers
++  readOnly: true
++
++serviceMonitor:
++  enabled: false
++  interval: ""
++  additionalLabels: {}
++  # scrapeTimeout: 10s
+diff --git a/charts/loki-stack/Chart.yaml b/charts/loki-stack/Chart.yaml
+index ed11e9e5..86995071 100644
+--- a/charts/loki-stack/Chart.yaml
++++ b/charts/loki-stack/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: loki-stack
+-version: 0.16.4
++version: 0.16.5
+ appVersion: v0.3.0
+ kubeVersion: "^1.10.0-0"
+ description: "Loki: like Prometheus, but for logs."
+diff --git a/charts/loki-stack/requirements.yaml b/charts/loki-stack/requirements.yaml
+index 2554a0ee..62807f64 100644
+--- a/charts/loki-stack/requirements.yaml
++++ b/charts/loki-stack/requirements.yaml
+@@ -7,6 +7,10 @@ dependencies:
+   condition: promtail.enabled
+   repository: "file://../promtail"
+   version: "^0.6.0"
++- name: "fluent-bit"
++  condition: fluent-bit.enabled
++  repository: "file://../fluent-bit"
++  version: "^0.0.1"
+ - name: "grafana"
+   condition: grafana.enabled
+   version: "~3.4.3"
+@@ -14,4 +18,4 @@ dependencies:
+ - name: "prometheus"
+   condition: prometheus.enabled
+   version: "~8.11.2"
+-  repository:  "https://kubernetes-charts.storage.googleapis.com/"
+\ No newline at end of file
++  repository:  "https://kubernetes-charts.storage.googleapis.com/"
+diff --git a/charts/loki-stack/values.yaml b/charts/loki-stack/values.yaml
+index 8d6fc56a..40c41971 100644
+--- a/charts/loki-stack/values.yaml
++++ b/charts/loki-stack/values.yaml
+@@ -4,6 +4,9 @@ loki:
+ promtail:
+   enabled: true
+ 
++fluent-bit:
++  enabled: false
++
+ grafana:
+   enabled: false
+   sidecar:

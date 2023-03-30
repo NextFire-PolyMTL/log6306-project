@@ -1,0 +1,39 @@
+commit 3b0a8f9bb14e18f25022a0a51e41fee0020c2cf4
+Author: Eric Greer <ericgreer@gmail.com>
+Date:   Thu Dec 20 10:08:38 2018 -0800
+
+    refactor env vars (#10158)
+    
+    Signed-off-by: Eric Greer <EricGreer@Gmail.com>
+
+diff --git a/stable/kuberhealthy/Chart.yaml b/stable/kuberhealthy/Chart.yaml
+index a5d793ff0..2fb9795c7 100644
+--- a/stable/kuberhealthy/Chart.yaml
++++ b/stable/kuberhealthy/Chart.yaml
+@@ -3,7 +3,7 @@ appVersion: "0.1.1"
+ home: https://comcast.github.io/kuberhealthy/
+ description: The official Helm chart for Kuberhealthy.
+ name: kuberhealthy
+-version: 0.1.1
++version: 0.1.2
+ maintainers:
+   - name: integrii
+     email: eric.greer@comcast.com
+diff --git a/stable/kuberhealthy/templates/deployment.yaml b/stable/kuberhealthy/templates/deployment.yaml
+index ae4820372..6ad4e85c8 100644
+--- a/stable/kuberhealthy/templates/deployment.yaml
++++ b/stable/kuberhealthy/templates/deployment.yaml
+@@ -41,11 +41,11 @@ spec:
+           timeoutSeconds: 1
+         name:  {{ template "kuberhealthy.name" . }}
+         env:
+-          - name: MY_POD_NAME
++          - name: POD_NAME
+             valueFrom:
+               fieldRef:
+                 fieldPath: metadata.name
+-          - name: MY_POD_NAMESPACE
++          - name: POD_NAMESPACE
+             valueFrom:
+               fieldRef:
+                 fieldPath: metadata.namespace

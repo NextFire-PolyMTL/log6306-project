@@ -1,0 +1,1212 @@
+commit b57cf383eb116f68dba938ce9c12ebc758b5a1f7
+Author: Jacob LeGrone <jlegrone@users.noreply.github.com>
+Date:   Tue Dec 4 12:45:03 2018 -0500
+
+    [stable/redis] support redis docker library image (#7745)
+    
+    * refactor(stable/redis): support redis docker library image
+    
+    BREAKING CHANGES:
+    - `master.args` and `slave.args` are removed. Use `master.command` or
+      `slave.command` instead in order to override the image entrypoint,
+       or `master.extraFlags` to pass additional flags to `redis-server`.
+    - `disableCommands` is now interpreted as an array of strings instead
+       of a string of comma separated values.
+    - `master.persistence.path` now defaults to `/data`.
+    
+    Signed-off-by: Jacob LeGrone <git@jacob.work>
+    
+    * test(stable/redis): add ci values for base images & configurations
+    
+    Signed-off-by: Jacob LeGrone <git@jacob.work>
+
+diff --git a/stable/redis/Chart.yaml b/stable/redis/Chart.yaml
+index c8013b43b..4d979c397 100644
+--- a/stable/redis/Chart.yaml
++++ b/stable/redis/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: redis
+-version: 4.3.1
++version: 5.0.0
+ appVersion: 4.0.11
+ description: Open source, advanced key-value store. It is often referred to as a data structure server since keys can contain strings, hashes, lists, sets and sorted sets.
+ keywords:
+diff --git a/stable/redis/README.md b/stable/redis/README.md
+index d7e88295a..b2e944723 100644
+--- a/stable/redis/README.md
++++ b/stable/redis/README.md
+@@ -52,6 +52,17 @@ The command removes all the Kubernetes components associated with the chart and
+ A major chart version change (like v1.2.3 -> v2.0.0) indicates that there is an
+ incompatible breaking change needing manual actions.
+ 
++### 5.0.0
++
++The default image in this release may be switched out for any image containing the `redis-server`
++and `redis-cli` binaries. If `redis-server` is not the default image ENTRYPOINT, `master.command`
++must be specified.
++
++#### Breaking changes
++- `master.args` and `slave.args` are removed. Use `master.command` or `slave.command` instead in order to override the image entrypoint, or `master.extraFlags` to pass additional flags to `redis-server`.
++- `disableCommands` is now interpreted as an array of strings instead of a string of comma separated values.
++- `master.persistence.path` now defaults to `/data`.
++
+ ### 4.0.0
+ 
+ This version removes the `chart` label from the `spec.selector.matchLabels`
+@@ -85,7 +96,7 @@ The following table lists the configurable parameters of the Redis chart and the
+ | `image.pullPolicy`                         | Image pull policy                                                                                              | `Always`                                             |
+ | `image.pullSecrets`                        | Specify docker-registry secret names as an array                                                               | `nil`                                                |
+ | `cluster.enabled`                          | Use master-slave topology                                                                                      | `true`                                               |
+-| `cluster.slaveCount`                       | Number of slaves                                                                                               | 1                                                    |
++| `cluster.slaveCount`                       | Number of slaves                                                                                               | `1`                                                  |
+ | `existingSecret`                           | Name of existing secret object (for password authentication)                                                   | `nil`                                                |
+ | `usePassword`                              | Use password                                                                                                   | `true`                                               |
+ | `password`                                 | Redis password (ignored if existingSecret set)                                                                 | Randomly generated                                   |
+@@ -115,7 +126,7 @@ The following table lists the configurable parameters of the Redis chart and the
+ | `metrics.serviceMonitor.selector`          | Default to kube-prometheus install (CoreOS recommended), but should be set according to Prometheus install     | `{ prometheus: kube-prometheus }`                    |
+ | `persistence.existingClaim`                | Provide an existing PersistentVolumeClaim                                                                      | `nil`                                                |
+ | `master.persistence.enabled`               | Use a PVC to persist data (master node)                                                                        | `true`                                               |
+-| `master.persistence.path`                  | Path to mount the volume at, to use other images                                                               | `/bitnami`                                           |
++| `master.persistence.path`                  | Path to mount the volume at, to use other images                                                               | `/data`                                              |
+ | `master.persistence.subPath`               | Subdirectory of the volume to mount at                                                                         | `""`                                                 |
+ | `master.persistence.storageClass`          | Storage class of backing PVC                                                                                   | `generic`                                            |
+ | `master.persistence.accessModes`           | Persistent Volume Access Modes                                                                                 | `[ReadWriteOnce]`                                    |
+@@ -124,8 +135,8 @@ The following table lists the configurable parameters of the Redis chart and the
+ | `master.statefulset.rollingUpdatePartition`| Partition update strategy                                                                                      | `nil`                                                |
+ | `master.podLabels`                         | Additional labels for Redis master pod                                                                         | {}                                                   |
+ | `master.podAnnotations`                    | Additional annotations for Redis master pod                                                                    | {}                                                   |
+-| `master.port`                              | Redis master port                                                                                              | 6379                                                 |
+-| `master.args`                              | Redis master command-line args                                                                                 | []                                                   |
++| `master.port`                              | Redis master port                                                                                              | `6379`                                               |
++| `master.command`                           | Redis master entrypoint array. The docker image's ENTRYPOINT is used if this is not provided.                  | []                                                   |
+ | `master.disableCommands`                   | Comma-separated list of Redis commands to disable (master)                                                     | `FLUSHDB,FLUSHALL`                                   |
+ | `master.extraFlags`                        | Redis master additional command line flags                                                                     | []                                                   |
+ | `master.nodeSelector`                      | Redis master Node labels for pod assignment                                                                    | {"beta.kubernetes.io/arch": "amd64"}                 |
+@@ -162,7 +173,7 @@ The following table lists the configurable parameters of the Redis chart and the
+ | `slave.service.annotations`                | annotations for redis slave service                                                                            | {}                                                   |
+ | `slave.service.loadBalancerIP`             | LoadBalancerIP if Redis slave service type is `LoadBalancer`                                                   | `nil`                                                |
+ | `slave.port`                               | Redis slave port                                                                                               | `master.port`                                        |
+-| `slave.args`                               | Redis slave command-line args                                                                                  | `master.args`                                        |
++| `slave.command`                            | Redis slave entrypoint array. The docker image's ENTRYPOINT is used if this is not provided.                   | `master.command`                                     |
+ | `slave.disableCommands`                    | Comma-separated list of Redis commands to disable (slave)                                                      | `master.disableCommands`                             |
+ | `slave.extraFlags`                         | Redis slave additional command line flags                                                                      | `master.extraFlags`                                  |
+ | `slave.livenessProbe.enabled`              | Turn on and off liveness probe (redis slave pod)                                                               | `master.livenessProbe.enabled`                       |
+@@ -184,9 +195,7 @@ The following table lists the configurable parameters of the Redis chart and the
+ | `slave.securityContext.fsGroup`            | Group ID for the container (redis slave pod)                                                                   | `master.securityContext.fsGroup`                     |
+ | `slave.securityContext.runAsUser`          | User ID for the container (redis slave pod)                                                                    | `master.securityContext.runAsUser`                   |
+ | `slave.resources`                          | Redis slave CPU/Memory resource requests/limits                                                                | `master.resources`                                   |
+-| `slave.affinity`                          | Enable node/pod affinity for slaves                                                                | {}                                   |
+-
+-The above parameters map to the env variables defined in [bitnami/redis](http://github.com/bitnami/bitnami-docker-redis). For more information please refer to the [bitnami/redis](http://github.com/bitnami/bitnami-docker-redis) image documentation.
++| `slave.affinity`                           | Enable node/pod affinity for slaves                                                                            | {}                                                   |
+ 
+ Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
+ 
+@@ -225,11 +234,7 @@ after a successful install.
+ 
+ ## Persistence
+ 
+-The [Bitnami Redis](https://github.com/bitnami/bitnami-docker-redis) image stores the Redis data and configurations at the `/bitnami` path of the container.
+-
+-By default, the chart mounts a [Persistent Volume](http://kubernetes.io/docs/user-guide/persistent-volumes/) at this location. The volume is created using dynamic volume provisioning. If a Persistent Volume Claim already exists, specify it during installation.
+-
+-By default, the chart persists both data and configuration. If you wish to persist only the data directory set `persistence.path` to `/bitnami/redis/data` and `persistence.subPath` to `redis/data`.
++By default, the chart mounts a [Persistent Volume](http://kubernetes.io/docs/user-guide/persistent-volumes/) at the `/data` path. The volume is created using dynamic volume provisioning. If a Persistent Volume Claim already exists, specify it during installation.
+ 
+ ### Existing PersistentVolumeClaim
+ 
+diff --git a/stable/redis/ci/default-values.yaml b/stable/redis/ci/default-values.yaml
+new file mode 100644
+index 000000000..6cd1ff948
+--- /dev/null
++++ b/stable/redis/ci/default-values.yaml
+@@ -0,0 +1,354 @@
++## Global Docker image registry
++## Please, note that this will override the image registry for all the images, including dependencies, configured to use the global value
++##
++# global:
++#   imageRegistry:
++
++## Bitnami Redis image version
++## ref: https://hub.docker.com/r/bitnami/redis/tags/
++##
++image:
++  registry: docker.io
++  repository: bitnami/redis
++  ## Bitnami Redis image tag
++  ## ref: https://github.com/bitnami/bitnami-docker-redis#supported-tags-and-respective-dockerfile-links
++  ##
++  tag: 4.0.11
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: Always
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
++
++## Cluster settings
++cluster:
++  enabled: true
++  slaveCount: 1
++
++networkPolicy:
++  ## Specifies whether a NetworkPolicy should be created
++  ##
++  enabled: false
++
++  ## The Policy model to apply. When set to false, only pods with the correct
++  ## client label will have network access to the port Redis is listening
++  ## on. When true, Redis will accept connections from any source
++  ## (with the correct destination port).
++  ##
++  # allowExternal: true
++
++serviceAccount:
++  ## Specifies whether a ServiceAccount should be created
++  ##
++  create: false
++  ## The name of the ServiceAccount to use.
++  ## If not set and create is true, a name is generated using the fullname template
++  name:
++
++rbac:
++  ## Specifies whether RBAC resources should be created
++  ##
++  create: false
++
++  role:
++    ## Rules to create. It follows the role specification
++    # rules:
++    #  - apiGroups:
++    #    - extensions
++    #    resources:
++    #      - podsecuritypolicies
++    #    verbs:
++    #      - use
++    #    resourceNames:
++    #      - gce.unprivileged
++    rules: []
++
++## Use password authentication
++usePassword: true
++## Redis password (both master and slave)
++## Defaults to a random 10-character alphanumeric string if not set and usePassword is true
++## ref: https://github.com/bitnami/bitnami-docker-redis#setting-the-server-password-on-first-run
++##
++password:
++## Use existing secret (ignores previous password)
++# existingSecret:
++
++## Persist data to a persistent volume
++persistence: {}
++  ## A manually managed Persistent Volume and Claim
++  ## Requires persistence.enabled: true
++  ## If defined, PVC must be created manually before volume will be bound
++  # existingClaim:
++
++##
++## Redis Master parameters
++##
++master:
++  ## Redis port
++  port: 6379
++  ## Redis command arguments
++  ##
++  ## Can be used to specify command line arguments, for example:
++  ##
++  command:
++  - "/run.sh"
++  ## Redis additional command line flags
++  ##
++  ## Can be used to specify command line flags, for example:
++  ##
++  ## extraFlags:
++  ##  - "--maxmemory-policy volatile-ttl"
++  ##  - "--repl-backlog-size 1024mb"
++  extraFlags: []
++  ## Comma-separated list of Redis commands to disable
++  ##
++  ## Can be used to disable Redis commands for security reasons.
++  ## Commands will be completely disabled by renaming each to an empty string.
++  ## ref: https://redis.io/topics/security#disabling-of-specific-commands
++  ##
++  disableCommands:
++  - FLUSHDB
++  - FLUSHALL
++
++  ## Redis Master additional pod labels and annotations
++  ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
++  podLabels: {}
++  podAnnotations: {}
++
++  ## Redis Master resource requests and limits
++  ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
++  # resources:
++  #   requests:
++  #     memory: 256Mi
++  #     cpu: 100m
++  ## Use an alternate scheduler, e.g. "stork".
++  ## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
++  ##
++  # schedulerName:
++
++  ## Configure extra options for Redis Master liveness and readiness probes
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#configure-probes)
++  ##
++  livenessProbe:
++    enabled: true
++    initialDelaySeconds: 5
++    periodSeconds: 5
++    timeoutSeconds: 5
++    successThreshold: 1
++    failureThreshold: 5
++  readinessProbe:
++    enabled: true
++    initialDelaySeconds: 5
++    periodSeconds: 5
++    timeoutSeconds: 1
++    successThreshold: 1
++    failureThreshold: 5
++
++  ## Redis Master Node selectors and tolerations for pod assignment
++  ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
++  ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#taints-and-tolerations-beta-feature
++  ##
++  # nodeSelector: {"beta.kubernetes.io/arch": "amd64"}
++  # tolerations: []
++  ## Redis Master pod/node affinity/anti-affinity
++  ##
++  affinity: {}
++
++  ## Redis Master Service properties
++  service:
++    ##  Redis Master Service type
++    type: ClusterIP
++    port: 6379
++
++    ## Specify the nodePort value for the LoadBalancer and NodePort service types.
++    ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
++    ##
++    # nodePort:
++
++    ## Provide any additional annotations which may be required. This can be used to
++    ## set the LoadBalancer service type to internal only.
++    ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
++    ##
++    annotations: {}
++    loadBalancerIP:
++
++  ## Redis Master Pod Security Context
++  securityContext:
++    enabled: true
++    fsGroup: 1001
++    runAsUser: 1001
++
++  ## Enable persistence using Persistent Volume Claims
++  ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
++  ##
++  persistence:
++    enabled: true
++    ## The path the volume will be mounted at, useful when using different
++    ## Redis images.
++    path: /data
++    ## The subdirectory of the volume to mount to, useful in dev environments
++    ## and one PV for multiple services.
++    subPath: ""
++    ## redis data Persistent Volume Storage Class
++    ## If defined, storageClassName: <storageClass>
++    ## If set to "-", storageClassName: "", which disables dynamic provisioning
++    ## If undefined (the default) or set to null, no storageClassName spec is
++    ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
++    ##   GKE, AWS & OpenStack)
++    ##
++    # storageClass: "-"
++    accessModes:
++    - ReadWriteOnce
++    size: 8Gi
++
++  ## Update strategy, can be set to RollingUpdate or onDelete by default.
++  ## https://kubernetes.io/docs/tutorials/stateful-application/basic-stateful-set/#updating-statefulsets
++  statefulset:
++    updateStrategy: RollingUpdate
++    ## Partition update strategy
++    ## https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#partitions
++    # rollingUpdatePartition:
++
++
++##
++## Redis Slave properties
++## Note: service.type is a mandatory parameter
++## The rest of the parameters are either optional or, if undefined, will inherit those declared in Redis Master
++##
++slave:
++  ## Slave Service properties
++  service:
++    ## Redis Slave Service type
++    type: ClusterIP
++    ## Specify the nodePort value for the LoadBalancer and NodePort service types.
++    ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
++    ##
++    # nodePort:
++
++    ## Provide any additional annotations which may be required. This can be used to
++    ## set the LoadBalancer service type to internal only.
++    ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
++    ##
++    annotations: {}
++    loadBalancerIP:
++
++  ## Redis port
++  # port: 6379
++  ## Redis extra flags
++  # extraFlags: []
++  ## List of Redis commands to disable
++  # disableCommands: []
++
++  ## Redis Slave pod/node affinity/anti-affinity
++  ##
++  affinity: {}
++
++  ## Configure extra options for Redis Slave liveness and readiness probes
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#configure-probes)
++  ##
++  # livenessProbe:
++  #   enabled: true
++  #   initialDelaySeconds: 30
++  #   periodSeconds: 10
++  #   timeoutSeconds: 5
++  #   successThreshold: 1
++  #   failureThreshold: 5
++  # readinessProbe:
++  #   enabled: true
++  #   initialDelaySeconds: 5
++  #   periodSeconds: 10
++  #   timeoutSeconds: 10
++  #   successThreshold: 1
++  #   failureThreshold: 5
++
++  ## Redis slave Resource
++  # resources:
++  #   requests:
++  #     memory: 256Mi
++  #     cpu: 100m
++
++  ## Redis slave selectors and tolerations for pod assignment
++  # nodeSelector: {"beta.kubernetes.io/arch": "amd64"}
++  # tolerations: []
++
++  ## Use an alternate scheduler, e.g. "stork".
++  ## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
++  ##
++  # schedulerName:
++
++  ## Redis slave pod Annotation and Labels
++  # podLabels: {}
++  # podAnnotations: {}
++
++  ## Redis slave pod Security Context
++  # securityContext:
++  #   enabled: true
++  #   fsGroup: 1001
++  #   runAsUser: 1001
++
++## Prometheus Exporter / Metrics
++##
++metrics:
++  enabled: false
++
++  image:
++    registry: docker.io
++    repository: oliver006/redis_exporter
++    tag: v0.20.2
++    pullPolicy: IfNotPresent
++    ## Optionally specify an array of imagePullSecrets.
++    ## Secrets must be manually created in the namespace.
++    ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++    ##
++    # pullSecrets:
++    #   - myRegistrKeySecretName
++
++  service:
++    type: ClusterIP
++    ## Use serviceLoadBalancerIP to request a specific static IP,
++    ## otherwise leave blank
++    # loadBalancerIP:
++    annotations:
++      prometheus.io/scrape: "true"
++      prometheus.io/port: "9121"
++
++  ## Metrics exporter resource requests and limits
++  ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
++  ##
++  # resources: {}
++
++  ## Extra arguments for Metrics exporter, for example:
++  ## extraArgs:
++  ##   check-keys: myKey,myOtherKey
++  # extraArgs: {}
++
++  ## Metrics exporter labels and tolerations for pod assignment
++  # nodeSelector: {"beta.kubernetes.io/arch": "amd64"}
++  # tolerations: []
++
++  ## Metrics exporter pod Annotation and Labels
++  # podAnnotations: {}
++  # podLabels: {}
++
++##
++## Init containers parameters:
++## volumePermissions: Change the owner of the persist volume mountpoint to RunAsUser:fsGroup
++##
++volumePermissions:
++  image:
++    registry: docker.io
++    repository: bitnami/minideb
++    tag: latest
++    pullPolicy: IfNotPresent
++
++## Redis config file
++## ref: https://redis.io/topics/config
++##
++configmap: |-
++  # maxmemory-policy volatile-lru
+diff --git a/stable/redis/ci/dev-values.yaml b/stable/redis/ci/dev-values.yaml
+new file mode 100644
+index 000000000..be01913b5
+--- /dev/null
++++ b/stable/redis/ci/dev-values.yaml
+@@ -0,0 +1,9 @@
++master:
++  persistence:
++    enabled: false
++
++cluster:
++  enabled: true
++  slaveCount: 1
++
++usePassword: false
+diff --git a/stable/redis/ci/production-values.yaml b/stable/redis/ci/production-values.yaml
+new file mode 100644
+index 000000000..ff7d005d5
+--- /dev/null
++++ b/stable/redis/ci/production-values.yaml
+@@ -0,0 +1,355 @@
++## Global Docker image registry
++## Please, note that this will override the image registry for all the images, including dependencies, configured to use the global value
++##
++# global:
++#   imageRegistry:
++
++## Bitnami Redis image version
++## ref: https://hub.docker.com/r/bitnami/redis/tags/
++##
++image:
++  registry: docker.io
++  repository: bitnami/redis
++  ## Bitnami Redis image tag
++  ## ref: https://github.com/bitnami/bitnami-docker-redis#supported-tags-and-respective-dockerfile-links
++  ##
++  tag: 4.0.11
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
++
++## Cluster settings
++cluster:
++  enabled: true
++  slaveCount: 3
++
++networkPolicy:
++  ## Specifies whether a NetworkPolicy should be created
++  ##
++  enabled: true
++
++  ## The Policy model to apply. When set to false, only pods with the correct
++  ## client label will have network access to the port Redis is listening
++  ## on. When true, Redis will accept connections from any source
++  ## (with the correct destination port).
++  ##
++  # allowExternal: true
++
++serviceAccount:
++  ## Specifies whether a ServiceAccount should be created
++  ##
++  create: false
++  ## The name of the ServiceAccount to use.
++  ## If not set and create is true, a name is generated using the fullname template
++  name:
++
++rbac:
++  ## Specifies whether RBAC resources should be created
++  ##
++  create: false
++
++  role:
++    ## Rules to create. It follows the role specification
++    # rules:
++    #  - apiGroups:
++    #    - extensions
++    #    resources:
++    #      - podsecuritypolicies
++    #    verbs:
++    #      - use
++    #    resourceNames:
++    #      - gce.unprivileged
++    rules: []
++
++## Use password authentication
++usePassword: true
++## Redis password (both master and slave)
++## Defaults to a random 10-character alphanumeric string if not set and usePassword is true
++## ref: https://github.com/bitnami/bitnami-docker-redis#setting-the-server-password-on-first-run
++##
++password:
++## Use existing secret (ignores previous password)
++# existingSecret:
++
++## Persist data to a persistent volume
++persistence: {}
++  ## A manually managed Persistent Volume and Claim
++  ## Requires persistence.enabled: true
++  ## If defined, PVC must be created manually before volume will be bound
++  # existingClaim:
++
++##
++## Redis Master parameters
++##
++master:
++  ## Redis port
++  port: 6379
++  ## Redis command arguments
++  ##
++  ## Can be used to specify command line arguments, for example:
++  ##
++  # command:
++  #  - "redis-server"
++  ## Redis additional command line flags
++  ##
++  ## Can be used to specify command line flags, for example:
++  ##
++  ## extraFlags:
++  ##  - "--maxmemory-policy volatile-ttl"
++  ##  - "--repl-backlog-size 1024mb"
++  extraFlags: []
++  ## Comma-separated list of Redis commands to disable
++  ##
++  ## Can be used to disable Redis commands for security reasons.
++  ## Commands will be completely disabled by renaming each to an empty string.
++  ## ref: https://redis.io/topics/security#disabling-of-specific-commands
++  ##
++  disableCommands:
++  - FLUSHDB
++  - FLUSHALL
++
++  ## Redis Master additional pod labels and annotations
++  ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
++  podLabels: {}
++  podAnnotations: {}
++
++  ## Redis Master resource requests and limits
++  ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
++  # resources:
++  #   requests:
++  #     memory: 256Mi
++  #     cpu: 100m
++  ## Use an alternate scheduler, e.g. "stork".
++  ## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
++  ##
++  # schedulerName:
++
++  ## Configure extra options for Redis Master liveness and readiness probes
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#configure-probes)
++  ##
++  livenessProbe:
++    enabled: true
++    initialDelaySeconds: 30
++    periodSeconds: 10
++    timeoutSeconds: 5
++    successThreshold: 1
++    failureThreshold: 5
++  readinessProbe:
++    enabled: true
++    initialDelaySeconds: 5
++    periodSeconds: 10
++    timeoutSeconds: 1
++    successThreshold: 1
++    failureThreshold: 5
++
++  ## Redis Master Node selectors and tolerations for pod assignment
++  ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
++  ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#taints-and-tolerations-beta-feature
++  ##
++  # nodeSelector: {"beta.kubernetes.io/arch": "amd64"}
++  # tolerations: []
++  ## Redis Master pod/node affinity/anti-affinity
++  ##
++  affinity: {}
++
++  ## Redis Master Service properties
++  service:
++    ##  Redis Master Service type
++    type: ClusterIP
++    port: 6379
++
++    ## Specify the nodePort value for the LoadBalancer and NodePort service types.
++    ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
++    ##
++    # nodePort:
++
++    ## Provide any additional annotations which may be required. This can be used to
++    ## set the LoadBalancer service type to internal only.
++    ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
++    ##
++    annotations: {}
++    loadBalancerIP:
++
++  ## Redis Master Pod Security Context
++  ##
++  securityContext:
++    enabled: true
++    fsGroup: 1001
++    runAsUser: 1001
++
++  ## Enable persistence using Persistent Volume Claims
++  ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
++  ##
++  persistence:
++    enabled: true
++    ## The path the volume will be mounted at, useful when using different
++    ## Redis images.
++    path: /bitnami/redis/data
++    ## The subdirectory of the volume to mount to, useful in dev environments
++    ## and one PV for multiple services.
++    subPath: ""
++    ## redis data Persistent Volume Storage Class
++    ## If defined, storageClassName: <storageClass>
++    ## If set to "-", storageClassName: "", which disables dynamic provisioning
++    ## If undefined (the default) or set to null, no storageClassName spec is
++    ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
++    ##   GKE, AWS & OpenStack)
++    ##
++    # storageClass: "-"
++    accessModes:
++    - ReadWriteOnce
++    size: 8Gi
++
++  ## Update strategy, can be set to RollingUpdate or onDelete by default.
++  ## https://kubernetes.io/docs/tutorials/stateful-application/basic-stateful-set/#updating-statefulsets
++  statefulset:
++    updateStrategy: RollingUpdate
++    ## Partition update strategy
++    ## https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#partitions
++    # rollingUpdatePartition:
++
++
++##
++## Redis Slave properties
++## Note: service.type is a mandatory parameter
++## The rest of the parameters are either optional or, if undefined, will inherit those declared in Redis Master
++##
++slave:
++  ## Slave Service properties
++  service:
++    ## Redis Slave Service type
++    type: ClusterIP
++    ## Specify the nodePort value for the LoadBalancer and NodePort service types.
++    ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
++    ##
++    # nodePort:
++
++    ## Provide any additional annotations which may be required. This can be used to
++    ## set the LoadBalancer service type to internal only.
++    ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
++    ##
++    annotations: {}
++    loadBalancerIP:
++
++  ## Redis port
++  # port: 6379
++  ## Redis extra flags
++  # extraFlags: []
++  ## List of Redis commands to disable
++  # disableCommands: []
++
++  ## Redis Slave pod/node affinity/anti-affinity
++  ##
++  affinity: {}
++
++  ## Configure extra options for Redis Slave liveness and readiness probes
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#configure-probes)
++  ##
++  # livenessProbe:
++  #   enabled: true
++  #   initialDelaySeconds: 30
++  #   periodSeconds: 10
++  #   timeoutSeconds: 5
++  #   successThreshold: 1
++  #   failureThreshold: 5
++  # readinessProbe:
++  #   enabled: true
++  #   initialDelaySeconds: 5
++  #   periodSeconds: 10
++  #   timeoutSeconds: 10
++  #   successThreshold: 1
++  #   failureThreshold: 5
++
++  ## Redis slave Resource
++  # resources:
++  #   requests:
++  #     memory: 256Mi
++  #     cpu: 100m
++
++  ## Redis slave selectors and tolerations for pod assignment
++  # nodeSelector: {"beta.kubernetes.io/arch": "amd64"}
++  # tolerations: []
++
++  ## Use an alternate scheduler, e.g. "stork".
++  ## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
++  ##
++  # schedulerName:
++
++  ## Redis slave pod Annotation and Labels
++  # podLabels: {}
++  # podAnnotations: {}
++
++  ## Redis slave pod Security Context
++  # securityContext:
++  #   enabled: true
++  #   fsGroup: 1001
++  #   runAsUser: 1001
++
++## Prometheus Exporter / Metrics
++##
++metrics:
++  enabled: true
++
++  image:
++    registry: docker.io
++    repository: oliver006/redis_exporter
++    tag: v0.20.2
++    pullPolicy: IfNotPresent
++    ## Optionally specify an array of imagePullSecrets.
++    ## Secrets must be manually created in the namespace.
++    ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++    ##
++    # pullSecrets:
++    #   - myRegistrKeySecretName
++
++  service:
++    type: ClusterIP
++    ## Use serviceLoadBalancerIP to request a specific static IP,
++    ## otherwise leave blank
++    # loadBalancerIP:
++    annotations:
++      prometheus.io/scrape: "true"
++      prometheus.io/port: "9121"
++
++  ## Metrics exporter resource requests and limits
++  ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
++  ##
++  # resources: {}
++
++  ## Extra arguments for Metrics exporter, for example:
++  ## extraArgs:
++  ##   check-keys: myKey,myOtherKey
++  # extraArgs: {}
++
++  ## Metrics exporter labels and tolerations for pod assignment
++  # nodeSelector: {"beta.kubernetes.io/arch": "amd64"}
++  # tolerations: []
++
++  ## Metrics exporter pod Annotation and Labels
++  # podAnnotations: {}
++  # podLabels: {}
++
++##
++## Init containers parameters:
++## volumePermissions: Change the owner of the persist volume mountpoint to RunAsUser:fsGroup
++##
++volumePermissions:
++  image:
++    registry: docker.io
++    repository: bitnami/minideb
++    tag: latest
++    pullPolicy: IfNotPresent
++
++## Redis config file
++## ref: https://redis.io/topics/config
++##
++configmap: |-
++  # maxmemory-policy volatile-lru
+diff --git a/stable/redis/ci/redis-lib-values.yaml b/stable/redis/ci/redis-lib-values.yaml
+new file mode 100644
+index 000000000..9417e719c
+--- /dev/null
++++ b/stable/redis/ci/redis-lib-values.yaml
+@@ -0,0 +1,11 @@
++## Redis library image
++## ref: https://hub.docker.com/r/library/redis/
++##
++image:
++  registry: docker.io
++  repository: redis
++  tag: '4.0.11'
++
++master:
++  command:
++  - "redis-server"
+diff --git a/stable/redis/ci/redisgraph-module-values.yaml b/stable/redis/ci/redisgraph-module-values.yaml
+new file mode 100644
+index 000000000..234a2cd06
+--- /dev/null
++++ b/stable/redis/ci/redisgraph-module-values.yaml
+@@ -0,0 +1,8 @@
++image:
++  registry: docker.io
++  repository: redislabs/redisgraph
++  tag: '1.0.0'
++
++master:
++  command:
++  - "redis-server"
+diff --git a/stable/redis/templates/configmap.yaml b/stable/redis/templates/configmap.yaml
+index b93096079..3bbadbf79 100644
+--- a/stable/redis/templates/configmap.yaml
++++ b/stable/redis/templates/configmap.yaml
+@@ -1,4 +1,3 @@
+-{{- if .Values.configmap }}
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+@@ -10,5 +9,22 @@ metadata:
+   name: {{ template "redis.fullname" . }}
+ data:
+   redis.conf: |-
++{{- if .Values.configmap }}
++    # User-supplied configuration:
+ {{ .Values.configmap | indent 4 }}
++{{- end }}
++  master.conf: |-
++    dir {{ .Values.master.persistence.path }}
++{{- if .Values.master.disableCommands }}
++{{- range .Values.master.disableCommands }}
++    rename-command {{ . }} ""
++{{- end }}
++{{- end }}
++  replica.conf: |-
++    dir /data
++{{- $replicaDisabledCommands := default .Values.master.disableCommands .Values.slave.disableCommands }}
++{{- if $replicaDisabledCommands }}
++{{- range $replicaDisabledCommands }}
++    rename-command {{ . }} ""
++{{- end }}
+ {{- end }}
+diff --git a/stable/redis/templates/redis-master-statefulset.yaml b/stable/redis/templates/redis-master-statefulset.yaml
+index ebe65b69e..4424ce519 100644
+--- a/stable/redis/templates/redis-master-statefulset.yaml
++++ b/stable/redis/templates/redis-master-statefulset.yaml
+@@ -63,10 +63,24 @@ spec:
+       - name: {{ template "redis.fullname" . }}
+         image: "{{ template "redis.image" . }}"
+         imagePullPolicy: {{ default "" .Values.image.pullPolicy | quote }}
+-        {{- if .Values.master.args }}
++        {{- if .Values.master.command }}
++        command:
++{{ toYaml .Values.master.command | indent 10 }}
++        {{- end }}
+         args:
+-{{ toYaml .Values.master.args | indent 10 }}
++        - "--port"
++        - "$(REDIS_PORT)"
++        {{- if .Values.usePassword }}
++        - "--requirepass"
++        - "$(REDIS_PASSWORD)"
++        {{- else }}
++        - "--protected-mode"
++        - "no"
+         {{- end }}
++        - "--include"
++        - "/opt/bitnami/redis/etc/redis.conf"
++        - "--include"
++        - "/opt/bitnami/redis/etc/master.conf"
+         env:
+         - name: REDIS_REPLICATION_MODE
+           value: master
+@@ -86,12 +100,6 @@ spec:
+         {{- end }}
+         - name: REDIS_PORT
+           value: {{ .Values.master.port | quote }}
+-        - name: REDIS_DISABLE_COMMANDS
+-          value: {{ .Values.master.disableCommands }}
+-        {{- if .Values.master.extraFlags }}
+-        - name: REDIS_EXTRA_FLAGS
+-          value: {{ .Values.master.extraFlags | join " " }}
+-        {{- end }}
+         ports:
+         - name: redis
+           containerPort: {{ .Values.master.port }}
+@@ -131,8 +139,7 @@ spec:
+           subPath: {{ .Values.master.persistence.subPath }}
+         {{- if .Values.configmap }}
+         - name: config
+-          mountPath: /opt/bitnami/redis/etc/redis.conf
+-          subPath: redis.conf
++          mountPath: /opt/bitnami/redis/etc
+         {{- end }}
+       {{- if and ( and .Values.master.persistence.enabled (not .Values.persistence.existingClaim) ) .Values.master.securityContext.enabled }}
+       initContainers:
+diff --git a/stable/redis/templates/redis-slave-deployment.yaml b/stable/redis/templates/redis-slave-deployment.yaml
+index b5afd1883..ca8e1eadf 100644
+--- a/stable/redis/templates/redis-slave-deployment.yaml
++++ b/stable/redis/templates/redis-slave-deployment.yaml
+@@ -67,10 +67,30 @@ spec:
+       - name: {{ template "redis.fullname" . }}
+         image: {{ template "redis.image" . }}
+         imagePullPolicy: {{ .Values.image.pullPolicy | default "" | quote }}
+-        {{- if (.Values.slave.args | default .Values.master.args) }}
++{{- $command := default .Values.master.command .Values.slave.command }}
++        {{- if $command }}
++        command:
++{{ toYaml $command | indent 10 }}
++        {{- end }}
+         args:
+-{{ toYaml (.Values.slave.args | default .Values.master.args) | indent 10 }}
++        - "--port"
++        - "$(REDIS_PORT)"
++        - "--slaveof"
++        - "$(REDIS_MASTER_HOST)"
++        - "$(REDIS_MASTER_PORT_NUMBER)"
++        {{- if .Values.usePassword }}
++        - "--requirepass"
++        - "$(REDIS_PASSWORD)"
++        - "--masterauth"
++        - "$(REDIS_MASTER_PASSWORD)"
++        {{- else }}
++        - "--protected-mode"
++        - "no"
+         {{- end }}
++        - "--include"
++        - "/opt/bitnami/redis/etc/redis.conf"
++        - "--include"
++        - "/opt/bitnami/redis/etc/replica.conf"
+         env:
+         - name: REDIS_REPLICATION_MODE
+           value: slave
+@@ -103,12 +123,6 @@ spec:
+         - name: ALLOW_EMPTY_PASSWORD
+           value: "yes"
+         {{- end }}
+-        - name: REDIS_DISABLE_COMMANDS
+-          value: {{ .Values.slave.disableCommands | default .Values.master.disableCommands }}
+-        {{- if (.Values.slave.extraFlags | default .Values.master.extraFlags) }}
+-        - name: REDIS_EXTRA_FLAGS
+-          value: {{ .Values.slave.extraFlags | default .Values.master.extraFlags | join " " }}
+-        {{- end }}
+         ports:
+         - name: redis
+           containerPort: {{ .Values.slave.port | default .Values.master.port }}
+@@ -121,10 +135,11 @@ spec:
+         volumeMounts:
+         - name: health
+           mountPath: /health
++        - name: redis-data
++          mountPath: /data
+         {{- if .Values.configmap }}
+         - name: config
+-          mountPath: /opt/bitnami/redis/etc/redis.conf
+-          subPath: redis.conf
++          mountPath: /opt/bitnami/redis/etc
+         {{- end }}
+       volumes:
+       - name: health
+@@ -136,4 +151,6 @@ spec:
+         configMap:
+           name: {{ template "redis.fullname" . }}
+       {{- end }}
++      - name: redis-data
++        emptyDir: {}
+ {{- end }}
+diff --git a/stable/redis/values-production.yaml b/stable/redis/values-production.yaml
+index 3d63bb7d0..c846c3b8d 100644
+--- a/stable/redis/values-production.yaml
++++ b/stable/redis/values-production.yaml
+@@ -96,24 +96,25 @@ master:
+   ##
+   ## Can be used to specify command line arguments, for example:
+   ##
+-  ## args:
+-  ##  - "redis-server"
+-  ##  - "--maxmemory-policy volatile-ttl"
+-  args: []
++  # command:
++  #  - "redis-server"
+   ## Redis additional command line flags
+   ##
+   ## Can be used to specify command line flags, for example:
+   ##
+-  ## redisExtraFlags:
++  ## extraFlags:
+   ##  - "--maxmemory-policy volatile-ttl"
+   ##  - "--repl-backlog-size 1024mb"
+   extraFlags: []
+   ## Comma-separated list of Redis commands to disable
+   ##
+   ## Can be used to disable Redis commands for security reasons.
+-  ## ref: https://github.com/bitnami/bitnami-docker-redis#disabling-redis-commands
++  ## Commands will be completely disabled by renaming each to an empty string.
++  ## ref: https://redis.io/topics/security#disabling-of-specific-commands
+   ##
+-  disableCommands: "FLUSHDB,FLUSHALL"
++  disableCommands:
++  - FLUSHDB
++  - FLUSHALL
+ 
+   ## Redis Master additional pod labels and annotations
+   ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+@@ -178,6 +179,7 @@ master:
+     loadBalancerIP:
+ 
+   ## Redis Master Pod Security Context
++  ##
+   securityContext:
+     enabled: true
+     fsGroup: 1001
+@@ -209,7 +211,7 @@ master:
+   ## Update strategy, can be set to RollingUpdate or onDelete by default.
+   ## https://kubernetes.io/docs/tutorials/stateful-application/basic-stateful-set/#updating-statefulsets
+   statefulset:
+-    updateStrategy: OnDelete
++    updateStrategy: RollingUpdate
+     ## Partition update strategy
+     ## https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#partitions
+     # rollingUpdatePartition:
+@@ -239,12 +241,10 @@ slave:
+ 
+   ## Redis port
+   # port: 6379
+-  ## Redis command arguments
+-  # args: []
+   ## Redis extra flags
+   # extraFlags: []
+-  ## Comma-separated list of Redis commands to disable
+-  # disableCommands: ""
++  ## List of Redis commands to disable
++  # disableCommands: []
+ 
+   ## Redis Slave pod/node affinity/anti-affinity
+   ##
+@@ -361,6 +361,7 @@ volumePermissions:
+     pullPolicy: IfNotPresent
+ 
+ ## Redis config file
++## ref: https://redis.io/topics/config
+ ##
+ configmap: |-
+-#  Redis configuration file
++  # maxmemory-policy volatile-lru
+diff --git a/stable/redis/values.yaml b/stable/redis/values.yaml
+index b1ef804cc..8a22b9b6a 100644
+--- a/stable/redis/values.yaml
++++ b/stable/redis/values.yaml
+@@ -96,24 +96,25 @@ master:
+   ##
+   ## Can be used to specify command line arguments, for example:
+   ##
+-  ## args:
+-  ##  - "redis-server"
+-  ##  - "--maxmemory-policy volatile-ttl"
+-  args: []
++  command:
++  - "/run.sh"
+   ## Redis additional command line flags
+   ##
+   ## Can be used to specify command line flags, for example:
+   ##
+-  ## redisExtraFlags:
++  ## extraFlags:
+   ##  - "--maxmemory-policy volatile-ttl"
+   ##  - "--repl-backlog-size 1024mb"
+   extraFlags: []
+   ## Comma-separated list of Redis commands to disable
+   ##
+   ## Can be used to disable Redis commands for security reasons.
+-  ## ref: https://github.com/bitnami/bitnami-docker-redis#disabling-redis-commands
++  ## Commands will be completely disabled by renaming each to an empty string.
++  ## ref: https://redis.io/topics/security#disabling-of-specific-commands
+   ##
+-  disableCommands: "FLUSHDB,FLUSHALL"
++  disableCommands:
++  - FLUSHDB
++  - FLUSHALL
+ 
+   ## Redis Master additional pod labels and annotations
+   ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+@@ -136,15 +137,15 @@ master:
+   ##
+   livenessProbe:
+     enabled: true
+-    initialDelaySeconds: 30
+-    periodSeconds: 10
++    initialDelaySeconds: 5
++    periodSeconds: 5
+     timeoutSeconds: 5
+     successThreshold: 1
+     failureThreshold: 5
+   readinessProbe:
+     enabled: true
+     initialDelaySeconds: 5
+-    periodSeconds: 10
++    periodSeconds: 5
+     timeoutSeconds: 1
+     successThreshold: 1
+     failureThreshold: 5
+@@ -190,7 +191,7 @@ master:
+     enabled: true
+     ## The path the volume will be mounted at, useful when using different
+     ## Redis images.
+-    path: /bitnami/redis/data
++    path: /data
+     ## The subdirectory of the volume to mount to, useful in dev environments
+     ## and one PV for multiple services.
+     subPath: ""
+@@ -239,16 +240,10 @@ slave:
+ 
+   ## Redis port
+   # port: 6379
+-  ## Redis command arguments
+-  # args: []
+   ## Redis extra flags
+   # extraFlags: []
+-  ## Comma-separated list of Redis commands to disable
+-  # disableCommands: ""
+-  ## deployment update stategy
+-  # updateStrategy:
+-  #   rollingUpdate:
+-  #     maxUnavailable: 0
++  ## List of Redis commands to disable
++  # disableCommands: []
+ 
+   ## Redis Slave pod/node affinity/anti-affinity
+   ##
+@@ -365,6 +360,7 @@ volumePermissions:
+     pullPolicy: IfNotPresent
+ 
+ ## Redis config file
++## ref: https://redis.io/topics/config
+ ##
+ configmap: |-
+-#  Redis configuration file
++  # maxmemory-policy volatile-lru

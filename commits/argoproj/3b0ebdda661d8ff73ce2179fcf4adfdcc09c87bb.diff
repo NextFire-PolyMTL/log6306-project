@@ -1,0 +1,1094 @@
+commit 3b0ebdda661d8ff73ce2179fcf4adfdcc09c87bb
+Author: Marco Kilchhofer <mkilchhofer@users.noreply.github.com>
+Date:   Mon Mar 22 21:15:37 2021 +0100
+
+    refactor(argo-cd): Use templating for labels (#627)
+    
+    Signed-off-by: Marco Kilchhofer <mkilchhofer@users.noreply.github.com>
+
+diff --git a/charts/argo-cd/Chart.yaml b/charts/argo-cd/Chart.yaml
+index a05fa82b..7cbc9174 100644
+--- a/charts/argo-cd/Chart.yaml
++++ b/charts/argo-cd/Chart.yaml
+@@ -2,7 +2,7 @@ apiVersion: v1
+ appVersion: 1.8.4
+ description: A Helm chart for ArgoCD, a declarative, GitOps continuous delivery tool for Kubernetes.
+ name: argo-cd
+-version: 2.17.2
++version: 2.17.3
+ home: https://github.com/argoproj/argo-helm
+ icon: https://raw.githubusercontent.com/argoproj/argo/master/docs/assets/argo.png
+ keywords:
+diff --git a/charts/argo-cd/templates/_helpers.tpl b/charts/argo-cd/templates/_helpers.tpl
+index 8edaf216..e0810ec7 100644
+--- a/charts/argo-cd/templates/_helpers.tpl
++++ b/charts/argo-cd/templates/_helpers.tpl
+@@ -115,4 +115,27 @@ Create chart name and version as used by the chart label.
+ */}}
+ {{- define "argo-cd.chart" -}}
+ {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
+\ No newline at end of file
++{{- end -}}
++
++{{/*
++Common labels
++*/}}
++{{- define "argo-cd.labels" -}}
++helm.sh/chart: {{ include "argo-cd.chart" .context }}
++{{ include "argo-cd.selectorLabels" (dict "context" .context "component" .component "name" .name) }}
++app.kubernetes.io/managed-by: {{ .context.Release.Service }}
++app.kubernetes.io/part-of: argocd
++{{- end }}
++
++{{/*
++Selector labels
++*/}}
++{{- define "argo-cd.selectorLabels" -}}
++{{- if .name -}}
++app.kubernetes.io/name: {{ include "argo-cd.name" .context }}-{{ .name }}
++{{- end }}
++app.kubernetes.io/instance: {{ .context.Release.Name }}
++{{- if .component }}
++app.kubernetes.io/component: {{ .component }}
++{{- end }}
++{{- end }}
+\ No newline at end of file
+diff --git a/charts/argo-cd/templates/argocd-application-controller/clusterrole.yaml b/charts/argo-cd/templates/argocd-application-controller/clusterrole.yaml
+index 733f4571..3426c9c8 100644
+--- a/charts/argo-cd/templates/argocd-application-controller/clusterrole.yaml
++++ b/charts/argo-cd/templates/argocd-application-controller/clusterrole.yaml
+@@ -4,12 +4,7 @@ kind: ClusterRole
+ metadata:
+   name: {{ template "argo-cd.controller.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.controller.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.controller.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.controller.name "name" .Values.controller.name) | nindent 4 }}
+ rules:
+ - apiGroups:
+   - '*'
+diff --git a/charts/argo-cd/templates/argocd-application-controller/clusterrolebinding.yaml b/charts/argo-cd/templates/argocd-application-controller/clusterrolebinding.yaml
+index 26580a2d..86d7c883 100644
+--- a/charts/argo-cd/templates/argocd-application-controller/clusterrolebinding.yaml
++++ b/charts/argo-cd/templates/argocd-application-controller/clusterrolebinding.yaml
+@@ -4,12 +4,7 @@ kind: ClusterRoleBinding
+ metadata:
+   name: {{ template "argo-cd.controller.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.controller.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.controller.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.controller.name "name" .Values.controller.name) | nindent 4 }}
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: ClusterRole
+diff --git a/charts/argo-cd/templates/argocd-application-controller/deployment.yaml b/charts/argo-cd/templates/argocd-application-controller/deployment.yaml
+index bf4d9080..6fe98a24 100755
+--- a/charts/argo-cd/templates/argocd-application-controller/deployment.yaml
++++ b/charts/argo-cd/templates/argocd-application-controller/deployment.yaml
+@@ -4,18 +4,12 @@ kind: {{ .Values.controller.enableStatefulSet | ternary "StatefulSet" "Deploymen
+ metadata:
+   name: {{ template "argo-cd.controller.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.controller.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.controller.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.controller.name "name" .Values.controller.name) | nindent 4 }}
+     app.kubernetes.io/version: {{ default .Values.global.image.tag .Values.controller.image.tag | quote }}
+ spec:
+   selector:
+     matchLabels:
+-      app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.controller.name }}
+-      app.kubernetes.io/instance: {{ .Release.Name }}
++      {{- include "argo-cd.selectorLabels" (dict "context" . "name" .Values.controller.name) | nindent 6 }}
+   {{- if  .Values.controller.enableStatefulSet }}
+   serviceName: {{ template "argo-cd.controller.fullname" . }}
+   {{- end }}
+@@ -30,12 +24,7 @@ spec:
+       {{- end }}
+       {{- end }}
+       labels:
+-        app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.controller.name }}
+-        helm.sh/chart: {{ include "argo-cd.chart" . }}
+-        app.kubernetes.io/instance: {{ .Release.Name }}
+-        app.kubernetes.io/managed-by: {{ .Release.Service }}
+-        app.kubernetes.io/part-of: argocd
+-        app.kubernetes.io/component: {{ .Values.controller.name }}
++        {{- include "argo-cd.labels" (dict "context" . "component" .Values.controller.name "name" .Values.controller.name) | nindent 8 }}
+         app.kubernetes.io/version: {{ default .Values.global.image.tag .Values.controller.image.tag | quote }}
+         {{- if .Values.controller.podLabels }}
+ {{- toYaml .Values.controller.podLabels | nindent 8 }}
+diff --git a/charts/argo-cd/templates/argocd-application-controller/metrics-service.yaml b/charts/argo-cd/templates/argocd-application-controller/metrics-service.yaml
+index aa1c6f87..7331765d 100644
+--- a/charts/argo-cd/templates/argocd-application-controller/metrics-service.yaml
++++ b/charts/argo-cd/templates/argocd-application-controller/metrics-service.yaml
+@@ -9,12 +9,7 @@ metadata:
+   {{- end }}
+ {{- end }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-metrics
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.controller.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.controller.name "name" "metrics") | nindent 4 }}
+ {{- if .Values.controller.metrics.service.labels }}
+ {{- toYaml .Values.controller.metrics.service.labels | nindent 4 }}
+ {{- end }}
+@@ -26,6 +21,5 @@ spec:
+     port: {{ .Values.controller.metrics.service.servicePort }}
+     targetPort: controller
+   selector:
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.controller.name }}
++    {{- include "argo-cd.selectorLabels" (dict "context" . "name" .Values.controller.name) | nindent 4 }}
+ {{- end }}
+\ No newline at end of file
+diff --git a/charts/argo-cd/templates/argocd-application-controller/prometheusrule.yaml b/charts/argo-cd/templates/argocd-application-controller/prometheusrule.yaml
+index 8d104f40..485ed1aa 100644
+--- a/charts/argo-cd/templates/argocd-application-controller/prometheusrule.yaml
++++ b/charts/argo-cd/templates/argocd-application-controller/prometheusrule.yaml
+@@ -7,12 +7,7 @@ metadata:
+   namespace: {{ .Values.controller.metrics.rules.namespace }}
+   {{- end }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.controller.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.controller.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.controller.name "name" .Values.controller.name) | nindent 4 }}
+     {{- if .Values.controller.metrics.rules.selector }}
+ {{- toYaml .Values.controller.metrics.rules.selector | nindent 4 }}
+     {{- end }}
+diff --git a/charts/argo-cd/templates/argocd-application-controller/role.yaml b/charts/argo-cd/templates/argocd-application-controller/role.yaml
+index 4b0ec4fc..75aec8db 100644
+--- a/charts/argo-cd/templates/argocd-application-controller/role.yaml
++++ b/charts/argo-cd/templates/argocd-application-controller/role.yaml
+@@ -3,12 +3,7 @@ kind: Role
+ metadata:
+   name: {{ template "argo-cd.controller.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.controller.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.controller.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.controller.name "name" .Values.controller.name) | nindent 4 }}
+ rules:
+ - apiGroups:
+   - ""
+diff --git a/charts/argo-cd/templates/argocd-application-controller/rolebinding.yaml b/charts/argo-cd/templates/argocd-application-controller/rolebinding.yaml
+index a90ca9f6..f37f4b0c 100644
+--- a/charts/argo-cd/templates/argocd-application-controller/rolebinding.yaml
++++ b/charts/argo-cd/templates/argocd-application-controller/rolebinding.yaml
+@@ -3,12 +3,7 @@ kind: RoleBinding
+ metadata:
+   name: {{ template "argo-cd.controller.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.controller.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.controller.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.controller.name "name" .Values.controller.name) | nindent 4 }}
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: Role
+diff --git a/charts/argo-cd/templates/argocd-application-controller/service.yaml b/charts/argo-cd/templates/argocd-application-controller/service.yaml
+index 69f8ce52..db563135 100644
+--- a/charts/argo-cd/templates/argocd-application-controller/service.yaml
++++ b/charts/argo-cd/templates/argocd-application-controller/service.yaml
+@@ -9,17 +9,11 @@ metadata:
+ {{- end }}
+   name: {{ template "argo-cd.controller.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.controller.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.controller.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.controller.name "name" .Values.controller.name) | nindent 4 }}
+ spec:
+   ports:
+   - name: {{ .Values.controller.service.portName }}
+     port: {{ .Values.controller.service.port }}
+     targetPort: {{ .Values.controller.containerPort }}
+   selector:
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.controller.name }}
+\ No newline at end of file
++    {{- include "argo-cd.selectorLabels" (dict "context" . "name" .Values.controller.name) | nindent 4 }}
+\ No newline at end of file
+diff --git a/charts/argo-cd/templates/argocd-application-controller/serviceaccount.yaml b/charts/argo-cd/templates/argocd-application-controller/serviceaccount.yaml
+index fe923c57..4703236c 100644
+--- a/charts/argo-cd/templates/argocd-application-controller/serviceaccount.yaml
++++ b/charts/argo-cd/templates/argocd-application-controller/serviceaccount.yaml
+@@ -11,10 +11,5 @@ metadata:
+   {{- end }}
+ {{- end }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.controller.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.controller.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.controller.name "name" .Values.controller.name) | nindent 4 }}
+ {{- end }}
+diff --git a/charts/argo-cd/templates/argocd-application-controller/servicemonitor.yaml b/charts/argo-cd/templates/argocd-application-controller/servicemonitor.yaml
+index 3fb538e3..51f81030 100644
+--- a/charts/argo-cd/templates/argocd-application-controller/servicemonitor.yaml
++++ b/charts/argo-cd/templates/argocd-application-controller/servicemonitor.yaml
+@@ -7,12 +7,7 @@ metadata:
+   namespace: {{ .Values.controller.metrics.serviceMonitor.namespace }}
+   {{- end }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.controller.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.controller.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.controller.name "name" .Values.controller.name) | nindent 4 }}
+     {{- if .Values.controller.metrics.serviceMonitor.selector }}
+ {{- toYaml .Values.controller.metrics.serviceMonitor.selector | nindent 4 }}
+     {{- end }}
+@@ -29,7 +24,6 @@ spec:
+       - {{ .Release.Namespace }}
+   selector:
+     matchLabels:
+-      app.kubernetes.io/name: {{ include "argo-cd.name" . }}-metrics
+-      app.kubernetes.io/component: {{ .Values.controller.name }}
++      {{- include "argo-cd.selectorLabels" (dict "context" . "component" .Values.controller.name "name" "metrics") | nindent 6 }}
+ {{- end }}
+ 
+diff --git a/charts/argo-cd/templates/argocd-configs/argocd-cm.yaml b/charts/argo-cd/templates/argocd-configs/argocd-cm.yaml
+index ca42e9b9..b17f4f1b 100644
+--- a/charts/argo-cd/templates/argocd-configs/argocd-cm.yaml
++++ b/charts/argo-cd/templates/argocd-configs/argocd-cm.yaml
+@@ -4,12 +4,7 @@ kind: ConfigMap
+ metadata:
+   name: argocd-cm
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-cm
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" "cm") | nindent 4 }}
+   {{- if .Values.server.configAnnotations }}
+   annotations:
+   {{- range $key, $value := .Values.server.configAnnotations }}
+diff --git a/charts/argo-cd/templates/argocd-configs/argocd-rbac-cm.yaml b/charts/argo-cd/templates/argocd-configs/argocd-rbac-cm.yaml
+index 8b7edd55..b02e3a00 100644
+--- a/charts/argo-cd/templates/argocd-configs/argocd-rbac-cm.yaml
++++ b/charts/argo-cd/templates/argocd-configs/argocd-rbac-cm.yaml
+@@ -4,12 +4,7 @@ kind: ConfigMap
+ metadata:
+   name: argocd-rbac-cm
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-rbac-cm
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" "rbac-cm") | nindent 4 }}
+   {{- if .Values.server.rbacConfigAnnotations }}
+   annotations:
+   {{- range $key, $value := .Values.server.rbacConfigAnnotations }}
+diff --git a/charts/argo-cd/templates/argocd-configs/argocd-secret.yaml b/charts/argo-cd/templates/argocd-configs/argocd-secret.yaml
+index efb80358..d84d2649 100644
+--- a/charts/argo-cd/templates/argocd-configs/argocd-secret.yaml
++++ b/charts/argo-cd/templates/argocd-configs/argocd-secret.yaml
+@@ -4,12 +4,7 @@ kind: Secret
+ metadata:
+   name: argocd-secret
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-secret
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" "secret") | nindent 4 }}
+   {{- if .Values.configs.secret.annotations }}
+   annotations:
+   {{- range $key, $value := .Values.configs.secret.annotations }}
+diff --git a/charts/argo-cd/templates/argocd-configs/argocd-ssh-known-hosts-cm.yaml b/charts/argo-cd/templates/argocd-configs/argocd-ssh-known-hosts-cm.yaml
+index 6a8f6dee..289885bd 100644
+--- a/charts/argo-cd/templates/argocd-configs/argocd-ssh-known-hosts-cm.yaml
++++ b/charts/argo-cd/templates/argocd-configs/argocd-ssh-known-hosts-cm.yaml
+@@ -3,12 +3,7 @@ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-ssh-known-hosts-cm
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" "ssh-known-hosts-cm") | nindent 4 }}
+   {{- if .Values.configs.knownHostsAnnotations }}
+   annotations:
+   {{- range $key, $value := .Values.configs.knownHostsAnnotations }}
+diff --git a/charts/argo-cd/templates/argocd-configs/argocd-tls-certs-cm.yaml b/charts/argo-cd/templates/argocd-configs/argocd-tls-certs-cm.yaml
+index a12ce59e..5b3f5fe5 100644
+--- a/charts/argo-cd/templates/argocd-configs/argocd-tls-certs-cm.yaml
++++ b/charts/argo-cd/templates/argocd-configs/argocd-tls-certs-cm.yaml
+@@ -5,12 +5,7 @@ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-tls-certs-cm
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" "tls-certs-cm") | nindent 4 }}
+   {{- if .Values.configs.tlsCertsAnnotations }}
+   annotations:
+   {{- range $key, $value := .Values.configs.tlsCertsAnnotations }}
+diff --git a/charts/argo-cd/templates/argocd-repo-server/deployment.yaml b/charts/argo-cd/templates/argocd-repo-server/deployment.yaml
+index a73dd08f..47f04d9d 100755
+--- a/charts/argo-cd/templates/argocd-repo-server/deployment.yaml
++++ b/charts/argo-cd/templates/argocd-repo-server/deployment.yaml
+@@ -4,18 +4,12 @@ kind: Deployment
+ metadata:
+   name: {{ template "argo-cd.repoServer.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.repoServer.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.repoServer.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.repoServer.name "name" .Values.repoServer.name) | nindent 4 }}
+     app.kubernetes.io/version: {{ default .Values.global.image.tag .Values.repoServer.image.tag | quote }}
+ spec:
+   selector:
+     matchLabels:
+-      app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.repoServer.name }}
+-      app.kubernetes.io/instance: {{ .Release.Name }}
++      {{- include "argo-cd.selectorLabels" (dict "context" . "name" .Values.repoServer.name) | nindent 6 }}
+   revisionHistoryLimit: 5
+   {{- if (ne .Values.repoServer.autoscaling.enabled true) }}
+   replicas: {{ .Values.repoServer.replicas }}
+@@ -29,12 +23,7 @@ spec:
+       {{- end }}
+       {{- end }}
+       labels:
+-        app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.repoServer.name }}
+-        helm.sh/chart: {{ include "argo-cd.chart" . }}
+-        app.kubernetes.io/instance: {{ .Release.Name }}
+-        app.kubernetes.io/managed-by: {{ .Release.Service }}
+-        app.kubernetes.io/part-of: argocd
+-        app.kubernetes.io/component: {{ .Values.repoServer.name }}
++        {{- include "argo-cd.labels" (dict "context" . "component" .Values.repoServer.name "name" .Values.repoServer.name) | nindent 8 }}
+         app.kubernetes.io/version: {{ default .Values.global.image.tag .Values.repoServer.image.tag | quote }}
+         {{- if .Values.repoServer.podLabels }}
+ {{- toYaml .Values.repoServer.podLabels | nindent 8 }}
+diff --git a/charts/argo-cd/templates/argocd-repo-server/hpa.yaml b/charts/argo-cd/templates/argocd-repo-server/hpa.yaml
+index 103c9955..65e379dd 100644
+--- a/charts/argo-cd/templates/argocd-repo-server/hpa.yaml
++++ b/charts/argo-cd/templates/argocd-repo-server/hpa.yaml
+@@ -3,12 +3,7 @@ apiVersion: autoscaling/v2beta1
+ kind: HorizontalPodAutoscaler
+ metadata:
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.repoServer.name }}-hpa
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.repoServer.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.repoServer.name "name" (printf "%s-hpa" .Values.repoServer.name)) | nindent 4 }}
+   name: {{ template "argo-cd.repoServer.fullname" . }}-hpa
+ spec:
+   scaleTargetRef:
+diff --git a/charts/argo-cd/templates/argocd-repo-server/metrics-service.yaml b/charts/argo-cd/templates/argocd-repo-server/metrics-service.yaml
+index 99b8eb9e..99061736 100644
+--- a/charts/argo-cd/templates/argocd-repo-server/metrics-service.yaml
++++ b/charts/argo-cd/templates/argocd-repo-server/metrics-service.yaml
+@@ -9,12 +9,7 @@ metadata:
+   {{- end }}
+ {{- end }}
+   labels:
+-    app.kubernetes.io/name: {{ template "argo-cd.repoServer.fullname" . }}-metrics
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.repoServer.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.repoServer.name "name" (printf "%s-metrics" .Values.repoServer.name)) | nindent 4 }}
+ {{- if .Values.repoServer.metrics.service.labels }}
+ {{- toYaml .Values.repoServer.metrics.service.labels | nindent 4 }}
+ {{- end }}
+@@ -26,6 +21,5 @@ spec:
+     port: {{ .Values.repoServer.metrics.service.servicePort }}
+     targetPort: metrics
+   selector:
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.repoServer.name }}
++    {{- include "argo-cd.selectorLabels" (dict "context" . "name" .Values.repoServer.name) | nindent 4 }}
+ {{- end }}
+\ No newline at end of file
+diff --git a/charts/argo-cd/templates/argocd-repo-server/repository-credentials-secret.yaml b/charts/argo-cd/templates/argocd-repo-server/repository-credentials-secret.yaml
+index aed7700f..354e2ca9 100644
+--- a/charts/argo-cd/templates/argocd-repo-server/repository-credentials-secret.yaml
++++ b/charts/argo-cd/templates/argocd-repo-server/repository-credentials-secret.yaml
+@@ -4,12 +4,7 @@ kind: Secret
+ metadata:
+   name: argocd-repository-credentials
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-secret
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" "secret") | nindent 4 }}
+ type: Opaque
+ data:
+ {{- range $key, $value := .Values.configs.repositoryCredentials }}
+diff --git a/charts/argo-cd/templates/argocd-repo-server/role.yaml b/charts/argo-cd/templates/argocd-repo-server/role.yaml
+index 9c902ccc..bc422c43 100644
+--- a/charts/argo-cd/templates/argocd-repo-server/role.yaml
++++ b/charts/argo-cd/templates/argocd-repo-server/role.yaml
+@@ -4,12 +4,7 @@ kind: Role
+ metadata:
+   name: {{ template "argo-cd.repoServer.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.repoServer.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.repoServer.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.repoServer.name "name" .Values.repoServer.name) | nindent 4 }}
+ rules:
+ {{- if .Values.repoServer.rbac }}
+ {{toYaml .Values.repoServer.rbac }}
+diff --git a/charts/argo-cd/templates/argocd-repo-server/rolebinding.yaml b/charts/argo-cd/templates/argocd-repo-server/rolebinding.yaml
+index 692b11ee..3cfa312f 100644
+--- a/charts/argo-cd/templates/argocd-repo-server/rolebinding.yaml
++++ b/charts/argo-cd/templates/argocd-repo-server/rolebinding.yaml
+@@ -4,12 +4,7 @@ kind: RoleBinding
+ metadata:
+   name: {{ template "argo-cd.repoServer.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.repoServer.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.repoServer.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.repoServer.name "name" .Values.repoServer.name) | nindent 4 }}
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: Role
+diff --git a/charts/argo-cd/templates/argocd-repo-server/service.yaml b/charts/argo-cd/templates/argocd-repo-server/service.yaml
+index 169edd31..6ab15747 100644
+--- a/charts/argo-cd/templates/argocd-repo-server/service.yaml
++++ b/charts/argo-cd/templates/argocd-repo-server/service.yaml
+@@ -8,12 +8,7 @@ metadata:
+   {{- end }}
+ {{- end }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.repoServer.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.repoServer.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.repoServer.name "name" .Values.repoServer.name) | nindent 4 }}
+   name: {{ template "argo-cd.repoServer.fullname" . }}
+ spec:
+   ports:
+@@ -22,5 +17,4 @@ spec:
+     port: {{ .Values.repoServer.service.port }}
+     targetPort: repo-server
+   selector:
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.repoServer.name }}
+\ No newline at end of file
++    {{- include "argo-cd.selectorLabels" (dict "context" . "name" .Values.repoServer.name) | nindent 4 }}
+\ No newline at end of file
+diff --git a/charts/argo-cd/templates/argocd-repo-server/serviceaccount.yaml b/charts/argo-cd/templates/argocd-repo-server/serviceaccount.yaml
+index ea0c983d..b045da74 100644
+--- a/charts/argo-cd/templates/argocd-repo-server/serviceaccount.yaml
++++ b/charts/argo-cd/templates/argocd-repo-server/serviceaccount.yaml
+@@ -11,10 +11,5 @@ metadata:
+   {{- end }}
+ {{- end }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.repoServer.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.repoServer.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.repoServer.name "name" .Values.repoServer.name) | nindent 4 }}
+ {{- end }}
+\ No newline at end of file
+diff --git a/charts/argo-cd/templates/argocd-repo-server/servicemonitor.yaml b/charts/argo-cd/templates/argocd-repo-server/servicemonitor.yaml
+index c07769f9..0b343750 100644
+--- a/charts/argo-cd/templates/argocd-repo-server/servicemonitor.yaml
++++ b/charts/argo-cd/templates/argocd-repo-server/servicemonitor.yaml
+@@ -7,12 +7,7 @@ metadata:
+   namespace: {{ .Values.repoServer.metrics.serviceMonitor.namespace }}
+   {{- end }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.repoServer.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.repoServer.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.repoServer.name "name" .Values.repoServer.name) | nindent 4 }}
+     {{- if .Values.repoServer.metrics.serviceMonitor.selector }}
+ {{- toYaml .Values.repoServer.metrics.serviceMonitor.selector | nindent 4 }}
+     {{- end }}
+@@ -29,8 +24,6 @@ spec:
+       - {{ .Release.Namespace }}
+   selector:
+     matchLabels:
+-      app.kubernetes.io/instance: {{ .Release.Name }}
+-      app.kubernetes.io/name: {{ template "argo-cd.repoServer.fullname" . }}-metrics
+-      app.kubernetes.io/component: {{ .Values.repoServer.name }}
++      {{- include "argo-cd.selectorLabels" (dict "context" . "component" .Values.repoServer.name "name" (printf "%s-metrics" .Values.repoServer.name)) | nindent 6 }}
+ {{- end }}
+ 
+diff --git a/charts/argo-cd/templates/argocd-server/backendconfig.yaml b/charts/argo-cd/templates/argocd-server/backendconfig.yaml
+index 279b3487..16c99c0a 100644
+--- a/charts/argo-cd/templates/argocd-server/backendconfig.yaml
++++ b/charts/argo-cd/templates/argocd-server/backendconfig.yaml
+@@ -4,12 +4,7 @@ kind: BackendConfig
+ metadata:
+   name: {{ template "argo-cd.server.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" .Values.server.name) | nindent 4 }}
+ spec:
+   {{- toYaml .Values.server.GKEbackendConfig.spec | nindent 2 }}
+ {{- end }}
+diff --git a/charts/argo-cd/templates/argocd-server/certificate.yaml b/charts/argo-cd/templates/argocd-server/certificate.yaml
+index b2f227b5..7212922c 100644
+--- a/charts/argo-cd/templates/argocd-server/certificate.yaml
++++ b/charts/argo-cd/templates/argocd-server/certificate.yaml
+@@ -12,12 +12,7 @@ kind: Certificate
+ metadata:
+   name: {{ template "argo-cd.server.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" .Values.server.name) | nindent 4 }}
+ spec:
+   commonName: {{ .Values.server.certificate.domain | quote }}
+   dnsNames:
+diff --git a/charts/argo-cd/templates/argocd-server/clusterrole.yaml b/charts/argo-cd/templates/argocd-server/clusterrole.yaml
+index 4570454b..63e3ee47 100644
+--- a/charts/argo-cd/templates/argocd-server/clusterrole.yaml
++++ b/charts/argo-cd/templates/argocd-server/clusterrole.yaml
+@@ -4,12 +4,7 @@ kind: ClusterRole
+ metadata:
+   name: {{ template "argo-cd.server.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" .Values.server.name) | nindent 4 }}
+ rules:
+   - apiGroups:
+       - '*'
+diff --git a/charts/argo-cd/templates/argocd-server/clusterrolebinding.yaml b/charts/argo-cd/templates/argocd-server/clusterrolebinding.yaml
+index 3bbd5a0d..9f5a960d 100644
+--- a/charts/argo-cd/templates/argocd-server/clusterrolebinding.yaml
++++ b/charts/argo-cd/templates/argocd-server/clusterrolebinding.yaml
+@@ -4,12 +4,7 @@ kind: ClusterRoleBinding
+ metadata:
+   name: {{ template "argo-cd.server.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" .Values.server.name) | nindent 4 }}
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: ClusterRole
+diff --git a/charts/argo-cd/templates/argocd-server/deployment.yaml b/charts/argo-cd/templates/argocd-server/deployment.yaml
+index 471949e4..4ae1c4c2 100755
+--- a/charts/argo-cd/templates/argocd-server/deployment.yaml
++++ b/charts/argo-cd/templates/argocd-server/deployment.yaml
+@@ -4,18 +4,12 @@ kind: Deployment
+ metadata:
+   name: {{ template "argo-cd.server.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" .Values.server.name) | nindent 4 }}
+     app.kubernetes.io/version: {{ default .Values.global.image.tag .Values.server.image.tag | quote }}
+ spec:
+   selector:
+     matchLabels:
+-      app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}
+-      app.kubernetes.io/instance: {{ .Release.Name }}
++      {{- include "argo-cd.selectorLabels" (dict "context" . "name" .Values.server.name) | nindent 6 }}
+   revisionHistoryLimit: 5
+   {{- if (ne .Values.server.autoscaling.enabled true) }}
+   replicas: {{ .Values.server.replicas }}
+@@ -29,12 +23,7 @@ spec:
+       {{- end }}
+       {{- end }}
+       labels:
+-        app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}
+-        helm.sh/chart: {{ include "argo-cd.chart" . }}
+-        app.kubernetes.io/instance: {{ .Release.Name }}
+-        app.kubernetes.io/managed-by: {{ .Release.Service }}
+-        app.kubernetes.io/part-of: argocd
+-        app.kubernetes.io/component: {{ .Values.server.name }}
++        {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" .Values.server.name) | nindent 8 }}
+         app.kubernetes.io/version: {{ default .Values.global.image.tag .Values.server.image.tag | quote }}
+         {{- if .Values.server.podLabels }}
+ {{- toYaml .Values.server.podLabels | nindent 8 }}
+diff --git a/charts/argo-cd/templates/argocd-server/hpa.yaml b/charts/argo-cd/templates/argocd-server/hpa.yaml
+index be947ef0..e079a7e2 100644
+--- a/charts/argo-cd/templates/argocd-server/hpa.yaml
++++ b/charts/argo-cd/templates/argocd-server/hpa.yaml
+@@ -3,12 +3,7 @@ apiVersion: autoscaling/v2beta1
+ kind: HorizontalPodAutoscaler
+ metadata:
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}-hpa
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" (printf "%s-hpa" .Values.server.name)) | nindent 4 }}
+   name: {{ template "argo-cd.server.fullname" . }}-hpa
+ spec:
+   scaleTargetRef:
+diff --git a/charts/argo-cd/templates/argocd-server/ingress-grpc.yaml b/charts/argo-cd/templates/argocd-server/ingress-grpc.yaml
+index d2894273..914f1b8a 100644
+--- a/charts/argo-cd/templates/argocd-server/ingress-grpc.yaml
++++ b/charts/argo-cd/templates/argocd-server/ingress-grpc.yaml
+@@ -18,12 +18,7 @@ metadata:
+ {{- end }}
+   name: {{ template "argo-cd.server.fullname" . }}-grpc
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" .Values.server.name) | nindent 4 }}
+ {{- if .Values.server.ingressGrpc.labels }}
+ {{- toYaml .Values.server.ingressGrpc.labels | nindent 4 }}
+ {{- end }}
+diff --git a/charts/argo-cd/templates/argocd-server/ingress.yaml b/charts/argo-cd/templates/argocd-server/ingress.yaml
+index 4be764a3..d4e5020f 100644
+--- a/charts/argo-cd/templates/argocd-server/ingress.yaml
++++ b/charts/argo-cd/templates/argocd-server/ingress.yaml
+@@ -18,12 +18,7 @@ metadata:
+ {{- end }}
+   name: {{ template "argo-cd.server.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" .Values.server.name) | nindent 4 }}
+ {{- if .Values.server.ingress.labels }}
+ {{- toYaml .Values.server.ingress.labels | nindent 4 }}
+ {{- end }}
+diff --git a/charts/argo-cd/templates/argocd-server/metrics-service.yaml b/charts/argo-cd/templates/argocd-server/metrics-service.yaml
+index 44b8b1e1..3c1f4077 100644
+--- a/charts/argo-cd/templates/argocd-server/metrics-service.yaml
++++ b/charts/argo-cd/templates/argocd-server/metrics-service.yaml
+@@ -9,12 +9,7 @@ metadata:
+   {{- end }}
+ {{- end }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}-metrics
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" (printf "%s-metrics" .Values.server.name)) | nindent 4 }}
+ {{- if .Values.server.metrics.service.labels }}
+ {{- toYaml .Values.server.metrics.service.labels | nindent 4 }}
+ {{- end }}
+@@ -26,6 +21,5 @@ spec:
+     port: {{ .Values.server.metrics.service.servicePort }}
+     targetPort: metrics
+   selector:
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}
++    {{- include "argo-cd.selectorLabels" (dict "context" . "name" .Values.server.name) | nindent 4 }}
+ {{- end }}
+\ No newline at end of file
+diff --git a/charts/argo-cd/templates/argocd-server/role.yaml b/charts/argo-cd/templates/argocd-server/role.yaml
+index 4b7fe6d8..46eb68d5 100644
+--- a/charts/argo-cd/templates/argocd-server/role.yaml
++++ b/charts/argo-cd/templates/argocd-server/role.yaml
+@@ -3,12 +3,7 @@ kind: Role
+ metadata:
+   name: {{ template "argo-cd.server.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" .Values.server.name) | nindent 4 }}
+ rules:
+ - apiGroups:
+   - ""
+diff --git a/charts/argo-cd/templates/argocd-server/rolebinding.yaml b/charts/argo-cd/templates/argocd-server/rolebinding.yaml
+index 37bf10b6..54d4eaeb 100644
+--- a/charts/argo-cd/templates/argocd-server/rolebinding.yaml
++++ b/charts/argo-cd/templates/argocd-server/rolebinding.yaml
+@@ -3,12 +3,7 @@ kind: RoleBinding
+ metadata:
+   name: {{ template "argo-cd.server.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" .Values.server.name) | nindent 4 }}
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: Role
+diff --git a/charts/argo-cd/templates/argocd-server/route.yaml b/charts/argo-cd/templates/argocd-server/route.yaml
+index 7a7f3618..f6b1ce1c 100644
+--- a/charts/argo-cd/templates/argocd-server/route.yaml
++++ b/charts/argo-cd/templates/argocd-server/route.yaml
+@@ -4,12 +4,7 @@ kind: Route
+ metadata:
+   name: {{ template "argo-cd.server.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" .Values.server.name) | nindent 4 }}
+ {{- with .Values.server.route.annotations }}
+   annotations:
+ {{ toYaml . | indent 4 }}
+diff --git a/charts/argo-cd/templates/argocd-server/service.yaml b/charts/argo-cd/templates/argocd-server/service.yaml
+index 489c5b55..72a4018c 100644
+--- a/charts/argo-cd/templates/argocd-server/service.yaml
++++ b/charts/argo-cd/templates/argocd-server/service.yaml
+@@ -9,12 +9,7 @@ metadata:
+ {{- end }}
+   name: {{ template "argo-cd.server.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" .Values.server.name) | nindent 4 }}
+ {{- if .Values.server.service.labels }}
+ {{- toYaml .Values.server.service.labels | nindent 4 }}
+ {{- end }}
+@@ -36,8 +31,7 @@ spec:
+     nodePort: {{ .Values.server.service.nodePortHttps }}
+     {{- end }}
+   selector:
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}
++    {{- include "argo-cd.selectorLabels" (dict "context" . "name" .Values.server.name) | nindent 4 }}
+ {{- if eq .Values.server.service.type "LoadBalancer" }}
+ {{- if .Values.server.service.loadBalancerIP }}
+   loadBalancerIP: {{ .Values.server.service.loadBalancerIP | quote }}
+diff --git a/charts/argo-cd/templates/argocd-server/serviceaccount.yaml b/charts/argo-cd/templates/argocd-server/serviceaccount.yaml
+index c286684c..cd95480b 100644
+--- a/charts/argo-cd/templates/argocd-server/serviceaccount.yaml
++++ b/charts/argo-cd/templates/argocd-server/serviceaccount.yaml
+@@ -11,10 +11,5 @@ metadata:
+   {{- end }}
+ {{- end }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" .Values.server.name) | nindent 4 }}
+ {{- end }}
+diff --git a/charts/argo-cd/templates/argocd-server/servicemonitor.yaml b/charts/argo-cd/templates/argocd-server/servicemonitor.yaml
+index b680b4c5..ddf52efa 100644
+--- a/charts/argo-cd/templates/argocd-server/servicemonitor.yaml
++++ b/charts/argo-cd/templates/argocd-server/servicemonitor.yaml
+@@ -7,12 +7,7 @@ metadata:
+   namespace: {{ .Values.server.metrics.serviceMonitor.namespace }}
+   {{- end }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.server.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.server.name "name" .Values.server.name) | nindent 4 }}
+     {{- if .Values.server.metrics.serviceMonitor.selector }}
+ {{- toYaml .Values.server.metrics.serviceMonitor.selector | nindent 4 }}
+     {{- end }}
+@@ -29,8 +24,6 @@ spec:
+       - {{ .Release.Namespace }}
+   selector:
+     matchLabels:
+-      app.kubernetes.io/instance: {{ .Release.Name }}
+-      app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.server.name }}-metrics
+-      app.kubernetes.io/component: {{ .Values.server.name }}
++      {{- include "argo-cd.selectorLabels" (dict "context" . "component" .Values.server.name "name" (printf "%s-metrics" .Values.server.name)) | nindent 6 }}
+ {{- end }}
+ 
+diff --git a/charts/argo-cd/templates/dex/deployment.yaml b/charts/argo-cd/templates/dex/deployment.yaml
+index c91e38c2..cb40ba54 100755
+--- a/charts/argo-cd/templates/dex/deployment.yaml
++++ b/charts/argo-cd/templates/dex/deployment.yaml
+@@ -4,18 +4,12 @@ kind: Deployment
+ metadata:
+   name: {{ template "argo-cd.dex.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.dex.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.dex.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.dex.name "name" .Values.dex.name) | nindent 4 }}
+     app.kubernetes.io/version: {{ .Values.dex.image.tag | quote }}
+ spec:
+   selector:
+     matchLabels:
+-      app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.dex.name }}
+-      app.kubernetes.io/instance: {{ .Release.Name }}
++      {{- include "argo-cd.selectorLabels" (dict "context" . "name" .Values.dex.name) | nindent 6 }}
+   template:
+     metadata:
+       {{- if .Values.dex.podAnnotations }}
+@@ -25,12 +19,7 @@ spec:
+       {{- end }}
+       {{- end }}
+       labels:
+-        app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.dex.name }}
+-        helm.sh/chart: {{ include "argo-cd.chart" . }}
+-        app.kubernetes.io/instance: {{ .Release.Name }}
+-        app.kubernetes.io/managed-by: {{ .Release.Service }}
+-        app.kubernetes.io/part-of: argocd
+-        app.kubernetes.io/component: {{ .Values.dex.name }}
++        {{- include "argo-cd.labels" (dict "context" . "component" .Values.dex.name "name" .Values.dex.name) | nindent 8 }}
+         app.kubernetes.io/version: {{ .Values.dex.image.tag | quote }}
+         {{- if .Values.dex.podLabels }}
+ {{- toYaml .Values.dex.podLabels | nindent 8 }}
+diff --git a/charts/argo-cd/templates/dex/role.yaml b/charts/argo-cd/templates/dex/role.yaml
+index e2eca1cb..6b9b3f69 100644
+--- a/charts/argo-cd/templates/dex/role.yaml
++++ b/charts/argo-cd/templates/dex/role.yaml
+@@ -4,12 +4,7 @@ kind: Role
+ metadata:
+   name: {{ template "argo-cd.dex.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.dex.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.dex.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.dex.name "name" .Values.dex.name) | nindent 4 }}
+ rules:
+ - apiGroups:
+   - ""
+diff --git a/charts/argo-cd/templates/dex/rolebinding.yaml b/charts/argo-cd/templates/dex/rolebinding.yaml
+index 54311e73..4cc47005 100644
+--- a/charts/argo-cd/templates/dex/rolebinding.yaml
++++ b/charts/argo-cd/templates/dex/rolebinding.yaml
+@@ -4,12 +4,7 @@ kind: RoleBinding
+ metadata:
+   name: {{ template "argo-cd.dex.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.dex.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.dex.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.dex.name "name" .Values.dex.name) | nindent 4 }}
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: Role
+diff --git a/charts/argo-cd/templates/dex/service.yaml b/charts/argo-cd/templates/dex/service.yaml
+index f10a6d88..6fa77c4e 100644
+--- a/charts/argo-cd/templates/dex/service.yaml
++++ b/charts/argo-cd/templates/dex/service.yaml
+@@ -10,12 +10,7 @@ metadata:
+   {{- end }}
+ {{- end }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.dex.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.dex.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.dex.name "name" .Values.dex.name) | nindent 4 }}
+ {{- if .Values.dex.metrics.service.labels }}
+ {{- toYaml .Values.dex.metrics.service.labels | nindent 4 }}
+ {{- end }}
+@@ -36,6 +31,5 @@ spec:
+     targetPort: metrics
+ {{- end }}
+   selector:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.dex.name }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
++    {{- include "argo-cd.selectorLabels" (dict "context" . "name" .Values.dex.name) | nindent 4 }}
+ {{- end }}
+diff --git a/charts/argo-cd/templates/dex/serviceaccount.yaml b/charts/argo-cd/templates/dex/serviceaccount.yaml
+index 2a12c8fb..bb235eec 100644
+--- a/charts/argo-cd/templates/dex/serviceaccount.yaml
++++ b/charts/argo-cd/templates/dex/serviceaccount.yaml
+@@ -11,10 +11,5 @@ metadata:
+   {{- end }}
+ {{- end }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.dex.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.dex.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.dex.name "name" .Values.dex.name) | nindent 4 }}
+ {{- end }}
+diff --git a/charts/argo-cd/templates/dex/servicemonitor.yaml b/charts/argo-cd/templates/dex/servicemonitor.yaml
+index eb72a573..adc3394a 100644
+--- a/charts/argo-cd/templates/dex/servicemonitor.yaml
++++ b/charts/argo-cd/templates/dex/servicemonitor.yaml
+@@ -7,12 +7,7 @@ metadata:
+   namespace: {{ .Values.dex.metrics.serviceMonitor.namespace }}
+   {{- end }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.dex.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.dex.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.dex.name "name" .Values.dex.name) | nindent 4 }}
+     {{- if .Values.dex.metrics.serviceMonitor.selector }}
+ {{- toYaml .Values.dex.metrics.serviceMonitor.selector | nindent 4 }}
+     {{- end }}
+@@ -29,7 +24,5 @@ spec:
+       - {{ .Release.Namespace }}
+   selector:
+     matchLabels:
+-      app.kubernetes.io/instance: {{ .Release.Name }}
+-      app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.dex.name }}
+-      app.kubernetes.io/component: {{ .Values.dex.name }}
++      {{- include "argo-cd.selectorLabels" (dict "context" . "component" .Values.dex.name "name" .Values.dex.name) | nindent 6 }}
+ {{- end }}
+\ No newline at end of file
+diff --git a/charts/argo-cd/templates/redis/deployment.yaml b/charts/argo-cd/templates/redis/deployment.yaml
+index 3ab7ac0c..de88c0d3 100755
+--- a/charts/argo-cd/templates/redis/deployment.yaml
++++ b/charts/argo-cd/templates/redis/deployment.yaml
+@@ -5,12 +5,7 @@ kind: Deployment
+ metadata:
+   name: {{ template "argo-cd.redis.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.redis.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.redis.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.redis.name "name" .Values.redis.name) | nindent 4 }}
+     app.kubernetes.io/version: {{ .Values.redis.image.tag | quote }}
+ spec:
+   selector:
+@@ -25,12 +20,7 @@ spec:
+       {{- end }}
+       {{- end }}
+       labels:
+-        app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.redis.name }}
+-        helm.sh/chart: {{ include "argo-cd.chart" . }}
+-        app.kubernetes.io/instance: {{ .Release.Name }}
+-        app.kubernetes.io/managed-by: {{ .Release.Service }}
+-        app.kubernetes.io/part-of: argocd
+-        app.kubernetes.io/component: {{ .Values.redis.name }}
++        {{- include "argo-cd.labels" (dict "context" . "component" .Values.redis.name "name" .Values.redis.name) | nindent 8 }}
+         app.kubernetes.io/version: {{ .Values.redis.image.tag | quote }}
+         {{- if .Values.redis.podLabels }}
+ {{- toYaml .Values.redis.podLabels | nindent 8 }}
+diff --git a/charts/argo-cd/templates/redis/service.yaml b/charts/argo-cd/templates/redis/service.yaml
+index 7916edb2..c7dcae49 100644
+--- a/charts/argo-cd/templates/redis/service.yaml
++++ b/charts/argo-cd/templates/redis/service.yaml
+@@ -5,12 +5,7 @@ kind: Service
+ metadata:
+   name: {{ template "argo-cd.redis.fullname" . }}
+   labels:
+-    app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.redis.name }}
+-    helm.sh/chart: {{ include "argo-cd.chart" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+-    app.kubernetes.io/part-of: argocd
+-    app.kubernetes.io/component: {{ .Values.redis.name }}
++    {{- include "argo-cd.labels" (dict "context" . "component" .Values.redis.name "name" .Values.redis.name) | nindent 4 }}
+ spec:
+   ports:
+   - port: {{ .Values.redis.servicePort }}

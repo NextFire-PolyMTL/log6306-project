@@ -1,0 +1,170 @@
+commit 994bcba93a1d287d1e80836b0e0aa602c73c00f4
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Apr 4 14:47:17 2018 +0200
+
+    [stable/mariadb] Refactor image property in values.yaml (#4644)
+    
+    * [stable/mariadb] Refactor image properties in values.yaml
+    
+    * Use rolling tag and refactor pullSecrets
+    
+    * Fix lint issue
+    
+    * Bump chart version
+    
+    * Update test runner
+    
+    * Update Chart.yaml
+
+diff --git a/stable/mariadb/Chart.yaml b/stable/mariadb/Chart.yaml
+index a1bbbb986..a04ca3570 100644
+--- a/stable/mariadb/Chart.yaml
++++ b/stable/mariadb/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: mariadb
+-version: 2.1.18
++version: 3.0.0
+ appVersion: 10.1.32
+ description: Fast, reliable, scalable, and easy to use open-source relational database system. MariaDB Server is intended for mission-critical, heavy-load production systems as well as for embedding into mass-deployed software.
+ keywords:
+diff --git a/stable/mariadb/README.md b/stable/mariadb/README.md
+index c33aa1af3..5b1e392c7 100644
+--- a/stable/mariadb/README.md
++++ b/stable/mariadb/README.md
+@@ -45,32 +45,35 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following table lists the configurable parameters of the MariaDB chart and their default values.
+ 
+-|          Parameter           |                Description                 |                   Default                   |
+-| ---------------------------- | ------------------------------------------ | ------------------------------------------- |
+-| `image`                      | MariaDB image                              | `bitnami/mariadb:{VERSION}`                 |
+-| `service.type`               | Kubernetes service type to expose          | `ClusterIP`                                 |
+-| `service.nodePort`           | Port to bind to for NodePort service type  | `nil`                                       |
+-| `service.annotations`        | Additional annotations to add to service   | `nil`                                       |
+-| `imagePullPolicy`            | Image pull policy.                         | `IfNotPresent`                              |
+-| `usePassword`                | Enable password authentication             | `true`                                      |
+-| `mariadbRootPassword`        | Password for the `root` user.              | Randomly generated                          |
+-| `mariadbUser`                | Username of new user to create.            | `nil`                                       |
+-| `mariadbPassword`            | Password for the new user.                 | `nil`                                       |
+-| `mariadbDatabase`            | Name for new database to create.           | `nil`                                       |
+-| `persistence.enabled`        | Use a PVC to persist data                  | `true`                                      |
+-| `persistence.existingClaim`  | Use an existing PVC                        | `nil`                                       |
+-| `persistence.storageClass`   | Storage class of backing PVC               | `nil` (uses alpha storage class annotation) |
+-| `persistence.accessMode`     | Use volume as ReadOnly or ReadWrite        | `ReadWriteOnce`                             |
+-| `persistence.size`           | Size of data volume                        | `8Gi`                                       |
+-| `resources`                  | CPU/Memory resource requests/limits        | Memory: `256Mi`, CPU: `250m`                |
+-| `config`                     | Multi-line string for my.cnf configuration | `nil`                                       |
+-| `metrics.enabled`            | Start a side-car prometheus exporter       | `false`                                     |
+-| `metrics.image`              | Exporter image                             | `prom/mysqld-exporter`                      |
+-| `metrics.imageTag`           | Exporter image                             | `v0.10.0`                                   |
+-| `metrics.imagePullPolicy`    | Exporter image pull policy                 | `IfNotPresent`                              |
+-| `metrics.resources`          | Exporter resource requests/limit           | `nil`                                       |
+-| `securitySettings.runAsUser` | DAC UID for containers in this Deployment  | `1001`                                      |
+-| `securitySettings.fsGroup`   | DAC GID for containers in this Deployment  | `1001`                                      |
++|          Parameter           |                Description                 |                   Default                               |
++| ---------------------------- | ------------------------------------------ | ------------------------------------------------------- |
++| `image.registry`             | MariaDB image registry                     | `docker.io`                                             |
++| `image.repository`           | MariaDB Image name                         | `bitnami/mariadb`                                       |
++| `image.tag`                  | MariaDB Image tag                          | `{VERSION}`                                             |
++| `image.pullPolicy`           | Image pull policy                          | `Always` if `imageTag` is `latest`, else `IfNotPresent` |
++| `image.pullSecrets`          | Specify image pull secrets                 | `nil`                                                   |
++| `service.type`               | Kubernetes service type to expose          | `ClusterIP`                                             |
++| `service.nodePort`           | Port to bind to for NodePort service type  | `nil`                                                   |
++| `service.annotations`        | Additional annotations to add to service   | `nil`                                                   |
++| `usePassword`                | Enable password authentication             | `true`                                                  |
++| `mariadbRootPassword`        | Password for the `root` user.              | Randomly generated                                      |
++| `mariadbUser`                | Username of new user to create.            | `nil`                                                   |
++| `mariadbPassword`            | Password for the new user.                 | `nil`                                                   |
++| `mariadbDatabase`            | Name for new database to create.           | `nil`                                                   |
++| `persistence.enabled`        | Use a PVC to persist data                  | `true`                                                  |
++| `persistence.existingClaim`  | Use an existing PVC                        | `nil`                                                   |
++| `persistence.storageClass`   | Storage class of backing PVC               | `nil` (uses alpha storage class annotation)             |
++| `persistence.accessMode`     | Use volume as ReadOnly or ReadWrite        | `ReadWriteOnce`                                         |
++| `persistence.size`           | Size of data volume                        | `8Gi`                                                   |
++| `resources`                  | CPU/Memory resource requests/limits        | Memory: `256Mi`, CPU: `250m`                            |
++| `config`                     | Multi-line string for my.cnf configuration | `nil`                                                   |
++| `metrics.enabled`            | Start a side-car prometheus exporter       | `false`                                                 |
++| `metrics.image`              | Exporter image                             | `prom/mysqld-exporter`                                  |
++| `metrics.imageTag`           | Exporter image                             | `v0.10.0`                                               |
++| `metrics.imagePullPolicy`    | Exporter image pull policy                 | `IfNotPresent`                                          |
++| `metrics.resources`          | Exporter resource requests/limit           | `nil`                                                   |
++| `securitySettings.runAsUser` | DAC UID for containers in this Deployment  | `1001`                                                  |
++| `securitySettings.fsGroup`   | DAC GID for containers in this Deployment  | `1001`                                                  |
+ 
+ The above parameters map to the env variables defined in [bitnami/mariadb](http://github.com/bitnami/bitnami-docker-mariadb). For more information please refer to the [bitnami/mariadb](http://github.com/bitnami/bitnami-docker-mariadb) image documentation.
+ 
+diff --git a/stable/mariadb/templates/deployment.yaml b/stable/mariadb/templates/deployment.yaml
+index 2b6f24d3b..7e2f5ea2f 100644
+--- a/stable/mariadb/templates/deployment.yaml
++++ b/stable/mariadb/templates/deployment.yaml
+@@ -13,6 +13,12 @@ spec:
+       labels:
+         app: {{ template "mariadb.name" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       {{- if .Values.securitySettings.enabled }}
+       securityContext:
+         runAsUser: {{ .Values.securitySettings.runAsUser }}
+@@ -30,8 +36,8 @@ spec:
+           mountPath: /bitnami/mariadb
+       containers:
+       - name: mariadb
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         {{- if .Values.usePassword }}
+         - name: MARIADB_ROOT_PASSWORD
+diff --git a/stable/mariadb/templates/test-runner.yaml b/stable/mariadb/templates/test-runner.yaml
+index fb91dc2a1..09d480fda 100644
+--- a/stable/mariadb/templates/test-runner.yaml
++++ b/stable/mariadb/templates/test-runner.yaml
+@@ -20,7 +20,8 @@ spec:
+         name: tools
+   containers:
+     - name: mariadb-test
+-      image: {{.Values.image}}
++      image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++      imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+       command: ["/tools/bats/bats", "-t", "/tests/run.sh"]
+       {{- if .Values.usePassword }}
+       env:
+diff --git a/stable/mariadb/values.yaml b/stable/mariadb/values.yaml
+index 613d179a1..a1cdccd1a 100644
+--- a/stable/mariadb/values.yaml
++++ b/stable/mariadb/values.yaml
+@@ -1,13 +1,21 @@
+ ## Bitnami MariaDB image version
+ ## ref: https://hub.docker.com/r/bitnami/mariadb/tags/
+ ##
+-## Default: none
+-image: bitnami/mariadb:10.1.32-r0
+-
+-## Specify an imagePullPolicy (Required)
+-## It's recommended to change this to 'Always' if the image tag is 'latest'
+-## ref: http://kubernetes.io/docs/user-guide/images/#updating-images
+-imagePullPolicy: IfNotPresent
++image:
++  registry: docker.io
++  repository: bitnami/mariadb
++  tag: 10.1.32
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
+ 
+ ## Use password authentication
+ usePassword: true

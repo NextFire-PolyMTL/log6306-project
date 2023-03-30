@@ -1,0 +1,351 @@
+commit c34ecd5a7324802d0170eddd363a79e5dd0167f2
+Author: j_r0dd <285797+jr0dd@users.noreply.github.com>
+Date:   Sun Sep 12 17:57:36 2021 -0400
+
+    [sonarr] metrics refactor (#1186)
+    
+    * [sonarr] metrics refactor
+    
+    * update docs
+    
+    * fix version
+
+diff --git a/charts/stable/sonarr/Chart.yaml b/charts/stable/sonarr/Chart.yaml
+index 297e4c7d..a6a57feb 100644
+--- a/charts/stable/sonarr/Chart.yaml
++++ b/charts/stable/sonarr/Chart.yaml
+@@ -2,7 +2,7 @@ apiVersion: v2
+ appVersion: v3.0.6.1265
+ description: Smart PVR for newsgroup and bittorrent users
+ name: sonarr
+-version: 14.0.0
++version: 15.0.0
+ kubeVersion: ">=1.16.0-0"
+ keywords:
+ - sonarr
+diff --git a/charts/stable/sonarr/README.md b/charts/stable/sonarr/README.md
+index 5934d3eb..3291fa2b 100644
+--- a/charts/stable/sonarr/README.md
++++ b/charts/stable/sonarr/README.md
+@@ -1,6 +1,6 @@
+ # sonarr
+ 
+-![Version: 14.0.0](https://img.shields.io/badge/Version-14.0.0-informational?style=flat-square) ![AppVersion: v3.0.6.1265](https://img.shields.io/badge/AppVersion-v3.0.6.1265-informational?style=flat-square)
++![Version: 15.0.0](https://img.shields.io/badge/Version-15.0.0-informational?style=flat-square) ![AppVersion: v3.0.6.1265](https://img.shields.io/badge/AppVersion-v3.0.6.1265-informational?style=flat-square)
+ 
+ Smart PVR for newsgroup and bittorrent users
+ 
+@@ -78,20 +78,22 @@ N/A
+ |-----|------|---------|-------------|
+ | env | object | See below | environment variables. |
+ | env.TZ | string | `"UTC"` | Set the container timezone |
+-| exporter.enabled | bool | See values.yaml | Enable and configure Exportarr sidecar and Prometheus podMonitor. |
+-| exporter.env.additionalMetrics | bool | `false` | Set to true to enable gathering of additional metrics (slow) |
+-| exporter.env.port | int | `32123` | metrics port |
+-| exporter.env.unknownQueueItems | bool | `false` | Set to true to enable gathering unknown queue items |
+-| exporter.image.pullPolicy | string | `"IfNotPresent"` | image pull policy |
+-| exporter.image.repository | string | `"ghcr.io/onedr0p/exportarr"` | image repository |
+-| exporter.image.tag | string | `"v0.6.1"` | image tag |
+-| exporter.podMonitor.interval | string | `"3m"` |  |
+-| exporter.podMonitor.labels | object | `{}` |  |
+-| exporter.podMonitor.scrapeTimeout | string | `"1m"` |  |
+ | image.pullPolicy | string | `"IfNotPresent"` | image pull policy |
+ | image.repository | string | `"ghcr.io/k8s-at-home/sonarr"` | image repository |
+ | image.tag | string | `"v3.0.6.1265"` | image tag |
+ | ingress.main | object | See values.yaml | Enable and configure ingress settings for the chart under this key. |
++| metrics.enabled | bool | See values.yaml | Enable and configure Exportarr sidecar and Prometheus serviceMonitor. |
++| metrics.exporter.env.additionalMetrics | bool | `false` | Set to true to enable gathering of additional metrics (slow) |
++| metrics.exporter.env.port | int | `9794` | metrics port |
++| metrics.exporter.env.unknownQueueItems | bool | `false` | Set to true to enable gathering unknown queue items |
++| metrics.exporter.image.pullPolicy | string | `"IfNotPresent"` | image pull policy |
++| metrics.exporter.image.repository | string | `"ghcr.io/onedr0p/exportarr"` | image repository |
++| metrics.exporter.image.tag | string | `"v0.6.1"` | image tag |
++| metrics.prometheusRule | object | See values.yaml | Enable and configure Prometheus Rules for the chart under this key. |
++| metrics.prometheusRule.rules | list | See prometheusrules.yaml | Configure additionial rules for the chart under this key. |
++| metrics.serviceMonitor.interval | string | `"3m"` |  |
++| metrics.serviceMonitor.labels | object | `{}` |  |
++| metrics.serviceMonitor.scrapeTimeout | string | `"1m"` |  |
+ | persistence | object | See values.yaml | Configure persistence settings for the chart under this key. |
+ | probes | object | See values.yaml | Configures the probes for the main Pod. |
+ | service | object | See values.yaml | Configures service settings for the chart. |
+@@ -102,6 +104,12 @@ All notable changes to this application Helm chart will be documented in this fi
+ 
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++### [15.0.0]
++
++#### Changed
++
++- **BREAKING**: Refactored Prometheus metrics section to add rules. Enabling metrics automatically enables the serviceMonitor and exporter sidecar.
++
+ ### [14.0.0]
+ 
+ #### Changed
+@@ -133,6 +141,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ 
+ - Initial version
+ 
++[15.0.0]: #1500
+ [14.0.0]: #1400
+ [13.0.0]: #1300
+ [12.0.0]: #1200
+diff --git a/charts/stable/sonarr/README_CHANGELOG.md.gotmpl b/charts/stable/sonarr/README_CHANGELOG.md.gotmpl
+index a89c0d5e..77f53e9a 100644
+--- a/charts/stable/sonarr/README_CHANGELOG.md.gotmpl
++++ b/charts/stable/sonarr/README_CHANGELOG.md.gotmpl
+@@ -9,6 +9,12 @@ All notable changes to this application Helm chart will be documented in this fi
+ 
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++### [15.0.0]
++
++#### Changed
++
++- **BREAKING**: Refactored Prometheus metrics section to add rules. Enabling metrics automatically enables the serviceMonitor and exporter sidecar.
++
+ ### [14.0.0]
+ 
+ #### Changed
+@@ -40,6 +46,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ 
+ - Initial version
+ 
++[15.0.0]: #1500
+ [14.0.0]: #1400
+ [13.0.0]: #1300
+ [12.0.0]: #1200
+diff --git a/charts/stable/sonarr/templates/common.yaml b/charts/stable/sonarr/templates/common.yaml
+index e037017d..ca737eed 100644
+--- a/charts/stable/sonarr/templates/common.yaml
++++ b/charts/stable/sonarr/templates/common.yaml
+@@ -3,12 +3,12 @@
+ 
+ {{/* Append the hardcoded settings */}}
+ {{- define "sonarr.harcodedValues" -}}
+-{{ if .Values.exporter.enabled }}
++{{ if .Values.metrics.enabled }}
+ additionalContainers:
+   exporter:
+     name: exporter
+-    image: "{{ .Values.exporter.image.repository }}:{{ .Values.exporter.image.tag }}"
+-    imagePullPolicy: {{ .Values.exporter.image.pullPolicy }}
++    image: "{{ .Values.metrics.exporter.image.repository }}:{{ .Values.metrics.exporter.image.tag }}"
++    imagePullPolicy: {{ .Values.metrics.exporter.image.pullPolicy }}
+     args: ["exportarr", "sonarr"]
+     env:
+       - name: URL
+@@ -16,20 +16,29 @@ additionalContainers:
+       - name: CONFIG
+         value: "/config/config.xml"
+       - name: PORT
+-        value: "{{ .Values.exporter.env.port }}"
++        value: "{{ .Values.metrics.exporter.env.port }}"
+       - name: ENABLE_ADDITIONAL_METRICS
+-        value: "{{ .Values.exporter.env.additionalMetrics }}"
++        value: "{{ .Values.metrics.exporter.env.additionalMetrics }}"
+       - name: ENABLE_UNKNOWN_QUEUE_ITEMS
+-        value: "{{ .Values.exporter.env.unknownQueueItems }}"
++        value: "{{ .Values.metrics.exporter.env.unknownQueueItems }}"
+     ports:
+       - name: metrics
+-        containerPort: {{ .Values.exporter.env.port }}
++        containerPort: {{ .Values.metrics.exporter.env.port }}
+     volumeMounts:
+       {{ if .Values.persistence.config.enabled }}
+       - name: config
+         mountPath: /config
+         readOnly: true
+       {{ end }}
++
++service:
++  metrics:
++    enabled: true
++    ports:
++      metrics:
++        enabled: true
++        protocol: TCP
++        port: {{ .Values.metrics.exporter.env.port }}
+ {{ end }}
+ {{- end -}}
+ {{- $_ := mergeOverwrite .Values (include "sonarr.harcodedValues" . | fromYaml) -}}
+diff --git a/charts/stable/sonarr/templates/podmonitor.yaml b/charts/stable/sonarr/templates/podmonitor.yaml
+deleted file mode 100644
+index 8a1a7cde..00000000
+--- a/charts/stable/sonarr/templates/podmonitor.yaml
++++ /dev/null
+@@ -1,29 +0,0 @@
+-{{- if .Values.exporter.enabled }}
+-apiVersion: monitoring.coreos.com/v1
+-kind: PodMonitor
+-metadata:
+-  name: {{ template "common.names.fullname" . }}
+-  labels:
+-    {{- include "common.labels" . | nindent 4 }}
+-    {{- with .Values.exporter.podMonitor.labels }}
+-    {{- toYaml . | nindent 4 }}
+-    {{- end }}
+-spec:
+-  selector:
+-    matchLabels:
+-      {{- include "common.labels.selectorLabels" . | nindent 6 }}
+-  podMetricsEndpoints:
+-    - port: metrics
+-      {{- with .Values.exporter.podMonitor.interval }}
+-      interval: {{ . }}
+-      {{- end }}
+-      {{- with .Values.exporter.podMonitor.scrapeTimeout }}
+-      scrapeTimeout: {{ . }}
+-      {{- end }}
+-      path: /metrics
+-      relabelings:
+-        - sourceLabels: ['namespace', 'job']
+-          regex: ".+/(.*)"
+-          targetLabel: "job"
+-          replacement: "$1"
+-{{- end }}
+diff --git a/charts/stable/sonarr/templates/prometheusrules.yaml b/charts/stable/sonarr/templates/prometheusrules.yaml
+new file mode 100644
+index 00000000..966b9d92
+--- /dev/null
++++ b/charts/stable/sonarr/templates/prometheusrules.yaml
+@@ -0,0 +1,37 @@
++{{- if and .Values.metrics.enabled .Values.metrics.prometheusRule.enabled }}
++apiVersion: monitoring.coreos.com/v1
++kind: PrometheusRule
++metadata:
++  name: {{ include "common.names.fullname" . }}
++  labels:
++    {{- include "common.labels" . | nindent 4 }}
++    {{- with .Values.metrics.prometheusRule.labels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++spec:
++  groups:
++    - name: sonarr
++      rules:
++        - alert: ExportarrAbsent
++          annotations:
++            description: Sonarr Exportarr has disappeared from Prometheus
++              service discovery.
++            summary: Exportarr is down.
++          expr: |
++            absent(up{job=~".*sonarr.*"} == 1)
++          for: 5m
++          labels:
++            severity: critical
++        - alert: SonarrDown
++          annotations:
++            description: Sonarr service is down.
++            summary: Sonarr is down.
++          expr: |
++            sonarr_system_status == 0
++          for: 5m
++          labels:
++            severity: critical
++        {{- with .Values.metrics.prometheusRule.rules }}
++        {{- toYaml . | nindent 8 }}
++        {{- end }}
++{{- end }}
+diff --git a/charts/stable/sonarr/templates/servicemonitor.yaml b/charts/stable/sonarr/templates/servicemonitor.yaml
+new file mode 100644
+index 00000000..b4245480
+--- /dev/null
++++ b/charts/stable/sonarr/templates/servicemonitor.yaml
+@@ -0,0 +1,24 @@
++{{- if .Values.metrics.enabled }}
++apiVersion: monitoring.coreos.com/v1
++kind: ServiceMonitor
++metadata:
++  name: {{ include "common.names.fullname" . }}
++  labels:
++    {{- include "common.labels" . | nindent 4 }}
++    {{- with .Values.metrics.serviceMonitor.labels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++spec:
++  selector:
++    matchLabels:
++      {{- include "common.labels.selectorLabels" . | nindent 6 }}
++  endpoints:
++    - port: metrics
++      {{- with .Values.metrics.serviceMonitor.interval }}
++      interval: {{ . }}
++      {{- end }}
++      {{- with .Values.metrics.serviceMonitor.scrapeTimeout }}
++      scrapeTimeout: {{ . }}
++      {{- end }}
++      path: /metrics
++{{- end }}
+diff --git a/charts/stable/sonarr/values.yaml b/charts/stable/sonarr/values.yaml
+index d6f21707..c1485c25 100644
+--- a/charts/stable/sonarr/values.yaml
++++ b/charts/stable/sonarr/values.yaml
+@@ -57,6 +57,7 @@ probes:
+       timeoutSeconds: 10
+ 
+ # -- Configure persistence settings for the chart under this key.
++## Config persistence is required for the Prometheus exporter sidecar.
+ # @default -- See values.yaml
+ persistence:
+   config:
+@@ -66,25 +67,43 @@ persistence:
+     enabled: false
+     mountPath: /media
+ 
+-exporter:
+-  # -- Enable and configure Exportarr sidecar and Prometheus podMonitor.
++metrics:
++  # -- Enable and configure Exportarr sidecar and Prometheus serviceMonitor.
+   # @default -- See values.yaml
+   enabled: false
+-  podMonitor:
++  serviceMonitor:
+     interval: 3m
+     scrapeTimeout: 1m
+     labels: {}
+-  image:
+-    # -- image repository
+-    repository: ghcr.io/onedr0p/exportarr
+-    # -- image tag
+-    tag: v0.6.1
+-    # -- image pull policy
+-    pullPolicy: IfNotPresent
+-  env:
+-    # -- metrics port
+-    port: 32123
+-    # -- Set to true to enable gathering of additional metrics (slow)
+-    additionalMetrics: false
+-    # -- Set to true to enable gathering unknown queue items
+-    unknownQueueItems: false
++  # -- Enable and configure Prometheus Rules for the chart under this key.
++  # @default -- See values.yaml
++  prometheusRule:
++    enabled: false
++    labels: {}
++    # -- Configure additionial rules for the chart under this key.
++    # @default -- See prometheusrules.yaml
++    rules: []
++      # - alert: SonarrDown
++      #   annotations:
++      #     description: Sonarr service is down.
++      #     summary: Sonarr is down.
++      #   expr: |
++      #     sonarr_system_status == 0
++      #   for: 5m
++      #   labels:
++      #     severity: critical
++  exporter:
++    image:
++      # -- image repository
++      repository: ghcr.io/onedr0p/exportarr
++      # -- image tag
++      tag: v0.6.1
++      # -- image pull policy
++      pullPolicy: IfNotPresent
++    env:
++      # -- metrics port
++      port: 9794
++      # -- Set to true to enable gathering of additional metrics (slow)
++      additionalMetrics: false
++      # -- Set to true to enable gathering unknown queue items
++      unknownQueueItems: false

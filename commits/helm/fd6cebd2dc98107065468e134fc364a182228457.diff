@@ -1,0 +1,101 @@
+commit fd6cebd2dc98107065468e134fc364a182228457
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Apr 4 13:54:37 2018 +0200
+
+    [stable/prestashop] Refactor image property in values.yaml (#4656)
+    
+    * [stable/prestashop] Refactor image properties in values.yaml
+    
+    * Use rolling tag and refactor pullSecrets
+    
+    * Fix lint issue
+    
+    * Bump chart version
+    
+    * Update Chart.yaml
+
+diff --git a/stable/prestashop/Chart.yaml b/stable/prestashop/Chart.yaml
+index bf718fe2d..a73f65772 100644
+--- a/stable/prestashop/Chart.yaml
++++ b/stable/prestashop/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: prestashop
+-version: 0.6.2
++version: 1.0.0
+ appVersion: 1.7.3
+ description: A popular open source ecommerce solution. Professional tools are easily
+   accessible to increase online sales including instant guest checkout, abandoned
+diff --git a/stable/prestashop/README.md b/stable/prestashop/README.md
+index 0766e0031..3c6430c74 100644
+--- a/stable/prestashop/README.md
++++ b/stable/prestashop/README.md
+@@ -47,8 +47,11 @@ The following table lists the configurable parameters of the PrestaShop chart an
+ 
+ |               Parameter               |                 Description                 |                         Default                          |
+ |---------------------------------------|---------------------------------------------|----------------------------------------------------------|
+-| `image`                               | PrestaShop image                            | `bitnami/prestashop:{VERSION}`                           |
+-| `imagePullPolicy`                     | Image pull policy                           | `Always` if `image` tag is `latest`, else `IfNotPresent` |
++| `image.registry`                      | PrestaShop image registry                   | `docker.io`                                              |
++| `image.repository`                    | PrestaShop image name                       | `bitnami/prestashop`                                     |
++| `image.tag`                           | PrestaShop image tag                        | `{VERSION}`                                              |
++| `image.pullPolicy`                    | Image pull policy                           | `Always` if `imageTag` is `latest`, else `IfNotPresent`  |
++| `image.pullSecrets`                   | Specify image pull secrets                  | `nil`                                                    |
+ | `prestashopHost`                      | PrestaShop host to create application URLs  | `nil`                                                    |
+ | `prestashopLoadBalancerIP`            | `loadBalancerIP` for the PrestaShop Service | `nil`                                                    |
+ | `prestashopUsername`                  | User of the application                     | `user@example.com`                                       |
+diff --git a/stable/prestashop/templates/deployment.yaml b/stable/prestashop/templates/deployment.yaml
+index 4fda68f09..1bac4a35d 100644
+--- a/stable/prestashop/templates/deployment.yaml
++++ b/stable/prestashop/templates/deployment.yaml
+@@ -14,10 +14,16 @@ spec:
+       labels:
+         app: {{ template "prestashop.fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "prestashop.fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: ALLOW_EMPTY_PASSWORD
+           value: {{ .Values.allowEmptyPassword | quote }}
+diff --git a/stable/prestashop/values.yaml b/stable/prestashop/values.yaml
+index 0e0283507..68ee88543 100644
+--- a/stable/prestashop/values.yaml
++++ b/stable/prestashop/values.yaml
+@@ -1,13 +1,21 @@
+ ## Bitnami PrestaShop image version
+ ## ref: https://hub.docker.com/r/bitnami/prestashop/tags/
+ ##
+-image: bitnami/prestashop:1.7.3-0-r1
+-
+-## Specify a imagePullPolicy
+-## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-# imagePullPolicy:
++image:
++  registry: docker.io
++  repository: bitnami/prestashop
++  tag: 1.7.3-0
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
+ 
+ ## PrestaShop host to create application URLs
+ ## ref: https://github.com/bitnami/bitnami-docker-prestashop#configuration

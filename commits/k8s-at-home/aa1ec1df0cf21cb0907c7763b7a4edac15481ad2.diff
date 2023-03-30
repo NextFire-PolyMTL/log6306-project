@@ -1,0 +1,271 @@
+commit aa1ec1df0cf21cb0907c7763b7a4edac15481ad2
+Author: j_r0dd <285797+jr0dd@users.noreply.github.com>
+Date:   Mon Sep 6 14:40:06 2021 -0400
+
+    [lidarr] refactor of exportarr sidecar and podmonitor (#1155)
+
+diff --git a/charts/stable/lidarr/Chart.yaml b/charts/stable/lidarr/Chart.yaml
+index d646d0bd..06695452 100644
+--- a/charts/stable/lidarr/Chart.yaml
++++ b/charts/stable/lidarr/Chart.yaml
+@@ -1,8 +1,8 @@
+ apiVersion: v2
+-appVersion: v1.0.0.2226
++appVersion: v1.0.0.2255
+ description: Looks and smells like Sonarr but made for music
+ name: lidarr
+-version: 11.0.0
++version: 12.0.0
+ kubeVersion: ">=1.16.0-0"
+ keywords:
+ - lidarr
+diff --git a/charts/stable/lidarr/README.md b/charts/stable/lidarr/README.md
+index 8cbe1027..7ff0d590 100644
+--- a/charts/stable/lidarr/README.md
++++ b/charts/stable/lidarr/README.md
+@@ -1,6 +1,6 @@
+ # lidarr
+ 
+-![Version: 11.0.0](https://img.shields.io/badge/Version-11.0.0-informational?style=flat-square) ![AppVersion: v1.0.0.2226](https://img.shields.io/badge/AppVersion-v1.0.0.2226-informational?style=flat-square)
++![Version: 12.0.0](https://img.shields.io/badge/Version-12.0.0-informational?style=flat-square) ![AppVersion: v1.0.0.2255](https://img.shields.io/badge/AppVersion-v1.0.0.2255-informational?style=flat-square)
+ 
+ Looks and smells like Sonarr but made for music
+ 
+@@ -78,13 +78,22 @@ N/A
+ |-----|------|---------|-------------|
+ | env | object | See below | environment variables. |
+ | env.TZ | string | `"UTC"` | Set the container timezone |
++| exporter.enabled | bool | See values.yaml | Enable and configure Exportarr sidecar and Prometheus podMonitor. |
++| exporter.env.additionalMetrics | bool | `false` | Set to true to enable gathering of additional metrics (slow) |
++| exporter.env.port | int | `32123` | metrics port |
++| exporter.env.unknownQueueItems | bool | `false` | Set to true to enable gathering unknown queue items |
++| exporter.image.pullPolicy | string | `"IfNotPresent"` | image pull policy |
++| exporter.image.repository | string | `"ghcr.io/onedr0p/exportarr"` | image repository |
++| exporter.image.tag | string | `"v0.6.1"` | image tag |
++| exporter.podMonitor.interval | string | `"3m"` |  |
++| exporter.podMonitor.labels | object | `{}` |  |
++| exporter.podMonitor.scrapeTimeout | string | `"1m"` |  |
+ | image.pullPolicy | string | `"IfNotPresent"` | image pull policy |
+ | image.repository | string | `"ghcr.io/k8s-at-home/lidarr"` | image repository |
+-| image.tag | string | `"v1.0.0.2226"` | image tag |
++| image.tag | string | `"v1.0.0.2255"` | image tag |
+ | ingress.main | object | See values.yaml | Enable and configure ingress settings for the chart under this key. |
+ | persistence | object | See values.yaml | Configure persistence settings for the chart under this key. |
+ | probes | object | See values.yaml | Configures the probes for the main Pod. |
+-| prometheus.podMonitor | object | See values.yaml | Enable and configure a Prometheus podMonitor for the chart under this key. See also the notes under `additionalContainers`. |
+ | service | object | See values.yaml | Configures service settings for the chart. |
+ 
+ ## Changelog
+@@ -93,6 +102,12 @@ All notable changes to this application Helm chart will be documented in this fi
+ 
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++### [12.0.0]
++
++#### Changed
++
++- Refactoring of the Exportarr sidecar and Prometheus podMonitor. This is a breaking change if it was enabled previously.
++
+ ### [11.0.0]
+ 
+ #### Changed
+@@ -119,6 +134,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ 
+ - Initial version
+ 
++[12.0.0]: #1200
+ [11.0.0]: #1100
+ [10.0.0]: #1000
+ [9.0.0]: #900
+diff --git a/charts/stable/lidarr/README_CHANGELOG.md.gotmpl b/charts/stable/lidarr/README_CHANGELOG.md.gotmpl
+index 4f4c7bfc..cb576b20 100644
+--- a/charts/stable/lidarr/README_CHANGELOG.md.gotmpl
++++ b/charts/stable/lidarr/README_CHANGELOG.md.gotmpl
+@@ -9,6 +9,12 @@ All notable changes to this application Helm chart will be documented in this fi
+ 
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++### [12.0.0]
++
++#### Changed
++
++- Refactoring of the Exportarr sidecar and Prometheus podMonitor. This is a breaking change if it was enabled previously.
++
+ ### [11.0.0]
+ 
+ #### Changed
+@@ -35,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ 
+ - Initial version
+ 
++[12.0.0]: #1200
+ [11.0.0]: #1100
+ [10.0.0]: #1000
+ [9.0.0]: #900
+diff --git a/charts/stable/lidarr/ci/ct-exportarr-values.yaml b/charts/stable/lidarr/ci/ct-exportarr-values.yaml
+index d810787b..6bf22018 100644
+--- a/charts/stable/lidarr/ci/ct-exportarr-values.yaml
++++ b/charts/stable/lidarr/ci/ct-exportarr-values.yaml
+@@ -7,7 +7,7 @@ persistence:
+ additionalContainers:
+   exportarr:
+     name: exportarr
+-    image: ghcr.io/onedr0p/exportarr:v0.6.0
++    image: ghcr.io/onedr0p/exportarr:v0.6.1
+     imagePullPolicy: IfNotPresent
+     args: ["exportarr", "lidarr"]
+     env:
+diff --git a/charts/stable/lidarr/templates/common.yaml b/charts/stable/lidarr/templates/common.yaml
+index a6613c2c..8f5e5295 100644
+--- a/charts/stable/lidarr/templates/common.yaml
++++ b/charts/stable/lidarr/templates/common.yaml
+@@ -1 +1,38 @@
++{{/* Make sure all variables are set properly */}}
++{{- include "common.values.setup" . }}
++
++{{/* Append the hardcoded settings */}}
++{{- define "lidarr.harcodedValues" -}}
++{{ if .Values.exporter.enabled }}
++additionalContainers:
++  exporter:
++    name: exporter
++    image: "{{ .Values.exporter.image.repository }}:{{ .Values.exporter.image.tag }}"
++    imagePullPolicy: {{ .Values.exporter.image.pullPolicy }}
++    args: ["exportarr", "lidarr"]
++    env:
++      - name: URL
++        value: "http://localhost"
++      - name: CONFIG
++        value: "/config/config.xml"
++      - name: PORT
++        value: "{{ .Values.exporter.env.port }}"
++      - name: ENABLE_ADDITIONAL_METRICS
++        value: "{{ .Values.exporter.env.additionalMetrics }}"
++      - name: ENABLE_UNKNOWN_QUEUE_ITEMS
++        value: "{{ .Values.exporter.env.unknownQueueItems }}"
++    ports:
++      - name: metrics
++        containerPort: {{ .Values.exporter.env.port }}
++    volumeMounts:
++      {{ if .Values.persistence.config.enabled }}
++      - name: config
++        mountPath: /config
++        readOnly: true
++      {{ end }}
++{{ end }}
++{{- end -}}
++{{- $_ := mergeOverwrite .Values (include "lidarr.harcodedValues" . | fromYaml) -}}
++
++{{/* Render the templates */}}
+ {{ include "common.all" . }}
+diff --git a/charts/stable/lidarr/templates/podmonitor.yaml b/charts/stable/lidarr/templates/podmonitor.yaml
+index dc673908..8a1a7cde 100644
+--- a/charts/stable/lidarr/templates/podmonitor.yaml
++++ b/charts/stable/lidarr/templates/podmonitor.yaml
+@@ -1,11 +1,11 @@
+-{{- if .Values.prometheus.podMonitor.enabled }}
++{{- if .Values.exporter.enabled }}
+ apiVersion: monitoring.coreos.com/v1
+ kind: PodMonitor
+ metadata:
+   name: {{ template "common.names.fullname" . }}
+   labels:
+     {{- include "common.labels" . | nindent 4 }}
+-    {{- with .Values.prometheus.podMonitor.additionalLabels }}
++    {{- with .Values.exporter.podMonitor.labels }}
+     {{- toYaml . | nindent 4 }}
+     {{- end }}
+ spec:
+@@ -13,12 +13,17 @@ spec:
+     matchLabels:
+       {{- include "common.labels.selectorLabels" . | nindent 6 }}
+   podMetricsEndpoints:
+-  - port: exportarr
+-    {{- with .Values.prometheus.podMonitor.interval }}
+-    interval: {{ . }}
+-    {{- end }}
+-    {{- with .Values.prometheus.podMonitor.scrapeTimeout }}
+-    scrapeTimeout: {{ . }}
+-    {{- end }}
+-    path: /metrics
++    - port: metrics
++      {{- with .Values.exporter.podMonitor.interval }}
++      interval: {{ . }}
++      {{- end }}
++      {{- with .Values.exporter.podMonitor.scrapeTimeout }}
++      scrapeTimeout: {{ . }}
++      {{- end }}
++      path: /metrics
++      relabelings:
++        - sourceLabels: ['namespace', 'job']
++          regex: ".+/(.*)"
++          targetLabel: "job"
++          replacement: "$1"
+ {{- end }}
+diff --git a/charts/stable/lidarr/values.yaml b/charts/stable/lidarr/values.yaml
+index 1a49cef4..2f5fda4c 100644
+--- a/charts/stable/lidarr/values.yaml
++++ b/charts/stable/lidarr/values.yaml
+@@ -9,7 +9,7 @@ image:
+   # -- image repository
+   repository: ghcr.io/k8s-at-home/lidarr
+   # -- image tag
+-  tag: v1.0.0.2226
++  tag: v1.0.0.2255
+   # -- image pull policy
+   pullPolicy: IfNotPresent
+ 
+@@ -66,35 +66,25 @@ persistence:
+     enabled: false
+     mountPath: /media
+ 
+-prometheus:
+-  # -- Enable and configure a Prometheus podMonitor for the chart under this key.
+-  # See also the notes under `additionalContainers`.
++exporter:
++  # -- Enable and configure Exportarr sidecar and Prometheus podMonitor.
+   # @default -- See values.yaml
++  enabled: false
+   podMonitor:
+-    enabled: false
+     interval: 3m
+     scrapeTimeout: 1m
+-    additionalLabels: {}
+-
+-# # When using the prometheus.podMonitor the following
+-# # container is required
+-# additionalContainers:
+-#   exportarr:
+-#     name: exportarr
+-#     image: ghcr.io/onedr0p/exportarr:v0.6.0
+-#     imagePullPolicy: IfNotPresent
+-#     args: ["exportarr", "lidarr"]
+-#     env:
+-#     - name: PORT
+-#       value: "32123"
+-#     - name: URL
+-#       value: "http://localhost"
+-#     - name: CONFIG
+-#       value: "/config/config.xml"
+-#     ports:
+-#     - name: exportarr
+-#       containerPort: 32123
+-#     volumeMounts:
+-#     - name: config
+-#       mountPath: /config
+-#       readOnly: true
++    labels: {}
++  image:
++    # -- image repository
++    repository: ghcr.io/onedr0p/exportarr
++    # -- image tag
++    tag: v0.6.1
++    # -- image pull policy
++    pullPolicy: IfNotPresent
++  env:
++    # -- metrics port
++    port: 32123
++    # -- Set to true to enable gathering of additional metrics (slow)
++    additionalMetrics: false
++    # -- Set to true to enable gathering unknown queue items
++    unknownQueueItems: false

@@ -1,0 +1,922 @@
+commit a0a0667464969016c148202c79915de4d67084dc
+Author: Jeff Billimek <jeff@billimek.com>
+Date:   Mon Aug 13 16:38:55 2018 -0400
+
+    [stable/home-assistant] (new chart) home-assistant (#6435)
+    
+    * new chart for home-assistant
+    
+    * updates to reflect changes requested in PR
+    
+    * fixing cosmetic linting errors
+    
+    * refactoring configurator basic auth away from deprecated approach
+    
+    * adding newline to end of file per linter request
+    
+    * updating default configurator image to the official one
+
+diff --git a/stable/home-assistant/.helmignore b/stable/home-assistant/.helmignore
+new file mode 100644
+index 000000000..f0c131944
+--- /dev/null
++++ b/stable/home-assistant/.helmignore
+@@ -0,0 +1,21 @@
++# Patterns to ignore when building packages.
++# This supports shell glob matching, relative path matching, and
++# negation (prefixed with !). Only one pattern per line.
++.DS_Store
++# Common VCS dirs
++.git/
++.gitignore
++.bzr/
++.bzrignore
++.hg/
++.hgignore
++.svn/
++# Common backup files
++*.swp
++*.bak
++*.tmp
++*~
++# Various IDEs
++.project
++.idea/
++*.tmproj
+diff --git a/stable/home-assistant/Chart.yaml b/stable/home-assistant/Chart.yaml
+new file mode 100644
+index 000000000..d1828282a
+--- /dev/null
++++ b/stable/home-assistant/Chart.yaml
+@@ -0,0 +1,17 @@
++apiVersion: v1
++appVersion: 0.74.2
++description: Home Assistant
++name: home-assistant
++version: 0.1.45
++keywords:
++- home-assistant
++- hass
++- homeassistant
++home: https://github.com/home-assistant/home-assistant
++icon: https://upload.wikimedia.org/wikipedia/commons/thumb/6/6e/Home_Assistant_Logo.svg/519px-Home_Assistant_Logo.svg.png
++sources:
++- https://github.com/home-assistant/home-assistant
++- https://github.com/danielperna84/hass-configurator
++maintainers:
++- name: billimek
++  email: jeff@billimek.com
+diff --git a/stable/home-assistant/README.md b/stable/home-assistant/README.md
+new file mode 100644
+index 000000000..403548cac
+--- /dev/null
++++ b/stable/home-assistant/README.md
+@@ -0,0 +1,117 @@
++# Home Assistant
++
++This is a helm chart for [Home Assistant](https://www.home-assistant.io/)
++
++## TL;DR;
++
++```console
++$ helm install stable/home-assistant
++```
++
++## Introduction
++
++This code is adopted for [the official home assistant docker image](https://hub.docker.com/r/homeassistant/home-assistant/)
++
++## Installing the Chart
++
++To install the chart with the release name `my-release`:
++
++```console
++$ helm install --name my-release stable/home-assistant
++```
++## Uninstalling the Chart
++
++To uninstall/delete the `my-release` deployment:
++
++```console
++$ helm delete my-release --purge
++```
++
++The command removes all the Kubernetes components associated with the chart and deletes the release.
++
++## Configuration
++
++The following tables lists the configurable parameters of the Sentry chart and their default values.
++
++| Parameter                  | Description                         | Default                                                 |
++|----------------------------|-------------------------------------|---------------------------------------------------------|
++| `image.repository`         | Image repository | `homeassistant/home-assistant` |
++| `image.tag`                | Image tag. Possible values listed [here](https://hub.docker.com/r/jacobalberty/home-assistant/tags/).| `0.72.1`|
++| `image.pullPolicy`         | Image pull policy | `IfNotPresent` |
++| `service.type`             | Kubernetes service type for the home-assistant GUI | `ClusterIP` |
++| `service.port`             | Kubernetes port where the home-assistant GUI is exposed| `8123` |
++| `service.annotations`      | Service annotations for the home-assistant GUI | `{}` |
++| `service.clusterIP`   | Cluster IP for the home-assistant GUI | `` |
++| `service.externalIPs`   | External IPs for the home-assistant GUI | `[]` |
++| `service.loadBalancerIP`   | Loadbalance IP for the home-assistant GUI | `` |
++| `service.loadBalancerSourceRanges`   | Loadbalance client IP restriction range for the home-assistant GUI | `[]` |
++| `service.nodePort`   | nodePort to listen on for the home-assistant GUI | `` |
++| `ingress.enabled`              | Enables Ingress | `false` |
++| `ingress.annotations`          | Ingress annotations | `{}` |
++| `ingress.path`                 | Ingress path | `/` |
++| `ingress.hosts`                | Ingress accepted hostnames | `chart-example.local` |
++| `ingress.tls`                  | Ingress TLS configuration | `[]` |
++| `persistence.enabled`      | Use persistent volume to store data | `true` |
++| `persistence.size`         | Size of persistent volume claim | `5Gi` |
++| `persistence.existingClaim`| Use an existing PVC to persist data | `nil` |
++| `persistence.storageClass` | Type of persistent volume claim | `-` |
++| `persistence.accessMode`  | Persistence access modes | `ReadWriteMany` |
++| `extraEnv`          | Extra ENV vars to pass to the home-assistant container | `{}` |
++| `configurator.enabled`     | Enable the optional [configuration UI](https://github.com/danielperna84/hass-configurator) | `false` |
++| `configurator.image.repository`         | Image repository | `billimek/hass-configurator-docker` |
++| `configurator.image.tag`                | Image tag | `x86_64-0.3.0`|
++| `configurator.image.pullPolicy`         | Image pull policy | `IfNotPresent` |
++| `configurator.hassApiUrl`               | Home Assistant API URL (e.g. 'http://home-assistant:8123/api/') - will auto-configure to proper URL if not set | ``|
++| `configurator.hassApiPassword`          | Home Assistant API Password | `` |
++| `configurator.basepath`                 | Base path of the home assistant configuration files | `/config` |
++| `configurator.enforceBasepath`          | If set to true, will prevent navigation to other directories in the configurator UI | `true` |
++| `configurator.username`                 | If this and password (below) are set, will require basic auth to access the configurator UI  | `` |
++| `configurator.password`                 | If this and username (above) are set, will require basic auth to access the configurator UI. password is in the format of a sha256 hash (e.g. "test" would be "{sha256}9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08")  | `` |
++| `configurator.extraEnv`                 | Extra ENV vars to pass to the configuration UI | `{}` |
++| `configurator.ingress.enabled`          | Enables Ingress for the configurator UI | `false` |
++| `configurator.ingress.annotations`      | Ingress annotations for the configurator UI | `{}` |
++| `configurator.ingress.hosts`            | Ingress accepted hostnames for the configurator UI | `chart-example.local` |
++| `configurator.ingress.tls`              | Ingress TLS configuration for the configurator UI | `[]` |
++| `configurator.strategy.type`            | hass-configurator Deployment Strategy type | `` |
++| `configurator.tolerations`              | Toleration labels for pod assignment for the configurator UI | `[]` |
++| `configurator.nodeSelector`             | Node labels for pod assignment for the configurator UI | `{}` |
++| `configurator.schedulerName`            | Use an alternate scheduler, e.g. "stork" for the configurator UI | `` |
++| `configurator.podAnnotations`           | Affinity settings for pod assignment for the configurator UI | `{}` |
++| `configurator.replicaCount`             | Number of replicas for the configurator UI | `1` |
++| `configurator.resources`                | CPU/Memory resource requests/limits for the configurator UI | `{}` |
++| `configurator.securityContext`          | Security context to be added to hass-configurator pods for the configurator UI | `{}` |
++| `configurator.service.type`             | Kubernetes service type for the configurator UI | `ClusterIP` |
++| `configurator.service.port`             | Kubernetes port where the configurator UI is exposed| `3218` |
++| `configurator.service.nodePort`         | nodePort to listen on for the configurator UI | `` |
++| `configurator.service.annotations`      | Service annotations for the configurator UI | `{}` |
++| `configurator.service.labels`           | Service labels to use for the configurator UI | `{}` |
++| `configurator.service.clusterIP`        | Cluster IP for the configurator UI | `` |
++| `configurator.service.externalIPs`      | External IPs for the configurator UI | `[]` |
++| `configurator.service.loadBalancerIP`   | Loadbalance IP for the configurator UI | `` |
++| `configurator.service.loadBalancerSourceRanges`   | Loadbalance client IP restriction range for the configurator UI | `[]` |
++| `resources`                | CPU/Memory resource requests/limits or the home-assistant GUI | `{}` |
++| `nodeSelector`             | Node labels for pod assignment or the home-assistant GUI | `{}` |
++| `tolerations`              | Toleration labels for pod assignment or the home-assistant GUI | `[]` |
++| `affinity`                 | Affinity settings for pod assignment or the home-assistant GUI | `{}` |
++
++Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
++
++```console
++helm install --name my-release \
++  --set configurator.hassApiPassword="$HASS_API_PASSWORD" \
++    stable/home-assistant
++```
++
++Alternatively, a YAML file that specifies the values for the above parameters can be provided while installing the chart. For example,
++
++```console
++helm install --name my-release -f values.yaml stable/home-assistant
++```
++
++Read through the [values.yaml](values.yaml) file. It has several commented out suggested values.
++
++## Regarding configuring home assistnat
++
++Much of the home assistant configuration occurs inside the various files persisted to the `/config` directory.  This will require external access to the persistant storage location where the home assistant configuration data is stored.
++
++Because this may be a limitation, the [Home Assistant Configurator UI](https://github.com/danielperna84/hass-configurator) is added to the chart as an option to provide a webUI for editing the various configuration files
+\ No newline at end of file
+diff --git a/stable/home-assistant/templates/NOTES.txt b/stable/home-assistant/templates/NOTES.txt
+new file mode 100644
+index 000000000..8bc0903c7
+--- /dev/null
++++ b/stable/home-assistant/templates/NOTES.txt
+@@ -0,0 +1,19 @@
++1. Get the application URL by running these commands:
++{{- if .Values.ingress.enabled }}
++{{- range .Values.ingress.hosts }}
++  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ . }}{{ $.Values.ingress.path }}
++{{- end }}
++{{- else if contains "NodePort" .Values.service.type }}
++  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ template "home-assistant.fullname" . }})
++  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
++  echo http://$NODE_IP:$NODE_PORT
++{{- else if contains "LoadBalancer" .Values.service.type }}
++     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
++           You can watch the status of by running 'kubectl get svc -w {{ template "home-assistant.fullname" . }}'
++  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "home-assistant.fullname" . }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
++  echo http://$SERVICE_IP:{{ .Values.service.port }}
++{{- else if contains "ClusterIP" .Values.service.type }}
++  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app={{ template "home-assistant.name" . }},release={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
++  echo "Visit http://127.0.0.1:8080 to use your application"
++  kubectl port-forward $POD_NAME 8080:80
++{{- end }}
+diff --git a/stable/home-assistant/templates/_helpers.tpl b/stable/home-assistant/templates/_helpers.tpl
+new file mode 100644
+index 000000000..d277f82d3
+--- /dev/null
++++ b/stable/home-assistant/templates/_helpers.tpl
+@@ -0,0 +1,32 @@
++{{/* vim: set filetype=mustache: */}}
++{{/*
++Expand the name of the chart.
++*/}}
++{{- define "home-assistant.name" -}}
++{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*
++Create a default fully qualified app name.
++We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
++If release name contains chart name it will be used as a full name.
++*/}}
++{{- define "home-assistant.fullname" -}}
++{{- if .Values.fullnameOverride -}}
++{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Create chart name and version as used by the chart label.
++*/}}
++{{- define "home-assistant.chart" -}}
++{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
+diff --git a/stable/home-assistant/templates/configurator-deployment.yaml b/stable/home-assistant/templates/configurator-deployment.yaml
+new file mode 100644
+index 000000000..9f5433805
+--- /dev/null
++++ b/stable/home-assistant/templates/configurator-deployment.yaml
+@@ -0,0 +1,107 @@
++
++{{- if .Values.configurator.enabled -}}
++apiVersion: apps/v1beta2
++kind: Deployment
++metadata:
++  name: {{ template "home-assistant.fullname" . }}-configurator
++  labels:
++    app: {{ template "home-assistant.name" . }}
++    chart: {{ template "home-assistant.chart" . }}
++    component: configurator
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++spec:
++  replicas: {{ .Values.configurator.replicaCount }}
++  selector:
++    matchLabels:
++      app: {{ template "home-assistant.name" . }}
++      release: {{ .Release.Name }}
++      component: configurator
++  template:
++    metadata:
++      labels:
++        app: {{ template "home-assistant.name" . }}
++        component: configurator
++        release: {{ .Release.Name }}
++    spec:
++      containers:
++        - name: {{ template "home-assistant.name" . }}-configurator
++          image: "{{ .Values.configurator.image.repository }}:{{ .Values.configurator.image.tag }}"
++          imagePullPolicy: {{ .Values.configurator.image.pullPolicy }}
++          ports:
++            - name: http
++              containerPort: {{ .Values.configurator.service.port }}
++              protocol: TCP
++          livenessProbe:
++            tcpSocket:
++              port: http
++              initialDelaySeconds: 30
++          readinessProbe:
++            tcpSocket:
++              port: http
++              initialDelaySeconds: 15
++          env:
++            {{- if .Values.configurator.hassApiPassword }}
++            - name: HC_HASS_API_PASSWORD
++              valueFrom:
++                secretKeyRef:
++                  name: {{ template "home-assistant.fullname" . }}-configurator
++                  key: hass-api-password
++            {{- end }}
++            {{- if (.Values.configurator.username) and (.Values.configurator.password) }}
++            - name: HC_USERNAME
++              valueFrom:
++                secretKeyRef:
++                  name: {{ template "home-assistant.fullname" . }}-configurator
++                  key: username
++            - name: HC_PASSWORD
++              valueFrom:
++                secretKeyRef:
++                  name: {{ template "home-assistant.fullname" . }}-configurator
++                  key: password
++            {{- end }}
++            {{- if .Values.configurator.hassApiUrl }}
++            - name: HC_HASS_API
++              value: "{{ .Values.configurator.hassApiUrl }}"
++            {{- else }}
++            - name: HC_HASS_API
++              value: "http://{{ template "home-assistant.fullname" . }}:{{ .Values.service.port }}/api/"
++            {{- end }}
++            {{- if .Values.configurator.basepath }}
++            - name: HC_BASEPATH
++              value: "{{ .Values.configurator.basepath }}"
++            {{- end }}
++            {{- if .Values.configurator.enforceBasepath }}
++            - name: HC_ENFORCE_BASEPATH
++              value: "{{ .Values.configurator.enforceBasepath }}"
++            {{- end }}
++            {{- range $key, $value := .Values.configurator.extraEnv }}
++            - name: {{ $key }}
++              value: {{ $value }}
++            {{- end }}
++          volumeMounts:
++          - mountPath: /config
++            name: config
++          resources:
++{{ toYaml .Values.configurator.resources | indent 12 }}
++      volumes:
++      - name: config
++      {{- if .Values.persistence.enabled }}
++        persistentVolumeClaim:
++          claimName: {{ if .Values.persistence.existingClaim }}{{ .Values.persistence.existingClaim }}{{- else }}{{ template "home-assistant.fullname" . }}{{- end }}
++      {{- else }}
++        emptyDir: {}
++      {{ end }}
++    {{- with .Values.configurator.nodeSelector }}
++      nodeSelector:
++{{ toYaml . | indent 8 }}
++    {{- end }}
++    {{- with .Values.configurator.affinity }}
++      affinity:
++{{ toYaml . | indent 8 }}
++    {{- end }}
++    {{- with .Values.configurator.tolerations }}
++      tolerations:
++{{ toYaml . | indent 8 }}
++    {{- end }}
++{{- end }}
+\ No newline at end of file
+diff --git a/stable/home-assistant/templates/configurator-ingress.yaml b/stable/home-assistant/templates/configurator-ingress.yaml
+new file mode 100644
+index 000000000..33c3217be
+--- /dev/null
++++ b/stable/home-assistant/templates/configurator-ingress.yaml
+@@ -0,0 +1,40 @@
++{{- if and .Values.configurator.enabled .Values.configurator.ingress.enabled -}}
++{{- $fullName := include "home-assistant.fullname" . -}}
++{{- $servicePort := .Values.configurator.service.port -}}
++{{- $ingressPath := .Values.configurator.ingress.path -}}
++apiVersion: extensions/v1beta1
++kind: Ingress
++metadata:
++  name: {{ $fullName }}-configurator
++  labels:
++    app: {{ template "home-assistant.name" . }}
++    chart: {{ template "home-assistant.chart" . }}
++    component: configurator
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++{{- with .Values.configurator.ingress.annotations }}
++  annotations:
++{{ toYaml . | indent 4 }}
++{{- end }}
++spec:
++{{- if .Values.configurator.ingress.tls }}
++  tls:
++  {{- range .Values.configurator.ingress.tls }}
++    - hosts:
++      {{- range .hosts }}
++        - {{ . }}
++      {{- end }}
++      secretName: {{ .secretName }}
++  {{- end }}
++{{- end }}
++  rules:
++  {{- range .Values.configurator.ingress.hosts }}
++    - host: {{ . }}
++      http:
++        paths:
++          - path: {{ $ingressPath }}
++            backend:
++              serviceName: {{ $fullName }}-configurator
++              servicePort: {{ $servicePort }}
++  {{- end }}
++{{- end }}
+diff --git a/stable/home-assistant/templates/configurator-secret.yaml b/stable/home-assistant/templates/configurator-secret.yaml
+new file mode 100644
+index 000000000..3305d62bd
+--- /dev/null
++++ b/stable/home-assistant/templates/configurator-secret.yaml
+@@ -0,0 +1,21 @@
++apiVersion: v1
++kind: Secret
++metadata:
++  name: {{ template "home-assistant.fullname" . }}-configurator
++  labels:
++    app: {{ template "home-assistant.name" . }}
++    chart: {{ template "home-assistant.chart" . }}
++    component: configurator
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++type: Opaque
++data:
++  {{- if .Values.configurator.hassApiPassword }}
++  hass-api-password: {{ .Values.configurator.hassApiPassword | b64enc | quote }}
++  {{- end }}
++  {{- if .Values.configurator.username }}
++  username: {{ .Values.configurator.username | b64enc | quote }}
++  {{- end }}
++  {{- if .Values.configurator.password }}
++  password: {{ .Values.configurator.password | b64enc | quote }}
++  {{- end }}
+diff --git a/stable/home-assistant/templates/configurator-svc.yaml b/stable/home-assistant/templates/configurator-svc.yaml
+new file mode 100644
+index 000000000..faeea5cf7
+--- /dev/null
++++ b/stable/home-assistant/templates/configurator-svc.yaml
+@@ -0,0 +1,53 @@
++{{- if .Values.configurator.enabled }}
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ template "home-assistant.fullname" . }}-configurator
++  labels:
++    app: {{ template "home-assistant.name" . }}
++    chart: {{ template "home-assistant.chart" . }}
++    component: configurator
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++{{- if .Values.configurator.service.labels }}
++{{ toYaml .Values.configurator.service.labels | indent 4 }}
++{{- end }}
++{{- with .Values.configurator.service.annotations }}
++  annotations:
++{{ toYaml . | indent 4 }}
++{{- end }}
++spec:
++{{- if (or (eq .Values.configurator.service.type "ClusterIP") (empty .Values.configurator.service.type)) }}
++  type: ClusterIP
++  {{- if .Values.configurator.service.clusterIP }}
++  clusterIP: {{ .Values.configurator.service.clusterIP }}
++  {{end}}
++{{- else if eq .Values.configurator.service.type "LoadBalancer" }}
++  type: {{ .Values.configurator.service.type }}
++  {{- if .Values.configurator.service.loadBalancerIP }}
++  loadBalancerIP: {{ .Values.configurator.service.loadBalancerIP }}
++  {{- end }}
++  {{- if .Values.configurator.service.loadBalancerSourceRanges }}
++  loadBalancerSourceRanges:
++{{ toYaml .Values.configurator.service.loadBalancerSourceRanges | indent 4 }}
++  {{- end -}}
++{{- else }}
++  type: {{ .Values.configurator.service.type }}
++{{- end }}
++{{- if .Values.configurator.service.externalIPs }}
++  externalIPs:
++{{ toYaml .Values.configurator.service.externalIPs | indent 4 }}
++{{- end }}
++  ports:
++    - name: http
++      port: {{ .Values.configurator.service.port }}
++      protocol: TCP
++      targetPort: 3218
++{{ if (and (eq .Values.configurator.service.type "NodePort") (not (empty .Values.configurator.service.nodePort))) }}
++      nodePort: {{.Values.configurator.service.nodePort}}
++{{ end }}
++  selector:
++    app: {{ template "home-assistant.name" . }}
++    release: {{ .Release.Name }}
++    component: configurator
++{{- end }}
+\ No newline at end of file
+diff --git a/stable/home-assistant/templates/deployment.yaml b/stable/home-assistant/templates/deployment.yaml
+new file mode 100644
+index 000000000..82349cede
+--- /dev/null
++++ b/stable/home-assistant/templates/deployment.yaml
+@@ -0,0 +1,72 @@
++apiVersion: apps/v1beta2
++kind: Deployment
++metadata:
++  name: {{ template "home-assistant.fullname" . }}
++  labels:
++    app: {{ template "home-assistant.name" . }}
++    chart: {{ template "home-assistant.chart" . }}
++    component: server
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++spec:
++  replicas: {{ .Values.replicaCount }}
++  selector:
++    matchLabels:
++      app: {{ template "home-assistant.name" . }}
++      release: {{ .Release.Name }}
++      component: server
++  template:
++    metadata:
++      labels:
++        app: {{ template "home-assistant.name" . }}
++        release: {{ .Release.Name }}
++        component: server
++    spec:
++      containers:
++        - name: {{ .Chart.Name }}
++          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++          imagePullPolicy: {{ .Values.image.pullPolicy }}
++          ports:
++            - name: http
++              containerPort: {{ .Values.service.port }}
++              protocol: TCP
++          livenessProbe:
++            httpGet:
++              path: /
++              port: http
++              initialDelaySeconds: 30
++          readinessProbe:
++            httpGet:
++              path: /
++              port: http
++              initialDelaySeconds: 15
++          env:
++            {{- range $key, $value := .Values.extraEnv }}
++            - name: {{ $key }}
++              value: {{ $value }}
++            {{- end }}
++          volumeMounts:
++          - mountPath: /config
++            name: config
++          resources:
++{{ toYaml .Values.resources | indent 12 }}
++      volumes:
++      - name: config
++      {{- if .Values.persistence.enabled }}
++        persistentVolumeClaim:
++          claimName: {{ if .Values.persistence.existingClaim }}{{ .Values.persistence.existingClaim }}{{- else }}{{ template "home-assistant.fullname" . }}{{- end }}
++      {{- else }}
++        emptyDir: {}
++      {{ end }}
++    {{- with .Values.nodeSelector }}
++      nodeSelector:
++{{ toYaml . | indent 8 }}
++    {{- end }}
++    {{- with .Values.affinity }}
++      affinity:
++{{ toYaml . | indent 8 }}
++    {{- end }}
++    {{- with .Values.tolerations }}
++      tolerations:
++{{ toYaml . | indent 8 }}
++    {{- end }}
+diff --git a/stable/home-assistant/templates/ingress.yaml b/stable/home-assistant/templates/ingress.yaml
+new file mode 100644
+index 000000000..a7b5e6970
+--- /dev/null
++++ b/stable/home-assistant/templates/ingress.yaml
+@@ -0,0 +1,40 @@
++{{- if .Values.ingress.enabled -}}
++{{- $fullName := include "home-assistant.fullname" . -}}
++{{- $servicePort := .Values.service.port -}}
++{{- $ingressPath := .Values.ingress.path -}}
++apiVersion: extensions/v1beta1
++kind: Ingress
++metadata:
++  name: {{ $fullName }}
++  labels:
++    app: {{ template "home-assistant.name" . }}
++    chart: {{ template "home-assistant.chart" . }}
++    component: server
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++{{- with .Values.ingress.annotations }}
++  annotations:
++{{ toYaml . | indent 4 }}
++{{- end }}
++spec:
++{{- if .Values.ingress.tls }}
++  tls:
++  {{- range .Values.ingress.tls }}
++    - hosts:
++      {{- range .hosts }}
++        - {{ . }}
++      {{- end }}
++      secretName: {{ .secretName }}
++  {{- end }}
++{{- end }}
++  rules:
++  {{- range .Values.ingress.hosts }}
++    - host: {{ . }}
++      http:
++        paths:
++          - path: {{ $ingressPath }}
++            backend:
++              serviceName: {{ $fullName }}
++              servicePort: http
++  {{- end }}
++{{- end }}
+diff --git a/stable/home-assistant/templates/pvc.yaml b/stable/home-assistant/templates/pvc.yaml
+new file mode 100644
+index 000000000..f6317f082
+--- /dev/null
++++ b/stable/home-assistant/templates/pvc.yaml
+@@ -0,0 +1,25 @@
++{{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
++kind: PersistentVolumeClaim
++apiVersion: v1
++metadata:
++  name: {{ template "home-assistant.fullname" . }}
++  labels:
++    app: {{ template "home-assistant.fullname" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    component: server
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++spec:
++  accessModes:
++    - {{ .Values.persistence.accessMode | quote }}
++  resources:
++    requests:
++      storage: {{ .Values.persistence.size | quote }}
++{{- if .Values.persistence.storageClass }}
++{{- if (eq "-" .Values.persistence.storageClass) }}
++  storageClassName: ""
++{{- else }}
++  storageClassName: "{{ .Values.persistence.storageClass }}"
++{{- end }}
++{{- end }}
++{{- end -}}
+\ No newline at end of file
+diff --git a/stable/home-assistant/templates/service.yaml b/stable/home-assistant/templates/service.yaml
+new file mode 100644
+index 000000000..04df3c23d
+--- /dev/null
++++ b/stable/home-assistant/templates/service.yaml
+@@ -0,0 +1,51 @@
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ template "home-assistant.fullname" . }}
++  labels:
++    app: {{ template "home-assistant.name" . }}
++    chart: {{ template "home-assistant.chart" . }}
++    component: server
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++{{- if .Values.service.labels }}
++{{ toYaml .Values.service.labels | indent 4 }}
++{{- end }}
++{{- with .Values.service.annotations }}
++  annotations:
++{{ toYaml . | indent 4 }}
++{{- end }}
++spec:
++{{- if (or (eq .Values.service.type "ClusterIP") (empty .Values.service.type)) }}
++  type: ClusterIP
++  {{- if .Values.service.clusterIP }}
++  clusterIP: {{ .Values.service.clusterIP }}
++  {{end}}
++{{- else if eq .Values.service.type "LoadBalancer" }}
++  type: {{ .Values.service.type }}
++  {{- if .Values.service.loadBalancerIP }}
++  loadBalancerIP: {{ .Values.service.loadBalancerIP }}
++  {{- end }}
++  {{- if .Values.service.loadBalancerSourceRanges }}
++  loadBalancerSourceRanges:
++{{ toYaml .Values.service.loadBalancerSourceRanges | indent 4 }}
++  {{- end -}}
++{{- else }}
++  type: {{ .Values.service.type }}
++{{- end }}
++{{- if .Values.service.externalIPs }}
++  externalIPs:
++{{ toYaml .Values.service.externalIPs | indent 4 }}
++{{- end }}
++  ports:
++    - name: http
++      port: {{ .Values.service.port }}
++      protocol: TCP
++      targetPort: 8123
++{{ if (and (eq .Values.service.type "NodePort") (not (empty .Values.service.nodePort))) }}
++      nodePort: {{.Values.service.nodePort}}
++{{ end }}
++  selector:
++    app: {{ template "home-assistant.name" . }}
++    release: {{ .Release.Name }}
++    component: server
+\ No newline at end of file
+diff --git a/stable/home-assistant/values.yaml b/stable/home-assistant/values.yaml
+new file mode 100644
+index 000000000..b1fbb7e2a
+--- /dev/null
++++ b/stable/home-assistant/values.yaml
+@@ -0,0 +1,200 @@
++# Default values for home-assistant.
++# This is a YAML-formatted file.
++# Declare variables to be passed into your templates.
++
++replicaCount: 1
++
++image:
++  repository: homeassistant/home-assistant
++  tag: 0.74.2
++  pullPolicy: IfNotPresent
++
++service:
++  type: ClusterIP
++  port: 8123
++  annotations: {}
++  labels: {}
++  clusterIP: ""
++  ## List of IP addresses at which the hass-configurator service is available
++  ## Ref: https://kubernetes.io/docs/user-guide/services/#external-ips
++  ##
++  externalIPs: []
++  loadBalancerIP: ""
++  loadBalancerSourceRanges: []
++  # nodePort: 30000
++
++ingress:
++  enabled: false
++  annotations: {}
++    # kubernetes.io/ingress.class: nginx
++    # kubernetes.io/tls-acme: "true"
++  path: /
++  hosts:
++    - home-assistant.local
++  tls: []
++  #  - secretName: home-assistant-tls
++  #    hosts:
++  #      - home-assistant.local
++
++persistence:
++  enabled: true
++  ## home-assistant data Persistent Volume Storage Class
++  ## If defined, storageClassName: <storageClass>
++  ## If set to "-", storageClassName: "", which disables dynamic provisioning
++  ## If undefined (the default) or set to null, no storageClassName spec is
++  ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
++  ##   GKE, AWS & OpenStack)
++  ##
++  # storageClass: "-"
++  ##
++  ## If you want to reuse an existing claim, you can pass the name of the PVC using
++  ## the existingClaim variable
++  # existingClaim: your-claim
++  accessMode: ReadWriteMany
++  size: 5Gi
++
++## Additional hass-configurator container environment variable
++## For instance to add a http_proxy
++##
++extraEnv: {}
++
++configurator:
++  enabled: false
++
++  ## hass-configurator container image
++  ##
++  image:
++    repository: causticlab/hass-configurator-docker
++    tag: x86_64-0.3.1
++    pullPolicy: IfNotPresent
++
++  ## URL for the home assistant API endpoint
++  # hassApiUrl: http://home-assistant:8123/api/
++  ## home assistant API password
++  # hassApiPassword:
++  ## path where the home assistant configuration is stored
++  basepath: /config
++  ## don't allow switching out of the base path
++  enforceBasepath: true
++  ## username for basic auth for accessing the configurator
++  # username:
++  ## password (sha256-hash) for basic auth for accessing the configurator
++  ## For example "test" would be "{sha256}9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
++  # password:
++
++  ## Additional hass-configurator container environment variable
++  ## For instance to add a http_proxy
++  ##
++  extraEnv: {}
++
++  ingress:
++    ## If true, hass-configurator Ingress will be created
++    ##
++    enabled: false
++
++    ## hass-configurator Ingress annotations
++    ##
++    annotations: {}
++    #   kubernetes.io/ingress.class: nginx
++    #   kubernetes.io/tls-acme: 'true'
++
++    ## hass-configurator Ingress hostnames with optional path
++    ## Must be provided if Ingress is enabled
++    ##
++    hosts: []
++    #   - hass-configurator.domain.com
++    #   - domain.com/hass-configurator
++
++    ## hass-configurator Ingress TLS configuration
++    ## Secrets must be manually created in the namespace
++    ##
++    tls: []
++    #   - secretName: hass-configurator-tls
++    #     hosts:
++    #       - hass-configurator.domain.com
++
++  ## hass-configurator Deployment Strategy type
++  # strategy:
++  #   type: Recreate
++
++  ## Node tolerations for hass-configurator scheduling to nodes with taints
++  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
++  ##
++  tolerations: []
++    # - key: "key"
++    #   operator: "Equal|Exists"
++    #   value: "value"
++    #   effect: "NoSchedule|PreferNoSchedule|NoExecute(1.6 only)"
++
++  ## Node labels for hass-configurator pod assignment
++  ## Ref: https://kubernetes.io/docs/user-guide/node-selection/
++  ##
++  nodeSelector: {}
++
++  ## Use an alternate scheduler, e.g. "stork".
++  ## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
++  ##
++  # schedulerName:
++
++  ## Annotations to be added to hass-configurator pods
++  ##
++  podAnnotations: {}
++
++  replicaCount: 1
++
++  ## hass-configurator resource requests and limits
++  ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
++  ##
++  resources: {}
++    # limits:
++    #   cpu: 10m
++    #   memory: 32Mi
++    # requests:
++    #   cpu: 10m
++    #   memory: 32Mi
++
++  ## Security context to be added to hass-configurator pods
++  ##
++  securityContext: {}
++
++  service:
++    type: ClusterIP
++    port: 3218
++    ## Specify the nodePort value for the LoadBalancer and NodePort service types.
++    ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
++    ##
++    # nodePort:
++    ## Provide any additional annotations which may be required. This can be used to
++    ## set the LoadBalancer service type to internal only.
++    ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
++    ##
++    annotations: {}
++    labels: {}
++    clusterIP: ""
++    ## List of IP addresses at which the hass-configurator service is available
++    ## Ref: https://kubernetes.io/docs/user-guide/services/#external-ips
++    ##
++    externalIPs: []
++    ## Use loadBalancerIP to request a specific static IP,
++    ## otherwise leave blank
++    ##
++    loadBalancerIP:
++    loadBalancerSourceRanges: []
++
++resources: {}
++  # We usually recommend not to specify default resources and to leave this as a conscious
++  # choice for the user. This also increases chances charts run on environments with little
++  # resources, such as Minikube. If you do want to specify resources, uncomment the following
++  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
++  # limits:
++  #  cpu: 100m
++  #  memory: 128Mi
++  # requests:
++  #  cpu: 100m
++  #  memory: 128Mi
++
++nodeSelector: {}
++
++tolerations: []
++
++affinity: {}

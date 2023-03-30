@@ -1,0 +1,126 @@
+commit 2a3fdf3307152eee7534e89d43dd140a3ab94ae9
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Apr 4 14:58:07 2018 +0200
+
+    [stable/ghost] Refactor image property in values.yaml (#4640)
+    
+    * [stable/ghost] Refactor image properties in values.yaml
+    
+    * Fix typo
+    
+    * Delete duplicated property
+    
+    * Use rolling tag and refactor pullSecrets
+    
+    * Fix lint issue
+    
+    * Bump chart version
+    
+    * Update Chart.yaml
+
+diff --git a/stable/ghost/Chart.yaml b/stable/ghost/Chart.yaml
+index 8dd5ad240..7aca223a5 100644
+--- a/stable/ghost/Chart.yaml
++++ b/stable/ghost/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: ghost
+-version: 2.1.19
++version: 3.0.0
+ appVersion: 1.22.1
+ description: A simple, powerful publishing platform that allows you to share your
+   stories with the world
+diff --git a/stable/ghost/README.md b/stable/ghost/README.md
+index 9ee450735..f76a9375d 100644
+--- a/stable/ghost/README.md
++++ b/stable/ghost/README.md
+@@ -47,8 +47,11 @@ The following table lists the configurable parameters of the Ghost chart and the
+ 
+ | Parameter                     | Description                                                   | Default                                                  |
+ |-------------------------------|---------------------------------------------------------------|----------------------------------------------------------|
+-| `image`                       | Ghost image                                                   | `bitnami/ghost:{VERSION}`                                |
+-| `imagePullPolicy`             | Image pull policy                                             | `Always` if `image` tag is `latest`, else `IfNotPresent` |
++| `image.registry`              | Ghost image registry                                          | `docker.io`                                             |
++| `image.repository`            | Ghost Image name                                              | `bitnami/ghost`                                      |
++| `image.tag`                   | Ghost Image tag                                               | `{VERSION}`                                             |
++| `image.pullPolicy`            | Image pull policy                                             | `Always` if `imageTag` is `latest`, else `IfNotPresent` |
++| `image.pullSecrets`           | Specify image pull secrets                                    | `nil`                                                   |
+ | `ghostHost`                   | Ghost host to create application URLs                         | `nil`                                                    |
+ | `ghostPort`                   | Ghost port to create application URLs along with host         | `80`                                                     |
+ | `ghostLoadBalancerIP`         | `loadBalancerIP` for the Ghost Service                        | `nil`                                                    |
+diff --git a/stable/ghost/templates/deployment.yaml b/stable/ghost/templates/deployment.yaml
+index 955d4fbb7..2b2750bbd 100644
+--- a/stable/ghost/templates/deployment.yaml
++++ b/stable/ghost/templates/deployment.yaml
+@@ -15,6 +15,12 @@ spec:
+       labels:
+         app: {{ template "ghost.fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       initContainers:
+       - name: volume-permissions
+         image: "{{ .Values.volumePermissions.image.name }}:{{ .Values.volumePermissions.image.tag }}"
+@@ -25,8 +31,8 @@ spec:
+           name: ghost-data
+       containers:
+       - name: {{ template "ghost.fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: ALLOW_EMPTY_PASSWORD
+         {{- if .Values.allowEmptyPassword }}
+diff --git a/stable/ghost/values.yaml b/stable/ghost/values.yaml
+index 2ff94da71..bb2ba5641 100644
+--- a/stable/ghost/values.yaml
++++ b/stable/ghost/values.yaml
+@@ -1,7 +1,21 @@
+ ## Bitnami Ghost image version
+ ## ref: https://hub.docker.com/r/bitnami/ghost/tags/
+ ##
+-image: bitnami/ghost:1.22.1-r0
++image:
++  registry: docker.io
++  repository: bitnami/ghost
++  tag: 1.22.1
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
+ 
+ ## Busybox image used to configure volume permissions
+ ##
+@@ -11,12 +25,6 @@ volumePermissions:
+     tag: 1.27.1
+ #    pullPolicy:
+ 
+-## Specify a imagePullPolicy
+-## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-# imagePullPolicy:
+-
+ ## Ghost host to create application URLs
+ ## ref: https://github.com/bitnami/bitnami-docker-ghost#configuration
+ ##
+@@ -55,7 +63,7 @@ ghostBlogTitle: User's Blog
+ 
+ ## Set to `yes` to allow the container to be started with blank passwords
+ ## ref: https://github.com/bitnami/bitnami-docker-wordpress#environment-variables
+-allowEmptyPassword: yes
++allowEmptyPassword: "yes"
+ 
+ ## SMTP mail delivery configuration
+ ## ref: https://github.com/bitnami/bitnami-docker-redmine/#smtp-configuration

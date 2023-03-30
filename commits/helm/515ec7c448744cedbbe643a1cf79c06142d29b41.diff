@@ -1,0 +1,100 @@
+commit 515ec7c448744cedbbe643a1cf79c06142d29b41
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Apr 4 14:47:07 2018 +0200
+
+    [stable/mediawiki] Refactor image property in values.yaml (#4645)
+    
+    * [stable/mediawiki] Refactor image properties in values.yaml
+    
+    * Use rolling tag and refactor pullSecrets
+    
+    * Fix lint issue
+    
+    * Update Chart.yaml
+
+diff --git a/stable/mediawiki/Chart.yaml b/stable/mediawiki/Chart.yaml
+index b3733ecf5..026fc4c1e 100644
+--- a/stable/mediawiki/Chart.yaml
++++ b/stable/mediawiki/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: mediawiki
+-version: 0.6.5
++version: 1.0.0
+ appVersion: 1.30.0
+ description: Extremely powerful, scalable software and a feature-rich wiki implementation
+   that uses PHP to process and display data stored in a database.
+diff --git a/stable/mediawiki/README.md b/stable/mediawiki/README.md
+index 9d4d5285d..e880c009b 100644
+--- a/stable/mediawiki/README.md
++++ b/stable/mediawiki/README.md
+@@ -47,8 +47,11 @@ The following table lists the configurable parameters of the MediaWiki chart and
+ 
+ |              Parameter               |               Description                |                         Default                         |
+ |--------------------------------------|------------------------------------------|---------------------------------------------------------|
+-| `image`                              | MediaWiki image                          | `bitnami/mediawiki:{VERSION}`                           |
+-| `imagePullPolicy`                    | Image pull policy                        | `Always` if `imageTag` is `latest`, else `IfNotPresent` |
++| `image.registry`                     | MediaWiki image registry                 | `docker.io`                                             |
++| `image.repository`                   | MwdiaWiki Image name                     | `bitnami/mediawiki`                                     |
++| `image.tag`                          | MediaWiki Image tag                      | `{VERSION}`                                             |
++| `image.pullPolicy`                   | Image pull policy                        | `Always` if `imageTag` is `latest`, else `IfNotPresent` |
++| `image.pullSecrets`                  | Specify image pull secrets               | `nil`                                                   |
+ | `mediawikiUser`                      | User of the application                  | `user`                                                  |
+ | `mediawikiPassword`                  | Application password                     | _random 10 character long alphanumeric string_          |
+ | `mediawikiEmail`                     | Admin email                              | `user@example.com`                                      |
+diff --git a/stable/mediawiki/templates/deployment.yaml b/stable/mediawiki/templates/deployment.yaml
+index ff24016f0..41b85af26 100644
+--- a/stable/mediawiki/templates/deployment.yaml
++++ b/stable/mediawiki/templates/deployment.yaml
+@@ -15,10 +15,16 @@ spec:
+       labels:
+         app: {{ template "mediawiki.fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "mediawiki.fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: ALLOW_EMPTY_PASSWORD
+           value: {{ .Values.allowEmptyPassword | quote }}
+diff --git a/stable/mediawiki/values.yaml b/stable/mediawiki/values.yaml
+index 54b02f29f..720670621 100644
+--- a/stable/mediawiki/values.yaml
++++ b/stable/mediawiki/values.yaml
+@@ -1,13 +1,21 @@
+-## Bitnami MediaWiki image version
++## Bitnami DokuWiki image version
+ ## ref: https://hub.docker.com/r/bitnami/mediawiki/tags/
+ ##
+-image: bitnami/mediawiki:1.30.0-r2
+-
+-## Specify a imagePullPolicy
+-## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-# imagePullPolicy:
++image:
++  registry: docker.io
++  repository: bitnami/mediawiki
++  tag: 1.30.0
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
+ 
+ ## User of the application
+ ## ref: https://github.com/bitnami/bitnami-docker-mediawiki#environment-variables

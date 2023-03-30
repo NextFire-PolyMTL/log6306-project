@@ -1,0 +1,258 @@
+commit 760bf16c9afe6e668ea43e2f0a2c0737e94e7eaa
+Author: Aditya C S <aditya.gnu@gmail.com>
+Date:   Fri Jul 17 19:47:32 2020 +0530
+
+    Loki Logstash Plugin (#1822)
+    
+    * Logstash plugin
+    
+    * include_labels
+    
+    * include_labels
+    
+    * Removes binary.
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * Improve documentation and remove the push path.
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * Move to cmd.
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * Add more precision for jruby.
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * Update docs/clients/logstash/README.md
+    
+    * p
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * ignore
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * remove ignore file/
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * More precision for installing jruby
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * Rename without Grafana
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * A lot of refactoring and testing.
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * change delay logic
+    
+    * Fully tested version.
+    
+    Now testing/writing docs and charts.
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * Forgot to save merge.
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * working version.
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * Makefile + easier docker build.
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * adds ci to build logstash image.
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * Fix build for logstash.
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * Adds example with helm charts.
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * Fix target to send 10 logs with logstash.
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * Improved documentation.
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * add missing helm add repo for external repo
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * Review comment.
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * Fixes loki service in Promtail.
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    * Update loki-stack version
+    
+    Signed-off-by: Cyril Tovena <cyril.tovena@gmail.com>
+    
+    Co-authored-by: Cyril Tovena <cyril.tovena@gmail.com>
+
+diff --git a/charts/README.md b/charts/README.md
+index b35a174b..85a98628 100644
+--- a/charts/README.md
++++ b/charts/README.md
+@@ -44,10 +44,19 @@ $ helm upgrade --install loki loki/loki
+ 
+ ## Deploy Promtail only
+ 
++We recommend Promtail to ship your logs to Loki as the configuration is very similar to Prometheus.
++This allows you to ensure that labels for metrics and logs are equivalent by re-using the same `scrape_configs` and `relabeling` configuration.
++When using Grafana having the same labels will allows you to pivot from Metrics to Logs verify easily by simply switching datasource.
++
++To only install Promtail use the following command:
++
+ ```bash
+ $ helm upgrade --install promtail loki/promtail --set "loki.serviceName=loki"
+ ```
+ 
++If you're not familiar with Prometheus and you don't want to migrate your current agent configs from the start,
++ you can use our output plugins specified below.
++
+ ## Deploy Loki and Fluent Bit to your cluster
+ 
+ ```bash
+@@ -62,6 +71,13 @@ $ helm upgrade --install fluent-bit loki/fluent-bit \
+     --set "loki.serviceName=loki.svc.cluster.local"
+ ```
+ 
++## Deploy Loki and Filebeat and logstash to your cluster
++
++```bash
++$ helm upgrade --install loki loki/loki-stack \
++    --set filebeat.enabled=true,logstash.enabled=true,promtail.enabled=false
++```
++
+ ## Deploy Grafana to your cluster
+ 
+ To install Grafana on your cluster with helm, use the following command:
+diff --git a/charts/loki-stack/Chart.yaml b/charts/loki-stack/Chart.yaml
+index 09bbecf2..d12dba1c 100644
+--- a/charts/loki-stack/Chart.yaml
++++ b/charts/loki-stack/Chart.yaml
+@@ -1,6 +1,6 @@
+ apiVersion: "v1"
+ name: loki-stack
+-version: 0.38.1
++version: 0.38.2
+ appVersion: v1.5.0
+ kubeVersion: "^1.10.0-0"
+ description: "Loki: like Prometheus, but for logs."
+diff --git a/charts/loki-stack/requirements.yaml b/charts/loki-stack/requirements.yaml
+index 2a10a61a..c2275d24 100644
+--- a/charts/loki-stack/requirements.yaml
++++ b/charts/loki-stack/requirements.yaml
+@@ -19,3 +19,11 @@ dependencies:
+   condition: prometheus.enabled
+   version: "~9.3.0"
+   repository:  "https://kubernetes-charts.storage.googleapis.com/"
++- name: "filebeat"
++  condition: filebeat.enabled
++  version: "~7.8.0"
++  repository:  "https://helm.elastic.co"
++- name: "logstash"
++  condition: logstash.enabled
++  version: "~2.4.0"
++  repository:  "https://kubernetes-charts.storage.googleapis.com/"
+diff --git a/charts/loki-stack/values.yaml b/charts/loki-stack/values.yaml
+index f7f2cd8f..78e684a7 100644
+--- a/charts/loki-stack/values.yaml
++++ b/charts/loki-stack/values.yaml
+@@ -1,8 +1,11 @@
+ loki:
++  fullnameOverride: loki
+   enabled: true
+ 
+ promtail:
+   enabled: true
++  loki:
++    serviceName: loki
+ 
+ fluent-bit:
+   enabled: false
+@@ -17,3 +20,55 @@ grafana:
+ 
+ prometheus:
+   enabled: false
++
++filebeat:
++  enabled: false
++  filebeatConfig:
++    filebeat.yml: |
++      # logging.level: debug
++      filebeat.inputs:
++      - type: container
++        paths:
++          - /var/log/containers/*.log
++        processors:
++        - add_kubernetes_metadata:
++            host: ${NODE_NAME}
++            matchers:
++            - logs_path:
++                logs_path: "/var/log/containers/"
++      output.logstash:
++        hosts: ["logstash-loki:5044"]
++
++logstash:
++  enabled: false
++  fullnameOverride: logstash-loki
++  image:
++    repository: grafana/logstash-output-loki
++    tag: 1.0.1
++  filters:
++    main: |-
++      filter {
++        if [kubernetes] {
++          mutate {
++            add_field => {
++              "container_name" => "%{[kubernetes][container][name]}"
++              "namespace" => "%{[kubernetes][namespace]}"
++              "pod" => "%{[kubernetes][pod][name]}"
++            }
++            replace => { "host" => "%{[kubernetes][node][name]}"}
++          }
++        }
++        mutate {
++          remove_field => ["tags"]
++        }
++      }
++  outputs:
++    main: |-
++      output {
++        loki {
++          url => "http://loki:3100/loki/api/v1/push"
++          #username => "test"
++          #password => "test"
++        }
++        # stdout { codec => rubydebug }
++      }
+diff --git a/charts/promtail/templates/_helpers.tpl b/charts/promtail/templates/_helpers.tpl
+index c270b0b2..9298bcbc 100644
+--- a/charts/promtail/templates/_helpers.tpl
++++ b/charts/promtail/templates/_helpers.tpl
+@@ -59,4 +59,3 @@ The service name to connect to Loki. Defaults to the same logic as "loki.fullnam
+ {{- end -}}
+ {{- end -}}
+ {{- end -}}
+-

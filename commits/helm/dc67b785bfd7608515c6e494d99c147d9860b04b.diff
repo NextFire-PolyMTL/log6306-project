@@ -1,0 +1,356 @@
+commit dc67b785bfd7608515c6e494d99c147d9860b04b
+Author: cheyang <cheyang@163.com>
+Date:   Fri May 18 13:07:53 2018 +0800
+
+    refactor etcd to meet the chart tech requirement (#5316)
+    
+    * de-capitalize all the variables of etcd
+    
+    * remove unused variables
+    
+    * refactor the image definition
+    
+    * update the version
+    
+    * remove trailing spaces
+    
+    * bump a major version
+    
+    * fix typo
+    
+    * Update Chart.yaml
+    
+    * disable pvc by default, to make the e2e test pass
+    
+    * add persistent volume enabled
+    
+    * fix align issue
+    
+    * update helpers.tpl
+    
+    * fix cpu and memory resources
+    
+    * remove default function
+
+diff --git a/incubator/etcd/Chart.yaml b/incubator/etcd/Chart.yaml
+index 03b42897f..fc48b91f7 100755
+--- a/incubator/etcd/Chart.yaml
++++ b/incubator/etcd/Chart.yaml
+@@ -1,6 +1,6 @@
+ name: etcd
+ home: https://github.com/coreos/etcd
+-version: 0.3.9
++version: 0.4.0
+ appVersion: 2.2.5
+ description: Distributed reliable key-value store for the most critical data of a
+   distributed system.
+diff --git a/incubator/etcd/README.md b/incubator/etcd/README.md
+index dc7e13851..5cf462710 100644
+--- a/incubator/etcd/README.md
++++ b/incubator/etcd/README.md
+@@ -37,21 +37,18 @@ The following table lists the configurable parameters of the etcd chart and thei
+ 
+ | Parameter               | Description                          | Default                                            |
+ | ----------------------- | ------------------------------------ | -------------------------------------------------- |
+-| `Name`                  | Spark master name                    | `etcd`                                             |
+-| `Image`                 | Container image name                 | `k8s.gcr.io/etcd-amd64`                            |
+-| `ImageTag`              | Container image tag                  | `2.2.5`                                            |
+-| `ImagePullPolicy`       | Container pull policy                | `Always`                                           |
+-| `Replicas`              | k8s statefulset replicas             | `3`                                                |
+-| `Component`             | k8s selector key                     | `etcd`                                             |
+-| `Cpu`                   | container requested cpu              | `100m`                                             |
+-| `Memory`                | container requested memory           | `512Mi`                                            |
+-| `ClientPort`            | k8s service port                     | `2379`                                             |
+-| `PeerPorts`             | Container listening port             | `2380`                                             |
+-| `Storage`               | Persistent volume size               | `1Gi`                                              |
+-| `StorageClass`          | Persistent volume storage class      | `anything`                                         |
+-| `Affinity`              | Affinity settings for pod assignment | `{}`                                               |
+-| `NodeSelector`          | Node labels for pod assignment       | `{}`                                               |
+-| `Tolerations`           | Toleration labels for pod assignment | `[]`                                               |
++| `image.repository`      | Container image repository           | `k8s.gcr.io/etcd-amd64`                            |
++| `image.tag`             | Container image tag                  | `2.2.5`                                            |
++| `image.pullPolicy`      | Container pull policy                | `IfNotPresent`                                     |
++| `replicas`              | k8s statefulset replicas             | `3`                                                |
++| `resources`             | container required resources         | `{}`                                             |                                            |
++| `clientPort`            | k8s service port                     | `2379`                                             |
++| `peerPorts`             | Container listening port             | `2380`                                             |
++| `storage`               | Persistent volume size               | `1Gi`                                              |
++| `storageClass`          | Persistent volume storage class      | `anything`                                         |
++| `affinity`              | affinity settings for pod assignment | `{}`                                               |
++| `nodeSelector`          | Node labels for pod assignment       | `{}`                                               |
++| `tolerations`           | Toleration labels for pod assignment | `[]`                                               |
+ 
+ Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`.
+ 
+@@ -96,7 +93,7 @@ $ kill -9 ETCD_1_PID
+ ```
+ 
+ ```shell
+-$ kubectl get pods -l "component=${RELEASE-NAME}-etcd"
++$ kubectl get pods -l "release=${RELEASE-NAME},app=etcd"
+ NAME                 READY     STATUS        RESTARTS   AGE
+ etcd-0               1/1       Running       0          54s
+ etcd-2               1/1       Running       0          51s
+@@ -105,7 +102,7 @@ etcd-2               1/1       Running       0          51s
+ After a while:
+ 
+ ```shell
+-$ kubectl get pods -l "component=${RELEASE-NAME}-etcd"
++$ kubectl get pods -l "release=${RELEASE-NAME},app=etcd"
+ NAME                 READY     STATUS    RESTARTS   AGE
+ etcd-0               1/1       Running   0          1m
+ etcd-1               1/1       Running   0          20s
+@@ -135,7 +132,7 @@ This is for reference. Scaling should be managed by `helm upgrade`
+ The etcd cluster can be scale up by running ``kubectl patch`` or ``kubectl edit``. For instance,
+ 
+ ```sh
+-$ kubectl get pods -l "component=${RELEASE-NAME}-etcd"
++$ kubectl get pods -l "release=${RELEASE-NAME},app=etcd"
+ NAME      READY     STATUS    RESTARTS   AGE
+ etcd-0    1/1       Running   0          7m
+ etcd-1    1/1       Running   0          7m
+@@ -144,7 +141,7 @@ etcd-2    1/1       Running   0          6m
+ $ kubectl patch statefulset/etcd -p '{"spec":{"replicas": 5}}'
+ "etcd" patched
+ 
+-$ kubectl get pods -l "component=${RELEASE-NAME}-etcd"
++$ kubectl get pods -l "release=${RELEASE-NAME},app=etcd"
+ NAME      READY     STATUS    RESTARTS   AGE
+ etcd-0    1/1       Running   0          8m
+ etcd-1    1/1       Running   0          8m
+@@ -159,7 +156,7 @@ Scaling-down is similar. For instance, changing the number of replicas to ``4``:
+ $ kubectl edit statefulset/etcd
+ statefulset "etcd" edited
+ 
+-$ kubectl get pods -l "component=${RELEASE-NAME}-etcd"
++$ kubectl get pods -l "release=${RELEASE-NAME},app=etcd"
+ NAME      READY     STATUS    RESTARTS   AGE
+ etcd-0    1/1       Running   0          8m
+ etcd-1    1/1       Running   0          8m
+diff --git a/incubator/etcd/templates/_helpers.tpl b/incubator/etcd/templates/_helpers.tpl
+index 71f010566..fe486ea82 100644
+--- a/incubator/etcd/templates/_helpers.tpl
++++ b/incubator/etcd/templates/_helpers.tpl
+@@ -1,10 +1,32 @@
+ {{/* vim: set filetype=mustache: */}}
++{{/*
++Expand the name of the chart.
++*/}}
++{{- define "etcd.name" -}}
++{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
+ 
+ {{/*
+ Create a default fully qualified app name.
+-We truncate at 64 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
++We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
++If release name contains chart name it will be used as a full name.
+ */}}
+ {{- define "etcd.fullname" -}}
++{{- if .Values.fullnameOverride -}}
++{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
+ {{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
+ {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Create chart name and version as used by the chart label.
++*/}}
++{{- define "etcd.chart" -}}
++{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
+diff --git a/incubator/etcd/templates/service.yaml b/incubator/etcd/templates/service.yaml
+index fb78655b9..174efe80f 100644
+--- a/incubator/etcd/templates/service.yaml
++++ b/incubator/etcd/templates/service.yaml
+@@ -9,13 +9,14 @@ metadata:
+     heritage: {{ .Release.Service | quote }}
+     release: {{ .Release.Name | quote }}
+     chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
++    app: {{ template "etcd.name" . }}
+ spec:
+   ports:
+-  - port: {{ .Values.PeerPort }}
++  - port: {{ .Values.peerPort }}
+     name: etcd-server
+-  - port: {{ .Values.ClientPort }}
++  - port: {{ .Values.clientPort }}
+     name: etcd-client
+   clusterIP: None
+   selector:
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
++    app: {{ template "etcd.name" . }}
++    release: {{ .Release.Name | quote }}
+\ No newline at end of file
+diff --git a/incubator/etcd/templates/statefulset.yaml b/incubator/etcd/templates/statefulset.yaml
+index e72ef9702..caf5f70d0 100644
+--- a/incubator/etcd/templates/statefulset.yaml
++++ b/incubator/etcd/templates/statefulset.yaml
+@@ -6,10 +6,10 @@ metadata:
+     heritage: {{ .Release.Service | quote }}
+     release: {{ .Release.Name | quote }}
+     chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
++    app: {{ template "etcd.name" . }}
+ spec:
+   serviceName: {{ template "etcd.fullname" . }}
+-  replicas: {{ default 3 .Values.Replicas }}
++  replicas: {{ .Values.replicas }}
+   template:
+     metadata:
+       name: {{ template "etcd.fullname" . }}
+@@ -17,36 +17,34 @@ spec:
+         heritage: {{ .Release.Service | quote }}
+         release: {{ .Release.Name | quote }}
+         chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-        component: "{{ .Release.Name }}-{{ .Values.Component }}"
++        app: {{ template "etcd.name" . }}
+     spec:
+-{{- if .Values.Affinity }}
++{{- if .Values.affinity }}
+       affinity:
+-{{ toYaml .Values.Affinity | indent 8 }}
++{{ toYaml .Values.affinity | indent 8 }}
+ {{- end }}
+-{{- if .Values.NodeSelector }}
++{{- if .Values.nodeSelector }}
+       nodeSelector:
+-{{ toYaml .Values.NodeSelector | indent 8 }}
++{{ toYaml .Values.nodeSelector | indent 8 }}
+ {{- end }}
+-{{- if .Values.Tolerations }}
++{{- if .Values.tolerations }}
+       tolerations:
+-{{ toYaml .Values.Tolerations | indent 8 }}
++{{ toYaml .Values.tolerations | indent 8 }}
+ {{- end }}
+       containers:
+       - name: {{ template "etcd.fullname" . }}
+-        image: "{{ .Values.Image }}:{{ .Values.ImageTag }}"
+-        imagePullPolicy: "{{ .Values.ImagePullPolicy }}"
++        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: "{{ .Values.image.pullPolicy }}"
+         ports:
+-        - containerPort: {{ .Values.PeerPort }}
++        - containerPort: {{ .Values.peerPort }}
+           name: peer
+-        - containerPort: {{ .Values.ClientPort }}
++        - containerPort: {{ .Values.clientPort }}
+           name: client
+         resources:
+-          requests:
+-            cpu: "{{ .Values.Cpu }}"
+-            memory: "{{ .Values.Memory }}"
++{{ toYaml .Values.resources | indent 10 }}          
+         env:
+         - name: INITIAL_CLUSTER_SIZE
+-          value: {{ default 3 .Values.Replicas | quote }}
++          value: {{ .Values.replicas | quote }}
+         - name: SET_NAME
+           value: {{ template "etcd.fullname" . }}
+         volumeMounts:
+@@ -181,6 +179,7 @@ spec:
+                 --initial-cluster ${PEERS} \
+                 --initial-cluster-state new \
+                 --data-dir /var/run/etcd/default.etcd
++  {{- if .Values.persistentVolume.enabled }}
+   volumeClaimTemplates:
+   - metadata:
+       name: datadir
+@@ -190,11 +189,16 @@ spec:
+       resources:
+         requests:
+           # upstream recommended max is 700M
+-          storage: "{{ .Values.Storage }}"
+-    {{- if .Values.StorageClass }}
+-    {{- if (eq "-" .Values.StorageClass) }}
++          storage: "{{ .Values.persistentVolume.storage }}"
++    {{- if .Values.persistentVolume.storageClass }}
++    {{- if (eq "-" .Values.persistentVolume.storageClass) }}
+       storageClassName: ""
+     {{- else }}
+-      storageClassName: "{{ .Values.StorageClass }}"
++      storageClassName: "{{ .Values.persistentVolume.storageClass }}"
+     {{- end }}
+     {{- end }}
++  {{- else }}
++      volumes:
++      - name: datadir
++        emptyDir: {}
++  {{- end }}
+\ No newline at end of file
+diff --git a/incubator/etcd/values.yaml b/incubator/etcd/values.yaml
+index 912626ae1..33caa2151 100644
+--- a/incubator/etcd/values.yaml
++++ b/incubator/etcd/values.yaml
+@@ -3,29 +3,41 @@
+ # Declare name/value pairs to be passed into your templates.
+ # name: value
+ 
+-Name: etcd
+-PeerPort: 2380
+-ClientPort: 2379
+-Component: "etcd"
+-Replicas: 3
+-Image: "k8s.gcr.io/etcd-amd64"
+-ImageTag: "2.2.5"
+-ImagePullPolicy: "Always"
+-Cpu: "100m"
+-Memory: "512Mi"
+-Storage: "1Gi"
+-## etcd data Persistent Volume Storage Class
+-## If defined, StorageClassName: <storageClass>
+-## If set to "-", StorageClassName: "", which disables dynamic provisioning
+-## If undefined (the default) or set to null, no storageClassName spec is
+-##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+-##   GKE, AWS & OpenStack)
+-##
+-# storageClass: "-"
++peerPort: 2380
++clientPort: 2379
++component: "etcd"
++replicas: 3
++image:
++  repository: "k8s.gcr.io/etcd-amd64"
++  tag: "2.2.5"
++  pullPolicy: "IfNotPresent"
++resources: {}
++# We usually recommend not to specify default resources and to leave this as a conscious
++# choice for the user. This also increases chances charts run on environments with little
++# resources, such as Minikube. If you do want to specify resources, uncomment the following
++# lines, adjust them as necessary, and remove the curly braces after 'resources:'.
++# limits:
++#  cpu: 100m
++#  memory: 128Mi
++# requests:
++#  cpu: 100m
++#  memory: 128Mi
++
++persistentVolume:
++  enabled: false
++  # storage: "1Gi"
++  ## etcd data Persistent Volume Storage Class
++  ## If defined, storageClassName: <storageClass>
++  ## If set to "-", storageClassName: "", which disables dynamic provisioning
++  ## If undefined (the default) or set to null, no storageClassName spec is
++  ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
++  ##   GKE, AWS & OpenStack)
++  ##
++  # storageClass: "-"
+ 
+ ## Node labels and tolerations for pod assignment
+ ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
+ ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#taints-and-tolerations-beta-feature
+-NodeSelector: {}
+-Tolerations: []
+-Affinity: {}
++nodeSelector: {}
++tolerations: []
++affinity: {}

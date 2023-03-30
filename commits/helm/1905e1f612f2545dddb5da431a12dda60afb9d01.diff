@@ -1,0 +1,115 @@
+commit 1905e1f612f2545dddb5da431a12dda60afb9d01
+Author: cheyang <cheyang@163.com>
+Date:   Fri May 18 13:39:50 2018 +0800
+
+    refactor fluentd-cloudwatch (#5087)
+    
+    * refactor fluentd-cloudwatch
+    
+    * Update Chart.yaml
+    
+    * update image pullpolicy
+    
+    * Fix readme
+    
+    * Update Chart.yaml
+
+diff --git a/incubator/fluentd-cloudwatch/Chart.yaml b/incubator/fluentd-cloudwatch/Chart.yaml
+index b9b6f5607..eeadec3b2 100644
+--- a/incubator/fluentd-cloudwatch/Chart.yaml
++++ b/incubator/fluentd-cloudwatch/Chart.yaml
+@@ -1,9 +1,9 @@
+ name: fluentd-cloudwatch
+-version: 0.2.3
+-appVersion: 0.1.1
++version: 0.4.0
++appVersion: v0.12.33-cloudwatch
+ description: A Fluentd CloudWatch Helm chart for Kubernetes.
++home: https://www.fluentd.org/
+ icon: https://raw.githubusercontent.com/fluent/fluentd-docs/master/public/logo/Fluentd_square.png
+-home: https://github.com/fluent/fluentd-kubernetes-daemonset
+ keywords:
+ - fluentd
+ - cloudwatch
+diff --git a/incubator/fluentd-cloudwatch/README.md b/incubator/fluentd-cloudwatch/README.md
+index 89c70cd3f..1def57460 100644
+--- a/incubator/fluentd-cloudwatch/README.md
++++ b/incubator/fluentd-cloudwatch/README.md
+@@ -44,24 +44,24 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following tables lists the configurable parameters of the Fluentd Cloudwatch chart and their default values.
+ 
+-| Parameter                       | Description                                | Default                                                    |
+-| ------------------------------- | ------------------------------------------ | ---------------------------------------------------------- |
+-| `image`                         | Image                                      | `fluent/fluentd-kubernetes-daemonset`                      |
+-| `imageTag`                      | Image tag                                  | `v0.12.33-cloudwatch`                                      |
+-| `imagePullPolicy`               | Image pull policy                          | `Always` if `imageTag` is `imagePullPolicy`                |
+-| `resources.limits.cpu`          | CPU limit                                  | `100m`                                                     |
+-| `resources.limits.memory`       | Memory limit                               | `200Mi`                                                    |
+-| `resources.requests.cpu`        | CPU request                                | `100m`                                                     |
+-| `resources.requests.memory`     | Memory request                             | `200Mi`                                                    |
+-| `hostNetwork`                   | Host network                               | `false`                                                    |
+-| `annotations` (removed for now) | Annotations                                | `nil`                                                      |
+-| `awsRegion`                     | AWS Cloudwatch region                      | `us-east-1`                                                |
+-| `awsRole`                       | AWS IAM Role To Use                        | `nil`                                                      |
+-| `fluentdConfig`                 | Fluentd configuration                      | `example configuration`                                    |
+-| `logGroupName`                  | AWS Cloudwatch log group                   | `kubernetes`                                               |
+-| `rbac.create`                   | If true, create & use RBAC resources       | `false`                                                    |
+-| `rbac.serviceAccountName`       | existing ServiceAccount to use (ignored if rbac.create=true) | `default`                                |
+-| `tolerations`                   | Add tolerations                            | `[]`                                                       |
++| Parameter                       | Description                                                  | Default                               |
++| ------------------------------- | ------------------------------------------------------------ | --------------------------------------|
++| `image.repository`              | Image repository                                             | `fluent/fluentd-kubernetes-daemonset` |
++| `image.tag`                     | Image tag                                                    | `v0.12.33-cloudwatch`                 |
++| `image.pullPolicy`              | Image pull policy                                            | `IfNotPresent`                        |
++| `resources.limits.cpu`          | CPU limit                                                    | `100m`                                |
++| `resources.limits.memory`       | Memory limit                                                 | `200Mi`                               |
++| `resources.requests.cpu`        | CPU request                                                  | `100m`                                |
++| `resources.requests.memory`     | Memory request                                               | `200Mi`                               |
++| `hostNetwork`                   | Host network                                                 | `false`                               |
++| `annotations` (removed for now) | Annotations                                                  | `nil`                                 |
++| `awsRegion`                     | AWS Cloudwatch region                                        | `us-east-1`                           |
++| `awsRole`                       | AWS IAM Role To Use                                          | `nil`                                 |
++| `fluentdConfig`                 | Fluentd configuration                                        | `example configuration`               |
++| `logGroupName`                  | AWS Cloudwatch log group                                     | `kubernetes`                          |
++| `rbac.create`                   | If true, create & use RBAC resources                         | `false`                               |
++| `rbac.serviceAccountName`       | existing ServiceAccount to use (ignored if rbac.create=true) | `default`                             |
++| `tolerations`                   | Add tolerations                                              | `[]`                                  |
+ 
+ Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
+ 
+diff --git a/incubator/fluentd-cloudwatch/templates/daemonset.yaml b/incubator/fluentd-cloudwatch/templates/daemonset.yaml
+index 1edf9d5f6..6e23ec30d 100644
+--- a/incubator/fluentd-cloudwatch/templates/daemonset.yaml
++++ b/incubator/fluentd-cloudwatch/templates/daemonset.yaml
+@@ -31,8 +31,8 @@ spec:
+               mountPath: /etc/fluentd
+       containers:
+       - name: {{ template "fluentd-cloudwatch.fullname" . }}
+-        image: "{{ .Values.image }}:{{ .Values.imageTag }}"
+-        imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         #hostNetwork: {{ default false .Values.hostNetwork }}
+         env:
+         - name: AWS_REGION
+diff --git a/incubator/fluentd-cloudwatch/values.yaml b/incubator/fluentd-cloudwatch/values.yaml
+index e34db749c..9ac49f8cb 100644
+--- a/incubator/fluentd-cloudwatch/values.yaml
++++ b/incubator/fluentd-cloudwatch/values.yaml
+@@ -1,11 +1,10 @@
+-image: fluent/fluentd-kubernetes-daemonset
+-imageTag: v0.12.33-cloudwatch
+-
++image:
++  repository: fluent/fluentd-kubernetes-daemonset
++  tag: v0.12.33-cloudwatch
+ ## Specify an imagePullPolicy (Required)
+ ## It's recommended to change this to 'Always' if the image tag is 'latest'
+ ## ref: http://kubernetes.io/docs/user-guide/images/#updating-images
+-imagePullPolicy: IfNotPresent
+-
++  pullPolicy: IfNotPresent
+ 
+ ## Configure resource requests and limits
+ ## ref: http://kubernetes.io/docs/user-guide/compute-resources/

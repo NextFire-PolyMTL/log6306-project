@@ -1,0 +1,59 @@
+commit 5f33394042e8ea27d0fe95187534a410a35541ee
+Author: Aikawa <yuki.kita22@gmail.com>
+Date:   Wed May 25 17:51:50 2022 +0900
+
+    fix(argo-workflows): add missing rules for workflow role to run HTTP templates (#1291)
+    
+    * fix(argo-workflows): add missing rules for workflow role to run HTTP/plugin templates
+    
+    Signed-off-by: yu-croco <yuki.kita22@gmail.com>
+    
+    * chore(argo-workflows): refactor role rules simpler
+    
+    Signed-off-by: yu-croco <yuki.kita22@gmail.com>
+
+diff --git a/charts/argo-workflows/Chart.yaml b/charts/argo-workflows/Chart.yaml
+index bb73226f..b746e41a 100644
+--- a/charts/argo-workflows/Chart.yaml
++++ b/charts/argo-workflows/Chart.yaml
+@@ -2,7 +2,7 @@ apiVersion: v2
+ name: argo-workflows
+ description: A Helm chart for Argo Workflows
+ type: application
+-version: 0.15.3
++version: 0.15.4
+ appVersion: v3.3.5
+ icon: https://raw.githubusercontent.com/argoproj/argo-workflows/master/docs/assets/argo.png
+ home: https://github.com/argoproj/argo-helm
+@@ -15,4 +15,4 @@ maintainers:
+   - name: benjaminws
+ annotations:
+   artifacthub.io/changes: |
+-    - "[Fixed]: Adjust api version of pod disruption budget by referring to k8s version"
++    - "[Fixed]: Add missing rules for workflow role to run HTTP/plugin templates"
+diff --git a/charts/argo-workflows/templates/controller/workflow-role.yaml b/charts/argo-workflows/templates/controller/workflow-role.yaml
+index 8ad52ee6..75913b90 100644
+--- a/charts/argo-workflows/templates/controller/workflow-role.yaml
++++ b/charts/argo-workflows/templates/controller/workflow-role.yaml
+@@ -36,6 +36,21 @@ rules:
+       - workflowtaskresults
+     verbs:
+       - create
++  - apiGroups:
++      - argoproj.io
++    resources:
++      - workflowtasksets
++    verbs:
++      - list
++      - watch
++  - apiGroups:
++      - argoproj.io
++    resources:
++      - workflowtasksets/status
++      {{/* TODO: This resource is for app version <= v3.2, so please remove it when app version v3.2 is no more used. */}}
++      - workflowtasksets
++    verbs:
++      - patch
+   {{- end }}
+ 
+ {{- end }}

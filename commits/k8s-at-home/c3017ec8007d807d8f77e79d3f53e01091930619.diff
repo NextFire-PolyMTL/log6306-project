@@ -1,0 +1,246 @@
+commit c3017ec8007d807d8f77e79d3f53e01091930619
+Author: j_r0dd <285797+jr0dd@users.noreply.github.com>
+Date:   Mon Sep 13 09:37:05 2021 -0400
+
+    [speedtest-exporter] metrics refactor (#1183)
+    
+    Co-authored-by: ᗪєνιη ᗷυнʟ <onedr0p@users.noreply.github.com>
+
+diff --git a/charts/stable/speedtest-exporter/Chart.yaml b/charts/stable/speedtest-exporter/Chart.yaml
+index fb85d395..a50119c9 100644
+--- a/charts/stable/speedtest-exporter/Chart.yaml
++++ b/charts/stable/speedtest-exporter/Chart.yaml
+@@ -2,7 +2,7 @@ apiVersion: v2
+ appVersion: v3.2.2
+ description: Speedtest Exporter made in python using the official speedtest bin
+ name: speedtest-exporter
+-version: 4.0.1
++version: 5.0.0
+ kubeVersion: ">=1.16.0-0"
+ keywords:
+ - speedtest-exporter
+diff --git a/charts/stable/speedtest-exporter/README.md b/charts/stable/speedtest-exporter/README.md
+index 8bcaf6c6..f9c9d378 100644
+--- a/charts/stable/speedtest-exporter/README.md
++++ b/charts/stable/speedtest-exporter/README.md
+@@ -1,6 +1,6 @@
+ # speedtest-exporter
+ 
+-![Version: 4.0.1](https://img.shields.io/badge/Version-4.0.1-informational?style=flat-square) ![AppVersion: v3.2.2](https://img.shields.io/badge/AppVersion-v3.2.2-informational?style=flat-square)
++![Version: 5.0.0](https://img.shields.io/badge/Version-5.0.0-informational?style=flat-square) ![AppVersion: v3.2.2](https://img.shields.io/badge/AppVersion-v3.2.2-informational?style=flat-square)
+ 
+ Speedtest Exporter made in python using the official speedtest bin
+ 
+@@ -80,7 +80,16 @@ N/A
+ | image.pullPolicy | string | `"IfNotPresent"` | image pull policy |
+ | image.repository | string | `"ghcr.io/miguelndecarvalho/speedtest-exporter"` | image repository |
+ | image.tag | string | `"v3.2.2"` | image tag |
+-| prometheus.serviceMonitor | object | See values.yaml | Enable and configure a Prometheus serviceMonitor for the chart under this key. |
++| metrics.enabled | bool | See values.yaml | Enable and configure a Prometheus serviceMonitor for the chart under this key. |
++| metrics.prometheusRule | object | See values.yaml | Enable and configure Prometheus Rules for the chart under this key. |
++| metrics.prometheusRule.downloadLimit | int | `400` | Download speed you want alerts to be triggered in Mbps |
++| metrics.prometheusRule.jitterLimit | int | `30` | Jitter latency you want alerts to be triggered in ms |
++| metrics.prometheusRule.pingLimit | int | `10` | Ping latency you want alerts to be triggered in ms |
++| metrics.prometheusRule.rules | list | See prometheusrules.yaml | Configure additionial rules for the chart under this key. |
++| metrics.prometheusRule.uploadLimit | int | `400` | Upload speed you want alerts to be triggered in Mbps |
++| metrics.serviceMonitor.interval | string | `"1h"` |  |
++| metrics.serviceMonitor.labels | object | `{}` |  |
++| metrics.serviceMonitor.scrapeTimeout | string | `"1m"` |  |
+ | service | object | See values.yaml | Configures service settings for the chart. |
+ 
+ ## Changelog
+@@ -89,6 +98,12 @@ All notable changes to this application Helm chart will be documented in this fi
+ 
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++### [5.0.0]
++
++#### Changed
++
++- **BREAKING**: Refactored Prometheus metrics section to add rules. Enabling metrics automatically enables the serviceMonitor.
++
+ ### [4.0.0]
+ 
+ ##### Changed
+@@ -123,6 +138,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ 
+ - N/A
+ 
++[5.0.0]: #500
+ [4.0.0]: #400
+ [3.0.0]: #300
+ [2.0.0]: #200
+diff --git a/charts/stable/speedtest-exporter/README_CHANGELOG.md.gotmpl b/charts/stable/speedtest-exporter/README_CHANGELOG.md.gotmpl
+index ac8e759c..c127ec95 100644
+--- a/charts/stable/speedtest-exporter/README_CHANGELOG.md.gotmpl
++++ b/charts/stable/speedtest-exporter/README_CHANGELOG.md.gotmpl
+@@ -9,6 +9,12 @@ All notable changes to this application Helm chart will be documented in this fi
+ 
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++### [5.0.0]
++
++#### Changed
++
++- **BREAKING**: Refactored Prometheus metrics section to add rules. Enabling metrics automatically enables the serviceMonitor.
++
+ ### [4.0.0]
+ 
+ ##### Changed
+@@ -43,6 +49,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ 
+ - N/A
+ 
++[5.0.0]: #500
+ [4.0.0]: #400
+ [3.0.0]: #300
+ [2.0.0]: #200
+diff --git a/charts/stable/speedtest-exporter/templates/prometheusrules.yaml b/charts/stable/speedtest-exporter/templates/prometheusrules.yaml
+new file mode 100644
+index 00000000..0c738329
+--- /dev/null
++++ b/charts/stable/speedtest-exporter/templates/prometheusrules.yaml
+@@ -0,0 +1,67 @@
++{{- if and .Values.metrics.enabled .Values.metrics.prometheusRule.enabled }}
++apiVersion: monitoring.coreos.com/v1
++kind: PrometheusRule
++metadata:
++  name: {{ include "common.names.fullname" . }}
++  labels:
++    {{- include "common.labels" . | nindent 4 }}
++    {{- with .Values.metrics.prometheusRule.labels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++spec:
++  groups:
++    - name: {{ include "common.names.fullname" . }}
++      rules:
++        - alert: SpeedtestExporterAbsent
++          annotations:
++            description: Speedtest Exporter has disappeared from Prometheus target discovery.
++            summary: Speedtest Exporter is down.
++          expr: |
++            absent(up{job=~".*{{ include "common.names.fullname" . }}.*"} == 1)
++          for: {{ .Values.metrics.serviceMonitor.interval }}
++          labels:
++            severity: critical
++        - alert: SpeedtestSlowInternetDownload
++          annotations:
++            description: Internet download speed is averaging {{ "{{ humanize $value }}" }} Mbps.
++            summary: SpeedTest slow internet download.
++          expr: |
++            avg_over_time(speedtest_download{job=~".*{{ include "common.names.fullname" . }}.*"}[4h])
++              < {{ .Values.metrics.prometheusRule.downloadLimit }}
++          for: 0m
++          labels:
++            severity: warning
++        - alert: SpeedtestSlowInternetUpload
++          annotations:
++            description: Internet upload speed is averaging {{ "{{ humanize $value }}" }} Mbps.
++            summary: SpeedTest slow internet upload.
++          expr: |
++            avg_over_time(speedtest_upload{job=~".*{{ include "common.names.fullname" . }}.*"}[4h])
++              < {{ .Values.metrics.prometheusRule.uploadLimit }}
++          for: 0m
++          labels:
++            severity: warning
++        - alert: SpeedtestHighPingLatency
++          annotations:
++            description: Internet ping latency is averaging {{ "{{ humanize $value }}" }} ms.
++            summary: SpeedTest high ping latency.
++          expr: |
++            avg_over_time(speedtest_ping_latency_milliseconds{job=~".*{{ include "common.names.fullname" . }}.*"}[2h])
++              > {{ .Values.metrics.prometheusRule.pingLimit }}
++          for: 0m
++          labels:
++            severity: warning
++        - alert: SpeedtestHighJitterLatency
++          annotations:
++            description: Internet jitter latency is averaging {{ "{{ humanize $value }}" }} ms.
++            summary: SpeedTest high jitter latency.
++          expr: |
++            avg_over_time(speedtest_jitter_latency_milliseconds{job=~".*{{ include "common.names.fullname" . }}.*"}[2h])
++              > {{ .Values.metrics.prometheusRule.jitterLimit }}
++          for: 0m
++          labels:
++            severity: warning
++        {{- with .Values.metrics.prometheusRule.rules }}
++        {{- toYaml . | nindent 8 }}
++        {{- end }}
++{{- end }}
+diff --git a/charts/stable/speedtest-exporter/templates/servicemonitor.yaml b/charts/stable/speedtest-exporter/templates/servicemonitor.yaml
+index 64f91e83..b4245480 100644
+--- a/charts/stable/speedtest-exporter/templates/servicemonitor.yaml
++++ b/charts/stable/speedtest-exporter/templates/servicemonitor.yaml
+@@ -1,11 +1,11 @@
+-{{- if .Values.prometheus.serviceMonitor.enabled }}
++{{- if .Values.metrics.enabled }}
+ apiVersion: monitoring.coreos.com/v1
+ kind: ServiceMonitor
+ metadata:
+   name: {{ include "common.names.fullname" . }}
+   labels:
+     {{- include "common.labels" . | nindent 4 }}
+-    {{- with .Values.prometheus.serviceMonitor.additionalLabels }}
++    {{- with .Values.metrics.serviceMonitor.labels }}
+     {{- toYaml . | nindent 4 }}
+     {{- end }}
+ spec:
+@@ -14,10 +14,10 @@ spec:
+       {{- include "common.labels.selectorLabels" . | nindent 6 }}
+   endpoints:
+     - port: metrics
+-      {{- with .Values.prometheus.serviceMonitor.interval }}
++      {{- with .Values.metrics.serviceMonitor.interval }}
+       interval: {{ . }}
+       {{- end }}
+-      {{- with .Values.prometheus.serviceMonitor.scrapeTimeout }}
++      {{- with .Values.metrics.serviceMonitor.scrapeTimeout }}
+       scrapeTimeout: {{ . }}
+       {{- end }}
+       path: /metrics
+diff --git a/charts/stable/speedtest-exporter/values.yaml b/charts/stable/speedtest-exporter/values.yaml
+index 8e0d268a..9a01cbea 100644
+--- a/charts/stable/speedtest-exporter/values.yaml
++++ b/charts/stable/speedtest-exporter/values.yaml
+@@ -31,11 +31,37 @@ service:
+         protocol: TCP
+         port: 9798
+ 
+-prometheus:
++metrics:
+   # -- Enable and configure a Prometheus serviceMonitor for the chart under this key.
+   # @default -- See values.yaml
++  enabled: false
+   serviceMonitor:
+-    enabled: false
+     interval: 1h
+     scrapeTimeout: 1m
+-    additionalLabels: {}
++    labels: {}
++  # -- Enable and configure Prometheus Rules for the chart under this key.
++  # @default -- See values.yaml
++  prometheusRule:
++    enabled: false
++    # -- Download speed you want alerts to be triggered in Mbps
++    downloadLimit: 400
++    # -- Upload speed you want alerts to be triggered in Mbps
++    uploadLimit: 400
++    # -- Ping latency you want alerts to be triggered in ms
++    pingLimit: 10
++    # -- Jitter latency you want alerts to be triggered in ms
++    jitterLimit: 30
++    labels: {}
++    # -- Configure additionial rules for the chart under this key.
++    # @default -- See prometheusrules.yaml
++    rules: []
++      # - alert: SpeedtestSlowInternetDownload
++      #   annotations:
++      #     description: Internet download speed is averaging {{ humanize $value }} Mbps.
++      #     summary: SpeedTest slow internet download.
++      #   expr: |
++      #     avg_over_time(speedtest_download[4h])
++      #       < 420
++      #   for: 0m
++      #   labels:
++      #     severity: warning

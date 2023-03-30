@@ -1,0 +1,100 @@
+commit ab2ab593b333145b67f2497bb203a2465942cc76
+Author: Aikawa <yu.croco@gmail.com>
+Date:   Mon Sep 26 13:11:00 2022 +0900
+
+    feat(argo-workflows): Support Azure Blob Storage for artifact (#1488)
+    
+    * feat(argo-workflows): Support Azure Blob Storage for artifact
+    Signed-off-by: yu-croco <yu.croco@gmail.com>
+    
+    * chore(argo-workflows): refactor, from if/else to with
+    Signed-off-by: yu-croco <yu.croco@gmail.com>
+
+diff --git a/charts/argo-workflows/Chart.yaml b/charts/argo-workflows/Chart.yaml
+index 925e8af9..772ba388 100644
+--- a/charts/argo-workflows/Chart.yaml
++++ b/charts/argo-workflows/Chart.yaml
+@@ -3,7 +3,7 @@ appVersion: v3.4.0
+ name: argo-workflows
+ description: A Helm chart for Argo Workflows
+ type: application
+-version: 0.19.3
++version: 0.19.4
+ icon: https://raw.githubusercontent.com/argoproj/argo-workflows/master/docs/assets/argo.png
+ home: https://github.com/argoproj/argo-helm
+ sources:
+@@ -13,4 +13,4 @@ maintainers:
+     url: https://argoproj.github.io/
+ annotations:
+   artifacthub.io/changes: |
+-    - "[Fixed]: Change default type of `.mainContainer.env` and `.executor.env` from object to array"
++    - "[Added]: Support Azure Blob Storage for artifact"
+diff --git a/charts/argo-workflows/README.md b/charts/argo-workflows/README.md
+index 8cf04457..70ca0bdc 100644
+--- a/charts/argo-workflows/README.md
++++ b/charts/argo-workflows/README.md
+@@ -213,6 +213,7 @@ Fields to note:
+ | Key | Type | Default | Description |
+ |-----|------|---------|-------------|
+ | artifactRepository.archiveLogs | bool | `false` | Archive the main container logs as an artifact |
++| artifactRepository.azure | object | `{}` (See [values.yaml]) | Store artifact in Azure Blob Storage |
+ | artifactRepository.gcs | object | `{}` (See [values.yaml]) | Store artifact in a GCS object store |
+ | artifactRepository.s3 | object | See [values.yaml] | Store artifact in a S3-compliant object store |
+ | useDefaultArtifactRepo | bool | `false` | Influences the creation of the ConfigMap for the workflow-controller itself. |
+diff --git a/charts/argo-workflows/templates/controller/workflow-controller-config-map.yaml b/charts/argo-workflows/templates/controller/workflow-controller-config-map.yaml
+index 06cc3d34..2f6e35b2 100644
+--- a/charts/argo-workflows/templates/controller/workflow-controller-config-map.yaml
++++ b/charts/argo-workflows/templates/controller/workflow-controller-config-map.yaml
+@@ -56,10 +56,13 @@ data:
+       {{- if .Values.artifactRepository.archiveLogs }}
+       archiveLogs: {{ .Values.artifactRepository.archiveLogs }}
+       {{- end }}
+-      {{- if .Values.artifactRepository.gcs }}
+-      gcs:
+-{{ toYaml .Values.artifactRepository.gcs | indent 8}}
+-      {{- else }}
++      {{- with .Values.artifactRepository.gcs }}
++      gcs: {{- toYaml . | nindent 8 }}
++      {{- end }}
++      {{- with .Values.artifactRepository.azure }}
++      azure: {{- toYaml . | nindent 8 }}
++      {{- end }}
++      {{- if and  (not .Values.artifactRepository.gcs) (not .Values.artifactRepository.azure) }}
+       s3:
+         {{- if .Values.useStaticCredentials }}
+         accessKeySecret:
+@@ -89,7 +92,7 @@ data:
+           {{- toYaml . | nindent 10 }}
+         {{- end }}
+       {{- end }}
+-    {{- end}}
++    {{- end }}
+     {{- if .Values.controller.metricsConfig.enabled }}
+     metricsConfig:
+       enabled: {{ .Values.controller.metricsConfig.enabled }}
+diff --git a/charts/argo-workflows/values.yaml b/charts/argo-workflows/values.yaml
+index b961bcdd..4459d6dd 100644
+--- a/charts/argo-workflows/values.yaml
++++ b/charts/argo-workflows/values.yaml
+@@ -539,3 +539,21 @@ artifactRepository:
+   # serviceAccountKeySecret:
+   # name: my-gcs-credentials
+   # key: serviceAccountKey
++  # -- Store artifact in Azure Blob Storage
++  # @default -- `{}` (See [values.yaml])
++  azure: {}
++  # endpoint: https://mystorageaccountname.blob.core.windows.net
++  # container: my-container-name
++  # blob: path/in/container
++  ## accountKeySecret is a secret selector.
++  ## It references the k8s secret named 'my-azure-storage-credentials'.
++  ## This secret is expected to have have the key 'account-access-key',
++  ## containing the base64 encoded credentials to the storage account.
++  ## If a managed identity has been assigned to the machines running the
++  ## workflow (e.g., https://docs.microsoft.com/en-us/azure/aks/use-managed-identity)
++  ## then accountKeySecret is not needed, and useSDKCreds should be
++  ## set to true instead:
++  # useSDKCreds: true
++  # accountKeySecret:
++  #  name: my-azure-storage-credentials
++  #  key: account-access-key

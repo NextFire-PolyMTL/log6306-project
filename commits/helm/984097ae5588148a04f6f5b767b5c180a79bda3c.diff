@@ -1,0 +1,233 @@
+commit 984097ae5588148a04f6f5b767b5c180a79bda3c
+Author: Ivan Pedrazas <ipedrazas@gmail.com>
+Date:   Wed Apr 18 17:33:00 2018 +0100
+
+    added gcp json service account (#4904)
+    
+    * added gcp json service account
+    
+    * fixed flag format
+    
+    * added an option to re-use a pre-existind secret with the json credentials
+    
+    * fix trailing spaces issue
+    
+    * else if added
+    
+    * move open to secret
+    
+    * refactored gcp values
+    
+    * populate table with new vars
+    
+    * refactor yaml keys in  README.md
+    
+    * refactor yaml keys in README.md - typo
+
+diff --git a/stable/chartmuseum/Chart.yaml b/stable/chartmuseum/Chart.yaml
+index 8b436bc4e..e10155b83 100644
+--- a/stable/chartmuseum/Chart.yaml
++++ b/stable/chartmuseum/Chart.yaml
+@@ -1,8 +1,8 @@
+ apiVersion: v1
+ description: Helm Chart Repository with support for Amazon S3 and Google Cloud Storage
+ name: chartmuseum
+-version: 1.2.0
+-appVersion: 0.5.1
++version: 1.3.0
++appVersion: 0.5.2
+ home: https://github.com/chartmuseum/chartmuseum
+ icon: https://raw.githubusercontent.com/chartmuseum/chartmuseum/master/logo.png
+ keywords:
+diff --git a/stable/chartmuseum/README.md b/stable/chartmuseum/README.md
+index ab677eca9..3127fb080 100644
+--- a/stable/chartmuseum/README.md
++++ b/stable/chartmuseum/README.md
+@@ -52,7 +52,7 @@ their default values. See values.yaml for all available options.
+ |----------------------------------------|---------------------------------------------|-----------------------------------------------------|
+ | `image.pullPolicy`                     | Container pull policy                       | `IfNotPresent`                                      |
+ | `image.repository`                     | Container image to use                      | `chartmuseum/chartmuseum`                           |
+-| `image.tag`                            | Container image tag to deploy               | `v0.5.1`                                            |
++| `image.tag`                            | Container image tag to deploy               | `v0.5.2`                                            |
+ | `persistence.accessMode`               | Access mode to use for PVC                  | `ReadWriteOnce`                                     |
+ | `persistence.enabled`                  | Whether to use a PVC for persistent storage | `false`                                             |
+ | `persistence.size`                     | Amount of space to claim for PVC            | `8Gi`                                               |
+@@ -93,6 +93,9 @@ their default values. See values.yaml for all available options.
+ | `env.open.INDEX_LIMIT`                 | Parallel scan limit for the repo indexer    | ``                                                  |
+ | `env.secret.BASIC_AUTH_USER`           | Username for basic HTTP authentication      | ``                                                  |
+ | `env.secret.BASIC_AUTH_PASS`           | Password for basic HTTP authentication      | ``                                                  |
++| `gcp.secret.enabled`                   | Flag for the GCP service account            | `false`                                             |
++| `gcp.secret.name`                      | Secret name for the GCP json file           | ``                                                  |
++| `gcp.secret.key`                       | Secret key for te GCP json file             | `credentials.json`                                  |
+ 
+ Specify each parameter using the `--set key=value[,key=value]` argument to
+ `helm install`.
+@@ -219,12 +222,71 @@ env:
+     STORAGE_GOOGLE_PREFIX:    
+ ```
+ 
++### Using with Google Cloud Storage and a Google Service Account
++
++A Google service account credentials are stored in a json file. There are two approaches here. Ideally you don't want to send your secrets to tiller. In that case, before installing this chart, you should create a secret with those credentials:
++
++```shell
++kubectl create secret generic chartmuseum-secret --from-file=credentials.json="my-project-45e35d85a593.json"
++```
++
++Then you can either use a `VALUES` yaml with your values or set those values in the command line:
++
++```shell
++helm install stable/chartmuseum --debug  --set gcp.secret.enabled=true,env.open.STORAGE=google,env.open.DISABLE_API=false,env.open.STORAGE_GOOGLE_BUCKET=my-gcp-chartmuseum,gcp.secret.name=chartmuseum-secret
++```
++
++If you prefer to use a yaml file:
++
++```yaml
++env:
++  open:
++    STORAGE: google
++    STORAGE_GOOGLE_BUCKET: my-gcs-bucket
++    STORAGE_GOOGLE_PREFIX:
++
++gcp:
++  secret:
++    enabled: true
++    name: chartmuseum-secret
++    key: credentials.json
++```
++
++Run command to install
++
++```shell
++helm install --name my-chartmuseum -f custom.yaml stable/chartmuseum
++```
++
++In case that you don't mind adding your secret to tiller (you shouldn't do it), this are the commands
++
++```yaml
++env:
++  open:
++    STORAGE: google
++    STORAGE_GOOGLE_BUCKET: my-gcs-bucket
++    STORAGE_GOOGLE_PREFIX:
++  secret:
++    GOOGLE_CREDENTIALS_JSON: my-json-file-base64-encoded
++gcp:
++  secret:
++    enabled: true
++
++```
++
+ Run command to install
+ 
+ ```shell
+ helm install --name my-chartmuseum -f custom.yaml stable/chartmuseum
+ ```
+ 
++To set the values directly in the command line, use the follosing command. Note that we have to base64 encode the json file because we cannot pass a multi-line text as a value.
++
++```shell
++export JSONKEY=$(cat my-project-77e35d85a593.json | base64)
++helm install stable/chartmuseum --debug  --set gcp.secret.enabled=true,env.secret.GOOGLE_CREDENTIALS_JSON=${JSONKEY},env.open.STORAGE=google,env.open.DISABLE_API=false,env.open.STORAGE_GOOGLE_BUCKET=my-gcp-chartmuseum
++```
++
+ ### Using with Microsoft Azure Blob Storage
+ 
+ Make sure your environment is properly setup to access `mycontainer`.
+diff --git a/stable/chartmuseum/templates/deployment.yaml b/stable/chartmuseum/templates/deployment.yaml
+index de170470d..a4d0ff809 100644
+--- a/stable/chartmuseum/templates/deployment.yaml
++++ b/stable/chartmuseum/templates/deployment.yaml
+@@ -31,6 +31,10 @@ spec:
+           value: {{ $value | quote }}
+ {{- end }}
+ {{- end }}
++{{- if .Values.gcp.secret.enabled }}
++        - name: GOOGLE_APPLICATION_CREDENTIALS
++          value: "/etc/secrets/google/credentials.json"
++{{- end }}
+ {{- $secret_name := include "chartmuseum.fullname" . }}
+ {{- range $name, $value := .Values.env.secret }}
+ {{- if not ( empty $value) }}
+@@ -63,6 +67,11 @@ spec:
+         volumeMounts:
+         - mountPath: /storage
+           name: storage-volume
++{{- end }}
++{{- if  .Values.gcp.secret.enabled }}
++        volumeMounts:
++        - mountPath: /etc/secrets/google
++          name: {{ include "chartmuseum.fullname" . }}-gcp
+ {{- end }}
+       {{- with .Values.resources }}
+         resources:
+@@ -89,3 +98,18 @@ spec:
+       {{- else }}
+         emptyDir: {}
+       {{- end -}}
++      {{ if .Values.gcp.secret.enabled }}
++      - name: {{ include "chartmuseum.fullname" . }}-gcp
++        secret:
++      {{ if .Values.env.secret.GOOGLE_CREDENTIALS_JSON }}
++          secretName: {{ include "chartmuseum.fullname" . }}
++          items:
++          - key: GOOGLE_CREDENTIALS_JSON
++            path: credentials.json
++      {{ else }}
++          secretName: {{ .Values.gcp.secret.name }}
++          items:
++          - key: {{ .Values.gcp.secret.key }}
++            path: credentials.json
++      {{ end }}
++      {{ end }}
+diff --git a/stable/chartmuseum/templates/secret.yaml b/stable/chartmuseum/templates/secret.yaml
+index 566bb8932..c46fd889f 100644
+--- a/stable/chartmuseum/templates/secret.yaml
++++ b/stable/chartmuseum/templates/secret.yaml
+@@ -8,6 +8,10 @@ type: Opaque
+ data:
+ {{- range $name, $value := .Values.env.secret }}
+ {{- if not (empty $value) }}
++{{- if eq $name "GOOGLE_CREDENTIALS_JSON" }}
++  {{ $name }}: {{ $value }}
++  {{- else }}
+   {{ $name }}: {{ $value | b64enc }}
+ {{- end }}
+ {{- end }}
++{{- end }}
+diff --git a/stable/chartmuseum/values.yaml b/stable/chartmuseum/values.yaml
+index 727badc5c..54b3d90d5 100644
+--- a/stable/chartmuseum/values.yaml
++++ b/stable/chartmuseum/values.yaml
+@@ -5,7 +5,7 @@ strategy:
+     maxUnavailable: 0
+ image:
+   repository: chartmuseum/chartmuseum
+-  tag: v0.5.1
++  tag: v0.5.2
+   pullPolicy: IfNotPresent
+ env:
+   open:
+@@ -67,6 +67,8 @@ env:
+     BASIC_AUTH_USER:
+     # password for basic http authentication
+     BASIC_AUTH_PASS:
++    # GCP service account json file
++    GOOGLE_CREDENTIALS_JSON:
+ deployment:
+   ## Chartmuseum Deployment annotations
+   annotations: {}
+@@ -158,3 +160,13 @@ ingress:
+ #   - secretName: chartmuseum-server-tls
+ #     hosts:
+ #     - chartmuseum.domain.com
++
++# Adding secrets to tiller is not a great option, so If you want to use an existing
++# secret that contains the json file, you can use the following entries
++gcp:
++  secret:
++    enabled: false
++    # Name of the secret that contains the encoded json
++    name:
++    # Secret key that holds the json value.
++    key: credentials.json

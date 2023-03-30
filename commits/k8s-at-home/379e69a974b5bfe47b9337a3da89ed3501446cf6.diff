@@ -1,0 +1,198 @@
+commit 379e69a974b5bfe47b9337a3da89ed3501446cf6
+Author: j_r0dd <285797+jr0dd@users.noreply.github.com>
+Date:   Sun Sep 12 16:58:52 2021 -0400
+
+    [promcord] metrics refactor (#1179)
+    
+    * [promcord] metrics refactor
+    
+    * use include
+    
+    Co-authored-by: ᗪєνιη ᗷυнʟ <onedr0p@users.noreply.github.com>
+
+diff --git a/charts/stable/promcord/Chart.yaml b/charts/stable/promcord/Chart.yaml
+index 8b2f82d7..c9fb9bc6 100644
+--- a/charts/stable/promcord/Chart.yaml
++++ b/charts/stable/promcord/Chart.yaml
+@@ -2,7 +2,7 @@ apiVersion: v2
+ appVersion: latest
+ description: Discord bot that provides metrics from a Discord server
+ name: promcord
+-version: 4.0.0
++version: 5.0.0
+ kubeVersion: ">=1.16.0-0"
+ keywords:
+   - promcord
+diff --git a/charts/stable/promcord/README.md b/charts/stable/promcord/README.md
+index 787170b8..3f260b69 100644
+--- a/charts/stable/promcord/README.md
++++ b/charts/stable/promcord/README.md
+@@ -1,6 +1,6 @@
+ # promcord
+ 
+-![Version: 4.0.0](https://img.shields.io/badge/Version-4.0.0-informational?style=flat-square) ![AppVersion: latest](https://img.shields.io/badge/AppVersion-latest-informational?style=flat-square)
++![Version: 5.0.0](https://img.shields.io/badge/Version-5.0.0-informational?style=flat-square) ![AppVersion: latest](https://img.shields.io/badge/AppVersion-latest-informational?style=flat-square)
+ 
+ Discord bot that provides metrics from a Discord server
+ 
+@@ -80,7 +80,12 @@ N/A
+ | image.pullPolicy | string | `"IfNotPresent"` | image pull policy |
+ | image.repository | string | `"biospheere/promcord"` | image repository |
+ | image.tag | string | `"latest"` | image tag |
+-| prometheus.serviceMonitor | object | See values.yaml | Enable and configure a Prometheus podMonitor for the chart under this key. |
++| metrics.enabled | bool | See values.yaml | Enable and configure a Prometheus serviceMonitor for the chart under this key. |
++| metrics.prometheusRule | object | See values.yaml | Enable and configure Prometheus Rules for the chart under this key. |
++| metrics.prometheusRule.rules | list | See prometheusrules.yaml | Configure additionial rules for the chart under this key. |
++| metrics.serviceMonitor.interval | string | `"1m"` |  |
++| metrics.serviceMonitor.labels | object | `{}` |  |
++| metrics.serviceMonitor.scrapeTimeout | string | `"30s"` |  |
+ | service | object | See values.yaml | Configures service settings for the chart. |
+ 
+ ## Changelog
+@@ -89,6 +94,12 @@ All notable changes to this application Helm chart will be documented in this fi
+ 
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++### [5.0.0]
++
++#### Changed
++
++- **BREAKING**: Refactored Prometheus metrics section to add rules. Enabling metrics automatically enables the serviceMonitor.
++
+ ### [4.0.0]
+ 
+ #### Changed
+@@ -113,6 +124,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ 
+ - New chart
+ 
++[5.0.0]: #500
+ [4.0.0]: #400
+ [2.0.0]: #200
+ [1.0.1]: #101
+diff --git a/charts/stable/promcord/README_CHANGELOG.md.gotmpl b/charts/stable/promcord/README_CHANGELOG.md.gotmpl
+index 43be68c7..48898712 100644
+--- a/charts/stable/promcord/README_CHANGELOG.md.gotmpl
++++ b/charts/stable/promcord/README_CHANGELOG.md.gotmpl
+@@ -9,6 +9,12 @@ All notable changes to this application Helm chart will be documented in this fi
+ 
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++### [5.0.0]
++
++#### Changed
++
++- **BREAKING**: Refactored Prometheus metrics section to add rules. Enabling metrics automatically enables the serviceMonitor.
++
+ ### [4.0.0]
+ 
+ #### Changed
+@@ -33,6 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ 
+ - New chart
+ 
++[5.0.0]: #500
+ [4.0.0]: #400
+ [2.0.0]: #200
+ [1.0.1]: #101
+diff --git a/charts/stable/promcord/templates/prometheusrules.yaml b/charts/stable/promcord/templates/prometheusrules.yaml
+new file mode 100644
+index 00000000..4198e0bf
+--- /dev/null
++++ b/charts/stable/promcord/templates/prometheusrules.yaml
+@@ -0,0 +1,27 @@
++{{- if and .Values.metrics.enabled .Values.metrics.prometheusRule.enabled }}
++apiVersion: monitoring.coreos.com/v1
++kind: PrometheusRule
++metadata:
++  name: {{ include "common.names.fullname" . }}
++  labels:
++    {{- include "common.labels" . | nindent 4 }}
++    {{- with .Values.metrics.prometheusRule.labels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++spec:
++  groups:
++    - name: promcord
++      rules:
++        - alert: PromcordAbsent
++          annotations:
++            description: Promcord has disappeared from Prometheus service discovery.
++            summary: Promcord is down.
++          expr: |
++            absent(up{job=~".*promcord.*"} == 1)
++          for: 5m
++          labels:
++            severity: critical
++        {{- with .Values.metrics.prometheusRule.rules }}
++        {{- toYaml . | nindent 8 }}
++        {{- end }}
++{{- end }}
+diff --git a/charts/stable/promcord/templates/servicemonitor.yaml b/charts/stable/promcord/templates/servicemonitor.yaml
+index 64f91e83..b4245480 100644
+--- a/charts/stable/promcord/templates/servicemonitor.yaml
++++ b/charts/stable/promcord/templates/servicemonitor.yaml
+@@ -1,11 +1,11 @@
+-{{- if .Values.prometheus.serviceMonitor.enabled }}
++{{- if .Values.metrics.enabled }}
+ apiVersion: monitoring.coreos.com/v1
+ kind: ServiceMonitor
+ metadata:
+   name: {{ include "common.names.fullname" . }}
+   labels:
+     {{- include "common.labels" . | nindent 4 }}
+-    {{- with .Values.prometheus.serviceMonitor.additionalLabels }}
++    {{- with .Values.metrics.serviceMonitor.labels }}
+     {{- toYaml . | nindent 4 }}
+     {{- end }}
+ spec:
+@@ -14,10 +14,10 @@ spec:
+       {{- include "common.labels.selectorLabels" . | nindent 6 }}
+   endpoints:
+     - port: metrics
+-      {{- with .Values.prometheus.serviceMonitor.interval }}
++      {{- with .Values.metrics.serviceMonitor.interval }}
+       interval: {{ . }}
+       {{- end }}
+-      {{- with .Values.prometheus.serviceMonitor.scrapeTimeout }}
++      {{- with .Values.metrics.serviceMonitor.scrapeTimeout }}
+       scrapeTimeout: {{ . }}
+       {{- end }}
+       path: /metrics
+diff --git a/charts/stable/promcord/values.yaml b/charts/stable/promcord/values.yaml
+index ccb93f10..4c09b3e6 100644
+--- a/charts/stable/promcord/values.yaml
++++ b/charts/stable/promcord/values.yaml
+@@ -33,11 +33,28 @@ env:
+   # -- Discord bot token
+   # DISCORD_TOKEN:
+ 
+-prometheus:
+-  # -- Enable and configure a Prometheus podMonitor for the chart under this key.
++metrics:
++  # -- Enable and configure a Prometheus serviceMonitor for the chart under this key.
+   # @default -- See values.yaml
++  enabled: false
+   serviceMonitor:
+-    enabled: false
+     interval: 1m
+     scrapeTimeout: 30s
+-    additionalLabels: {}
++    labels: {}
++  # -- Enable and configure Prometheus Rules for the chart under this key.
++  # @default -- See values.yaml
++  prometheusRule:
++    enabled: false
++    labels: {}
++    # -- Configure additionial rules for the chart under this key.
++    # @default -- See prometheusrules.yaml
++    rules: []
++      # - alert: PromcordAbsent
++      #   annotations:
++      #     description: Promcord has disappeared from Prometheus service discovery.
++      #     summary: Promcord is disabled.
++      #   expr: |
++      #     absent(up{job=~".promcord.*"} == 1)
++      #   for: 15m
++      #   labels:
++      #     severity: critical

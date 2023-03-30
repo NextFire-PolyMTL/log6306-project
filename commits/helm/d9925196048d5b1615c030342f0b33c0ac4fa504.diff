@@ -1,0 +1,168 @@
+commit d9925196048d5b1615c030342f0b33c0ac4fa504
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Apr 4 14:08:36 2018 +0200
+
+    [stable/owncloud] Refactor image property in values.yaml (#4652)
+    
+    * [stable/owncloud] Refactor image properties in values.yaml
+    
+    * Use rolling tag and refactor pullSecrets
+    
+    * Fix lint issue
+    
+    * Update Chart.yaml
+
+diff --git a/stable/owncloud/Chart.yaml b/stable/owncloud/Chart.yaml
+index 72e99297f..8308cc27c 100644
+--- a/stable/owncloud/Chart.yaml
++++ b/stable/owncloud/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: owncloud
+-version: 0.6.1
++version: 1.0.0
+ appVersion: 10.0.7
+ description: A file sharing server that puts the control and security of your own data back into your hands.
+ keywords:
+diff --git a/stable/owncloud/README.md b/stable/owncloud/README.md
+index c6b8c2d72..4731f547b 100644
+--- a/stable/owncloud/README.md
++++ b/stable/owncloud/README.md
+@@ -45,43 +45,46 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following table lists the configurable parameters of the ownCloud chart and their default values.
+ 
+-|              Parameter              |                Description                |                   Default                   |
+-|-------------------------------------|-------------------------------------------|---------------------------------------------|
+-| `image`                             | ownCloud image                            | `bitnami/owncloud:{VERSION}`                |
+-| `imagePullPolicy`                   | Image pull policy                         | `IfNotPresent`                              |
+-| `ingress.enabled`                   | Enable use of ingress controllers         | `false`                                     |
+-| `ingress.servicePort`               | Ingress' backend servicePort              | `http`                                      |
+-| `ingress.annotations`               | An array of service annotations           | `nil`                                       |
+-| `ingress.tls`                       | Ingress TLS configuration                 | `[]`                                        |
+-| `networkPolicyApiVersion`           | The kubernetes network API version        | `extensions/v1beta1`                        |
+-| `owncloudHost`                      | ownCloud host to create application URLs  | `nil`                                       |
+-| `owncloudLoadBalancerIP`            | `loadBalancerIP` for the owncloud Service | `nil`                                       |
+-| `owncloudUsername`                  | User of the application                   | `user`                                      |
+-| `owncloudPassword`                  | Application password                      | Randomly generated                          |
+-| `owncloudEmail`                     | Admin email                               | `user@example.com`                          |
+-| `externalDatabase.host`             | Host of the external database             | `nil`                                       |
+-| `allowEmptyPassword`                | Allow DB blank passwords                  | `yes`                                       |
+-| `externalDatabase.host`             | Host of the external database             | `nil`                                       |
+-| `externalDatabase.port`             | Port of the external database             | `3306`                                      |
+-| `externalDatabase.database`         | Name of the existing databse              | `bitnami_owncloud`                          |
+-| `externalDatabase.user`             | Existing username in the external db      | `bn_owncloud`                               |
+-| `externalDatabase.password`         | Password for the above username           | `nil`                                       |
+-| `mariadb.mariadbDatabase`           | Database name to create                   | `bitnami_owncloud`                          |
+-| `mariadb.enabled`                   | Wheter to use or not the mariadb chart    | `true`                                      |
+-| `mariadb.mariadbPassword`           | Password for the database                 | `nil`                                       |
+-| `mariadb.mariadbUser`               | Database user to create                   | `bn_owncloud`                               |
+-| `mariadb.mariadbRootPassword`       | MariaDB admin password                    | `nil`                                       |
+-| `serviceType`                       | Kubernetes Service type                   | `LoadBalancer`                              |
+-| `persistence.enabled`               | Enable persistence using PVC              | `true`                                      |
+-| `persistence.apache.storageClass`   | PVC Storage Class for Apache volume       | `nil` (uses alpha storage class annotation) |
+-| `persistence.apache.existingClaim`  | An Existing PVC name for Apache volume    | `nil` (uses alpha storage class annotation) |
+-| `persistence.apache.accessMode`     | PVC Access Mode for Apache volume         | `ReadWriteOnce`                             |
+-| `persistence.apache.size`           | PVC Storage Request for Apache volume     | `1Gi`                                       |
+-| `persistence.owncloud.storageClass` | PVC Storage Class for ownCloud volume     | `nil` (uses alpha storage class annotation) |
+-| `persistence.owncloud.existingClaim`| An Existing PVC name for ownCloud volume  | `nil` (uses alpha storage class annotation) |
+-| `persistence.owncloud.accessMode`   | PVC Access Mode for ownCloud volume       | `ReadWriteOnce`                             |
+-| `persistence.owncloud.size`         | PVC Storage Request for ownCloud volume   | `8Gi`                                       |
+-| `resources`                         | CPU/Memory resource requests/limits       | Memory: `512Mi`, CPU: `300m`                |
++|              Parameter              |                Description                |                   Default                               |
++|-------------------------------------|-------------------------------------------|-------------------------------------------------------- |
++| `image.registry`                    | ownCloud image registry                   | `docker.io`                                             |
++| `image.repository`                  | ownCloud Image name                       | `bitnami/owncloud`                                      |
++| `image.tag`                         | ownCloud Image tag                        | `{VERSION}`                                             |
++| `image.pullPolicy`                  | Image pull policy                         | `Always` if `imageTag` is `latest`, else `IfNotPresent` |
++| `image.pullSecrets`                 | Specify image pull secrets                | `nil`                                                   |
++| `ingress.enabled`                   | Enable use of ingress controllers         | `false`                                                 |
++| `ingress.servicePort`               | Ingress' backend servicePort              | `http`                                                  |
++| `ingress.annotations`               | An array of service annotations           | `nil`                                                   |
++| `ingress.tls`                       | Ingress TLS configuration                 | `[]`                                                    |
++| `networkPolicyApiVersion`           | The kubernetes network API version        | `extensions/v1beta1`                                    |
++| `owncloudHost`                      | ownCloud host to create application URLs  | `nil`                                                   |
++| `owncloudLoadBalancerIP`            | `loadBalancerIP` for the owncloud Service | `nil`                                                   |
++| `owncloudUsername`                  | User of the application                   | `user`                                                  |
++| `owncloudPassword`                  | Application password                      | Randomly generated                                      |
++| `owncloudEmail`                     | Admin email                               | `user@example.com`                                      |
++| `externalDatabase.host`             | Host of the external database             | `nil`                                                   |
++| `allowEmptyPassword`                | Allow DB blank passwords                  | `yes`                                                   |
++| `externalDatabase.host`             | Host of the external database             | `nil`                                                   |
++| `externalDatabase.port`             | Port of the external database             | `3306`                                                  |
++| `externalDatabase.database`         | Name of the existing databse              | `bitnami_owncloud`                                      |
++| `externalDatabase.user`             | Existing username in the external db      | `bn_owncloud`                                           |
++| `externalDatabase.password`         | Password for the above username           | `nil`                                                   |
++| `mariadb.mariadbDatabase`           | Database name to create                   | `bitnami_owncloud`                                      |
++| `mariadb.enabled`                   | Wheter to use or not the mariadb chart    | `true`                                                  |
++| `mariadb.mariadbPassword`           | Password for the database                 | `nil`                                                   |
++| `mariadb.mariadbUser`               | Database user to create                   | `bn_owncloud`                                           |
++| `mariadb.mariadbRootPassword`       | MariaDB admin password                    | `nil`                                                   |
++| `serviceType`                       | Kubernetes Service type                   | `LoadBalancer`                                          |
++| `persistence.enabled`               | Enable persistence using PVC              | `true`                                                  |
++| `persistence.apache.storageClass`   | PVC Storage Class for Apache volume       | `nil` (uses alpha storage class annotation)             |
++| `persistence.apache.existingClaim`  | An Existing PVC name for Apache volume    | `nil` (uses alpha storage class annotation)             |
++| `persistence.apache.accessMode`     | PVC Access Mode for Apache volume         | `ReadWriteOnce`                                         |
++| `persistence.apache.size`           | PVC Storage Request for Apache volume     | `1Gi`                                                   |
++| `persistence.owncloud.storageClass` | PVC Storage Class for ownCloud volume     | `nil` (uses alpha storage class annotation)             |
++| `persistence.owncloud.existingClaim`| An Existing PVC name for ownCloud volume  | `nil` (uses alpha storage class annotation)             |
++| `persistence.owncloud.accessMode`   | PVC Access Mode for ownCloud volume       | `ReadWriteOnce`                                         |
++| `persistence.owncloud.size`         | PVC Storage Request for ownCloud volume   | `8Gi`                                                   |
++| `resources`                         | CPU/Memory resource requests/limits       | Memory: `512Mi`, CPU: `300m`                            |
+ 
+ The above parameters map to the env variables defined in [bitnami/owncloud](http://github.com/bitnami/bitnami-docker-owncloud). For more information please refer to the [bitnami/owncloud](http://github.com/bitnami/bitnami-docker-owncloud) image documentation.
+ 
+diff --git a/stable/owncloud/templates/deployment.yaml b/stable/owncloud/templates/deployment.yaml
+index 2ba8610cf..e159f6d7f 100644
+--- a/stable/owncloud/templates/deployment.yaml
++++ b/stable/owncloud/templates/deployment.yaml
+@@ -15,10 +15,16 @@ spec:
+       labels:
+         app: {{ template "owncloud.fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "owncloud.fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: ALLOW_EMPTY_PASSWORD
+           value: {{ .Values.allowEmptyPassword | quote }}
+diff --git a/stable/owncloud/values.yaml b/stable/owncloud/values.yaml
+index dffd18cb2..517a021d1 100644
+--- a/stable/owncloud/values.yaml
++++ b/stable/owncloud/values.yaml
+@@ -1,12 +1,21 @@
+ ## Bitnami ownCloud image version
+ ## ref: https://hub.docker.com/r/bitnami/owncloud/tags/
+ ##
+-image: bitnami/owncloud:10.0.7-r4
+-
+-## Specify a imagePullPolicy
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-imagePullPolicy: IfNotPresent
++image:
++  registry: docker.io
++  repository: bitnami/owncloud
++  tag: 10.0.7
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
+ 
+ ## For Kubernetes v1.4, v1.5 and v1.6, use 'extensions/v1beta1'
+ ## For Kubernetes v1.7, use 'networking.k8s.io/v1'

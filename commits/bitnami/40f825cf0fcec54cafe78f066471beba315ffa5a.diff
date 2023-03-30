@@ -1,0 +1,352 @@
+commit 40f825cf0fcec54cafe78f066471beba315ffa5a
+Author: Martin Franz <79975157+mFranz82@users.noreply.github.com>
+Date:   Fri Dec 3 10:37:53 2021 +0100
+
+    [bitnami/elasticsearch] Extended security context (#8242)
+    
+    * [bitnami/elasticsearch] Enrich security context with futher optional properties
+    
+    * Removed unused test values
+    
+    * Bumped chart version
+    
+    * Added missing metadata
+    
+    * Removed trailing whitespaces
+    
+    * Further cleanup
+    
+    * Added a lot of new lines
+    
+    * Further tests
+    
+    * Fixed trailing spaces
+    
+    * securityContext settings for pods and containers are implemented in a more standardized way now
+    
+    * Fixed wrong metadata
+    
+    * Version bump
+    
+    * Version bump
+    
+    * Make it backward compatible
+    
+    * Further refactoring
+    
+    * Spelling correction
+    
+    Co-authored-by: Martin Franz <m.franz@vilingo.com>
+
+diff --git a/bitnami/elasticsearch/Chart.yaml b/bitnami/elasticsearch/Chart.yaml
+index f52df34a07..70ffe41d06 100644
+--- a/bitnami/elasticsearch/Chart.yaml
++++ b/bitnami/elasticsearch/Chart.yaml
+@@ -25,4 +25,4 @@ name: elasticsearch
+ sources:
+   - https://github.com/bitnami/bitnami-docker-elasticsearch
+   - https://www.elastic.co/products/elasticsearch
+-version: 17.3.6
++version: 17.4.0
+diff --git a/bitnami/elasticsearch/README.md b/bitnami/elasticsearch/README.md
+index 2dfa8adb30..a209210a84 100644
+--- a/bitnami/elasticsearch/README.md
++++ b/bitnami/elasticsearch/README.md
+@@ -132,6 +132,10 @@ $ helm delete --purge my-release
+ | `master.securityContext.enabled`            | Enable security context for master-eligible pods                                                                                                                                                                                        | `true`              |
+ | `master.securityContext.fsGroup`            | Group ID for the container for master-eligible pods                                                                                                                                                                                     | `1001`              |
+ | `master.securityContext.runAsUser`          | User ID for the container for master-eligible pods                                                                                                                                                                                      | `1001`              |
++| `master.podSecurityContext.enabled`         | Enable security context for master-eligible pods                                                                                                                                                                                        | `false`             |
++| `master.podSecurityContext.fsGroup`         | Group ID for the container for master-eligible pods                                                                                                                                                                                     | `1001`              |
++| `master.containerSecurityContext.enabled`   | Enable security context for master-eligible pods                                                                                                                                                                                        | `false`             |
++| `master.containerSecurityContext.runAsUser` | User ID for the container for master-eligible pods                                                                                                                                                                                      | `1001`              |
+ | `master.podAffinityPreset`                  | Master-eligible Pod affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`                                                                                                                                     | `""`                |
+ | `master.podAntiAffinityPreset`              | Master-eligible Pod anti-affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`                                                                                                                                | `""`                |
+ | `master.nodeAffinityPreset.type`            | Master-eligible Node affinity preset type. Ignored if `affinity` is set. Allowed values: `soft` or `hard`                                                                                                                               | `""`                |
+@@ -204,6 +208,10 @@ $ helm delete --purge my-release
+ | `coordinating.securityContext.enabled`            | Enable security context for coordinating-only pods                                                                        | `true`          |
+ | `coordinating.securityContext.fsGroup`            | Group ID for the container for coordinating-only pods                                                                     | `1001`          |
+ | `coordinating.securityContext.runAsUser`          | User ID for the container for coordinating-only pods                                                                      | `1001`          |
++| `coordinating.podSecurityContext.enabled`         | Enable security context for coordinating  pods                                                                            | `false`         |
++| `coordinating.podSecurityContext.fsGroup`         | Group ID for the container for coordinating  pods                                                                         | `1001`          |
++| `coordinating.containerSecurityContext.enabled`   | Enable security context for coordinating pods                                                                             | `false`         |
++| `coordinating.containerSecurityContext.runAsUser` | User ID for the container for coordinating pods                                                                           | `1001`          |
+ | `coordinating.podAffinityPreset`                  | Coordinating Pod affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`                          | `""`            |
+ | `coordinating.podAntiAffinityPreset`              | Coordinating Pod anti-affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`                     | `""`            |
+ | `coordinating.nodeAffinityPreset.type`            | Coordinating Node affinity preset type. Ignored if `affinity` is set. Allowed values: `soft` or `hard`                    | `""`            |
+@@ -270,6 +278,10 @@ $ helm delete --purge my-release
+ | `data.securityContext.enabled`               | Enable security context for data pods                                                                                                             | `true`              |
+ | `data.securityContext.fsGroup`               | Group ID for the container for data pods                                                                                                          | `1001`              |
+ | `data.securityContext.runAsUser`             | User ID for the container for data pods                                                                                                           | `1001`              |
++| `data.podSecurityContext.enabled`            | Enable security context for data pods                                                                                                             | `false`             |
++| `data.podSecurityContext.fsGroup`            | Group ID for the container for data pods                                                                                                          | `1001`              |
++| `data.containerSecurityContext.enabled`      | Enable security context for data pods                                                                                                             | `false`             |
++| `data.containerSecurityContext.runAsUser`    | User ID for the container for data pods                                                                                                           | `1001`              |
+ | `data.podAffinityPreset`                     | Data Pod affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`                                                          | `""`                |
+ | `data.podAntiAffinityPreset`                 | Data Pod anti-affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`                                                     | `""`                |
+ | `data.nodeAffinityPreset.type`               | Data Node affinity preset type. Ignored if `affinity` is set. Allowed values: `soft` or `hard`                                                    | `""`                |
+@@ -339,6 +351,10 @@ $ helm delete --purge my-release
+ | `ingest.securityContext.enabled`            | Enable security context for ingest pods                                                                                  | `true`          |
+ | `ingest.securityContext.fsGroup`            | Group ID for the container for ingest pods                                                                               | `1001`          |
+ | `ingest.securityContext.runAsUser`          | User ID for the container for ingest pods                                                                                | `1001`          |
++| `ingest.podSecurityContext.enabled`         | Enable security context for ingest pods                                                                                  | `false`         |
++| `ingest.podSecurityContext.fsGroup`         | Group ID for the container for ingest pods                                                                               | `1001`          |
++| `ingest.containerSecurityContext.enabled`   | Enable security context for data pods                                                                                    | `false`         |
++| `ingest.containerSecurityContext.runAsUser` | User ID for the container for data pods                                                                                  | `1001`          |
+ | `ingest.podAffinityPreset`                  | Ingest Pod affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`                               | `""`            |
+ | `ingest.podAntiAffinityPreset`              | Ingest Pod anti-affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`                          | `""`            |
+ | `ingest.nodeAffinityPreset.type`            | Ingest Node affinity preset type. Ignored if `affinity` is set. Allowed values: `soft` or `hard`                         | `""`            |
+diff --git a/bitnami/elasticsearch/templates/coordinating-hpa.yaml b/bitnami/elasticsearch/templates/coordinating-hpa.yaml
+index 412587ddd3..5da6ec3c31 100644
+--- a/bitnami/elasticsearch/templates/coordinating-hpa.yaml
++++ b/bitnami/elasticsearch/templates/coordinating-hpa.yaml
+@@ -32,4 +32,4 @@ spec:
+         name: memory
+         targetAverageUtilization: {{ .Values.coordinating.autoscaling.targetMemory }}
+     {{- end }}
+-{{- end }}
+\ No newline at end of file
++{{- end }}
+diff --git a/bitnami/elasticsearch/templates/coordinating-statefulset.yaml b/bitnami/elasticsearch/templates/coordinating-statefulset.yaml
+index be6f4adf0a..79e0169f04 100644
+--- a/bitnami/elasticsearch/templates/coordinating-statefulset.yaml
++++ b/bitnami/elasticsearch/templates/coordinating-statefulset.yaml
+@@ -65,9 +65,13 @@ spec:
+       topologySpreadConstraints: {{- include "common.tplvalues.render" (dict "value" .Values.coordinating.topologySpreadConstraints "context" $) | nindent 8 }}
+       {{- end }}
+       serviceAccountName: {{ template "elasticsearch.coordinating.serviceAccountName" . }}
+-      {{- if .Values.coordinating.securityContext.enabled }}
++      {{- if or .Values.coordinating.podSecurityContext.enabled .Values.coordinating.securityContext.enabled }}
+       securityContext:
++        {{- if .Values.coordinating.podSecurityContext.enabled }}
++        {{- omit .Values.coordinating.podSecurityContext "enabled" | toYaml | nindent 8 }}
++        {{- else }}
+         fsGroup: {{ .Values.coordinating.securityContext.fsGroup }}
++        {{- end }}
+       {{- end }}
+       {{- if or .Values.coordinating.initContainers .Values.sysctlImage.enabled }}
+       initContainers:
+@@ -96,9 +100,13 @@ spec:
+         - name: elasticsearch
+           image: {{ include "elasticsearch.image" . }}
+           imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+-          {{- if .Values.coordinating.securityContext.enabled }}
++          {{- if or .Values.coordinating.containerSecurityContext.enabled .Values.coordinating.securityContext.enabled }}
+           securityContext:
++            {{- if .Values.coordinating.containerSecurityContext.enabled }}
++            {{- omit .Values.coordinating.containerSecurityContext "enabled" | toYaml | nindent 12 }}
++            {{- else }}
+             runAsUser: {{ .Values.coordinating.securityContext.runAsUser }}
++            {{- end }}
+           {{- end }}
+           {{- if .Values.diagnosticMode.enabled }}
+           command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 12 }}
+diff --git a/bitnami/elasticsearch/templates/data-hpa.yaml b/bitnami/elasticsearch/templates/data-hpa.yaml
+index 2f84482947..67bc687140 100644
+--- a/bitnami/elasticsearch/templates/data-hpa.yaml
++++ b/bitnami/elasticsearch/templates/data-hpa.yaml
+@@ -32,4 +32,4 @@ spec:
+         name: memory
+         targetAverageUtilization: {{ .Values.data.autoscaling.targetMemory }}
+     {{- end }}
+-{{- end }}
+\ No newline at end of file
++{{- end }}
+diff --git a/bitnami/elasticsearch/templates/data-statefulset.yaml b/bitnami/elasticsearch/templates/data-statefulset.yaml
+index e4e625b81e..b71ed43717 100644
+--- a/bitnami/elasticsearch/templates/data-statefulset.yaml
++++ b/bitnami/elasticsearch/templates/data-statefulset.yaml
+@@ -68,9 +68,13 @@ spec:
+       topologySpreadConstraints: {{- include "common.tplvalues.render" (dict "value" .Values.data.topologySpreadConstraints "context" $) | nindent 8 }}
+       {{- end }}
+       serviceAccountName: {{ template "elasticsearch.data.serviceAccountName" . }}
+-      {{- if .Values.data.securityContext.enabled }}
++      {{- if or .Values.data.podSecurityContext.enabled .Values.data.securityContext.enabled }}
+       securityContext:
++        {{- if .Values.data.podSecurityContext.enabled }}
++        {{- omit .Values.data.podSecurityContext "enabled" | toYaml | nindent 8 }}
++        {{- else }}
+         fsGroup: {{ .Values.data.securityContext.fsGroup }}
++        {{- end }}
+       {{- end }}
+       {{- if or .Values.data.initContainers .Values.sysctlImage.enabled (and .Values.volumePermissions.enabled .Values.data.persistence.enabled) }}
+       initContainers:
+@@ -117,9 +121,13 @@ spec:
+         - name: elasticsearch
+           image: {{ include "elasticsearch.image" . }}
+           imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+-          {{- if .Values.data.securityContext.enabled }}
++          {{- if or .Values.data.containerSecurityContext.enabled .Values.data.securityContext.enabled }}
+           securityContext:
++            {{- if .Values.data.containerSecurityContext.enabled }}
++            {{- omit .Values.data.containerSecurityContext "enabled" | toYaml | nindent 12 }}
++            {{- else }}
+             runAsUser: {{ .Values.data.securityContext.runAsUser }}
++            {{- end }}
+           {{- end }}
+           {{- if .Values.diagnosticMode.enabled }}
+           command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 12 }}
+diff --git a/bitnami/elasticsearch/templates/ingest-statefulset.yaml b/bitnami/elasticsearch/templates/ingest-statefulset.yaml
+index f217420cd2..61e0999467 100644
+--- a/bitnami/elasticsearch/templates/ingest-statefulset.yaml
++++ b/bitnami/elasticsearch/templates/ingest-statefulset.yaml
+@@ -64,9 +64,13 @@ spec:
+       topologySpreadConstraints: {{- include "common.tplvalues.render" (dict "value" .Values.ingest.topologySpreadConstraints "context" $) | nindent 8 }}
+       {{- end }}
+       serviceAccountName: {{ template "elasticsearch.ingest.serviceAccountName" . }}
+-      {{- if .Values.ingest.securityContext.enabled }}
++      {{- if or .Values.ingest.podSecurityContext.enabled .Values.ingest.securityContext.enabled }}
+       securityContext:
++        {{- if .Values.ingest.podSecurityContext.enabled }}
++        {{- omit .Values.ingest.podSecurityContext "enabled" | toYaml | nindent 8 }}
++        {{- else }}
+         fsGroup: {{ .Values.ingest.securityContext.fsGroup }}
++        {{- end }}
+       {{- end }}
+       {{- if or .Values.ingest.initContainers  .Values.sysctlImage.enabled }}
+       initContainers:
+@@ -95,9 +99,13 @@ spec:
+         - name: elasticsearch
+           image: {{ include "elasticsearch.image" . }}
+           imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+-          {{- if .Values.ingest.securityContext.enabled }}
++          {{- if or .Values.ingest.containerSecurityContext.enabled .Values.ingest.securityContext.enabled }}
+           securityContext:
++            {{- if .Values.ingest.containerSecurityContext.enabled }}
++            {{- omit .Values.ingest.containerSecurityContext "enabled" | toYaml | nindent 8 }}
++            {{- else }}
+             runAsUser: {{ .Values.ingest.securityContext.runAsUser }}
++            {{- end }}
+           {{- end }}
+           {{- if .Values.diagnosticMode.enabled }}
+           command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 12 }}
+diff --git a/bitnami/elasticsearch/templates/master-statefulset.yaml b/bitnami/elasticsearch/templates/master-statefulset.yaml
+index 3ad5b33ea4..a045ade35e 100644
+--- a/bitnami/elasticsearch/templates/master-statefulset.yaml
++++ b/bitnami/elasticsearch/templates/master-statefulset.yaml
+@@ -65,9 +65,13 @@ spec:
+       topologySpreadConstraints: {{- include "common.tplvalues.render" (dict "value" .Values.master.topologySpreadConstraints "context" $) | nindent 8 }}
+       {{- end }}
+       serviceAccountName: {{ template "elasticsearch.master.serviceAccountName" . }}
+-      {{- if .Values.master.securityContext.enabled }}
++      {{- if or .Values.master.podSecurityContext.enabled .Values.master.securityContext.enabled }}
+       securityContext:
++        {{- if .Values.master.podSecurityContext.enabled }}
++        {{- omit .Values.master.podSecurityContext "enabled" | toYaml | nindent 8 }}
++        {{- else }}
+         fsGroup: {{ .Values.master.securityContext.fsGroup }}
++        {{- end }}
+       {{- end }}
+       {{- if or .Values.master.initContainers .Values.sysctlImage.enabled (and .Values.volumePermissions.enabled .Values.master.persistence.enabled) }}
+       initContainers:
+@@ -114,9 +118,13 @@ spec:
+         - name: elasticsearch
+           image: {{ include "elasticsearch.image" . }}
+           imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+-          {{- if .Values.master.securityContext.enabled }}
++          {{- if or .Values.master.containerSecurityContext.enabled .Values.master.securityContext.enabled }}
+           securityContext:
++            {{- if .Values.master.containerSecurityContext.enabled }}
++            {{- omit .Values.master.containerSecurityContext "enabled" | toYaml | nindent 12 }}
++            {{ else }}
+             runAsUser: {{ .Values.master.securityContext.runAsUser }}
++            {{- end }}
+           {{- end }}
+           {{- if .Values.diagnosticMode.enabled }}
+           command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 12 }}
+diff --git a/bitnami/elasticsearch/values.yaml b/bitnami/elasticsearch/values.yaml
+index 99886a5165..40548f2627 100644
+--- a/bitnami/elasticsearch/values.yaml
++++ b/bitnami/elasticsearch/values.yaml
+@@ -270,6 +270,22 @@ master:
+     enabled: true
+     fsGroup: 1001
+     runAsUser: 1001
++  ## Pod Security Context for master-eligible pods.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
++  ## @param master.podSecurityContext.enabled Enable security context for master-eligible pods
++  ## @param master.podSecurityContext.fsGroup Group ID for the container for master-eligible pods
++  ##
++  podSecurityContext:
++    enabled: false
++    fsGroup: 1001
++  ## Container Security Context for master-eligible pods.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
++  ## @param master.containerSecurityContext.enabled Enable security context for master-eligible pods
++  ## @param master.containerSecurityContext.runAsUser User ID for the container for master-eligible pods
++  ##
++  containerSecurityContext:
++    enabled: false
++    runAsUser: 1001
+   ## @param master.podAffinityPreset Master-eligible Pod affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`
+   ## ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity
+   ##
+@@ -526,6 +542,22 @@ coordinating:
+     enabled: true
+     fsGroup: 1001
+     runAsUser: 1001
++  ## Pod Security Context for coordinating-only pods.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
++  ## @param coordinating.podSecurityContext.enabled Enable security context for coordinating-only pods
++  ## @param coordinating.podSecurityContext.fsGroup Group ID for the container for coordinating-only pods
++  ##
++  podSecurityContext:
++    enabled: false
++    fsGroup: 1001
++  ## Container Security Context for coordinating-only pods.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
++  ## @param coordinating.containerSecurityContext.enabled Enable security context for coordinating-only pods
++  ## @param coordinating.containerSecurityContext.runAsUser User ID for the container for coordinating-only pods
++  ##
++  containerSecurityContext:
++    enabled: false
++    runAsUser: 1001
+   ## @param coordinating.podAffinityPreset Coordinating Pod affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`
+   ## ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity
+   ##
+@@ -749,6 +781,22 @@ data:
+     enabled: true
+     fsGroup: 1001
+     runAsUser: 1001
++  ## Pod Security Context for data pods.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
++  ## @param data.podSecurityContext.enabled Enable security context for data pods
++  ## @param data.podSecurityContext.fsGroup Group ID for the container for data pods
++  ##
++  podSecurityContext:
++    enabled: true
++    fsGroup: 1001
++  ## Container Security Context for data pods.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
++  ## @param data.containerSecurityContext.enabled Enable security context for data pods
++  ## @param data.containerSecurityContext.runAsUser User ID for the container for data pods
++  ##
++  containerSecurityContext:
++    enabled: true
++    runAsUser: 1001
+   ## @param data.podAffinityPreset Data Pod affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`
+   ## ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity
+   ##
+@@ -991,6 +1039,22 @@ ingest:
+     enabled: true
+     fsGroup: 1001
+     runAsUser: 1001
++  ## Pod Security Context for ingest pods.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
++  ## @param ingest.podSecurityContext.enabled Enable security context for ingest pods
++  ## @param ingest.podSecurityContext.fsGroup Group ID for the container for ingest pods
++  ##
++  podSecurityContext:
++    enabled: true
++    fsGroup: 1001
++  ## Container Security Context for ingest pods.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
++  ## @param ingest.containerSecurityContext.enabled Enable security context for ingest pods
++  ## @param ingest.containerSecurityContext.runAsUser User ID for the container for ingest pods
++  ##
++  containerSecurityContext:
++    enabled: true
++    runAsUser: 1001
+   ## @param ingest.podAffinityPreset Ingest Pod affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`
+   ## ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity
+   ##

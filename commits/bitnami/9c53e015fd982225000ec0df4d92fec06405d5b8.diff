@@ -1,0 +1,284 @@
+commit 9c53e015fd982225000ec0df4d92fec06405d5b8
+Author: Marcos Bjoerkelund <marcosbc@users.noreply.github.com>
+Date:   Thu May 6 19:09:19 2021 +0200
+
+    [bitnami/wordpress] MAJOR: WordPress image refactor (#6261)
+    
+    * [major] WordPress image refactor
+    
+    * fix multisite property name
+    
+    * add clarification
+    
+    * Use nip.io redirection
+    
+    * Update bitnami/wordpress/templates/deployment.yaml
+    
+    Co-authored-by: Juan Ariza Toledano <juanariza@vmware.com>
+    
+    * add array support for wordpressPlugins
+    
+    * [bitnami/wordpress] Update components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    Co-authored-by: Juan Ariza Toledano <juanariza@vmware.com>
+    Co-authored-by: Bitnami Containers <containers@bitnami.com>
+
+diff --git a/bitnami/wordpress/Chart.lock b/bitnami/wordpress/Chart.lock
+index 3a8fa54777..cbe3bfa3af 100644
+--- a/bitnami/wordpress/Chart.lock
++++ b/bitnami/wordpress/Chart.lock
+@@ -1,12 +1,12 @@
+ dependencies:
+ - name: mariadb
+   repository: https://charts.bitnami.com/bitnami
+-  version: 9.3.9
++  version: 9.3.10
+ - name: memcached
+   repository: https://charts.bitnami.com/bitnami
+   version: 5.12.0
+ - name: common
+   repository: https://charts.bitnami.com/bitnami
+   version: 1.4.3
+-digest: sha256:38bd32f8a374095a93213100890eca4e9f32f6361b61ba032bfbf6df293e86ac
+-generated: "2021-05-04T13:09:17.865720033Z"
++digest: sha256:a8932919350a68728907bb9c36bcd2fe675d124a9f28c6e0f0c2f034dce92f96
++generated: "2021-05-06T14:19:11.546088519Z"
+diff --git a/bitnami/wordpress/Chart.yaml b/bitnami/wordpress/Chart.yaml
+index 4d7219c652..7f55b64966 100644
+--- a/bitnami/wordpress/Chart.yaml
++++ b/bitnami/wordpress/Chart.yaml
+@@ -35,4 +35,4 @@ name: wordpress
+ sources:
+   - https://github.com/bitnami/bitnami-docker-wordpress
+   - https://wordpress.org/
+-version: 10.11.2
++version: 11.0.0
+diff --git a/bitnami/wordpress/README.md b/bitnami/wordpress/README.md
+index 5faf1b8f5b..946ef27b81 100644
+--- a/bitnami/wordpress/README.md
++++ b/bitnami/wordpress/README.md
+@@ -81,41 +81,51 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ ### WordPress Configuration parameters
+ 
+-| Name                                   | Description                                                                           | Value              |
+-| -------------------------------------- | ------------------------------------------------------------------------------------- | ------------------ |
+-| `wordpressUsername`                    | WordPress username                                                                    | `user`             |
+-| `wordpressPassword`                    | WordPress user password                                                               | `""`               |
+-| `existingSecret`                       | Name of existing secret containing WordPress credentials                              | `nil`              |
+-| `wordpressEmail`                       | WordPress user email                                                                  | `user@example.com` |
+-| `wordpressFirstName`                   | WordPress user first name                                                             | `FirstName`        |
+-| `wordpressLastName`                    | WordPress user last name                                                              | `LastName`         |
+-| `wordpressBlogName`                    | Blog name                                                                             | `User's Blog!`     |
+-| `wordpressTablePrefix`                 | Prefix to use for WordPress database tables                                           | `wp_`              |
+-| `wordpressScheme`                      | Scheme to use to generate WordPress URLs                                              | `http`             |
+-| `wordpressSkipInstall`                 | Skip wizard installation                                                              | `false`            |
+-| `wordpressExtraConfigContent`          | Add extra content to the default wp-config.php file                                   | `nil`              |
+-| `wordpressConfiguration`               | The content for your custom wp-config.php file (advanced feature)                     | `nil`              |
+-| `existingWordPressConfigurationSecret` | The name of an existing secret with your custom wp-config.php file (advanced feature) | `nil`              |
+-| `wordpressConfigureCache`              | Enable W3 Total Cache plugin and configure cache settings                             | `false`            |
+-| `apacheConfiguration`                  | The content for your custom httpd.conf file (advanced feature)                        | `nil`              |
+-| `existingApacheConfigurationConfigMap` | The name of an existing secret with your custom wp-config.php file (advanced feature) | `nil`              |
+-| `customPostInitScripts`                | Custom post-init.d user scripts                                                       | `{}`               |
+-| `smtpHost`                             | SMTP server host                                                                      | `""`               |
+-| `smtpPort`                             | SMTP server port                                                                      | `""`               |
+-| `smtpUser`                             | SMTP username                                                                         | `""`               |
+-| `smtpPassword`                         | SMTP user password                                                                    | `""`               |
+-| `smtpProtocol`                         | SMTP protocol                                                                         | `""`               |
+-| `smtpExistingSecret`                   | The name of an existing secret with SMTP credentials                                  | `nil`              |
+-| `allowEmptyPassword`                   | Allow the container to be started with blank passwords                                | `true`             |
+-| `allowOverrideNone`                    | Configure Apache to prohibit overriding directives with htaccess files                | `false`            |
+-| `htaccessPersistenceEnabled`           | Persist custom changes on htaccess files                                              | `false`            |
+-| `customHTAccessCM`                     | The name of an existing ConfigMap with custom htaccess rules                          | `nil`              |
+-| `command`                              | Override default container command (useful when using custom images)                  | `[]`               |
+-| `args`                                 | Override default container args (useful when using custom images)                     | `[]`               |
+-| `extraEnvVars`                         | Array with extra environment variables to add to the WordPress container              | `[]`               |
+-| `extraEnvVarsCM`                       | Name of existing ConfigMap containing extra env vars                                  | `nil`              |
+-| `extraEnvVarsSecret`                   | Name of existing Secret containing extra env vars                                     | `nil`              |
+-
++| Name                                   | Description                                                                               | Value              |
++| -------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------ |
++| `wordpressUsername`                    | WordPress username                                                                        | `user`             |
++| `wordpressPassword`                    | WordPress user password                                                                   | `""`               |
++| `existingSecret`                       | Name of existing secret containing WordPress credentials                                  | `nil`              |
++| `wordpressEmail`                       | WordPress user email                                                                      | `user@example.com` |
++| `wordpressFirstName`                   | WordPress user first name                                                                 | `FirstName`        |
++| `wordpressLastName`                    | WordPress user last name                                                                  | `LastName`         |
++| `wordpressBlogName`                    | Blog name                                                                                 | `User's Blog!`     |
++| `wordpressTablePrefix`                 | Prefix to use for WordPress database tables                                               | `wp_`              |
++| `wordpressScheme`                      | Scheme to use to generate WordPress URLs                                                  | `http`             |
++| `wordpressSkipInstall`                 | Skip wizard installation                                                                  | `false`            |
++| `wordpressExtraConfigContent`          | Add extra content to the default wp-config.php file                                       | `nil`              |
++| `wordpressConfiguration`               | The content for your custom wp-config.php file (experimental feature)                     | `nil`              |
++| `existingWordPressConfigurationSecret` | The name of an existing secret with your custom wp-config.php file (experimental feature) | `nil`              |
++| `wordpressConfigureCache`              | Enable W3 Total Cache plugin and configure cache settings                                 | `false`            |
++| `wordpressAutoUpdateLevel`             | Level of auto-updates to allow. Allowed values: `major`, `minor` or `none`.               | `none`             |
++| `wordpressPlugins`                     | Array of plugins to install and activate. Can be specified as `all` or `none`.            | `none`             |
++| `apacheConfiguration`                  | The content for your custom httpd.conf file (advanced feature)                            | `nil`              |
++| `existingApacheConfigurationConfigMap` | The name of an existing secret with your custom wp-config.php file (advanced feature)     | `nil`              |
++| `customPostInitScripts`                | Custom post-init.d user scripts                                                           | `{}`               |
++| `smtpHost`                             | SMTP server host                                                                          | `""`               |
++| `smtpPort`                             | SMTP server port                                                                          | `""`               |
++| `smtpUser`                             | SMTP username                                                                             | `""`               |
++| `smtpPassword`                         | SMTP user password                                                                        | `""`               |
++| `smtpProtocol`                         | SMTP protocol                                                                             | `""`               |
++| `smtpExistingSecret`                   | The name of an existing secret with SMTP credentials                                      | `nil`              |
++| `allowEmptyPassword`                   | Allow the container to be started with blank passwords                                    | `true`             |
++| `allowOverrideNone`                    | Configure Apache to prohibit overriding directives with htaccess files                    | `false`            |
++| `htaccessPersistenceEnabled`           | Persist custom changes on htaccess files                                                  | `false`            |
++| `customHTAccessCM`                     | The name of an existing ConfigMap with custom htaccess rules                              | `nil`              |
++| `command`                              | Override default container command (useful when using custom images)                      | `[]`               |
++| `args`                                 | Override default container args (useful when using custom images)                         | `[]`               |
++| `extraEnvVars`                         | Array with extra environment variables to add to the WordPress container                  | `[]`               |
++| `extraEnvVarsCM`                       | Name of existing ConfigMap containing extra env vars                                      | `nil`              |
++| `extraEnvVarsSecret`                   | Name of existing Secret containing extra env vars                                         | `nil`              |
++
++### WordPress Multisite Configuration parameters
++
++| Name                            | Description                                                                                                                        | Value              |
++| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
++| `multisite.enable`              | Whether to enable WordPress Multisite configuration.                                                                               | `false`            |
++| `multisite.host`                | WordPress Multisite hostname/address. This value is mandatory when enabling Multisite mode.                                        | `""`               |
++| `multisite.networkType`         | WordPress Multisite network type to enable. Allowed values: `subfolder`, `subdirectory` or `subdomain`.                            | `subdomain`        |
++| `multisite.enableNipIoRedirect` | Whether to enable IP address redirection to nip.io wildcard DNS. Useful when running on an IP address with subdomain network type. | `false`            |
+ 
+ ### WordPress deployment parameters
+ 
+@@ -401,8 +411,28 @@ As an alternative, use one of the preset configurations for pod affinity, pod an
+ 
+ Find more information about how to deal with common errors related to Bitnami's Helm charts in [this troubleshooting guide](https://docs.bitnami.com/general/how-to/troubleshoot-helm-chart-issues).
+ 
++## Notable changes
++
++### 11.0.0
++
++The [Bitnami WordPress](https://github.com/bitnami/bitnami-docker-wordpress) image was refactored and now the source code is published in GitHub in the [`rootfs`](https://github.com/bitnami/bitnami-docker-wordpress/tree/master/5/debian-10/rootfs) folder of the container image.
++
++In addition, several new features have been implemented:
++
++- Multisite mode is now supported via `multisite.*` options.
++- Plugins can be installed and activated on the first deployment via the `wordpressPlugins` option.
++- Added support for limiting auto-updates to WordPress core via the `wordpressAutoUpdateLevel` option. In addition, auto-updates have been disabled by default. To update WordPress core, we recommend to swap the container image version for your deployment instead of using the built-in update functionality.
++
++To enable the new features, it is not possible to do it by upgrading an existing deployment. Instead, it is necessary to perform a fresh deploy.
++
+ ## Upgrading
+ 
++### To 11.0.0
++
++The [Bitnami WordPress](https://github.com/bitnami/bitnami-docker-wordpress) image was refactored and now the source code is published in GitHub in the [`rootfs`](https://github.com/bitnami/bitnami-docker-wordpress/tree/master/5/debian-10/rootfs) folder of the container image.
++
++Compatibility is not guaranteed due to the amount of involved changes, however no breaking changes are expected.
++
+ ### To 10.0.0
+ 
+ [On November 13, 2020, Helm v2 support was formally finished](https://github.com/helm/charts#status-of-the-project), this major version is the result of the required changes applied to the Helm Chart to be able to incorporate the different features added in Helm v3 and to be consistent with the Helm project itself regarding the Helm v2 EOL.
+diff --git a/bitnami/wordpress/templates/deployment.yaml b/bitnami/wordpress/templates/deployment.yaml
+index 6a6af0db95..92477e6334 100644
+--- a/bitnami/wordpress/templates/deployment.yaml
++++ b/bitnami/wordpress/templates/deployment.yaml
+@@ -145,20 +145,36 @@ spec:
+               value: {{ .Values.wordpressLastName | quote }}
+             - name: WORDPRESS_HTACCESS_OVERRIDE_NONE
+               value: {{ ternary "yes" "no" .Values.allowOverrideNone | quote }}
+-            - name: WORDPRESS_HTACCESS_PERSISTENCE_ENABLED
++            - name: WORDPRESS_ENABLE_HTACCESS_PERSISTENCE
+               value: {{ ternary "yes" "no" .Values.htaccessPersistenceEnabled | quote }}
+             - name: WORDPRESS_BLOG_NAME
+               value: {{ .Values.wordpressBlogName | quote }}
+-            - name: WORDPRESS_SKIP_INSTALL
++            - name: WORDPRESS_SKIP_BOOTSTRAP
+               value: {{ ternary "yes" "no" .Values.wordpressSkipInstall | quote }}
+-            - name: WORDPRESS_READ_ONLY_CONFIG
+-              value: {{ ternary "yes" "no" (or (not (empty .Values.wordpressConfiguration)) (not (empty .Values.existingWordPressConfigurationSecret))) | quote }}
+             - name: WORDPRESS_TABLE_PREFIX
+               value: {{ .Values.wordpressTablePrefix | quote }}
+             - name: WORDPRESS_SCHEME
+               value: {{ .Values.wordpressScheme | quote }}
+             - name: WORDPRESS_EXTRA_WP_CONFIG_CONTENT
+               value: {{ .Values.wordpressExtraConfigContent | quote }}
++            - name: WORDPRESS_AUTO_UPDATE_LEVEL
++              value: {{ .Values.wordpressAutoUpdateLevel | quote }}
++            - name: WORDPRESS_PLUGINS
++              value: {{ join "," .Values.wordpressPlugins | quote }}
++            {{- if .Values.multisite.enable }}
++            - name: WORDPRESS_ENABLE_MULTISITE
++              value: "yes"
++            - name: WORDPRESS_MULTISITE_HOST
++              value: {{ .Values.multisite.host | quote }}
++            - name: WORDPRESS_MULTISITE_EXTERNAL_HTTP_PORT_NUMBER
++              value: {{ .Values.service.port | quote }}
++            - name: WORDPRESS_MULTISITE_EXTERNAL_HTTPS_PORT_NUMBER
++              value: {{ .Values.service.httpsPort | quote }}
++            - name: WORDPRESS_MULTISITE_NETWORK_TYPE
++              value: {{ .Values.multisite.networkType | quote }}
++            - name: WORDPRESS_MULTISITE_ENABLE_NIP_IO_REDIRECTION
++              value: {{ ternary "yes" "no" .Values.multisite.enableNipIoRedirect | quote }}
++            {{- end }}
+             {{- if .Values.smtpHost }}
+             - name: SMTP_HOST
+               value: {{ .Values.smtpHost | quote }}
+diff --git a/bitnami/wordpress/values.yaml b/bitnami/wordpress/values.yaml
+index eedfd24698..9635affb10 100644
+--- a/bitnami/wordpress/values.yaml
++++ b/bitnami/wordpress/values.yaml
+@@ -54,7 +54,7 @@ extraDeploy: []
+ image:
+   registry: docker.io
+   repository: bitnami/wordpress
+-  tag: 5.7.1-debian-10-r19
++  tag: 5.7.1-debian-10-r21
+   ## Specify a imagePullPolicy
+   ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+   ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+@@ -131,10 +131,17 @@ existingWordPressConfigurationSecret:
+ ## NOTE: useful if you deploy Memcached for caching database queries or you use an external cache server
+ ##
+ wordpressConfigureCache: false
++## @param wordpressAutoUpdateLevel Level of auto-updates to allow. Allowed values: `major`, `minor` or `none`.
++##
++wordpressAutoUpdateLevel: none
++## @param wordpressPlugins Array of plugins to install and activate. Can be specified as `all` or `none`.
++## NOTE: If set to all, only plugins that are already installed will be activated, and if set to none, no plugins will be activated
++##
++wordpressPlugins: none
+ ## @param apacheConfiguration The content for your custom httpd.conf file (advanced feature)
+ ##
+ apacheConfiguration:
+-## @param existingApacheConfigurationConfigMap The name of an existing secret with your custom wp-config.php file (advanced feature)
++## @param existingApacheConfigurationConfigMap The name of an existing secret with your custom httpd.conf file (advanced feature)
+ ## NOTE: When it's set the `apacheConfiguration` parameter is ignored
+ ##
+ existingApacheConfigurationConfigMap:
+@@ -210,6 +217,20 @@ extraEnvVarsCM:
+ ##
+ extraEnvVarsSecret:
+ 
++## @section WordPress Multisite Configuration parameters
++## ref: https://github.com/bitnami/bitnami-docker-wordpress#multisite-configuration
++
++## @param multisite.enable Whether to enable WordPress Multisite configuration.
++## @param multisite.host WordPress Multisite hostname/address. This value is mandatory when enabling Multisite mode.
++## @param multisite.networkType WordPress Multisite network type to enable. Allowed values: `subfolder`, `subdirectory` or `subdomain`.
++## @param multisite.enableNipIoRedirect Whether to enable IP address redirection to nip.io wildcard DNS. Useful when running on an IP address with subdomain network type.
++##
++multisite:
++  enable: false
++  host: ""
++  networkType: subdomain
++  enableNipIoRedirect: false
++
+ ## @section WordPress deployment parameters
+ 
+ ## @param replicaCount Number of WordPress replicas to deploy
+@@ -676,7 +697,7 @@ metrics:
+   image:
+     registry: docker.io
+     repository: bitnami/apache-exporter
+-    tag: 0.8.0-debian-10-r371
++    tag: 0.8.0-debian-10-r372
+     pullPolicy: IfNotPresent
+     ## Optionally specify an array of imagePullSecrets.
+     ## Secrets must be manually created in the namespace.

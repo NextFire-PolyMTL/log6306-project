@@ -1,0 +1,69 @@
+commit 1aede1787cc280f4b50518ed71fea92cecd64827
+Author: cheyang <cheyang@163.com>
+Date:   Sat Jun 2 00:07:14 2018 +0800
+
+    refactor image repo setting of gogs (#5827)
+
+diff --git a/incubator/gogs/Chart.yaml b/incubator/gogs/Chart.yaml
+index ea8e9a236..49d3bb1e5 100644
+--- a/incubator/gogs/Chart.yaml
++++ b/incubator/gogs/Chart.yaml
+@@ -1,7 +1,7 @@
+ apiVersion: v1
+ description: 'Gogs: Go Git Service'
+ name: gogs
+-version: 0.5.3
++version: 0.6.0
+ appVersion: 0.11.29
+ home: https://gogs.io/
+ icon: https://gogs.io/img/favicon.ico
+diff --git a/incubator/gogs/README.md b/incubator/gogs/README.md
+index 158788f2c..c62f7eb8f 100644
+--- a/incubator/gogs/README.md
++++ b/incubator/gogs/README.md
+@@ -43,9 +43,9 @@ chart and their default values.
+ 
+ | Parameter                        | Description                                                  | Default                                                    |
+ | -----------------------          | ----------------------------------                           | ---------------------------------------------------------- |
+-| `imageRepository`                | Gogs image                                                   | `gogs/gogs`                                                |
+-| `imageTag`                       | Gogs image version                                           | `0.11.29`                                                  |
+-| `imagePullPolicy`                | Gogs image pull policy                                       | `Always` if `imageTag` is `latest`, else `IfNotPresent`    |
++| `image.repository`                | Gogs image                                                   | `gogs/gogs`                                                |
++| `image.tag`                       | Gogs image tag                                           | `0.11.29`                                                  |
++| `image.pullPolicy`                | Gogs image pull policy                                       | `Always` if `imageTag` is `latest`, else `IfNotPresent`    |
+ | `postgresql.install`             | Weather or not to install PostgreSQL dependency              | `true`                                                     |
+ | `postgresql.postgresHost`        | PostgreSQL host (if `postgresql.install == false`)           | `nil`                                                      |
+ | `postgresql.postgresUser`        | PostgreSQL User to create                                    | `gogs`                                                     |
+diff --git a/incubator/gogs/templates/deployment.yaml b/incubator/gogs/templates/deployment.yaml
+index b0d30ec88..1ec70ab1b 100644
+--- a/incubator/gogs/templates/deployment.yaml
++++ b/incubator/gogs/templates/deployment.yaml
+@@ -18,8 +18,8 @@ spec:
+     spec:
+       containers:
+         - name: {{ .Chart.Name }}
+-          image: "{{ .Values.image }}:{{ .Values.imageTag }}"
+-          imagePullPolicy: {{ .Values.imagePullPolicy }}
++          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++          imagePullPolicy: {{ .Values.image.pullPolicy }}
+           ports:
+             - containerPort: 3000
+             - containerPort: 22
+diff --git a/incubator/gogs/values.yaml b/incubator/gogs/values.yaml
+index f44054df2..7c56d1aa8 100644
+--- a/incubator/gogs/values.yaml
++++ b/incubator/gogs/values.yaml
+@@ -9,9 +9,10 @@ serviceType: NodePort
+ 
+ replicaCount: 1
+ 
+-image: gogs/gogs
+-imageTag: 0.11.29
+-imagePullPolicy: IfNotPresent
++image:
++  repository: gogs/gogs
++  tag: 0.11.29
++  pullPolicy: IfNotPresent
+ 
+ service:
+   ## Override the components name (defaults to service).

@@ -1,0 +1,3363 @@
+commit 6d2fc82c220ad13e0d74df69275fc98f6085ccf1
+Author: Cedric Lamoriniere <cedric.lamoriniere@datadoghq.com>
+Date:   Wed Feb 26 16:26:25 2020 +0100
+
+    [stable/datadog] v2.0.0 major release (#18182)
+    
+    * [stable/datadog] v2.0.0 cleaning and refactoring
+    
+    * Remove Datadog agent deployment configuration.
+    * Cleanup resources labels, to fit with recommended labels.
+    * Cleanup useless or unused values parameters.
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * [stable/datadog] cleanup refactor RBAC resources
+    
+    * each component have its own RBAC configuration (create,configuration).
+    * container runtime socket update values configuration simplification.
+    * `nameOverride` `fullnameOverride` is now optional in values.yaml
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * update stable/datadog/ci values.yaml
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * [datadog] fix linter error
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * [datadog] fix missing merge
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * refactor values.yaml
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * update value.yaml
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * Add a table with the correspondence between the v1 and v2 parameters
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * templates: enable APM by default
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * Leave apm.enabled setting but change default.
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * DD_APM_NON_LOCAL_TRAFFIC=true when apm.enabled is true
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * Enable hostPort binding 8126 by default when apm.enabled is true.
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * values: make apm.enabled default to false
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * Address PR comments.
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * refactor dogstatsd parameters
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * update after comments
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * fix dogstatsd parameters path
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * update system-probe manifest after review
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * update ci configuration and fix cluster-agent config
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * change cluster-agent probes endpoint
+    
+    change the cluster-agent probes endpoint in order to be resilent if
+    never the datadog api is not reachable.
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * Fix several typo thanks to contributions
+    
+    Include: #20460 #20449
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * adding new approvers/reviewers
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * [stable/datadog] add resoures field for init-containers
+    
+    Fixe: #20035
+    Include: #20461
+    
+    Add the possibility to overwrite the resources associated to the
+    init-containers.
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * update after review
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * return error message if apiKey is not provided
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    * Mount the directory containing the CRI socket instead of the socket itself (#5)
+    
+    This is to handle the cases where the docker daemon is restarted.
+    In this case, the docker daemon will recreate its docker socket and,
+    if the container bind-mounted directly the socket, the container would
+    still have access to the old socket instead of the one of the new docker
+    daemon.
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    Co-authored-by: Lénaïc Huard <L3n41c@users.noreply.github.com>
+    Co-authored-by: Gabriel Aszalos <gabriel.aszalos@datadoghq.com>
+
+diff --git a/stable/datadog/CHANGELOG.md b/stable/datadog/CHANGELOG.md
+new file mode 100644
+index 000000000..748da882d
+--- /dev/null
++++ b/stable/datadog/CHANGELOG.md
+@@ -0,0 +1,12 @@
++# Datadog changelog
++
++## 2.0
++
++### 2.0.0
++
++* Remove Datadog agent deployment configuration.
++* Cleanup resources labels, to fit with recommended labels.
++* Cleanup useless or unused values parameters.
++* each component have its own RBAC configuration (create,configuration).
++* container runtime socket update values configuration simplification.
++* `nameOverride` `fullnameOverride` is now optional in values.yaml
+diff --git a/stable/datadog/Chart.yaml b/stable/datadog/Chart.yaml
+index b5ea620fc..c8cd8154f 100644
+--- a/stable/datadog/Chart.yaml
++++ b/stable/datadog/Chart.yaml
+@@ -1,6 +1,6 @@
+ apiVersion: v1
+ name: datadog
+-version: 1.39.9
++version: 2.0.0
+ appVersion: "7"
+ description: DataDog Agent
+ keywords:
+diff --git a/stable/datadog/OWNERS b/stable/datadog/OWNERS
+index a38047a5a..b9c3fc2ce 100644
+--- a/stable/datadog/OWNERS
++++ b/stable/datadog/OWNERS
+@@ -1,18 +1,24 @@
+ approvers:
++- ahmed-mez
++- celenechang
++- charlyf
++- clamoriniere
+ - hkaj
+ - irabinovitch
+-- charlyf
++- L3n41c
+ - mfpierre
+-- clamoriniere
++- vboulineau
+ - xlucas
+-- L3n41c
+-- celenechang
++- xornivore
+ reviewers:
++- ahmed-mez
++- celenechang
++- charlyf
++- clamoriniere
+ - hkaj
+ - irabinovitch
+-- charlyf
++- L3n41c
+ - mfpierre
+-- clamoriniere
++- vboulineau
+ - xlucas
+-- L3n41c
+-- celenechang
++- xornivore
+diff --git a/stable/datadog/README.md b/stable/datadog/README.md
+index 98bd3854a..70fcb3db7 100644
+--- a/stable/datadog/README.md
++++ b/stable/datadog/README.md
+@@ -40,7 +40,7 @@ Run the following if you want to deploy the chart with the Datadog Cluster Agent
+ ```bash
+ helm install --name datadog-monitoring \
+     --set datadog.apiKey=<DATADOG_API_KEY> \
+-    --set datadog.appKey=<DATADOG_APP_KEY \
++    --set datadog.appKey=<DATADOG_APP_KEY> \
+     --set clusterAgent.enabled=true \
+     --set clusterAgent.metricsProvider.enabled=true \
+     stable/datadog
+@@ -59,6 +59,13 @@ You can specify the Datadog Cluster Agent token used to secure the communication
+ 
+ ### Upgrading
+ 
++#### From 1.x to 2.x
++
++⚠️ Migrating from 1.x to 2.x requires a manual action.
++
++The `datadog` chart has been refactored to regroup the `values.yaml` parameters in a more logical way.
++Please follow the [migration guide](docs/Migration_1.x_to_2.x.md) to update you `values.yaml` file.
++
+ #### From 1.19.0 onwards
+ 
+ Version `1.19.0` introduces the use of release name as full name if it contains the chart name(`datadog` in this case).
+@@ -119,7 +126,7 @@ Update your [datadog-values.yaml](values.yaml) file with the process collection
+ ```
+ datadog:
+   (...)
+-  processAgentEnabled: true
++  processAgent.enabled: true
+ ```
+ 
+ then upgrade your Datadog Helm chart:
+@@ -133,14 +140,14 @@ helm upgrade -f datadog-values.yaml <RELEASE_NAME> stable/datadog --recreate-pod
+ The system-probe agent only runs in dedicated container environment. Update your [datadog-values.yaml](values.yaml) file with the system-probe collection configuration:
+ 
+ ```
+-systemProbe:
++datadog:
+   (...)
+-  enabled: true
++  systemProbe:
++    (...)
++    enabled: true
+ 
+ (...)
+ 
+-daemonset:
+-  useDedicatedContainers: true
+ ```
+ 
+ then upgrade your Datadog Helm chart:
+@@ -223,9 +230,10 @@ helm upgrade -f datadog-values.yaml <RELEASE_NAME> stable/datadog --recreate-pod
+ 
+ ### CRI integration
+ 
+-As of the version 6.6.0, the Datadog Agent supports collecting metrics from any container runtime interface used in your cluster. Configure the location path of the socket with `datadog.criSocketPath` and make sure you allow the socket to be mounted into the pod running the agent by setting `datadog.useCriSocketVolume` to `True`.
++As of the version 6.6.0, the Datadog Agent supports collecting metrics from any container runtime interface used in your cluster. Configure the location path of the socket with `datadog.criSocketPath`; default is the Docker container runtime socket. To deactivate this support, you just need to unset the `datadog.criSocketPath` setting.
+ Standard paths are:
+ 
++- Docker socket: `/var/run/docker.sock`
+ - Containerd socket: `/var/run/containerd/containerd.sock`
+ - Cri-o socket: `/var/run/crio/crio.sock`
+ 
+@@ -241,20 +249,18 @@ helm install --name <RELEASE_NAME> \
+ 
+ | Parameter                                | Description                                                                               | Default                                     |
+ | -----------------------------            | ------------------------------------                                                      | ------------------------------------------- |
+-| `datadog.apiKey`                         | Your Datadog API key                                                                      | `Nil` You must provide your own key         |
++| `datadog.apiKey`                         | Your Datadog API key                                                                      | `nil` You must provide your own key         |
+ | `datadog.apiKeyExistingSecret`           | If set, use the secret with a provided name instead of creating a new one                 | `nil`                                       |
+-| `datadog.appKey`                         | Datadog APP key required to use metricsProvider                                           | `Nil` You must provide your own key         |
++| `datadog.appKey`                         | Datadog APP key required to use metricsProvider                                           | `nil` You must provide your own key         |
+ | `datadog.appKeyExistingSecret`           | If set, use the secret with a provided name instead of creating a new one                 | `nil`                                       |
+ | `image.repository`                       | The image repository to pull from                                                         | `datadog/agent`                             |
+-| `image.tag`                              | The image tag to pull                                                                     | `6.10.1`                                    |
++| `image.tag`                              | The image tag to pull                                                                     | `6.14.0`                                    |
+ | `image.pullPolicy`                       | Image pull policy                                                                         | `IfNotPresent`                              |
+ | `image.pullSecrets`                      | Image pull secrets                                                                        | `nil`                                       |
+-| `nameOverride`                           | Override name of app                                                                      | `nil`                                       |
+-| `fullnameOverride`                       | Override full name of app                                                                 | `nil`                                       |
+-| `rbac.create`                            | If true, create & use RBAC resources                                                      | `true`                                      |
+-| `rbac.serviceAccountName`                | existing ServiceAccount to use (ignored if rbac.create=true)                              | `default`                                   |
+-| `daemonset.podLabels`                    | labels to add to each pod                                                                 | `nil`                                       |
+-| `datadog.name`                           | Container name if Daemonset or Deployment                                                 | `datadog`                                   |
++| `nameOverride`                           | Override name of app                                                                      | `""`                                        |
++| `fullnameOverride`                       | Override full name of app                                                                 | `""`                                        |
++| `agents.rbac.create`                  | If true, create & use RBAC resources                                                      | `true`                                      |
++| `agents.rbac.serviceAccountName`      | existing ServiceAccount to use (ignored if rbac.create=true)                              | `default`                                   |
+ | `datadog.site`                           | Site ('datadoghq.com' or 'datadoghq.eu')                                                  | `nil`                                       |
+ | `datadog.dd_url`                         | Datadog intake server                                                                     | `nil`                                       |
+ | `datadog.env`                            | Additional Datadog environment variables                                                  | `nil`                                       |
+@@ -262,87 +268,89 @@ helm install --name <RELEASE_NAME> \
+ | `datadog.logsEnabled`                    | Enable log collection                                                                     | `nil`                                       |
+ | `datadog.logsConfigContainerCollectAll`  | Collect logs from all containers                                                          | `nil`                                       |
+ | `datadog.logsPointerHostPath`            | Host path to store the log tailing state in                                               | `/var/lib/datadog-agent/logs`               |
+-| `datadog.apmEnabled`                     | Enable tracing from the host                                                              | `nil`                                       |
+-| `datadog.processAgentEnabled`            | Control live process and container monitoring. Possible values: `nil` for container monitoring only, `true` for container and process monitoring, `false` turns off process-agent | `nil`|
++| `datadog.apm.enabled`                    | Enable tracing from the host                                                              | `false`                                       |
++| `datadog.apm.port`                       | Used to override the default agent APM Port                                               | `8126`                                      |
++| `datadog.processAgent.enabled`           | Control live process and container monitoring. Possible values: `nil` for container monitoring only, `true` for container and process monitoring, `false` turns off process-agent | `nil`|
+ | `datadog.checksd`                        | Additional custom checks as python code                                                   | `nil`                                       |
+ | `datadog.confd`                          | Additional check configurations (static and Autodiscovery)                                | `nil`                                       |
+-| `datadog.criSocketPath`                  | Path to the container runtime socket (if different from Docker)                           | `nil`                                       |
++| `datadog.criSocketPath`                  | Path to the container runtime socket (default is Docker runtime)                          | `/var/run/docker.sock`                      |
+ | `datadog.tags`                           | Set host tags                                                                             | `nil`                                       |
+-| `datadog.nonLocalTraffic`                | Enable statsd reporting and APM from any external ip                                      | `False`                                     |
+ | `datadog.useCriSocketVolume`             | Enable mounting the container runtime socket in Agent containers                          | `True`                                      |
+-| `datadog.dogstatsdOriginDetection`       | Enable origin detection for container tagging                                             | `False`                                     |
+-| `datadog.dogStatsDPort`                  | Used to override the default agent DogStatsD Port                                         | `8125`                                      |
+-| `datadog.useDogStatsDSocketVolume`       | Enable dogstatsd over Unix Domain Socket                                                  | `False`                                     |
+-| `datadog.dogStatsDSocketPath`            | Custom path to the socket, has to be located in the `/var/run/datadog` folder path        | `/var/run/datadog/dsd.socket`               |
+-| `datadog.volumes`                        | Additional volumes for the daemonset or deployment                                        | `nil`                                       |
+-| `datadog.volumeMounts`                   | Additional volumeMounts for the daemonset or deployment                                   | `nil`                                       |
++| `datadog.dogstatsd.originDetection`       | Enable origin detection for container tagging                                             | `False`                                     |
++| `datadog.dogstatsd.port`                  | Used to override the default agent DogStatsD Port                                         | `8125`                                      |
++| `datadog.dogstatsd.useHostPID`.           | If true, use the host's PID namespace                                                     | `nil`                                       |
++| `datadog.dogstatsd.useHostPort`           | If true, use the same ports for both host and container                                   | `nil`                                       |
++| `datadog.dogstatsd.nonLocalTraffic`      | Enable statsd reporting from any external ip                                              | `False`                                     |
++| `datadog.dogstatsd.useSocketVolume`       | Enable dogstatsd over Unix Domain Socket                                                  | `False`                                     |
++| `datadog.dogstatsd.socketPath`            | Custom path to the socket, has to be located in the `/var/run/datadog` folder path        | `/var/run/datadog/dsd.socket`               |
+ | `datadog.nodeLabelsAsTags`               | Kubernetes Node Labels to Datadog Tags mapping                                            | `nil`                                       |
+ | `datadog.podAnnotationsAsTags`           | Kubernetes Annotations to Datadog Tags mapping                                            | `nil`                                       |
+ | `datadog.podLabelsAsTags`                | Kubernetes Labels to Datadog Tags mapping                                                 | `nil`                                       |
+-| `datadog.resources.requests.cpu`         | CPU resource requests                                                                     | `200m`                                      |
+-| `datadog.resources.limits.cpu`           | CPU resource limits                                                                       | `200m`                                      |
+-| `datadog.resources.requests.memory`      | Memory resource requests                                                                  | `256Mi`                                     |
+-| `datadog.resources.limits.memory`        | Memory resource limits                                                                    | `256Mi`                                     |
+ | `datadog.securityContext`                | Allows you to overwrite the default securityContext applied to the container              | `nil`                                       |
+ | `datadog.livenessProbe`                  | Overrides the default liveness probe                                                      | http port 5555                              |
+ | `datadog.hostname`                       | Set the hostname (write it in datadog.conf)                                               | `nil`                                       |
+ | `datadog.acInclude`                      | Include containers based on image name                                                    | `nil`                                       |
+ | `datadog.acExclude`                      | Exclude containers based on image name                                                    | `nil`                                       |
+-| `daemonset.podAnnotations`               | Annotations to add to the DaemonSet's Pods                                                | `nil`                                       |
+-| `daemonset.tolerations`                  | List of node taints to tolerate (requires Kubernetes >= 1.6)                              | `nil`                                       |
+-| `daemonset.nodeSelector`                 | Node selectors                                                                            | `nil`                                       |
+-| `daemonset.affinity`                     | Node affinities                                                                           | `nil`                                       |
+-| `daemonset.useHostNetwork`               | If true, use the host's network                                                           | `nil`                                       |
+-| `daemonset.useHostPID`.                  | If true, use the host's PID namespace                                                     | `nil`                                       |
+-| `daemonset.useHostPort`                  | If true, use the same ports for both host and container                                   | `nil`                                       |
+-| `daemonset.useDedicatedContainers`       | If true, each Datadog agent will run in a separate container                              | `nil`                                       |
+-| `daemonset.containers.agent.env`                          | Additional list of environment variables to use in the agent container                 | `nil`                                         |
+-| `daemonset.containers.agent.logLevel`                     | Agent log verbosity                                                                    | `INFO`                                        |
+-| `daemonset.containers.agent.resources.limits.cpu`         | CPU resource limits for the agent container                                            | `200m`                                        |
+-| `daemonset.containers.agent.resources.requests.cpu`       | CPU resource requests for the agent container                                          | `200m`                                        |
+-| `daemonset.containers.agent.resources.limits.memory`      | Memory resource limits for the agent container                                         | `256Mi`                                       |
+-| `daemonset.containers.agent.resources.requests.memory`    | Memory resource requests for the agent container                                       | `256Mi`                                       |
+-| `daemonset.containers.processAgent.env`                          | Additional list of environment variables to use in the process-agent container         | `nil`                                         |
+-| `daemonset.containers.processAgent.logLevel`                     | Process agent log verbosity                                                            | `INFO`                                        |
+-| `daemonset.containers.processAgent.resources.limits.cpu`         | CPU resource limits for the process-agent container                                    | `100m`                                        |
+-| `daemonset.containers.processAgent.resources.requests.cpu`       | CPU resource requests for the process-agent container                                  | `100m`                                        |
+-| `daemonset.containers.processAgent.resources.limits.memory`      | Memory resource limits for the process-agent container                                 | `200Mi`                                       |
+-| `daemonset.containers.processAgent.resources.requests.memory`    | Memory resource requests for the process-agent container                               | `200Mi`                                       |
+-| `daemonset.containers.traceAgent.env`                            | Additional list of environment variables to use in the trace-agent container           | `nil`                                         |
+-| `daemonset.containers.traceAgent.logLevel`                       | Trace agent log verbosity                                                              | `INFO`                                        |
+-| `daemonset.containers.traceAgent.resources.limits.cpu`           | CPU resource limits for the trace-agent container                                      | `100m`                                        |
+-| `daemonset.containers.traceAgent.resources.requests.cpu`         | CPU resource requests for the trace-agent container                                    | `100m`                                        |
+-| `daemonset.containers.traceAgent.resources.limits.memory`        | Memory resource limits for the trace-agent container                                   | `200Mi`                                       |
+-| `daemonset.containers.traceAgent.resources.requests.memory`      | Memory resource requests for the trace-agent container                                 | `200Mi`                                       |
+-| `daemonset.containers.systemProbe.env`                            | Additional list of environment variables to use in the system-probe container           | `nil`                                         |
+-| `daemonset.containers.systemProbe.logLevel`                       | System probe log verbosity                                                              | `INFO`                                        |
+-| `daemonset.containers.systemProbe.resources.limits.cpu`           | CPU resource limits for the system-probe container                                      | `100m`                                        |
+-| `daemonset.containers.systemProbe.resources.requests.cpu`         | CPU resource requests for the system-probe container                                    | `100m`                                        |
+-| `daemonset.containers.systemProbe.resources.limits.memory`        | Memory resource limits for the system-probe container                                   | `200Mi`                                       |
+-| `daemonset.containers.systemProbe.resources.requests.memory`      | Memory resource requests for the system-probe container                                 | `200Mi`                                       |
+-| `daemonset.priorityClassName`            | Which Priority Class to associate with the daemonset                                      | `nil`                                       |
+-| `daemonset.useConfigMap`                 | Configures a configmap to provide the agent configuration                                 | `false`                                     |
+-| `daemonset.customAgentConfig`            | Specify custom contents for the datadog agent config (datadog.yaml).                      | `{}`                                        |
+-| `daemonset.updateStrategy`               | Which update strategy to deploy the daemonset                                             | RollingUpdate with 10% maxUnavailable       |
++| `datadog.systemProbe.enabled`                  | enable system probe collection 	                                                                          | `false`                                           |
++| `datadog.systemProbe.seccomp`                  | Apply an ad-hoc seccomp profile to system-probe to restrict its privileges                                 | `localhost/system-probe`                          |
++| `datadog.systemProbe.seccompRoot`              | Seccomp root directory for system-probe                                                                    | `/var/lib/kubelet/seccomp`                        |
++| `datadog.systemProbe.debugPort`                | The port to expose pprof and expvar for system-probe agent, it is not enabled if the value is set to 0     | `0`                                               |
++| `datadog.systemProbe.enableConntrack`          | If true, system-probe connects to the netlink/conntrack subsystem to add NAT information to connection data. Ref: http://conntrack-tools.netfilter.org/| `true`|
++| `datadog.systemProbe.bpfDebug`                 | If true, system-probe writes debug logs to /sys/kernel/debug/tracing/trace_pipe                            | `false`                                           |
++| `datadog.systemProbe.apparmor`                 | Apparmor profile for system-probe                                                   | `unconfined`                                           |
++| `agents.podAnnotations`               | Annotations to add to the DaemonSet's Pods                                                | `nil`                                       |
++| `agents.podLabels`                    | labels to add to each pod                                                                 | `nil`                                       |
++| `agents.tolerations`                  | List of node taints to tolerate (requires Kubernetes >= 1.6)                              | `nil`                                       |
++| `agents.nodeSelector`                 | Node selectors                                                                            | `nil`                                       |
++| `agents.affinity`                     | Node affinities                                                                           | `nil`                                       |
++| `agents.useHostNetwork`               | If true, use the host's network                                                           | `nil`                                       |
++| `agents.containers.agent.env`                          | Additional list of environment variables to use in the agent container                 | `nil`                                         |
++| `agents.containers.agent.logLevel`                     | Agent log verbosity                                                                    | `INFO`                                        |
++| `agents.containers.agent.resources.limits.cpu`         | CPU resource limits for the agent container                                            | `200m`                                        |
++| `agents.containers.agent.resources.requests.cpu`       | CPU resource requests for the agent container                                          | `200m`                                        |
++| `agents.containers.agent.resources.limits.memory`      | Memory resource limits for the agent container                                         | `256Mi`                                       |
++| `agents.containers.agent.resources.requests.memory`    | Memory resource requests for the agent container                                       | `256Mi`                                       |
++| `agents.containers.processAgent.env`                          | Additional list of environment variables to use in the process-agent container         | `nil`                                         |
++| `agents.containers.processAgent.logLevel`                     | Process agent log verbosity                                                            | `INFO`                                        |
++| `agents.containers.processAgent.resources.limits.cpu`         | CPU resource limits for the process-agent container                                    | `100m`                                        |
++| `agents.containers.processAgent.resources.requests.cpu`       | CPU resource requests for the process-agent container                                  | `100m`                                        |
++| `agents.containers.processAgent.resources.limits.memory`      | Memory resource limits for the process-agent container                                 | `200Mi`                                       |
++| `agents.containers.processAgent.resources.requests.memory`    | Memory resource requests for the process-agent container                               | `200Mi`                                       |
++| `agents.containers.traceAgent.env`                            | Additional list of environment variables to use in the trace-agent container           | `nil`                                         |
++| `agents.containers.traceAgent.logLevel`                       | Trace agent log verbosity                                                              | `INFO`                                        |
++| `agents.containers.traceAgent.resources.limits.cpu`           | CPU resource limits for the trace-agent container                                      | `100m`                                        |
++| `agents.containers.traceAgent.resources.requests.cpu`         | CPU resource requests for the trace-agent container                                    | `100m`                                        |
++| `agents.containers.traceAgent.resources.limits.memory`        | Memory resource limits for the trace-agent container                                   | `200Mi`                                       |
++| `agents.containers.traceAgent.resources.requests.memory`      | Memory resource requests for the trace-agent container                                 | `200Mi`                                       |
++| `agents.containers.systemProbe.env`                            | Additional list of environment variables to use in the system-probe container           | `nil`                                         |
++| `agents.containers.systemProbe.logLevel`                       | System probe log verbosity                                                              | `INFO`                                        |
++| `agents.containers.systemProbe.resources.limits.cpu`           | CPU resource limits for the system-probe container                                      | `100m`                                        |
++| `agents.containers.systemProbe.resources.requests.cpu`         | CPU resource requests for the system-probe container                                    | `100m`                                        |
++| `agents.containers.systemProbe.resources.limits.memory`        | Memory resource limits for the system-probe container                                   | `200Mi`                                       |
++| `agents.containers.systemProbe.resources.requests.memory`      | Memory resource requests for the system-probe container                                 | `200Mi`                                       |
++| `agents.containers.initContainers.resources.limits.cpu`         | CPU resource limits for the init containers container                                            | `200m`                                        |
++| `agents.containers.initContainers.resources.requests.cpu`       | CPU resource requests for the init containers container                                          | `200m`                                        |
++| `agents.containers.initContainers.resources.limits.memory`      | Memory resource limits for the init containers container                                         | `256Mi`                                       |
++| `agents.containers.initContainers.resources.requests.memory`    | Memory resource requests for the init containers container                                       | `256Mi`                                       |
++| `agents.priorityClassName`            | Which Priority Class to associate with the daemonset                                      | `nil`                                       |
++| `agents.useConfigMap`                 | Configures a configmap to provide the agent configuration                                 | `false`                                     |
++| `agents.customAgentConfig`            | Specify custom contents for the datadog agent config (datadog.yaml).                      | `{}`                                        |
++| `agents.updateStrategy`               | Which update strategy to deploy the daemonset                                             | RollingUpdate with 10% maxUnavailable       |
++| `agents.volumes`                        | Additional volumes for the daemonset or deployment                                        | `nil`                                       |
++| `agents.volumeMounts`                   | Additional volumeMounts for the daemonset or deployment                                   | `nil`                                       |
+ | `datadog.leaderElection`                 | Enable the leader Election feature                                                        | `false`                                     |
+ | `datadog.leaderLeaseDuration`            | The duration for which a leader stays elected.                                            | 60 sec, 15 if Cluster Checks enabled        |
+ | `datadog.collectEvents`                  | Enable Kubernetes event collection. Requires leader election.                             | `false`                                     |
+-| `deployment.affinity`                    | Node / Pod affinities                                                                     | `{}`                                        |
+-| `deployment.tolerations`                 | List of node taints to tolerate                                                           | `[]`                                        |
+-| `deployment.priorityClassName`           | Which Priority Class to associate with the deployment                                     | `nil`                                       |
+-| `kubeStateMetrics.enabled`               | If true, create kube-state-metrics                                                        | `true`                                      |
+-| `kube-state-metrics.rbac.create`         | If true, create & use RBAC resources for kube-state-metrics                               | `true`                                      |
+-| `kube-state-metrics.serviceAccount.create`                 | If true, create & use serviceAccount                                    | `true`                                      |
+-| `kube-state-metrics.serviceAccount.name`                   | If not set & create is true, use template fullname                      |                                             |
+-| `kube-state-metrics.resources`                             | Overwrite the default kube-state-metrics container resources (Optional) |                                             |
++| `datadog.kubeStateMetricsEnabled`        | If true, create kube-state-metrics                                                        | `true`                                      |
+ | `clusterAgent.enabled`                   | Use the cluster-agent for cluster metrics (Kubernetes 1.10+ only)                         | `false`                                     |
+ | `clusterAgent.token`                     | A cluster-internal secret for agent-to-agent communication. Must be 32+ characters a-zA-Z | Generates a random value                    |
+ | `clusterAgent.tokenExistingSecret`                     | If set, use the secret with a provided name instead of creating a new one | `nil`                    |
+-| `clusterAgent.containerName`             | The container name for the Cluster Agent                                                  | `cluster-agent`                             |
+ | `clusterAgent.image.repository`          | The image repository for the cluster-agent                                                | `datadog/cluster-agent`                     |
+ | `clusterAgent.image.tag`                 | The image tag to pull                                                                     | `1.2.0`                                     |
+ | `clusterAgent.image.pullPolicy`          | Image pull policy                                                                         | `IfNotPresent`                              |
+ | `clusterAgent.image.pullSecrets`         | Image pull secrets                                                                        | `nil`                                       |
++| `clusterAgent.rbac.create`               | If true, create & use RBAC resources for cluster agent's pods                             | `true`                                      |
++| `clusterAgent.rbac.serviceAccount`       | existing ServiceAccount to use (ignored if rbac.create=true) for cluster agent's pods     | `default`                                   |
+ | `clusterAgent.metricsProvider.enabled`   | Enable Datadog metrics as a source for HPA scaling                                        | `false`                                     |
+ | `clusterAgent.metricsProvider.service.type` | The type of service to use for the clusterAgent metrics server                         | `ClusterIP`                                 |
+ | `clusterAgent.metricsProvider.service.port` | The port for service to use for the clusterAgent metrics server                         | `443` .                                     |
+@@ -356,29 +364,28 @@ helm install --name <RELEASE_NAME> \
+ | `clusterAgent.resources.requests.memory` | Memory resource requests                                                                  | `256Mi`                                     |
+ | `clusterAgent.resources.limits.memory`   | Memory resource limits                                                                    | `256Mi`                                     |
+ | `clusterAgent.tolerations`               | List of node taints to tolerate                                                           | `[]`                                        |
+-| `clusterAgent.livenessProbe`             | Overrides the default liveness probe                                                      | http port 443 if external metrics enabled   |
+-| `clusterAgent.readinessProbe`            | Overrides the default readiness probe                                                     | http port 443 if external metrics enabled   |
++| `clusterAgent.healthPort`                | Overrides the default health port used by the liveness and readiness endpoint             | `8080`                                      |
++| `clusterAgent.livenessProbe`             | Overrides the default liveness probe                                                      | `http check on /healthz with port 8080`     |
++| `clusterAgent.readinessProbe`            | Overrides the default readiness probe                                                     | `http check on /healthz with port 8080`     |
+ | `clusterAgent.strategy`                  | Which update strategy to deploy the cluster-agent                                         | RollingUpdate with 0 maxUnavailable, 1 maxSurge |
+ | `clusterAgent.useHostNetwork`            | If true, use the host's network                                                           | `nil`                                       |
+ | `clusterAgent.volumes`                   | Additional volumes for the cluster-agent deployment                                       | `nil`                                       |
+ | `clusterAgent.volumeMounts`              | Additional volumeMounts for the cluster-agent deployment                                  | `nil`                                       |
+-| `clusterchecksDeployment.enabled`        | Enable Datadog agent deployment dedicated for running Cluster Checks. It allows having different resources (Request/Limit) for Cluster Checks agent pods.  | `false` |
+-| `clusterchecksDeployment.env`                            | Additional Datadog environment variables for Cluster Checks Deployment                        | `nil`                                       |
+-| `clusterchecksDeployment.resources.requests.cpu`         | CPU resource requests                                                                         | `200m`                                      |
+-| `clusterchecksDeployment.resources.limits.cpu`           | CPU resource limits                                                                           | `200m`                                      |
+-| `clusterchecksDeployment.resources.requests.memory`      | Memory resource requests                                                                      | `256Mi`                                     |
+-| `clusterchecksDeployment.resources.limits.memory`        | Memory resource limits                                                                        | `256Mi`                                     |
+-| `clusterchecksDeployment.nodeSelector`                   | Node selectors                                                                                | `nil`                                       |
+-| `clusterchecksDeployment.tolerations`                    | List of node taints to tolerate                                                               | `nil`                                       |
+-| `clusterchecksDeployment.affinity`                       | Node affinities                                                                               | avoid running pods on the same node         |
+-| `clusterchecksDeployment.livenessProbe`                  | Overrides the default liveness probe                                                          | http port 5555                              |
+-| `clusterchecksDeployment.rbac.dedicated`                 | If true, use dedicated RBAC resources for clusterchecks agent's pods                          | `false`                                     |
+-| `clusterchecksDeployment.rbac.serviceAccount`            | existing ServiceAccount to use (ignored if rbac.create=true) for clusterchecks                | `default`                                   |
+-| `clusterchecksDeployment.strategy`                       | Which update strategy to deploy the Cluster Checks Deployment                                 | RollingUpdate with 0 maxUnavailable, 1 maxSurge |
+-| `systemProbe.enabled`                  | If both this flag and `daemonset.useDedicatedContainers` are true, enable system probe collection 	        | `false`                                           |
+-| `systemProbe.seccomp`                  | Apply an ad-hoc seccomp profile to system-probe to restrict its privileges                                 | `localhost/system-probe`                          |
+-| `systemProbe.seccompRoot`              | Seccomp root directory for system-probe                                                                    | `/var/lib/kubelet/seccomp`                        |
+-| `systemProbe.debugPort`                | The port to expose pprof and expvar for system-probe agent, it is not enabled if the value is set to 0     | `0`                                               |
+-| `systemProbe.enableConntrack`          | If true, system-probe connects to the netlink/conntrack subsystem to add NAT information to connection data. Ref: http://conntrack-tools.netfilter.org/| `true`|
+-| `systemProbe.bpfDebug`                 | If true, system-probe writes debug logs to /sys/kernel/debug/tracing/trace_pipe                            | `false`                                           |
+-| `systemProbe.apparmor`                 | Apparmor profile for system-probe                            | `unconfined`                                           |
++| `clusterChecksRunner.enabled`        | Enable Datadog agent deployment dedicated for running Cluster Checks. It allows having different resources (Request/Limit) for Cluster Checks agent pods.  | `false` |
++| `clusterChecksRunner.env`                            | Additional Datadog environment variables for Cluster Checks Deployment                        | `nil`                                       |
++| `clusterChecksRunner.resources.requests.cpu`         | CPU resource requests                                                                         | `200m`                                      |
++| `clusterChecksRunner.resources.limits.cpu`           | CPU resource limits                                                                           | `200m`                                      |
++| `clusterChecksRunner.resources.requests.memory`      | Memory resource requests                                                                      | `256Mi`                                     |
++| `clusterChecksRunner.resources.limits.memory`        | Memory resource limits                                                                        | `256Mi`                                     |
++| `clusterChecksRunner.nodeSelector`                   | Node selectors                                                                                | `nil`                                       |
++| `clusterChecksRunner.tolerations`                    | List of node taints to tolerate                                                               | `nil`                                       |
++| `clusterChecksRunner.affinity`                       | Node affinities                                                                               | avoid running pods on the same node         |
++| `clusterChecksRunner.livenessProbe`                  | Overrides the default liveness probe                                                          | http port 5555                              |
++| `clusterChecksRunner.rbac.create`                    | If true, create & use RBAC resources for clusterchecks agent's pods                           | `true`                                      |
++| `clusterChecksRunner.rbac.dedicated`                 | If true, use dedicated RBAC resources for clusterchecks agent's pods                          | `false`                                     |
++| `clusterChecksRunner.rbac.serviceAccount`            | existing ServiceAccount to use (ignored if rbac.create=true) for clusterchecks agent's pods   | `default`                                   |
++| `clusterChecksRunner.strategy`                       | Which update strategy to deploy the Cluster Checks Deployment                                 | RollingUpdate with 0 maxUnavailable, 1 maxSurge |
++| `kube-state-metrics.rbac.create`         | If true, create & use RBAC resources for kube-state-metrics                               | `true`                                      |
++| `kube-state-metrics.serviceAccount.create`                 | If true, create & use serviceAccount                                    | `true`                                      |
++| `kube-state-metrics.serviceAccount.name`                   | If not set & create is true, use template fullname                      |                                             |
++| `kube-state-metrics.resources`                             | Overwrite the default kube-state-metrics container resources (Optional) |                                             |
+diff --git a/stable/datadog/ci/cluster-agent-and-worker-values.yaml b/stable/datadog/ci/cluster-agent-and-worker-values.yaml
+index 6b5724741..2bdcfcbac 100644
+--- a/stable/datadog/ci/cluster-agent-and-worker-values.yaml
++++ b/stable/datadog/ci/cluster-agent-and-worker-values.yaml
+@@ -1,9 +1,11 @@
+-# Empty values file for testing default parameters.
+-clusterAgent:
+-  enabled: true
++datadog:
++  apiKey: "00000000000000000000000000000000"
++  appKey: "0000000000000000000000000000000000000000"
++  clusterChecks:
++    enabled: true
+ 
+-clusterChecks:
++clusterAgent:
+   enabled: true
+ 
+-clusterchecksDeployment:
++clusterChecksRunner:
+   enabled: true
+diff --git a/stable/datadog/ci/cluster-agent-metrics-server-service-port-values.yaml b/stable/datadog/ci/cluster-agent-metrics-server-service-port-values.yaml
+index 43d3e7723..7360ab6cd 100644
+--- a/stable/datadog/ci/cluster-agent-metrics-server-service-port-values.yaml
++++ b/stable/datadog/ci/cluster-agent-metrics-server-service-port-values.yaml
+@@ -1,3 +1,7 @@
++datadog:
++  apiKey: "00000000000000000000000000000000"
++  appKey: "0000000000000000000000000000000000000000"
++
+ clusterAgent:
+   enabled: true
+ 
+diff --git a/stable/datadog/ci/cluster-agent-volumes-and-mounts-values.yaml b/stable/datadog/ci/cluster-agent-volumes-and-mounts-values.yaml
+index 808ec772a..b3989a371 100644
+--- a/stable/datadog/ci/cluster-agent-volumes-and-mounts-values.yaml
++++ b/stable/datadog/ci/cluster-agent-volumes-and-mounts-values.yaml
+@@ -1,3 +1,7 @@
++datadog:
++  apiKey: "00000000000000000000000000000000"
++  appKey: "0000000000000000000000000000000000000000"
++
+ clusterAgent:
+   enabled: true
+ 
+diff --git a/stable/datadog/ci/cluster-name-values.yaml b/stable/datadog/ci/cluster-name-values.yaml
+new file mode 100644
+index 000000000..f8ca4893a
+--- /dev/null
++++ b/stable/datadog/ci/cluster-name-values.yaml
+@@ -0,0 +1,4 @@
++datadog:
++  clusterName: kubernetes-cluster.example.com
++  apiKey: "00000000000000000000000000000000"
++  appKey: "0000000000000000000000000000000000000000"
+diff --git a/stable/datadog/ci/cluster-name.yaml b/stable/datadog/ci/cluster-name.yaml
+deleted file mode 100644
+index 812dd0f12..000000000
+--- a/stable/datadog/ci/cluster-name.yaml
++++ /dev/null
+@@ -1,4 +0,0 @@
+-# Empty values file for testing default parameters.
+-
+-datadog:
+-  clusterName: kubernetes-cluster.example.com
+diff --git a/stable/datadog/ci/default-values.yaml b/stable/datadog/ci/default-values.yaml
+index 7394e238e..ff92bd38a 100644
+--- a/stable/datadog/ci/default-values.yaml
++++ b/stable/datadog/ci/default-values.yaml
+@@ -1 +1,4 @@
+ # Empty values file for testing default parameters.
++datadog:
++  apiKey: "00000000000000000000000000000000"
++  appKey: "0000000000000000000000000000000000000000"
+diff --git a/stable/datadog/ci/no_hardened_seccomp.yaml b/stable/datadog/ci/no_hardened_seccomp.yaml
+index 4050954a1..0db647830 100644
+--- a/stable/datadog/ci/no_hardened_seccomp.yaml
++++ b/stable/datadog/ci/no_hardened_seccomp.yaml
+@@ -1,5 +1,6 @@
+-# Empty values file for testing default parameters.
+-
+-systemProbe:
+-  enabled: true
+-  seccomp: runtime/default
++datadog:
++  apiKey: "00000000000000000000000000000000"
++  appKey: "0000000000000000000000000000000000000000"
++  systemProbe:
++    enabled: true
++    seccomp: runtime/default
+diff --git a/stable/datadog/docs/Migration_1.x_to_2.x.md b/stable/datadog/docs/Migration_1.x_to_2.x.md
+new file mode 100644
+index 000000000..ab123f1d5
+--- /dev/null
++++ b/stable/datadog/docs/Migration_1.x_to_2.x.md
+@@ -0,0 +1,68 @@
++# Chart 1.x to 2.x migration guide
++
++The `datadog` chart has been refactored to regroup the `values.yaml` parameters in a more logical way.
++Migrating from chart v1 to chart v2 hence requires to restructure the `values.yaml` file.
++For all the parameters in the existing `values.yaml` file that applied to chart v1, you’ll
++find to which parameters they correspond to in v2 in the following table.
++Parameters that are not listed in the table below haven’t been touched and are at the same
++location in v1 and v2.
++
++| Old parameter                           | New location                                                                | comment                                                                                                                                                 |
++| -------------                           | ------------                                                                | -------                                                                                                                                                 |
++| `image.repository`                      | `agents.image.repository` and `clusterCheckRunner.image.repository`         |                                                                                                                                                         |
++| `image.tag`                             | `agents.image.tag` and `clusterCheckRunner.image.repository`                |                                                                                                                                                         |
++| `image.pullPolicy`                      | `agents.image.pullPolicy` and `clusterCheckRunner.image.repository`         |                                                                                                                                                         |
++| `datadog.name`                          | ∅                                                                           | The name of the container inside the agent and cluster-agent pod isn’t configurable anymore                                                             |
++| `datadog.useCriSocketVolume`            | ∅                                                                           | If `datadog.criSocketPath` is defined, the socket will be mounted inside the container without needing to set `datadog.useCriSocketVolume` in addition. |
++| `datadog.containerLogsPath`             | ∅                                                                           | Not needed anymore because the chart automatically detects if the CRI is `docker` based on `criSocketPath` and mounts the path accordingly              |
++| `datadog.apmEnabled`                    | `datadog.apm.enabled`                                                       |                                                                                                                                                         |
++| `datadog.processAgentEnabled`           | `datadog.processAgent.enabled`                                              |                                                                                                                                                         |
++| `datadog.volumes`                       | `agent.volumes`                                                             |                                                                                                                                                         |
++| `datadog.volumeMounts`                  | `agent.VolumeMounts`                                                        |                                                                                                                                                         |
++| `datadog.livenessProbe`                 | `agents.containers.agent.livenessProbe`                                     |                                                                                                                                                         |
++| `datadog.resources`                     | `agents.containers.agent.resources`                                         |                                                                                                                                                         |
++| `datadog.dogstatsdOriginDetection`      | `datadog.dogstatsd.originDetection`                                                         |                                                                                                                                                         |
++| `datadog.useDogStatsDSocketVolume`      | `datadog.dogstatsd.useSocketVolume`                                                         |                                                                                                                                                         |
++| `systemProbe.enabled`                   | `datadog.systemProbe.enabled`                                               |                                                                                                                                                         |
++| `systemProbe.debugPort`                 | `datadog.systemProbe.debugPort`                                             |                                                                                                                                                         |
++| `systemProbe.enableConntrack`           | `datadog.systemProbe.enableConntrack`                                       |                                                                                                                                                         |
++| `systemProbe.seccomp`                   | `datadog.systemProbe.seccomp`                                               |                                                                                                                                                         |
++| `systemProbe.seccompRoot`               | `datadog.systemProbe.seccompRoot`                                           |                                                                                                                                                         |
++| `systemProbe.bpfDebug`                  | `datadog.systemProbe.bpfDebug`                                              |                                                                                                                                                         |
++| `systemProbe.apparmor`                  | `datadog.systemProbe.apparmor`                                              |                                                                                                                                                         |
++| `clusterAgent.containerName`            | ∅                                                                           | The name of the container inside the cluster agent pod isn’t configurable anymore                                                                       |
++| `clusterAgent.clusterChecks.enabled`    | `datadog.clusterChecks.enabled`                                             |                                                                                                                                                         |
++| `rbac.create`                           | `agents.rbac.create` and `clusterAgent.rbac.create`                         |                                                                                                                                                         |
++| `rbac.serviceAccountName`               | `agents.rbac.serviceAccountName` and `clusterAgent.rabc.serviceAccountName` |                                                                                                                                                         |
++| `toleration`                            | `agents.toleration`                                                         |                                                                                                                                                         |
++| `kubeStateMetrics.enabled`              | `datadog.kubeStateMetricsEnabled`                                           |                                                                                                                                                         |
++| `daemonset.enabled`                     | `agents.enabled`                                                            |                                                                                                                                                         |
++| `daemonset.containers.agent.*`          | `agents.containers.agent.*`                                                 |                                                                                                                                                         |
++| `daemonset.containers.processAgent.*`   | `agents.containers.processAgent.*`                                          |                                                                                                                                                         |
++| `daemonset.containers.traceAgent.*`     | `agents.containers.traceAgent.*`                                            |                                                                                                                                                         |
++| `daemonset.containers.systemProbe.*`    | `agents.containers.systemProbe.*`                                           |                                                                                                                                                         |
++| `daemonset.useHostNetwork`              | `agents.useHostNetwork`                                                     |                                                                                                                                                         |
++| `daemonset.dogstatsdPort`                 | `datadog.dogstatsd.port`                                                        |                                                                                                                                                         |
++| `daemonset.useHostPort`                 | `datadog.dogstatsd.useHostPort`                                                        |                                                                                                                                                         |
++| `daemonset.useHostPID`                  | `datadog.dogstatsd.useHostPID`                                                         |                                                                                                                                                         |
++| `daemonset.nonLocalTraffic`              | `datadog.dogstatsd.nonLocalTraffic`                                                     |                                                                                                                                                         |
++| `daemonset.podAnnotations`              | `agents.podAnnotations`                                                     |                                                                                                                                                         |
++| `daemonset.tolerations`                 | `agents.tolerations`                                                        |                                                                                                                                                         |
++| `daemonset.nodeSelector`                | `agents.nodeSelector`                                                       |                                                                                                                                                         |
++| `daemonset.affinity`                    | `agents.affinity`                                                           |                                                                                                                                                         |
++| `daemonset.updateStrategy`              | `agents.updateStrategy`                                                     |                                                                                                                                                         |
++| `daemonset.priorityClassName`           | `agents.priorityClassName`                                                  |                                                                                                                                                         |
++| `daemonset.podLabels`                   | `agents.podLabels`                                                          |                                                                                                                                                         |
++| `daemonset.useConfigMap`                | `agents.useConfigMap`                                                       |                                                                                                                                                         |
++| `daemonset.customAgentConfig.*`         | `agents.customAgentConfig.*`                                                |                                                                                                                                                         |
++| `deployment.*`                          | ∅                                                                           |                                                                                                                                                         |
++| `clusterchecksDeployment.enabled`       | `clusterChecksRunner.enabled`                                               |                                                                                                                                                         |
++| `clusterchecksDeployment.rbac.*`        | `clusterChecksRunner.rbac.*`                                                |                                                                                                                                                         |
++| `clusterchecksDeployment.replicas`      | `clusterChecksRunner.replicas`                                              |                                                                                                                                                         |
++| `clusterchecksDeployment.resources.*`   | `clusterChecksRunner.resources.*`                                           |                                                                                                                                                         |
++| `clusterchecksDeployment.affinity`      | `clusterChecksRunner.affinity`                                              |                                                                                                                                                         |
++| `clusterchecksDeployment.strategy`      | `clusterChecksRunner.strategy`                                              |                                                                                                                                                         |
++| `clusterchecksDeployment.nodeSelector`  | `clusterChecksRunner.nodeSelector`                                          |                                                                                                                                                         |
++| `clusterchecksDeployment.tolerations`   | `clusterChecksRunner.tolerations`                                           |                                                                                                                                                         |
++| `clusterchecksDeployment.livenessProbe` | `clusterChecksRunner.livenessProbe`                                         |                                                                                                                                                         |
++| `clusterchecksDeployment.env`           | `clusterChecksRunner.env`                                                   |                                                                                                                                                         |
+diff --git a/stable/datadog/requirements.lock b/stable/datadog/requirements.lock
+index 9d10ee9b1..e7a0165bf 100644
+--- a/stable/datadog/requirements.lock
++++ b/stable/datadog/requirements.lock
+@@ -1,6 +1,6 @@
+ dependencies:
+ - name: kube-state-metrics
+   repository: https://kubernetes-charts.storage.googleapis.com/
+-  version: 2.2.3
+-digest: sha256:28fd41002af09316b9f614d320ea4171db39a144b595c68f616c546dd5292709
+-generated: "2019-08-13T09:53:34.977562+02:00"
++  version: 2.3.1
++digest: sha256:2b964f07f2958d3eab02e2f2aa34cb5a1f0074b22e7b231518e842d875521686
++generated: "2020-01-02T18:11:01.227785+01:00"
+diff --git a/stable/datadog/requirements.yaml b/stable/datadog/requirements.yaml
+index 171a28a11..39721dce4 100644
+--- a/stable/datadog/requirements.yaml
++++ b/stable/datadog/requirements.yaml
+@@ -1,5 +1,5 @@
+ dependencies:
+   - name: kube-state-metrics
+-    version: ~2.2.3
++    version: ~2.3.1
+     repository: https://kubernetes-charts.storage.googleapis.com/
+-    condition: kubeStateMetrics.enabled
++    condition: datadog.kubeStateMetricsEnabled
+diff --git a/stable/datadog/templates/NOTES.txt b/stable/datadog/templates/NOTES.txt
+index 11c0fa3ec..2f823fecd 100644
+--- a/stable/datadog/templates/NOTES.txt
++++ b/stable/datadog/templates/NOTES.txt
+@@ -1,12 +1,13 @@
+-{{- if (or (.Values.datadog.apiKeyExistingSecret) (.Values.datadog.apiKey)) }}
++
++{{- if (or (.Values.datadog.apiKeyExistingSecret) (not (eq .Values.datadog.apiKey "<DATADOG_API_KEY>"))) }}
+ DataDog agents are spinning up on each node in your cluster. After a few
+ minutes, you should see your agents starting in your event stream:
+-
+     https://app.datadoghq.com/event/stream
++
+   {{- if .Values.datadog.apiKeyExistingSecret }}
+ You disabled creation of Secret containing API key, therefore it is expected
+ that you create Secret named '{{ .Values.datadog.apiKeyExistingSecret }}' which includes a key called 'api-key' containing the API key.
+-  {{- else if (.Values.datadog.apiKey) }}
++  {{- else if not (eq .Values.datadog.apiKey "<DATADOG_API_KEY>") }}
+   {{- end }}
+ {{- else }}
+ ##############################################################################
+@@ -44,48 +45,10 @@ Create an application key at https://app.datadoghq.com/account/settings#api
+     {{- end }}
+   {{- end }}
+ 
+-  {{- if and (not .Values.clusterAgent.token) (not .Values.clusterAgent.tokenExistingSecret) }}
+-
+-##############################################################################
+-####               INFO: You did not set a clusterAgent.token            ####
+-##############################################################################
+-
+-Because you enabled the Cluster Agent but did not either provide a token or a reference to an existing token via '{{ .Values.clusterAgent.tokenExistingSecret }}', a random token was generated.
+-This token is used to secure the communication between the Agents and the Cluster Agent.
+-
+-Make sure to recreate all pods on upgrade (with the --recreate-pods flag) to ensure all
+-agents use the same shared token.
+-
+-  {{- end }}
+-
+ {{- end }}
+ 
+-{{- if .Values.datadog.apmEnabled }}
+-The datadog agent is listening on port 8126.
+-{{- end }}
+-
+-{{- if .Values.deployment.enabled }}
+-#################################################################
+-####               WARNING: Deprecation notice               ####
+-#################################################################
+-
+-* Deployment installation will be deprecated in the future major
+-  chart version (`v2.0.0`). This installation configuration is
+-  triggered by the option: `deployment.enabled: true`.
+-  The recommended solution is to run the Datadog-agent with the
+-  `Daemonset` configuration which is the default configuration.
+-
+-{{- if .Values.daemonset.enabled }}
+-
+-* Simultaneous DaemonSet + Deployment installation within a single
+-  release will be deprecated in the futur major chart version
+-  (`v2.0.0`).
+-
+-  Running as a Deployment is not necessary for event collection
+-  anymore, thanks to the leader election feature.
+-
+-  We encourage you to migrate to a single DaemonSet.
+-{{- end }}
++{{- if .Values.datadog.apm.enabled }}
++The Datadog Agent is listening on port {{ .Values.datadog.apm.port }} for APM service.
+ {{- end }}
+ 
+ {{- if .Values.datadog.autoconf }}
+@@ -102,7 +65,7 @@ Please note that duplicate file names may have conflicted during
+ the merge. In that case, the confd entry will take precedence.
+ {{- end }}
+ 
+-{{- if eq .Values.image.repository "datadog/docker-dd-agent" }}
++{{- if eq .Values.agents.image.repository "datadog/docker-dd-agent" }}
+ 
+ ######################################################################
+ ####               ERROR: Unsupported agent version               ####
+diff --git a/stable/datadog/templates/agent-apiservice.yaml b/stable/datadog/templates/agent-apiservice.yaml
+index b1a3ab0ff..74557cf97 100644
+--- a/stable/datadog/templates/agent-apiservice.yaml
++++ b/stable/datadog/templates/agent-apiservice.yaml
+@@ -1,13 +1,9 @@
+-{{- if and .Values.rbac.create .Values.clusterAgent.enabled .Values.clusterAgent.metricsProvider.enabled -}}
++{{- if and .Values.clusterAgent.rbac.create .Values.clusterAgent.enabled .Values.clusterAgent.metricsProvider.enabled -}}
+ apiVersion: apiregistration.k8s.io/v1beta1
+ kind: APIService
+ metadata:
+   name: v1beta1.external.metrics.k8s.io
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+diff --git a/stable/datadog/templates/agent-clusterchecks-deployment.yaml b/stable/datadog/templates/agent-clusterchecks-deployment.yaml
+index 80dc04e79..1795bbae7 100644
+--- a/stable/datadog/templates/agent-clusterchecks-deployment.yaml
++++ b/stable/datadog/templates/agent-clusterchecks-deployment.yaml
+@@ -1,35 +1,18 @@
+-{{- if and .Values.clusterAgent.enabled .Values.clusterAgent.clusterChecks.enabled .Values.clusterchecksDeployment.enabled -}}
+-{{- if .Capabilities.APIVersions.Has "apps/v1" }}
++{{- if and .Values.clusterAgent.enabled .Values.datadog.clusterChecks.enabled .Values.clusterChecksRunner.enabled -}}
+ apiVersion: apps/v1
+-{{- else if .Capabilities.APIVersions.Has "extensions/v1beta1" }}
+-apiVersion: extensions/v1beta1
+-{{- else }}
+-apiVersion: apps/v1
+-{{- end }}
+ kind: Deployment
+ metadata:
+   name: {{ template "datadog.fullname" . }}-clusterchecks
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    release: {{ .Release.Name | quote }}
+-    heritage: {{ .Release.Service | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+     app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+     app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+ spec:
+-  replicas: {{ .Values.clusterchecksDeployment.replicas }}
++  replicas: {{ .Values.clusterChecksRunner.replicas }}
+   strategy:
+-{{- if .Values.clusterchecksDeployment.strategy }}
+-{{ toYaml .Values.clusterchecksDeployment.strategy | indent 4 }}
+-{{- else }}
+-    type: RollingUpdate
+-    rollingUpdate:
+-      maxSurge: 1
+-      maxUnavailable: 0
+-{{- end }}
++{{ toYaml .Values.clusterChecksRunner.strategy | indent 4 }}
+   selector:
+     matchLabels:
+       app: {{ template "datadog.fullname" . }}-clusterchecks
+@@ -39,15 +22,17 @@ spec:
+         app: {{ template "datadog.fullname" . }}-clusterchecks
+       name: {{ template "datadog.fullname" . }}-clusterchecks
+     spec:
+-      {{- if .Values.clusterchecksDeployment.rbac.dedicated }}
+-      serviceAccountName: {{ if .Values.rbac.create }}{{ template "datadog.fullname" . }}-cluster-checks{{ else }}"{{ .Values.clusterchecksDeployment.rbac.serviceAccountName }}"{{ end }}
++      {{- if .Values.clusterChecksRunner.rbac.dedicated }}
++      serviceAccountName: {{ if .Values.clusterChecksRunner.rbac.create }}{{ template "datadog.fullname" . }}-cluster-checks{{ else }}"{{ .Values.clusterChecksRunner.rbac.serviceAccountName }}"{{ end }}
+       {{- else }}
+-      serviceAccountName: {{ if .Values.rbac.create }}{{ template "datadog.fullname" . }}{{ else }}"{{ .Values.rbac.serviceAccountName }}"{{ end }}
++      serviceAccountName: {{ if .Values.clusterChecksRunner.rbac.create }}{{ template "datadog.fullname" . }}{{ else }}"{{ .Values.clusterChecksRunner.rbac.serviceAccountName }}"{{ end }}
+       {{- end }}
++      imagePullSecrets:
++{{ toYaml .Values.clusterChecksRunner.image.pullSecrets | indent 8 }}
+       containers:
+-      - name: {{ default .Chart.Name .Values.datadog.name }}
+-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+-        imagePullPolicy: {{ .Values.image.pullPolicy }}
++      - name: agent
++        image: "{{ .Values.clusterChecksRunner.image.repository }}:{{ .Values.clusterChecksRunner.image.tag }}"
++        imagePullPolicy: {{ .Values.clusterChecksRunner.image.pullPolicy }}
+         env:
+           - name: DD_API_KEY
+             valueFrom:
+@@ -69,7 +54,6 @@ spec:
+             value: {{ .Values.clusterAgent.enabled | quote }}
+           - {name: DD_EXTRA_CONFIG_PROVIDERS, value: "clusterchecks"}
+           # Remove unused features
+-          - {name: DD_APM_ENABLED, value: "false"}
+           - {name: DD_PROCESS_AGENT_ENABLED, value: "false"}
+           - {name: DD_LOGS_ENABLED, value: "false"}
+           # Safely run alongside the daemonset
+@@ -78,17 +62,17 @@ spec:
+             valueFrom:
+               fieldRef:
+                 fieldPath: spec.nodeName
+-{{- if .Values.clusterchecksDeployment.env }}
+-{{ toYaml .Values.clusterchecksDeployment.env | indent 10 }}
++{{- if .Values.clusterChecksRunner.env }}
++{{ toYaml .Values.clusterChecksRunner.env | indent 10 }}
+ {{- end }}
+         resources:
+-{{ toYaml .Values.clusterchecksDeployment.resources | indent 10 }}
++{{ toYaml .Values.clusterChecksRunner.resources | indent 10 }}
+         volumeMounts:
+           - {name: s6-run, mountPath: /var/run/s6}
+           - {name: remove-corechecks, mountPath: /etc/datadog-agent/conf.d}
+-{{- if .Values.clusterchecksDeployment.livenessProbe }}
++{{- if .Values.clusterChecksRunner.livenessProbe }}
+         livenessProbe:
+-{{ toYaml .Values.clusterchecksDeployment.livenessProbe | indent 10 }}
++{{ toYaml .Values.clusterChecksRunner.livenessProbe | indent 10 }}
+ {{- else }}
+         livenessProbe:
+           httpGet:
+@@ -104,8 +88,8 @@ spec:
+         - {name: s6-run, emptyDir: {}}
+         - {name: remove-corechecks, emptyDir: {}}
+       affinity:
+-{{- if .Values.clusterchecksDeployment.affinity }}
+-{{ toYaml .Values.clusterchecksDeployment.affinity | indent 8 }}
++{{- if .Values.clusterChecksRunner.affinity }}
++{{ toYaml .Values.clusterChecksRunner.affinity | indent 8 }}
+ {{- else }}
+         # Ensure we only run one worker per node, to avoid name collisions
+         podAntiAffinity:
+@@ -115,12 +99,12 @@ spec:
+                 app: {{ template "datadog.fullname" . }}-clusterchecks
+             topologyKey: kubernetes.io/hostname
+ {{- end }}
+-      {{- if .Values.clusterchecksDeployment.nodeSelector }}
++      {{- if .Values.clusterChecksRunner.nodeSelector }}
+       nodeSelector:
+-{{ toYaml .Values.clusterchecksDeployment.nodeSelector | indent 8 }}
++{{ toYaml .Values.clusterChecksRunner.nodeSelector | indent 8 }}
+       {{- end }}
+-      {{- if .Values.clusterchecksDeployment.tolerations }}
++      {{- if .Values.clusterChecksRunner.tolerations }}
+       tolerations:
+-{{ toYaml .Values.clusterchecksDeployment.tolerations | indent 8 }}
++{{ toYaml .Values.clusterChecksRunner.tolerations | indent 8 }}
+       {{- end }}
+ {{ end }}
+diff --git a/stable/datadog/templates/agent-clusterchecks-rbac.yaml b/stable/datadog/templates/agent-clusterchecks-rbac.yaml
+index 5a1667d48..b36799b56 100644
+--- a/stable/datadog/templates/agent-clusterchecks-rbac.yaml
++++ b/stable/datadog/templates/agent-clusterchecks-rbac.yaml
+@@ -1,12 +1,8 @@
+-{{- if and .Values.rbac.create .Values.clusterAgent.enabled .Values.clusterAgent.clusterChecks.enabled .Values.clusterchecksDeployment.enabled -}}
++{{- if and .Values.clusterChecksRunner.rbac.create .Values.clusterAgent.enabled .Values.datadog.clusterChecks.enabled .Values.clusterChecksRunner.enabled -}}
+ apiVersion: {{ template "rbac.apiVersion" . }}
+ kind: ClusterRoleBinding
+ metadata:
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    release: {{ .Release.Name | quote }}
+-    heritage: {{ .Release.Service | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+diff --git a/stable/datadog/templates/agent-rbac.yaml b/stable/datadog/templates/agent-rbac.yaml
+index a8ff5b574..096773c2d 100644
+--- a/stable/datadog/templates/agent-rbac.yaml
++++ b/stable/datadog/templates/agent-rbac.yaml
+@@ -1,12 +1,8 @@
+-{{- if and .Values.rbac.create .Values.clusterAgent.enabled -}}
++{{- if and .Values.clusterAgent.enabled .Values.clusterAgent.rbac.create -}}
+ apiVersion: {{ template "rbac.apiVersion" . }}
+ kind: ClusterRole
+ metadata:
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+@@ -80,10 +76,6 @@ apiVersion: {{ template "rbac.apiVersion" . }}
+ kind: ClusterRoleBinding
+ metadata:
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    release: {{ .Release.Name | quote }}
+-    heritage: {{ .Release.Service | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+@@ -115,7 +107,7 @@ metadata:
+   name: {{ template "datadog.fullname" . }}-cluster-agent
+ {{- end }}
+ 
+-{{- if and .Values.rbac.create .Values.clusterAgent.enabled .Values.clusterAgent.metricsProvider.enabled }}
++{{- if and .Values.clusterAgent.enabled .Values.clusterAgent.rbac.create .Values.clusterAgent.metricsProvider.enabled }}
+ ---
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: ClusterRoleBinding
+diff --git a/stable/datadog/templates/agent-secret.yaml b/stable/datadog/templates/agent-secret.yaml
+index ceafe829c..33e13d1bb 100644
+--- a/stable/datadog/templates/agent-secret.yaml
++++ b/stable/datadog/templates/agent-secret.yaml
+@@ -6,10 +6,6 @@ kind: Secret
+ metadata:
+   name: {{ template "datadog.fullname" . }}-cluster-agent
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    release: {{ .Release.Name | quote }}
+-    heritage: {{ .Release.Service | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+diff --git a/stable/datadog/templates/agent-services.yaml b/stable/datadog/templates/agent-services.yaml
+index c883423d5..d8ebca258 100644
+--- a/stable/datadog/templates/agent-services.yaml
++++ b/stable/datadog/templates/agent-services.yaml
+@@ -4,10 +4,6 @@ kind: Service
+ metadata:
+   name: {{ template "datadog.fullname" . }}-cluster-agent
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    release: {{ .Release.Name | quote }}
+-    heritage: {{ .Release.Service | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+diff --git a/stable/datadog/templates/checksd-configmap.yaml b/stable/datadog/templates/checksd-configmap.yaml
+index 83f354bcc..486b5f649 100644
+--- a/stable/datadog/templates/checksd-configmap.yaml
++++ b/stable/datadog/templates/checksd-configmap.yaml
+@@ -4,10 +4,6 @@ kind: ConfigMap
+ metadata:
+   name: {{ template "datadog.fullname" . }}-checksd
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    release: {{ .Release.Name | quote }}
+-    heritage: {{ .Release.Service | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+diff --git a/stable/datadog/templates/cluster-agent-confd-configmap.yaml b/stable/datadog/templates/cluster-agent-confd-configmap.yaml
+index 2113d8cea..b39963055 100644
+--- a/stable/datadog/templates/cluster-agent-confd-configmap.yaml
++++ b/stable/datadog/templates/cluster-agent-confd-configmap.yaml
+@@ -4,10 +4,6 @@ kind: ConfigMap
+ metadata:
+   name: {{ template "datadog.fullname" . }}-cluster-agent-confd
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    release: {{ .Release.Name | quote }}
+-    heritage: {{ .Release.Service | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+diff --git a/stable/datadog/templates/cluster-agent-deployment.yaml b/stable/datadog/templates/cluster-agent-deployment.yaml
+index 08fc0f02c..aa925b525 100644
+--- a/stable/datadog/templates/cluster-agent-deployment.yaml
++++ b/stable/datadog/templates/cluster-agent-deployment.yaml
+@@ -4,10 +4,6 @@ kind: Deployment
+ metadata:
+   name: {{ template "datadog.fullname" . }}-cluster-agent
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    release: {{ .Release.Name | quote }}
+-    heritage: {{ .Release.Service | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+@@ -33,9 +29,9 @@ spec:
+         app: {{ template "datadog.fullname" . }}-cluster-agent
+       name: {{ template "datadog.fullname" . }}-cluster-agent
+       annotations:
+-        ad.datadoghq.com/{{ .Values.clusterAgent.containerName }}.check_names: '["prometheus"]'
+-        ad.datadoghq.com/{{ .Values.clusterAgent.containerName }}.init_configs: '[{}]'
+-        ad.datadoghq.com/{{ .Values.clusterAgent.containerName }}.instances: |
++        ad.datadoghq.com/cluster-agent.check_names: '["prometheus"]'
++        ad.datadoghq.com/cluster-agent.init_configs: '[{}]'
++        ad.datadoghq.com/cluster-agent.instances: |
+           [{
+             "prometheus_url": "http://%%host%%:5000/metrics",
+             "namespace": "datadog.cluster_agent",
+@@ -58,12 +54,15 @@ spec:
+       imagePullSecrets:
+ {{ toYaml .Values.clusterAgent.image.pullSecrets | indent 8 }}
+       {{- end }}
++      serviceAccountName: {{ if .Values.clusterAgent.rbac.create }}{{ template "datadog.fullname" . }}-cluster-agent{{ else }}"{{ .Values.clusterAgent.rbac.serviceAccountName }}"{{ end }}
+       {{- if .Values.clusterAgent.useHostNetwork }}
+       hostNetwork: {{ .Values.clusterAgent.useHostNetwork }}
+       dnsPolicy: ClusterFirstWithHostNet
+       {{- end }}
++      imagePullSecrets:
++{{ toYaml .Values.clusterAgent.image.pullSecrets | indent 8 }}
+       containers:
+-      - name: {{ .Values.clusterAgent.containerName }}
++      - name: cluster-agent
+         image: "{{ .Values.clusterAgent.image.repository }}:{{ .Values.clusterAgent.image.tag }}"
+         imagePullPolicy: {{ .Values.clusterAgent.image.pullPolicy }}
+         resources:
+@@ -78,25 +77,28 @@ spec:
+           protocol: TCP
+         {{- end }}
+         env:
++          - name: DD_HEALTH_PORT
++            value: {{ .Values.clusterAgent.healthPort | quote }}
+           - name: DD_API_KEY
+             valueFrom:
+               secretKeyRef:
+                 name: {{ template "datadog.apiSecretName" . }}
+                 key: api-key
++                optional: true
+           {{- if .Values.clusterAgent.metricsProvider.enabled }}
+-          - name: DD_EXTERNAL_METRICS_PROVIDER_ENABLED
+-            value: {{ .Values.clusterAgent.metricsProvider.enabled | quote }}
+           - name: DD_APP_KEY
+             valueFrom:
+               secretKeyRef:
+                 name: {{ template "datadog.appKeySecretName" . }}
+                 key: app-key
++          - name: DD_EXTERNAL_METRICS_PROVIDER_ENABLED
++            value: {{ .Values.clusterAgent.metricsProvider.enabled | quote }}
+           - name: DD_EXTERNAL_METRICS_PROVIDER_PORT
+             value: {{ .Values.clusterAgent.metricsProvider.service.port | quote }}
+           {{- end }}
+-          {{- if .Values.clusterAgent.clusterChecks.enabled }}
++          {{- if .Values.datadog.clusterChecks.enabled }}
+           - name: DD_CLUSTER_CHECKS_ENABLED
+-            value: {{ .Values.clusterAgent.clusterChecks.enabled | quote }}
++            value: {{ .Values.datadog.clusterChecks.enabled | quote }}
+           - name: DD_EXTRA_CONFIG_PROVIDERS
+             value: "kube_services"
+           - name: DD_EXTRA_LISTENERS
+@@ -122,11 +124,11 @@ spec:
+             value: {{ .Values.datadog.logLevel | quote }}
+           {{- end }}
+           - name: DD_LEADER_ELECTION
+-            value: {{ .Values.datadog.leaderElection | default "true" | quote}}
++            value: {{ default "true" .Values.datadog.leaderElection | quote}}
+           {{- if .Values.datadog.leaderLeaseDuration }}
+           - name: DD_LEADER_LEASE_DURATION
+             value: {{ .Values.datadog.leaderLeaseDuration | quote }}
+-          {{- else if .Values.clusterAgent.clusterChecks.enabled }}
++          {{- else if .Values.datadog.clusterChecks.enabled }}
+           - name: DD_LEADER_LEASE_DURATION
+             value: "15"
+           {{- end }}
+@@ -146,35 +148,17 @@ spec:
+ {{- if .Values.clusterAgent.env }}
+ {{ toYaml .Values.clusterAgent.env | indent 10 }}
+ {{- end }}
+-{{- if .Values.clusterAgent.livenessProbe }}
+         livenessProbe:
+ {{ toYaml .Values.clusterAgent.livenessProbe | indent 10 }}
+-{{- else if .Values.clusterAgent.metricsProvider.enabled }}
+-        livenessProbe:
+-          httpGet:
+-            port: {{ .Values.clusterAgent.metricsProvider.service.port }}
+-            path: /healthz
+-            scheme: HTTPS
+-{{- end }}
+-{{- if .Values.clusterAgent.readinessProbe }}
+         readinessProbe:
+ {{ toYaml .Values.clusterAgent.readinessProbe | indent 10 }}
+-{{- else if .Values.clusterAgent.metricsProvider.enabled}}
+-        readinessProbe:
+-          httpGet:
+-            port: {{ .Values.clusterAgent.metricsProvider.service.port }}
+-            path: /healthz
+-            scheme: HTTPS
+-{{- end }}
+         volumeMounts:
++{{ toYaml .Values.clusterAgent.volumeMounts | indent 10 }}
+ {{- if .Values.clusterAgent.confd }}
+           - name: confd
+             mountPath: /conf.d
+             readOnly: true
+ {{- end }}
+-{{- if .Values.clusterAgent.volumeMounts }}
+-{{ toYaml .Values.clusterAgent.volumeMounts | indent 10 }}
+-{{- end }}
+ {{- if .Values.clusterAgent.datadog_cluster_yaml }}
+           - name: cluster-agent-yaml
+             mountPath: /etc/datadog-agent/datadog-cluster.yaml
+@@ -204,9 +188,6 @@ spec:
+       affinity:
+ {{ toYaml .Values.clusterAgent.affinity | indent 8 }}
+       {{- end }}
+-      serviceAccountName: {{ if .Values.rbac.create }}{{ template "datadog.fullname" . }}-cluster-agent{{ else }}"{{ .Values.rbac.serviceAccountName }}"{{ end }}
+-      {{- if .Values.clusterAgent.nodeSelector }}
+       nodeSelector:
+ {{ toYaml .Values.clusterAgent.nodeSelector | indent 8 }}
+-      {{- end }}
+ {{ end }}
+diff --git a/stable/datadog/templates/confd-configmap.yaml b/stable/datadog/templates/confd-configmap.yaml
+index 3b4ab9fef..44d64966c 100644
+--- a/stable/datadog/templates/confd-configmap.yaml
++++ b/stable/datadog/templates/confd-configmap.yaml
+@@ -4,10 +4,6 @@ kind: ConfigMap
+ metadata:
+   name: {{ template "datadog.fullname" . }}-confd
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    release: {{ .Release.Name | quote }}
+-    heritage: {{ .Release.Service | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+diff --git a/stable/datadog/templates/container-agent.yaml b/stable/datadog/templates/container-agent.yaml
+index 6828781cc..041dd6132 100644
+--- a/stable/datadog/templates/container-agent.yaml
++++ b/stable/datadog/templates/container-agent.yaml
+@@ -1,14 +1,14 @@
+ {{- define "container-agent" -}}
+ - name: agent
+-  image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+-  imagePullPolicy: {{ .Values.image.pullPolicy }}
++  image: "{{ .Values.agents.image.repository }}:{{ .Values.agents.image.tag }}"
++  imagePullPolicy: {{ .Values.agents.image.pullPolicy }}
+   command: ["agent", "start"]
+   resources:
+-{{ toYaml .Values.daemonset.containers.agent.resources | indent 4 }}
++{{ toYaml .Values.agents.containers.agent.resources | indent 4 }}
+   ports:
+-  - containerPort: {{ default 8125 .Values.datadog.dogStatsDPort }}
+-    {{- if .Values.daemonset.useHostPort }}
+-    hostPort: {{ default 8125 .Values.datadog.dogStatsDPort }}
++  - containerPort: {{ .Values.datadog.dogstatsd.port }}
++    {{- if .Values.datadog.dogstatsd.useHostPort }}
++    hostPort: {{ .Values.datadog.dogstatsd.port }}
+     {{- end }}
+     name: dogstatsdport
+     protocol: UDP
+@@ -23,21 +23,19 @@
+     {{- end }}
+     {{- if .Values.datadog.logLevel }}
+     - name: DD_LOG_LEVEL
+-      value: {{ .Values.daemonset.containers.agent.logLevel | default .Values.datadog.logLevel | quote }}
+-    {{- end }}
+-    {{- if .Values.datadog.dogStatsDPort }}
++      value: {{ .Values.agents.containers.agent.logLevel | default .Values.datadog.logLevel | quote }}
++    {{- end }}  
++    {{- if .Values.datadog.dogstatsd.port }}
+     - name: DD_DOGSTATD_PORT
+-      value: {{ .Values.datadog.dogStatsDPort | quote }}
++      value: {{ .Values.datadog.dogstatsd.port | quote }}
+     {{- end }}
+-    {{- if .Values.datadog.nonLocalTraffic }}
++    {{- if .Values.datadog.dogstatsd.nonLocalTraffic }}
+     - name: DD_DOGSTATSD_NON_LOCAL_TRAFFIC
+-      value: {{ .Values.datadog.nonLocalTraffic | quote }}
+-    - name: DD_APM_NON_LOCAL_TRAFFIC
+-      value: {{ .Values.datadog.nonLocalTraffic | quote }}
++      value: {{ .Values.datadog.dogstatsd.nonLocalTraffic | quote }}
+     {{- end }}
+-    {{- if .Values.datadog.dogstatsdOriginDetection }}
++    {{- if .Values.datadog.dogstatsd.originDetection }}
+     - name: DD_DOGSTATSD_ORIGIN_DETECTION
+-      value: {{ .Values.datadog.dogstatsdOriginDetection | quote }}
++      value: {{ .Values.datadog.dogstatsd.originDetection | quote }}
+     {{- end }}
+     {{- if .Values.datadog.acInclude }}
+     - name: DD_AC_INCLUDE
+@@ -93,37 +91,37 @@
+     {{- end }}
+     {{- if .Values.datadog.criSocketPath }}
+     - name: DD_CRI_SOCKET_PATH
+-      value: {{ .Values.datadog.criSocketPath | quote }}
++      value: {{ print "/host/" .Values.datadog.criSocketPath | clean }}
+     {{- end }}
+     {{- if not .Values.datadog.livenessProbe }}
+     - name: DD_HEALTH_PORT
+       value: "5555"
+     {{- end }}
+-    {{- if .Values.datadog.useDogStatsDSocketVolume }}
++    {{- if .Values.datadog.dogstatsd.useSocketVolume }}
+     - name: DD_DOGSTATSD_SOCKET
+-      value: {{ default "/var/run/datadog/dsd.socket" .Values.datadog.dogStatsDSocketPath | quote }}
++      value: {{ default "/var/run/datadog/dsd.socket" .Values.datadog.dogstatsd.socketPath | quote }}
+     {{- end }}
+-    {{- if and .Values.clusterAgent.clusterChecks.enabled  (not .Values.clusterchecksDeployment.enabled) }}
++    {{- if and .Values.datadog.clusterChecks.enabled  (not .Values.clusterChecksRunner.enabled) }}
+     - name: DD_EXTRA_CONFIG_PROVIDERS
+       value: "clusterchecks"
+     {{- end }}
+-{{- if .Values.daemonset.containers.agent.env }}
+-{{ toYaml .Values.daemonset.containers.agent.env | indent 4 }}
++{{- if .Values.agents.containers.agent.env }}
++{{ toYaml .Values.agents.containers.agent.env | indent 4 }}
+ {{- end }}
+   volumeMounts:
+     - name: config
+       mountPath: /etc/datadog-agent
+-    {{- if .Values.daemonset.useConfigMap }}
++    {{- if .Values.agents.useConfigMap }}
+     - name: {{ template "datadog.fullname" . }}-datadog-yaml
+       mountPath: /etc/datadog-agent/datadog.yaml
+       subPath: datadog.yaml
+     {{- end }}
+-    {{- if .Values.datadog.useCriSocketVolume }}
+-    - name: runtimesocket
+-      mountPath: {{ default "/var/run/docker.sock" .Values.datadog.criSocketPath | quote }}
++    {{- if .Values.datadog.criSocketPath }}
++    - name: runtimesocketdir
++      mountPath: {{ print "/host/" (dir .Values.datadog.criSocketPath) | clean }}
+       readOnly: true
+     {{- end }}
+-    {{- if .Values.datadog.useDogStatsDSocketVolume }}
++    {{- if .Values.datadog.dogstatsd.useSocketVolume }}
+     - name: dsdsocket
+       mountPath: "/var/run/datadog"
+     {{- end }}
+@@ -139,27 +137,15 @@
+     - name: logpodpath
+       mountPath: /var/log/pods
+       readOnly: true
+-    {{- if .Values.datadog.containerLogsPath }}
+-    - name: logcontainerpath
+-      mountPath: {{ .Values.datadog.containerLogsPath | quote }}
++    {{- if regexFind "^.*docker.*$" $.Values.datadog.criSocketPath }}
++    - name: logdockercontainerpath
++      mountPath: /var/lib/docker/containers
+       readOnly: true
+     {{- end }}
+     {{- end }}
+-{{- if .Values.datadog.volumeMounts }}
+-{{ toYaml .Values.datadog.volumeMounts | indent 4 }}
++{{- if .Values.agents.volumeMounts }}
++{{ toYaml .Values.agents.volumeMounts | indent 4 }}
+ {{- end }}
+-{{- if .Values.datadog.livenessProbe }}
+   livenessProbe:
+-{{ toYaml .Values.datadog.livenessProbe | indent 4 }}
+-{{- else }}
+-  livenessProbe:
+-    httpGet:
+-      path: /health
+-      port: 5555
+-    initialDelaySeconds: 15
+-    periodSeconds: 15
+-    timeoutSeconds: 5
+-    successThreshold: 1
+-    failureThreshold: 6
+-{{- end }}
++{{ toYaml .Values.agents.containers.agent.livenessProbe | indent 4 }}
+ {{- end -}}
+diff --git a/stable/datadog/templates/container-agents.yaml b/stable/datadog/templates/container-agents.yaml
+deleted file mode 100644
+index 5dd20f201..000000000
+--- a/stable/datadog/templates/container-agents.yaml
++++ /dev/null
+@@ -1,223 +0,0 @@
+-{{- define "container-agents" -}}
+-- name: {{ default .Chart.Name .Values.datadog.name }}
+-  image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+-  imagePullPolicy: {{ .Values.image.pullPolicy }}
+-  resources:
+-{{ toYaml .Values.datadog.resources | indent 4 }}
+-  ports:
+-  - containerPort: {{ default 8125 .Values.datadog.dogStatsDPort }}
+-    {{- if .Values.daemonset.useHostPort }}
+-    hostPort: {{ default 8125 .Values.datadog.dogStatsDPort }}
+-    {{- end }}
+-    name: dogstatsdport
+-    protocol: UDP
+-  {{- if .Values.datadog.apmEnabled }}
+-  - containerPort: 8126
+-    {{- if .Values.daemonset.useHostPort }}
+-    hostPort: 8126
+-    {{- end }}
+-    name: traceport
+-    protocol: TCP
+-  {{- end }}
+-  env:
+-    - name: DD_API_KEY
+-      valueFrom:
+-        secretKeyRef:
+-          name: {{ template "datadog.apiSecretName" . }}
+-          key: api-key
+-    {{- if .Values.datadog.clusterName }}
+-    {{- if not (regexMatch "^([a-z]([a-z0-9\\-]{0,38}[a-z0-9])?\\.)*([a-z]([a-z0-9\\-]{0,38}[a-z0-9])?)$" .Values.datadog.clusterName) }}
+-    {{- fail "Your `clusterName` isn’t valid. It must be dot-separated tokens where a token start with a lowercase letter followed by up to 39 lowercase letters, numbers, or hyphens and cannot end with a hyphen."}}
+-    {{- end}}
+-    - name: DD_CLUSTER_NAME
+-      value: {{ .Values.datadog.clusterName | quote }}
+-    {{- end }}
+-    {{- if .Values.datadog.site }}
+-    - name: DD_SITE
+-      value: {{ .Values.datadog.site | quote }}
+-    {{- end }}
+-    {{- if .Values.datadog.dd_url }}
+-    - name: DD_DD_URL
+-      value: {{ .Values.datadog.dd_url | quote }}
+-    {{- end }}
+-    {{- if .Values.datadog.logLevel }}
+-    - name: DD_LOG_LEVEL
+-      value: {{ .Values.datadog.logLevel | quote }}
+-    {{- end }}
+-    {{- if .Values.datadog.dogStatsDPort }}
+-    - name: DD_DOGSTATD_PORT
+-      value: {{ .Values.datadog.dogStatsDPort | quote }}
+-    {{- end }}
+-    {{- if .Values.datadog.nonLocalTraffic }}
+-    - name: DD_DOGSTATSD_NON_LOCAL_TRAFFIC
+-      value: {{ .Values.datadog.nonLocalTraffic | quote }}
+-    - name: DD_APM_NON_LOCAL_TRAFFIC
+-      value: {{ .Values.datadog.nonLocalTraffic | quote }}
+-    {{- end }}
+-    {{- if .Values.datadog.dogstatsdOriginDetection }}
+-    - name: DD_DOGSTATSD_ORIGIN_DETECTION
+-      value: {{ .Values.datadog.dogstatsdOriginDetection | quote }}
+-    {{- end }}
+-    {{- if .Values.datadog.tags }}
+-    - name: DD_TAGS
+-      value: {{ .Values.datadog.tags | quote }}
+-    {{- end }}
+-    {{- if .Values.datadog.apmEnabled }}
+-    - name: DD_APM_ENABLED
+-      value: {{ .Values.datadog.apmEnabled | quote }}
+-    {{- end }}
+-    {{- if .Values.datadog.processAgentEnabled }}
+-    - name: DD_PROCESS_AGENT_ENABLED
+-      value: {{ .Values.datadog.processAgentEnabled | quote }}
+-    {{- end }}
+-    {{- if .Values.datadog.hostname }}
+-    - name: DD_HOSTNAME
+-      value: {{ .Values.datadog.hostname | quote }}
+-    {{- end }}
+-    {{- if .Values.datadog.acInclude }}
+-    - name: DD_AC_INCLUDE
+-      value: {{ .Values.datadog.acInclude | quote }}
+-    {{- end }}
+-    {{- if .Values.datadog.acExclude }}
+-    - name: DD_AC_EXCLUDE
+-      value: {{ .Values.datadog.acExclude | quote }}
+-    {{- end }}
+-    {{- if not .Values.clusterAgent.enabled }}
+-    {{- if .Values.datadog.leaderElection }}
+-    - name: DD_LEADER_ELECTION
+-      value: {{ .Values.datadog.leaderElection | quote}}
+-    {{- end }}
+-    {{- if .Values.datadog.leaderLeaseDuration }}
+-    - name: DD_LEADER_LEASE_DURATION
+-      value: {{ .Values.datadog.leaderLeaseDuration | quote }}
+-    {{- end }}
+-    {{- if .Values.datadog.collectEvents }}
+-    - name: DD_COLLECT_KUBERNETES_EVENTS
+-      value: {{.Values.datadog.collectEvents | quote}}
+-    {{- end }}
+-    {{- else }}
+-    - name: DD_CLUSTER_AGENT_ENABLED
+-      value: {{ .Values.clusterAgent.enabled | quote }}
+-    - name: DD_CLUSTER_AGENT_KUBERNETES_SERVICE_NAME
+-      value: {{ template "datadog.fullname" . }}-cluster-agent
+-    - name: DD_CLUSTER_AGENT_AUTH_TOKEN
+-      valueFrom:
+-        secretKeyRef:
+-          name: {{ template "clusterAgent.tokenSecretName" . }}
+-          key: token
+-    {{- end }}
+-    - name: KUBERNETES
+-      value: "yes"
+-    {{- if .Values.datadog.nodeLabelsAsTags }}
+-    - name: DD_KUBERNETES_NODE_LABELS_AS_TAGS
+-      value: '{{ toJson .Values.datadog.nodeLabelsAsTags }}'
+-    {{- end }}
+-    {{- if .Values.datadog.podLabelsAsTags }}
+-    - name: DD_KUBERNETES_POD_LABELS_AS_TAGS
+-      value: '{{ toJson .Values.datadog.podLabelsAsTags }}'
+-    {{- end }}
+-    {{- if .Values.datadog.podAnnotationsAsTags }}
+-    - name: DD_KUBERNETES_POD_ANNOTATIONS_AS_TAGS
+-      value: '{{ toJson .Values.datadog.podAnnotationsAsTags }}'
+-    {{- end }}
+-    {{- if semverCompare "^1.7-0" .Capabilities.KubeVersion.GitVersion }}
+-    - name: DD_KUBERNETES_KUBELET_HOST
+-      valueFrom:
+-        fieldRef:
+-          fieldPath: status.hostIP
+-    {{- end }}
+-    {{- if .Values.datadog.logsEnabled }}
+-    - name: DD_LOGS_ENABLED
+-      value: {{.Values.datadog.logsEnabled | quote}}
+-    {{- end }}
+-    {{- if .Values.datadog.logsConfigContainerCollectAll }}
+-    - name: DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL
+-      value: {{.Values.datadog.logsConfigContainerCollectAll | quote}}
+-    {{- end }}
+-    {{- if .Values.datadog.criSocketPath }}
+-    - name: DD_CRI_SOCKET_PATH
+-      value: {{ .Values.datadog.criSocketPath | quote }}
+-    {{- end }}
+-    {{- if not .Values.datadog.livenessProbe }}
+-    - name: DD_HEALTH_PORT
+-      value: "5555"
+-    {{- end }}
+-    {{- if .Values.datadog.useDogStatsDSocketVolume }}
+-    - name: DD_DOGSTATSD_SOCKET
+-      value: {{ default "/var/run/datadog/dsd.socket" .Values.datadog.dogStatsDSocketPath | quote }}
+-    {{- end }}
+-    {{- if and .Values.clusterAgent.clusterChecks.enabled  (not .Values.clusterchecksDeployment.enabled) }}
+-    - name: DD_EXTRA_CONFIG_PROVIDERS
+-      value: "clusterchecks"
+-    {{- end }}
+-{{- if .Values.datadog.env }}
+-{{ toYaml .Values.datadog.env | indent 4 }}
+-{{- end }}
+-  volumeMounts:
+-    {{- if .Values.datadog.useCriSocketVolume }}
+-    - name: runtimesocket
+-      mountPath: {{ default "/var/run/docker.sock" .Values.datadog.criSocketPath | quote }}
+-      readOnly: true
+-    {{- end }}
+-    {{- if .Values.datadog.useDogStatsDSocketVolume }}
+-    - name: dsdsocket
+-      mountPath: "/var/run/datadog"
+-    {{- end }}
+-    - name: procdir
+-      mountPath: /host/proc
+-      readOnly: true
+-    - name: cgroups
+-      mountPath: /host/sys/fs/cgroup
+-      readOnly: true
+-    - name: s6-run
+-      mountPath: /var/run/s6
+-    {{- if (or (.Values.datadog.confd) (.Values.datadog.autoconf)) }}
+-    - name: confd
+-      mountPath: /conf.d
+-      readOnly: true
+-    {{- end }}
+-    {{- if .Values.datadog.checksd }}
+-    - name: checksd
+-      mountPath: /checks.d
+-      readOnly: true
+-    {{- end }}
+-    {{- if .Values.datadog.logsEnabled }}
+-    - name: pointerdir
+-      mountPath: /opt/datadog-agent/run
+-    - name: logpodpath
+-      mountPath: /var/log/pods
+-      readOnly: true
+-    {{- if .Values.datadog.containerLogsPath }}
+-    - name: logcontainerpath
+-      mountPath: {{ .Values.datadog.containerLogsPath | quote }}
+-      readOnly: true
+-    {{- end }}
+-    {{- end }}
+-    {{- if .Values.datadog.processAgentEnabled }}
+-    - name: passwd
+-      mountPath: /etc/passwd
+-      readOnly: true
+-    {{- end }}
+-    {{- if .Values.daemonset.useConfigMap }}
+-    - name: {{ template "datadog.fullname" . }}-datadog-yaml
+-      mountPath: /etc/datadog-agent/datadog.yaml
+-      subPath: datadog.yaml
+-    {{- end }}
+-{{- if .Values.datadog.volumeMounts }}
+-{{ toYaml .Values.datadog.volumeMounts | indent 4 }}
+-{{- end }}
+-{{- if .Values.datadog.livenessProbe }}
+-  livenessProbe:
+-{{ toYaml .Values.datadog.livenessProbe | indent 4 }}
+-{{- else }}
+-  livenessProbe:
+-    httpGet:
+-      path: /health
+-      port: 5555
+-    initialDelaySeconds: 15
+-    periodSeconds: 15
+-    timeoutSeconds: 5
+-    successThreshold: 1
+-    failureThreshold: 6
+-{{- end }}
+-{{- end -}}
+diff --git a/stable/datadog/templates/container-process-agent.yaml b/stable/datadog/templates/container-process-agent.yaml
+index b96bdc1a0..d4856b0ce 100644
+--- a/stable/datadog/templates/container-process-agent.yaml
++++ b/stable/datadog/templates/container-process-agent.yaml
+@@ -1,27 +1,27 @@
+ {{- define "container-process-agent" -}}
+ - name: process-agent
+-  image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+-  imagePullPolicy: {{ .Values.image.pullPolicy }}
++  image: "{{ .Values.agents.image.repository }}:{{ .Values.agents.image.tag }}"
++  imagePullPolicy: {{ .Values.agents.image.pullPolicy }}
+   command: ["process-agent", "-config=/etc/datadog-agent/datadog.yaml"]
+   resources:
+-{{ toYaml .Values.daemonset.containers.processAgent.resources | indent 4 }}
++{{ toYaml .Values.agents.containers.processAgent.resources | indent 4 }}
+   env:
+     {{- include "containers-common-env" . | nindent 4 }}
+-    {{- if not (kindIs "invalid" .Values.datadog.processAgentEnabled) }}
++    {{- if not (kindIs "invalid" .Values.datadog.processAgent.enabled) }}
+     - name: DD_PROCESS_AGENT_ENABLED
+-      value: {{ .Values.datadog.processAgentEnabled | quote }}
++      value: {{ .Values.datadog.processAgent.enabled | quote }}
+     {{- end }}
+     - name: DD_LOG_LEVEL
+-      value: {{ .Values.daemonset.containers.processAgent.logLevel | default .Values.datadog.logLevel | quote }}
+-    {{- if .Values.systemProbe.enabled }}
++      value: {{ .Values.agents.containers.processAgent.logLevel | default .Values.datadog.logLevel | quote }}
++    {{- if .Values.datadog.systemProbe.enabled }}
+     - name: DD_SYSTEM_PROBE_ENABLED
+-      value: {{ .Values.systemProbe.enabled | quote }}
++      value: {{ .Values.datadog.systemProbe.enabled | quote }}
+     {{- end }}
+-{{- if .Values.daemonset.containers.processAgent.env }}
+-{{ toYaml .Values.daemonset.containers.processAgent.env | indent 4 }}
++{{- if .Values.agents.containers.processAgent.env }}
++{{ toYaml .Values.agents.containers.processAgent.env | indent 4 }}
+ {{- end }}
+   volumeMounts:
+-    {{- if .Values.daemonset.useConfigMap }}
++    {{- if .Values.agents.useConfigMap }}
+     - name: {{ template "datadog.fullname" . }}-datadog-yaml
+       mountPath: /etc/datadog-agent/datadog.yaml
+       subPath: datadog.yaml
+@@ -36,12 +36,12 @@
+     - name: procdir
+       mountPath: /host/proc
+       readOnly: true
+-    {{- if .Values.datadog.useCriSocketVolume }}
+-    - name: runtimesocket
+-      mountPath: {{ default "/var/run/docker.sock" .Values.datadog.criSocketPath | quote }}
++    {{- if .Values.datadog.criSocketPath }}
++    - name: runtimesocketdir
++      mountPath: {{ print "/host/" (dir .Values.datadog.criSocketPath) | clean }}
+       readOnly: true
+     {{- end }}
+-    {{- if .Values.systemProbe.enabled }}
++    {{- if .Values.datadog.systemProbe.enabled }}
+     - name: sysprobe-socket-dir
+       mountPath: /opt/datadog-agent/run
+       readOnly: true
+diff --git a/stable/datadog/templates/container-system-probe.yaml b/stable/datadog/templates/container-system-probe.yaml
+index aa7bab8bb..8928eaddd 100644
+--- a/stable/datadog/templates/container-system-probe.yaml
++++ b/stable/datadog/templates/container-system-probe.yaml
+@@ -1,19 +1,19 @@
+ {{- define "container-system-probe" -}}
+ - name: system-probe
+-  image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+-  imagePullPolicy: {{ .Values.image.pullPolicy }}
++  image: "{{ .Values.agents.image.repository }}:{{ .Values.agents.image.tag }}"
++  imagePullPolicy: {{ .Values.agents.image.pullPolicy }}
+   securityContext:
+     capabilities:
+       add: ["SYS_ADMIN", "SYS_RESOURCE", "SYS_PTRACE", "NET_ADMIN", "IPC_LOCK"]
+   command: ["/opt/datadog-agent/embedded/bin/system-probe", "--config=/etc/datadog-agent/system-probe.yaml"]
+   env:
+     - name: DD_LOG_LEVEL
+-      value: {{ .Values.daemonset.containers.systemProbe.logLevel | default .Values.datadog.logLevel | quote }}
+-{{- if .Values.daemonset.containers.systemProbe.env }}
+-{{ toYaml .Values.daemonset.containers.systemProbe.env | indent 4 }}
++      value: {{ .Values.agents.containers.systemProbe.logLevel | default .Values.datadog.logLevel | quote }}
++{{- if .Values.agents.containers.systemProbe.env }}
++{{ toYaml .Values.agents.containers.systemProbe.env | indent 4 }}
+ {{- end }}
+   resources:
+-{{ toYaml .Values.daemonset.containers.systemProbe.resources | indent 4 }}
++{{ toYaml .Values.agents.containers.systemProbe.resources | indent 4 }}
+   volumeMounts:
+     - name: debugfs
+       mountPath: /sys/kernel/debug
+diff --git a/stable/datadog/templates/container-trace-agent.yaml b/stable/datadog/templates/container-trace-agent.yaml
+index 07196b923..edc9f57b8 100644
+--- a/stable/datadog/templates/container-trace-agent.yaml
++++ b/stable/datadog/templates/container-trace-agent.yaml
+@@ -1,44 +1,34 @@
+ {{- define "container-trace-agent" -}}
+ - name: trace-agent
+-  image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+-  imagePullPolicy: {{ .Values.image.pullPolicy }}
++  image: "{{ .Values.agents.image.repository }}:{{ .Values.agents.image.tag }}"
++  imagePullPolicy: {{ .Values.agents.image.pullPolicy }}
+   command: ["trace-agent", "--config=/etc/datadog-agent/datadog.yaml"]
+   resources:
+-{{ toYaml .Values.daemonset.containers.traceAgent.resources | indent 4 }}
++{{ toYaml .Values.agents.containers.traceAgent.resources | indent 4 }}
+   ports:
+-  - containerPort: 8126
+-    {{- if .Values.daemonset.useHostPort }}
+-    hostPort: 8126
+-    {{- end }}
++  - containerPort: {{ .Values.datadog.apm.port }}
++    hostPort: {{ .Values.datadog.apm.port }}
+     name: traceport
+     protocol: TCP
+   env:
+     {{- include "containers-common-env" . | nindent 4 }}
+-    - name: DD_APM_ENABLED
+-      value: {{ .Values.datadog.apmEnabled | quote }}
+     - name: DD_LOG_LEVEL
+-      value: {{ .Values.daemonset.containers.traceAgent.logLevel | default .Values.datadog.logLevel | quote }}
+-    {{- if .Values.datadog.nonLocalTraffic }}
+-    - name: DD_DOGSTATSD_NON_LOCAL_TRAFFIC
+-      value: {{ .Values.datadog.nonLocalTraffic | quote }}
++      value: {{ .Values.agents.containers.traceAgent.logLevel | default .Values.datadog.logLevel | quote }}
+     - name: DD_APM_NON_LOCAL_TRAFFIC
+-      value: {{ .Values.datadog.nonLocalTraffic | quote }}
+-    {{- end }}
+-{{- if .Values.daemonset.containers.traceAgent.env }}
+-{{ toYaml .Values.daemonset.containers.traceAgent.env | indent 4 }}
++      value: "true"
++    - name: DD_APM_RECEIVER_PORT
++      value: {{ .Values.datadog.apm.port | quote }}
++{{- if .Values.agents.containers.traceAgent.env }}
++{{ toYaml .Values.agents.containers.traceAgent.env | indent 4 }}
+ {{- end }}
+   volumeMounts:
+     - name: config
+       mountPath: /etc/datadog-agent
+-    {{- if .Values.daemonset.useConfigMap }}
++    {{- if .Values.agents.useConfigMap }}
+     - name: {{ template "datadog.fullname" . }}-datadog-yaml
+       mountPath: /etc/datadog-agent/datadog.yaml
+       subPath: datadog.yaml
+     {{- end }}
+   livenessProbe:
+-    tcpSocket:
+-      port: 8126
+-    initialDelaySeconds: 15
+-    periodSeconds: 15
+-    timeoutSeconds: 5
++{{ toYaml .Values.agents.containers.traceAgent.livenessProbe | indent 4 }}
+ {{- end -}}
+diff --git a/stable/datadog/templates/containers-init.yaml b/stable/datadog/templates/containers-init.yaml
+index 676dce59b..219ce0ce1 100644
+--- a/stable/datadog/templates/containers-init.yaml
++++ b/stable/datadog/templates/containers-init.yaml
+@@ -1,14 +1,16 @@
+ {{- define "containers-init" -}}
+ - name: init-volume
+-  image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++  image: "{{ .Values.agents.image.repository }}:{{ .Values.agents.image.tag }}"
+   command: ["bash", "-c"]
+   args:
+     - cp -r /etc/datadog-agent /opt
+   volumeMounts:
+     - name: config
+       mountPath: /opt/datadog-agent
++  resources:
++{{ toYaml .Values.agents.containers.initContainers.resources | indent 4 }}
+ - name: init-config
+-  image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++  image: "{{ .Values.agents.image.repository }}:{{ .Values.agents.image.tag }}"
+   command: ["bash", "-c"]
+   args:
+     - for script in $(find /etc/cont-init.d/ -type f -name '*.sh' | sort) ; do bash $script ; done
+@@ -28,9 +30,9 @@
+     - name: procdir
+       mountPath: /host/proc
+       readOnly: true
+-    {{- if .Values.datadog.useCriSocketVolume }}
+-    - name: runtimesocket
+-      mountPath: {{ default "/var/run/docker.sock" .Values.datadog.criSocketPath | quote }}
++    {{- if .Values.datadog.criSocketPath }}
++    - name: runtimesocketdir
++      mountPath: {{ print "/host/" (dir .Values.datadog.criSocketPath) | clean }}
+       readOnly: true
+     {{- end }}
+   env:
+@@ -38,4 +40,6 @@
+     {{- if .Values.datadog.env }}
+       {{ toYaml .Values.datadog.env | nindent 4 }}
+     {{- end }}
++  resources:
++{{ toYaml .Values.agents.containers.initContainers.resources | indent 4 }}
+ {{- end -}}
+diff --git a/stable/datadog/templates/daemonset.yaml b/stable/datadog/templates/daemonset.yaml
+index 11c669308..dd300fafd 100644
+--- a/stable/datadog/templates/daemonset.yaml
++++ b/stable/datadog/templates/daemonset.yaml
+@@ -1,20 +1,10 @@
+-{{- if .Values.daemonset.enabled }}
++{{- if .Values.agents.enabled }}
+ {{- if (or (.Values.datadog.apiKeyExistingSecret) (.Values.datadog.apiKey)) }}
+-{{- if .Capabilities.APIVersions.Has "apps/v1" }}
+ apiVersion: apps/v1
+-{{- else if .Capabilities.APIVersions.Has "extensions/v1beta1" }}
+-apiVersion: extensions/v1beta1
+-{{- else }}
+-apiVersion: apps/v1
+-{{- end }}
+ kind: DaemonSet
+ metadata:
+   name: {{ template "datadog.fullname" . }}
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    release: {{ .Release.Name | quote }}
+-    heritage: {{ .Release.Service | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+@@ -24,85 +14,75 @@ spec:
+   selector:
+     matchLabels:
+       app: {{ template "datadog.fullname" . }}
+-        {{- if .Values.daemonset.podLabels }}
+-{{ toYaml .Values.daemonset.podLabels | indent 6 }}
++        {{- if .Values.agents.podLabels }}
++{{ toYaml .Values.agents.podLabels | indent 6 }}
+         {{- end }}
+   template:
+     metadata:
+       labels:
+         app: {{ template "datadog.fullname" . }}
+-        {{- if .Values.daemonset.podLabels }}
+-{{ toYaml .Values.daemonset.podLabels | indent 8 }}
++        {{- if .Values.agents.podLabels }}
++{{ toYaml .Values.agents.podLabels | indent 8 }}
+         {{- end }}
+       name: {{ template "datadog.fullname" . }}
+       annotations:
+         checksum/autoconf-config: {{ tpl (toYaml .Values.datadog.autoconf) . | sha256sum }}
+         checksum/confd-config: {{ tpl (toYaml .Values.datadog.confd) . | sha256sum }}
+         checksum/checksd-config: {{ tpl (toYaml .Values.datadog.checksd) . | sha256sum }}
+-        {{- if .Values.daemonset.customAgentConfig }}
+-        checksum/agent-config: {{ tpl (toYaml .Values.daemonset.customAgentConfig) . | sha256sum }}
+-        {{- end }}
+-        {{- if and .Values.systemProbe.enabled .Values.daemonset.useDedicatedContainers }}
+-        container.apparmor.security.beta.kubernetes.io/system-probe: {{ .Values.systemProbe.apparmor }}
+-        {{- if .Values.systemProbe.seccomp }}
+-        container.seccomp.security.alpha.kubernetes.io/system-probe: {{ .Values.systemProbe.seccomp }}
++        {{- if .Values.agents.customAgentConfig }}
++        checksum/agent-config: {{ tpl (toYaml .Values.agents.customAgentConfig) . | sha256sum }}
+         {{- end }}
++        {{- if .Values.datadog.systemProbe.enabled }}
++        container.apparmor.security.beta.kubernetes.io/system-probe: {{ .Values.datadog.systemProbe.apparmor }}
++        container.seccomp.security.alpha.kubernetes.io/system-probe: {{ .Values.datadog.systemProbe.seccomp }}
+         {{- end }}
+-      {{- if .Values.daemonset.podAnnotations }}
+-{{ toYaml .Values.daemonset.podAnnotations | indent 8 }}
++      {{- if .Values.agents.podAnnotations }}
++{{ toYaml .Values.agents.podAnnotations | indent 8 }}
+       {{- end }}
+     spec:
+       {{- if .Values.datadog.securityContext }}
+       securityContext:
+ {{ toYaml .Values.datadog.securityContext | indent 8 }}
+       {{- end }}
+-      {{- if .Values.daemonset.useHostNetwork }}
+-      hostNetwork: {{ .Values.daemonset.useHostNetwork }}
++      {{- if .Values.agents.useHostNetwork }}
++      hostNetwork: {{ .Values.agents.useHostNetwork }}
+       dnsPolicy: ClusterFirstWithHostNet
+       {{- end }}
+-      {{- if .Values.daemonset.useHostPID }}
+-      hostPID: {{ .Values.daemonset.useHostPID }}
++      {{- if .Values.datadog.dogstatsd.useHostPID }}
++      hostPID: {{ .Values.datadog.dogstatsd.useHostPID }}
+       {{- end }}
+-      {{- if .Values.image.pullSecrets }}
++      {{- if .Values.agents.image.pullSecrets }}
+       imagePullSecrets:
+-{{ toYaml .Values.image.pullSecrets | indent 8 }}
++{{ toYaml .Values.agents.image.pullSecrets | indent 8 }}
+       {{- end }}
+-      {{- if .Values.daemonset.priorityClassName }}
+-      priorityClassName: {{ .Values.daemonset.priorityClassName }}
++      {{- if .Values.agents.priorityClassName }}
++      priorityClassName: {{ .Values.agents.priorityClassName }}
+       {{- end }}
+       containers:
+-      {{- if .Values.daemonset.useDedicatedContainers }}
+         {{- include "container-agent" . | nindent 8 }}
+-        {{- if .Values.datadog.apmEnabled }}
++        {{- if .Values.datadog.apm.enabled }}
+           {{- include "container-trace-agent" . | nindent 8 }}
+         {{- end }}
+-        {{- if or (kindIs "invalid" .Values.datadog.processAgentEnabled) .Values.datadog.processAgentEnabled }}
++        {{- if or (kindIs "invalid" .Values.datadog.processAgent.enabled) .Values.datadog.processAgent.enabled }}
+           {{- include "container-process-agent" . | nindent 8 }}
+         {{- end }}
+-        {{- if .Values.systemProbe.enabled }}
++        {{- if .Values.datadog.systemProbe.enabled }}
+           {{- include "container-system-probe" . | nindent 8 }}
+         {{- end }}
+-      {{- else }}
+-        {{- include "container-agents" . | nindent 8 }}
+-      {{- end}}
+-      {{- if .Values.daemonset.useDedicatedContainers }}
+       initContainers:
+         {{ include "containers-init" . | nindent 8 }}
+-        {{- if and .Values.systemProbe.enabled (eq .Values.systemProbe.seccomp "localhost/system-probe") }}
++        {{- if and .Values.datadog.systemProbe.enabled (eq .Values.datadog.systemProbe.seccomp "localhost/system-probe") }}
+           {{ include "system-probe-init" . | nindent 8 }}
+         {{- end }}
+-      {{- end }}
+       volumes:
+-        {{- if .Values.daemonset.useDedicatedContainers }}
+         - name: config
+           emptyDir: {}
+-        {{- end }}
+-        {{- if .Values.datadog.useCriSocketVolume }}
++        {{- if .Values.datadog.criSocketPath }}
+         - hostPath:
+-            path: {{ default "/var/run/docker.sock" .Values.datadog.criSocketPath | quote }}
+-          name: runtimesocket
++            path: {{ dir .Values.datadog.criSocketPath }}
++          name: runtimesocketdir
+         {{- end }}
+-        {{- if .Values.datadog.useDogStatsDSocketVolume }}
++        {{- if .Values.datadog.dogstatsd.useSocketVolume }}
+         - hostPath:
+             path: "/var/run/datadog/"
+           name: dsdsocket
+@@ -127,23 +107,23 @@ spec:
+         {{- end }}
+         {{- if .Values.datadog.logsEnabled }}
+         - hostPath:
+-            path: {{ default "/var/lib/datadog-agent/logs" .Values.datadog.logsPointerHostPath | quote }}
++            path: "/var/lib/datadog-agent/logs"
+           name: pointerdir
+         - hostPath:
+             path: /var/log/pods
+           name: logpodpath
+-        {{- if .Values.datadog.containerLogsPath }}
++        {{- if regexFind "^.*docker.*$" $.Values.datadog.criSocketPath }}
+         - hostPath:
+-            path: {{ .Values.datadog.containerLogsPath | quote }}
+-          name: logcontainerpath
++            path: /var/lib/docker/containers
++          name: logdockercontainerpath
+         {{- end }}
+         {{- end }}
+-        {{- if or (kindIs "invalid" .Values.datadog.processAgentEnabled) .Values.datadog.processAgentEnabled .Values.systemProbe.enabled }}
++        {{- if or .Values.datadog.processAgent.enabled .Values.datadog.systemProbe.enabled }}
+         - hostPath:
+             path: /etc/passwd
+           name: passwd
+         {{- end }}
+-        {{- if and .Values.systemProbe.enabled .Values.daemonset.useDedicatedContainers }}
++        {{- if .Values.datadog.systemProbe.enabled }}
+         - name: sysprobe-config
+           configMap:
+             name: {{ template "datadog.fullname" . }}-system-probe-config
+@@ -152,7 +132,7 @@ spec:
+           configMap:
+             name: {{ template "datadog.fullname" . }}-security
+         - hostPath:
+-            path: {{ .Values.systemProbe.seccompRoot }}
++            path: {{ .Values.datadog.systemProbe.seccompRoot }}
+           name: seccomp-root
+         {{- end }}
+         - hostPath:
+@@ -161,34 +141,28 @@ spec:
+         - name: sysprobe-socket-dir
+           emptyDir: {}
+         {{- end }}
+-        {{- if .Values.daemonset.useConfigMap }}
++        {{- if .Values.agents.useConfigMap }}
+         - name: {{ template "datadog.fullname" . }}-datadog-yaml
+           configMap:
+             name: {{ template "datadog.fullname" . }}-datadog-yaml
+         {{- end }}
+-{{- if .Values.datadog.volumes }}
+-{{ toYaml .Values.datadog.volumes | indent 8 }}
++{{- if .Values.agents.volumes }}
++{{ toYaml .Values.agents.volumes | indent 8 }}
+ {{- end }}
+-      {{- if .Values.daemonset.tolerations }}
++      {{- if .Values.agents.tolerations }}
+       tolerations:
+-{{ toYaml .Values.daemonset.tolerations | indent 8 }}
++{{ toYaml .Values.agents.tolerations | indent 8 }}
+       {{- end }}
+-      {{- if .Values.daemonset.affinity }}
++      {{- if .Values.agents.affinity }}
+       affinity:
+-{{ toYaml .Values.daemonset.affinity | indent 8 }}
++{{ toYaml .Values.agents.affinity | indent 8 }}
+       {{- end }}
+-      serviceAccountName: {{ if .Values.rbac.create }}{{ template "datadog.fullname" . }}{{ else }}"{{ .Values.rbac.serviceAccountName }}"{{ end }}
+-      {{- if .Values.daemonset.nodeSelector }}
++      serviceAccountName: {{ if .Values.agents.rbac.create }}{{ template "datadog.fullname" . }}{{ else }}"{{ .Values.agents.rbac.serviceAccountName }}"{{ end }}
++      {{- if .Values.agents.nodeSelector }}
+       nodeSelector:
+-{{ toYaml .Values.daemonset.nodeSelector | indent 8 }}
++{{ toYaml .Values.agents.nodeSelector | indent 8 }}
+       {{- end }}
+   updateStrategy:
+-{{- if .Values.daemonset.updateStrategy }}
+-{{ toYaml .Values.daemonset.updateStrategy | indent 4 }}
+-{{- else }}
+-    type: RollingUpdate
+-    rollingUpdate:
+-      maxUnavailable: "10%"
+-{{- end }}
++{{ toYaml .Values.agents.updateStrategy | indent 4 }}
+ {{ end }}
+ {{ end }}
+diff --git a/stable/datadog/templates/datadog-yaml-configmap.yaml b/stable/datadog/templates/datadog-yaml-configmap.yaml
+index b960e1815..f7d0379c8 100644
+--- a/stable/datadog/templates/datadog-yaml-configmap.yaml
++++ b/stable/datadog/templates/datadog-yaml-configmap.yaml
+@@ -1,26 +1,22 @@
+-{{- if .Values.daemonset.useConfigMap }}
++{{- if .Values.agents.useConfigMap }}
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+   name: {{ template "datadog.fullname" . }}-datadog-yaml
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    release: {{ .Release.Name | quote }}
+-    heritage: {{ .Release.Service | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+     app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+     app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+   annotations:
+-    {{- if .Values.daemonset.customAgentConfig }}
+-    checksum/agent-config: {{ tpl (toYaml .Values.daemonset.customAgentConfig) . | sha256sum }}
++    {{- if .Values.agents.customAgentConfig }}
++    checksum/agent-config: {{ tpl (toYaml .Values.agents.customAgentConfig) . | sha256sum }}
+     {{- end }}
+ data:
+   datadog.yaml: |
+-  {{- if .Values.daemonset.customAgentConfig }}
+-{{ tpl (toYaml .Values.daemonset.customAgentConfig) . | indent 4 }}
++  {{- if .Values.agents.customAgentConfig }}
++{{ tpl (toYaml .Values.agents.customAgentConfig) . | indent 4 }}
+   {{- else }}
+     ## Provides autodetected defaults, for kubernetes environments,
+     ## please see datadog.yaml.example for all supported options
+@@ -34,8 +30,10 @@ data:
+ 
+     # Enable APM by setting the DD_APM_ENABLED envvar to true, or override this configuration
+     apm_config:
+-      enabled: false
++      enabled: true
+       apm_non_local_traffic: true
++      max_memory: 0
++      max_cpu_percent: 0
+ 
+     {{- $version := (.Values.image.tag | toString | trimSuffix "-jmx") }}
+     {{- $length := len (split "." $version ) -}} 
+diff --git a/stable/datadog/templates/deployment.yaml b/stable/datadog/templates/deployment.yaml
+deleted file mode 100644
+index e9cb24ea2..000000000
+--- a/stable/datadog/templates/deployment.yaml
++++ /dev/null
+@@ -1,200 +0,0 @@
+-{{- if .Values.deployment.enabled }}
+-{{- if (or (.Values.datadog.apiKeyExistingSecret) (.Values.datadog.apiKey)) }}
+-{{- if .Capabilities.APIVersions.Has "apps/v1" }}
+-apiVersion: apps/v1
+-{{- else if .Capabilities.APIVersions.Has "extensions/v1beta1" }}
+-apiVersion: extensions/v1beta1
+-{{- else }}
+-apiVersion: apps/v1
+-{{- end }}
+-kind: Deployment
+-metadata:
+-  name: {{ template "datadog.fullname" . }}
+-  labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    release: {{ .Release.Name | quote }}
+-    heritage: {{ .Release.Service | quote }}
+-    helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+-    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+-    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+-spec:
+-  selector:
+-    matchLabels:
+-      app: {{ template "datadog.fullname" . }}
+-      type: deployment
+-  replicas: {{ .Values.deployment.replicas }}
+-  template:
+-    metadata:
+-      labels:
+-        app: {{ template "datadog.fullname" . }}
+-        type: deployment
+-      name: {{ template "datadog.fullname" . }}
+-      annotations:
+-        checksum/autoconf-config: {{ tpl (toYaml .Values.datadog.autoconf) . | sha256sum }}
+-        checksum/confd-config: {{ tpl (toYaml .Values.datadog.confd) . | sha256sum }}
+-        checksum/checksd-config: {{ tpl (toYaml .Values.datadog.checksd) . | sha256sum }}
+-    spec:
+-      {{- if .Values.datadog.securityContext }}
+-      securityContext:
+-{{ toYaml .Values.datadog.securityContext | indent 8 }}
+-      {{- end }}
+-      {{- if .Values.image.pullSecrets }}
+-      imagePullSecrets:
+-{{ toYaml .Values.image.pullSecrets | indent 8 }}
+-      {{- end }}
+-      {{- if .Values.deployment.priorityClassName }}
+-      priorityClassName: {{ .Values.deployment.priorityClassName }}
+-      {{- end }}
+-      containers:
+-      - name: {{ default .Chart.Name .Values.datadog.name }}
+-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+-        imagePullPolicy: {{ .Values.image.pullPolicy }}
+-        resources:
+-{{ toYaml .Values.datadog.resources | indent 10 }}
+-        ports:
+-        - containerPort: {{ default 8125 .Values.datadog.dogStatsDPort }}
+-          name: dogstatsdport
+-          protocol: UDP
+-        {{- if .Values.datadog.apmEnabled }}
+-        - containerPort: 8126
+-          name: traceport
+-          protocol: TCP
+-        {{- end }}
+-        env:
+-          - name: DD_API_KEY
+-            valueFrom:
+-              secretKeyRef:
+-                name: {{ template "datadog.apiSecretName" . }}
+-                key: api-key
+-          {{- if .Values.datadog.site }}
+-          - name: DD_SITE
+-            value: {{ .Values.datadog.site | quote }}
+-          {{- end }}
+-          {{- if .Values.datadog.dd_url }}
+-          - name: DD_DD_URL
+-            value: {{ .Values.datadog.dd_url | quote }}
+-          {{- end }}
+-          {{- if .Values.datadog.logLevel }}
+-          - name: DD_LOG_LEVEL
+-            value: {{ .Values.datadog.logLevel | quote }}
+-          {{- end }}
+-          {{- if .Values.datadog.nonLocalTraffic }}
+-          - name: DD_DOGSTATSD_NON_LOCAL_TRAFFIC
+-            value: {{ .Values.datadog.nonLocalTraffic | quote }}
+-          - name: DD_APM_NON_LOCAL_TRAFFIC
+-            value: {{ .Values.datadog.nonLocalTraffic | quote }}
+-          {{- end }}
+-          {{- if .Values.datadog.dogstatsdOriginDetection }}
+-          - name: DD_DOGSTATSD_ORIGIN_DETECTION
+-            value: {{ .Values.datadog.dogstatsdOriginDetection | quote }}
+-          {{- end }}
+-          {{- if .Values.datadog.tags }}
+-          - name: DD_TAGS
+-            value: {{ .Values.datadog.tags | quote }}
+-          {{- end }}
+-          {{- if .Values.datadog.apmEnabled }}
+-          - name: DD_APM_ENABLED
+-            value: {{ .Values.datadog.apmEnabled | quote }}
+-          {{- end }}
+-          - name: KUBERNETES
+-            value: "yes"
+-          {{- if .Values.datadog.collectEvents }}
+-          - name: KUBERNETES_COLLECT_EVENTS
+-            value: "yes"
+-          {{- end }}
+-          {{- if .Values.datadog.criSocketPath }}
+-          - name: DD_CRI_SOCKET_PATH
+-            value: {{ .Values.datadog.criSocketPath | quote }}
+-          {{- end }}
+-          {{- if .Values.datadog.useDogStatsDSocketVolume }}
+-          - name: DD_DOGSTATSD_SOCKET
+-            value: {{ default "/var/run/datadog/dsd.socket" .Values.datadog.dogStatsDSocketPath | quote }}
+-          {{- end }}
+-{{- if .Values.datadog.env }}
+-{{ toYaml .Values.datadog.env | indent 10 }}
+-{{- end }}
+-        volumeMounts:
+-          {{- if .Values.datadog.useCriSocketVolume }}
+-          - name: runtimesocket
+-            mountPath: {{ default "/var/run/docker.sock" .Values.datadog.criSocketPath | quote }}
+-            readOnly: true
+-          {{- end }}
+-          {{- if .Values.datadog.useDogStatsDSocketVolume }}
+-          - name: dsdsocket
+-            mountPath: "/var/run/datadog"
+-          {{- end }}
+-          - name: procdir
+-            mountPath: /host/proc
+-            readOnly: true
+-          - name: cgroups
+-            mountPath: /host/sys/fs/cgroup
+-            readOnly: true
+-          {{- if (or (.Values.datadog.confd) (.Values.datadog.autoconf)) }}
+-          - name: confd
+-            mountPath: /conf.d
+-            readOnly: true
+-          {{- end }}
+-          {{- if .Values.datadog.checksd }}
+-          - name: checksd
+-            mountPath: /checks.d
+-            readOnly: true
+-          {{- end }}
+-{{- if .Values.datadog.volumeMounts }}
+-{{ toYaml .Values.datadog.volumeMounts | indent 10 }}
+-{{- end }}
+-{{- if .Values.datadog.livenessProbe }}
+-        livenessProbe:
+-{{ toYaml .Values.datadog.livenessProbe | indent 10 }}
+-{{- else }}
+-        livenessProbe:
+-          exec:
+-            command:
+-            - ./probe.sh
+-          initialDelaySeconds: 15
+-          periodSeconds: 5
+-          failureThreshold: 6
+-{{- end }}
+-      volumes:
+-        {{- if .Values.datadog.useCriSocketVolume }}
+-        - hostPath:
+-            path: {{ default "/var/run/docker.sock" .Values.datadog.criSocketPath | quote }}
+-          name: runtimesocket
+-        {{- end }}
+-        {{- if .Values.datadog.useDogStatsDSocketVolume }}
+-        - hostPath:
+-            path: "/var/run/datadog/"
+-          name: dsdsocket
+-        {{- end }}
+-        - hostPath:
+-            path: /proc
+-          name: procdir
+-        - hostPath:
+-            path: /sys/fs/cgroup
+-          name: cgroups
+-        {{- if (or (.Values.datadog.confd) (.Values.datadog.autoconf)) }}
+-        - name: confd
+-          configMap:
+-            name: {{ template "datadog.fullname" . }}-confd
+-        {{- end }}
+-        {{- if .Values.datadog.checksd }}
+-        - name: checksd
+-          configMap:
+-            name: {{ template "datadog.fullname" . }}-checksd
+-        {{- end }}
+-{{- if .Values.datadog.volumes }}
+-{{ toYaml .Values.datadog.volumes | indent 8 }}
+-{{- end }}
+-      {{- if .Values.deployment.tolerations }}
+-      tolerations:
+-{{ toYaml .Values.deployment.tolerations | indent 8 }}
+-      {{- end }}
+-      {{- if .Values.deployment.affinity }}
+-      affinity:
+-{{ toYaml .Values.deployment.affinity | indent 8 }}
+-      {{- end }}
+-      serviceAccountName: {{ if .Values.rbac.create }}{{ template "datadog.fullname" . }}{{ else }}"{{ .Values.rbac.serviceAccountName }}"{{ end }}
+-{{ end }}
+-{{ end }}
+diff --git a/stable/datadog/templates/hpa-rbac.yaml b/stable/datadog/templates/hpa-rbac.yaml
+index cf2d660e2..62b78aa77 100644
+--- a/stable/datadog/templates/hpa-rbac.yaml
++++ b/stable/datadog/templates/hpa-rbac.yaml
+@@ -1,12 +1,8 @@
+-{{- if and .Values.rbac.create .Values.clusterAgent.enabled .Values.clusterAgent.metricsProvider.enabled -}}
++{{- if and .Values.clusterAgent.enabled .Values.clusterAgent.rbac.create .Values.clusterAgent.metricsProvider.enabled -}}
+ apiVersion: {{ template "rbac.apiVersion" . }}
+ kind: ClusterRole
+ metadata:
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+@@ -27,10 +23,6 @@ apiVersion: {{ template "rbac.apiVersion" . }}
+ kind: ClusterRoleBinding
+ metadata:
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    release: {{ .Release.Name | quote }}
+-    heritage: {{ .Release.Service | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+@@ -50,10 +42,6 @@ apiVersion: {{ template "rbac.apiVersion" . }}
+ kind: RoleBinding
+ metadata:
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    release: {{ .Release.Name | quote }}
+-    heritage: {{ .Release.Service | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+diff --git a/stable/datadog/templates/rbac.yaml b/stable/datadog/templates/rbac.yaml
+index d927e6b12..a1b45518d 100644
+--- a/stable/datadog/templates/rbac.yaml
++++ b/stable/datadog/templates/rbac.yaml
+@@ -1,12 +1,8 @@
+-{{- if .Values.rbac.create -}}
++{{- if .Values.agents.rbac.create -}}
+ apiVersion: {{ template "rbac.apiVersion" . }}
+ kind: ClusterRole
+ metadata:
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+@@ -88,15 +84,11 @@ rules:
+   verbs:
+   - get
+ ---
+-{{- if not .Values.clusterchecksDeployment.rbac.dedicated }}
++{{- if not .Values.clusterChecksRunner.rbac.dedicated }}
+ apiVersion: {{ template "rbac.apiVersion" . }}
+ kind: ClusterRoleBinding
+ metadata:
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    release: {{ .Release.Name | quote }}
+-    heritage: {{ .Release.Service | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+@@ -117,10 +109,6 @@ apiVersion: v1
+ kind: ServiceAccount
+ metadata:
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+diff --git a/stable/datadog/templates/secrets.yaml b/stable/datadog/templates/secrets.yaml
+index c4ffd86a8..c386893bb 100644
+--- a/stable/datadog/templates/secrets.yaml
++++ b/stable/datadog/templates/secrets.yaml
+@@ -6,10 +6,6 @@ kind: Secret
+ metadata:
+   name: {{ template "datadog.fullname" . }}
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    release: {{ .Release.Name | quote }}
+-    heritage: {{ .Release.Service | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+@@ -30,10 +26,6 @@ kind: Secret
+ metadata:
+   name: {{ template "datadog.appKeySecretName" . }}
+   labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    release: {{ .Release.Name | quote }}
+-    heritage: {{ .Release.Service | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+diff --git a/stable/datadog/templates/service.yaml b/stable/datadog/templates/service.yaml
+deleted file mode 100644
+index 216c2e758..000000000
+--- a/stable/datadog/templates/service.yaml
++++ /dev/null
+@@ -1,40 +0,0 @@
+-{{ if .Values.deployment.enabled }}
+-apiVersion: v1
+-kind: Service
+-metadata:
+-  name: {{ template "datadog.fullname" . }}
+-  labels:
+-    app: "{{ template "datadog.fullname" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    release: {{ .Release.Name | quote }}
+-    heritage: {{ .Release.Service | quote }}
+-    helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+-    app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+-    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+-    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+-    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+-  {{- if .Values.deployment.service.annotations }}
+-  annotations:
+-{{ toYaml .Values.deployment.service.annotations | indent 4 }}
+-  {{- end }}
+-spec:
+-  type: {{ .Values.deployment.service.type }}
+-  selector:
+-    app: {{ template "datadog.fullname" . }}
+-    type: deployment
+-  ports:
+-  - port: {{ default 8125 .Values.datadog.dogStatsDPort }}
+-    name: dogstatsdport
+-    protocol: UDP
+-  {{- if .Values.deployment.dogstatsdNodePort }}
+-    nodePort: {{ .Values.deployment.dogstatsdNodePort }}
+-  {{- end }}
+-  {{- if .Values.datadog.apmEnabled }}
+-  - port: 8126
+-    name: traceport
+-    protocol: TCP
+-  {{- if .Values.deployment.traceNodePort }}
+-    nodePort: {{ .Values.deployment.traceNodePort }}
+-  {{- end }}
+-  {{- end }}
+-{{ end }}
+diff --git a/stable/datadog/templates/system-probe-configmap.yaml b/stable/datadog/templates/system-probe-configmap.yaml
+index 7242d7cac..e92eb321c 100644
+--- a/stable/datadog/templates/system-probe-configmap.yaml
++++ b/stable/datadog/templates/system-probe-configmap.yaml
+@@ -1,15 +1,10 @@
+-{{- if and .Values.systemProbe.enabled .Values.daemonset.useDedicatedContainers }}
++{{- if .Values.datadog.systemProbe.enabled }}
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+   name: {{ template "datadog.fullname" . }}-system-probe-config
+   namespace: {{ $.Release.Namespace }}
+   labels:
+-    app: {{ $.Chart.Name }}
+-    service: {{ $.Chart.Name }}
+-    chart_version: {{ $.Chart.Version }}
+-    chart_name: {{ $.Chart.Name }}
+-    heritage: {{ .Release.Service | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+@@ -18,12 +13,13 @@ metadata:
+ data:
+   system-probe.yaml: |
+     system_probe_config:
+-      enabled: {{ $.Values.systemProbe.enabled }}
+-      debug_port:  {{ $.Values.systemProbe.debugPort }}
++      enabled: {{ $.Values.datadog.systemProbe.enabled }}
++      debug_port:  {{ $.Values.datadog.systemProbe.debugPort }}
+       sysprobe_socket: /opt/datadog-agent/run/sysprobe.sock
+-      enable_conntrack : {{ $.Values.systemProbe.enableConntrack }}
+-      bpf_debug: {{ $.Values.systemProbe.bpfDebug }}
+-{{- if eq .Values.systemProbe.seccomp "localhost/system-probe" }}
++      enable_conntrack : {{ $.Values.datadog.systemProbe.enableConntrack }}
++      bpf_debug: {{ $.Values.datadog.systemProbe.bpfDebug }}
++
++{{- if eq .Values.datadog.systemProbe.seccomp "localhost/system-probe" }}
+ ---
+ apiVersion: v1
+ kind: ConfigMap
+@@ -31,11 +27,6 @@ metadata:
+   name: {{ template "datadog.fullname" . }}-security
+   namespace: {{ $.Release.Namespace }}
+   labels:
+-    app: {{ $.Chart.Name }}
+-    service: {{ $.Chart.Name }}
+-    chart_version: {{ $.Chart.Version }}
+-    chart_name: {{ $.Chart.Name }}
+-    heritage: {{ .Release.Service | quote }}
+     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+     app.kubernetes.io/name: "{{ template "datadog.fullname" . }}"
+     app.kubernetes.io/instance: {{ .Release.Name | quote }}
+diff --git a/stable/datadog/values.yaml b/stable/datadog/values.yaml
+index ef0af021f..6350c6918 100644
+--- a/stable/datadog/values.yaml
++++ b/stable/datadog/values.yaml
+@@ -2,38 +2,15 @@
+ ## See Datadog helm documentation to learn more:
+ ## https://docs.datadoghq.com/agent/kubernetes/helm/
+ 
+-## @param image - object - required
+-## Define the Datadog image to work with.
++## @param nameOverride - string - optional
++## Override name of app.
+ #
+-image:
++# nameOverride: ""
+ 
+-  ## @param repository - string - required
+-  ## Define the repository to use:
+-  ## use "datadog/agent" for Datadog Agent 7
+-  ## use "datadog/dogstatsd" for Standalone Datadog Agent DogStatsD 7
+-  #
+-  repository: datadog/agent
+-
+-  ## @param tag - string - required
+-  ## Define the Agent version to use.
+-  ## Use 7-jmx to enable jmx fetch collection
+-  #
+-  tag: "7"
+-
+-  ## @param pullPolicy - string - required
+-  ## The Kubernetes pull policy.
+-  #
+-  pullPolicy: IfNotPresent
+-
+-  ## @param pullSecrets - list of key:value strings - optional
+-  ## It is possible to specify docker registry credentials
+-  ## See https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
+-  #
+-  # pullSecrets:
+-  #   - name: "<REG_SECRET>"
+-
+-nameOverride: ""
+-fullnameOverride: ""
++## @param fullnameOverride - string - optional
++## Override the full qualified app name.
++#
++# fullnameOverride: ""
+ 
+ datadog:
+ 
+@@ -80,12 +57,6 @@ datadog:
+   #
+   # clusterName: <CLUSTER_NAME>
+ 
+-  ## @param name - string - required
+-  ## Daemonset/Deployment container name
+-  ## See clusterAgent.containerName if clusterAgent.enabled = true
+-  #
+-  name: datadog
+-
+   ## @param site - string - optional - default: 'datadoghq.com'
+   ## The site of the Datadog intake to send Agent data to.
+   ## Set to 'datadoghq.eu' to send data to the EU site.
+@@ -105,6 +76,20 @@ datadog:
+   #
+   logLevel: INFO
+ 
++  ## @param kubeStateMetricsEnabled - boolean - required
++  ## If true, deploys the kube-state-metrics deployment.
++  ## ref: https://github.com/kubernetes/charts/tree/master/stable/kube-state-metrics
++  #
++  kubeStateMetricsEnabled: true
++
++  ## @param clusterChecks - object - required
++  ## Enable the Cluster Checks feature on both the cluster-agents and the daemonset
++  ## ref: https://docs.datadoghq.com/agent/autodiscovery/clusterchecks/
++  ## Autodiscovery via Kube Service annotations is automatically enabled
++  #
++  clusterChecks:
++    enabled: false
++
+   ## @param nodeLabelsAsTags - list of key:value strings - optional
+   ## Provide a mapping of Kubernetes Node Labels to Datadog Tags.
+   #
+@@ -137,35 +122,56 @@ datadog:
+   #   - <KEY_1>:<VALUE_1>
+   #   - <KEY_2>:<VALUE_2>
+ 
+-  ## @param useCriSocketVolume - boolean - required
+-  ## Enable container runtime socket volume mounting
++  ## @param dogstatsd - object - required
++  ## dogstatsd configuration
++  ## ref: https://docs.datadoghq.com/agent/kubernetes/dogstatsd/
++  ## To emit custom metrics from your Kubernetes application, use DogStatsD.
+   #
+-  useCriSocketVolume: true
++  dogstatsd:
++    ## @param port - integer - optional - default: 8125
++    ## Override the Agent DogStatsD port.
++    ## Note: Make sure your client is sending to the same UDP port.
++    #
++    port: 8125
+ 
+-  ## @param dogstatsdOriginDetection - boolean - optional
+-  ## Enable origin detection for container tagging
+-  ## https://docs.datadoghq.com/developers/dogstatsd/unix_socket/#using-origin-detection-for-container-tagging
+-  #
+-  # dogstatsdOriginDetection: true
++    ## @param originDetection - boolean - optional
++    ## Enable origin detection for container tagging
++    ## https://docs.datadoghq.com/developers/dogstatsd/unix_socket/#using-origin-detection-for-container-tagging
++    #
++    # originDetection: true
+ 
+-  ## @param useDogStatsDSocketVolume - boolean - optional
+-  ## Enable dogstatsd over Unix Domain Socket
+-  ## ref: https://docs.datadoghq.com/developers/dogstatsd/unix_socket/
+-  #
+-  # useDogStatsDSocketVolume: true
++    ## @param useSocketVolume - boolean - optional
++    ## Enable dogstatsd over Unix Domain Socket
++    ## ref: https://docs.datadoghq.com/developers/dogstatsd/unix_socket/
++    #
++    # useSocketVolume: true
+ 
+-  #  # dogStatsDPort - integer - optional - default: 8125
+-  #  # Override the Agent DogStatsD port.
+-  #  # Note: Make sure your client is sending to the same UDP port.
+-  #
+-  # dogStatsDPort:
++    ## @param socketPath - string - optional
++    ## Path to the DogStatsD socket
++    #
++    # socketPath: /var/run/datadog/dsd.socket
++
++    ## @param useHostPort - boolean - optional
++    ## Sets the hostPort to the same value of the container port. Needs to be used
++    ## for sending custom metrics.
++    ## The ports need to be available on all hosts.
++    ##
++    ## WARNING: Make sure that hosts using this are properly firewalled otherwise
++    ## metrics and traces are accepted from any host able to connect to this host.
++    #
++    # useHostPort: true
+ 
+-  ## @param nonLocalTraffic - boolean - optional - default: false
+-  ## Enable this to make each node accept non-local statsd traffic.
+-  ## This option must be set to "true" in order to use APM.
+-  ## ref: https://github.com/DataDog/docker-dd-agent#environment-variables
+-  #
+-  # nonLocalTraffic: false
++    ## @param useHostPID - boolean - optional
++    ## Run the agent in the host's PID namespace. This is required for Dogstatsd origin
++    ## detection to work. See https://docs.datadoghq.com/developers/dogstatsd/unix_socket/
++    #
++    # useHostPID: true
++
++    ## @param nonLocalTraffic - boolean - optional - default: false
++    ## Enable this to make each node accept non-local statsd traffic.
++    ## ref: https://github.com/DataDog/docker-dd-agent#environment-variables
++    #
++    # nonLocalTraffic: false
+ 
+   ## @param collectEvents - boolean - optional - default: false
+   ## Enables this to start event collection from the kubernetes API
+@@ -195,26 +201,21 @@ datadog:
+   #
+   # logsConfigContainerCollectAll: false
+ 
+-  ## @param containerLogsPath - string - optional - default: /var/lib/docker/containers
+-  ## This to allow log collection from container log path. Set to a different path if not
+-  ## using docker runtime.
+-  ## ref: https://docs.datadoghq.com/agent/kubernetes/daemonset_setup/?tab=k8sfile#create-manifest
++  ## @param apm - object - required
++  ## Enable apm agent and provide custom configs
+   #
+-  containerLogsPath: /var/lib/docker/containers
+-
+-
+-  ## @param apmEnabled - boolean - optional - default: false
+-  ## Enable this to enable APM and tracing, on port 8126
+-  ## ref: https://github.com/DataDog/docker-dd-agent#tracing-from-the-host
+-  #
+-  # apmEnabled: false
++  apm:
++    ## @param enabled - boolean - optional - default: false
++    ## Enable this to enable APM and tracing, on port 8126
++    ## ref: https://github.com/DataDog/docker-dd-agent#tracing-from-the-host
++    #
++    enabled: false
+ 
+-  ## @param processAgentEnabled - boolean - optional - default: false
+-  ## Enable this to activate live process monitoring.
+-  ## Note: /etc/passwd is automatically mounted to allow username resolution.
+-  ## ref: https://docs.datadoghq.com/graphing/infrastructure/process/#kubernetes-daemonset
+-  #
+-  # processAgentEnabled: false
++    ## @param port - integer - optional - default: 8126
++    ## Override the trace Agent DogStatsD port.
++    ## Note: Make sure your client is sending to the same UDP port.
++    #
++    port: 8126
+ 
+   ## @param env - list of object - optional
+   ## The dd-agent supports many environment variables
+@@ -224,22 +225,6 @@ datadog:
+   #   - name: <ENV_VAR_NAME>
+   #     value: <ENV_VAR_VALUE>
+ 
+-  ## @param volumes - list of objects - optional
+-  ## Specify additional volumes to mount in the dd-agent container
+-  #
+-  # volumes:
+-  #   - hostPath:
+-  #       path: <HOST_PATH>
+-  #     name: <VOLUME_NAME>
+-
+-  ## @param volumeMounts - list of objects - optional
+-  ## Specify additional volumes to mount in the dd-agent container
+-  #
+-  # volumeMounts:
+-  #   - name: <VOLUME_NAME>
+-  #     mountPath: <CONTAINER_PATH>
+-  #     readOnly: true
+-
+   ## @param confd - list of objects - optional
+   ## Provide additional check configurations (static and Autodiscovery)
+   ## Each key becomes a file in /conf.d
+@@ -267,79 +252,64 @@ datadog:
+   # checksd:
+   #   service.py: |-
+ 
+-  ## @param criSocketPath - string - optional
++  ## @param criSocketPath - string - required
+   ## Path to the container runtime socket (if different from Docker)
+   ## This is supported starting from agent 6.6.0
+   #
+-  # criSocketPath: /var/run/containerd/containerd.sock
++  criSocketPath: /var/run/docker.sock
+ 
+-  ## @param dogStatsDSocketPath - string - optional
+-  ## Path to the DogStatsD socket
+-  #
+-  # dogStatsDSocketPath: /var/run/datadog/dsd.socket
+ 
+-  ## @param livenessProbe - object - optional
+-  ## Override the agent's liveness probe logic from the default:
+-  ## In case of issues with the probe, you can disable it with the
+-  ## following values, to allow easier investigating:
++  ## @param processAgent - object - required
++  ## Enable process agent and provide custom configs
+   #
+-  # livenessProbe:
+-  #   exec:
+-  #     command: ["/bin/true"]
+-
+-  ## @param resources - object -required
+-  ## datadog-agent resource requests and limits
+-  ## Make sure to keep requests and limits equal to keep the pods in the Guaranteed QoS class
+-  ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+-  #
+-  resources: {}
+-  # requests:
+-  #   cpu: 200m
+-  #   memory: 256Mi
+-  # limits:
+-  #   cpu: 200m
+-  #   memory: 256Mi
++  processAgent:
++    ## @param enabled - boolean - required
++    ## Set this to true to enable live process monitoring agent
++    ## Note: /etc/passwd is automatically mounted to allow username resolution.
++    ## ref: https://docs.datadoghq.com/graphing/infrastructure/process/#kubernetes-daemonset
++    #
++    enabled: false
+ 
+-## @param systemProbe - object - required
+-## Enable systemProbe agent and provide custom configs
+-#
+-systemProbe:
+-  ## @param enabled - boolean - required
+-  ## Set this to true to enable system-probe agent
++  ## @param systemProbe - object - required
++  ## Enable systemProbe agent and provide custom configs
+   #
+-  enabled: false
++  systemProbe:
++    ## @param enabled - boolean - required
++    ## Set this to true to enable system-probe agent
++    #
++    enabled: false
+ 
+-  ## @param debugPort - integer - required
+-  ## Specify the port to expose pprof and expvar for system-probe agent
+-  #
+-  debugPort: 0
++    ## @param debugPort - integer - required
++    ## Specify the port to expose pprof and expvar for system-probe agent
++    #
++    debugPort: 0
+ 
+-  ## @param enableConntrack - boolean - required
+-  ## Enable the system-probe agent to connect to the netlink/conntrack subsystem to add NAT information to connection data
+-  ## Ref: http://conntrack-tools.netfilter.org/
+-  #
+-  enableConntrack: true
++    ## @param enableConntrack - boolean - required
++    ## Enable the system-probe agent to connect to the netlink/conntrack subsystem to add NAT information to connection data
++    ## Ref: http://conntrack-tools.netfilter.org/
++    #
++    enableConntrack: true
+ 
+-  ## @param seccomp - string - required
+-  ## Apply an ad-hoc seccomp profile to the system-probe agent to restrict its privileges
+-  ## Note that this will break `kubectl exec … -c system-probe -- /bin/bash`
+-  #
+-  seccomp: localhost/system-probe
++    ## @param seccomp - string - required
++    ## Apply an ad-hoc seccomp profile to the system-probe agent to restrict its privileges
++    ## Note that this will break `kubectl exec … -c system-probe -- /bin/bash`
++    #
++    seccomp: localhost/system-probe
+ 
+-  ## @param seccompRoot - string - required
+-  ## Specify the seccomp profile root directory
+-  #
+-  seccompRoot: /var/lib/kubelet/seccomp
++    ## @param seccompRoot - string - required
++    ## Specify the seccomp profile root directory
++    #
++    seccompRoot: /var/lib/kubelet/seccomp
+ 
+-  ## @param bpfDebug - boolean - required
+-  ## Enable logging for kernel debug
+-  #
+-  bpfDebug: false
++    ## @param bpfDebug - boolean - required
++    ## Enable logging for kernel debug
++    #
++    bpfDebug: false
+ 
+-  ## @param apparmor profile - string - required
+-  ## specify a apparmor profile for system-probe
+-  #
+-  apparmor: unconfined
++    ## @param apparmor profile - string - required
++    ## specify a apparmor profile for system-probe
++    #
++    apparmor: unconfined
+ 
+ ## @param clusterAgent - object - required
+ ## This is the Datadog Cluster Agent implementation that handles cluster-wide
+@@ -354,12 +324,33 @@ clusterAgent:
+   #
+   enabled: false
+ 
+-  containerName: cluster-agent
++  ## @param image - object - required
++  ## Define the Datadog Cluster-Agent image to work with.
++  #
+   image:
++
++    ## @param repository - string - required
++    ## Define the repository to use:
++    #
+     repository: datadog/cluster-agent
+-    tag: 1.4.0
++
++    ## @param tag - string - required
++    ## Define the Cluster-Agent version to use.
++    #
++    tag: 1.5.2
++
++    ## @param pullPolicy - string - required
++    ## The Kubernetes pull policy.
++    #
+     pullPolicy: IfNotPresent
+ 
++    ## @param pullSecrets - list of key:value strings - optional
++    ## It is possible to specify docker registry credentials
++    ## See https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
++    #
++    # pullSecrets:
++    #   - name: "<REG_SECRET>"
++
+   ## @param token - string - required
+   ## This needs to be at least 32 characters a-zA-z
+   ## It is a preshared key between the node agents and the cluster agent
+@@ -367,8 +358,26 @@ clusterAgent:
+   #
+   token: ""
+ 
++  ## @param replicas - integer - required
++  ## Specify the of cluster agent replicas, if > 1 it allow the cluster agent to
++  ## work in HA mode.
++  #
+   replicas: 1
+ 
++  ## @param rbac - object - required
++  ## Provide Cluster Agent Deployment pod(s) RBAC configuration
++  rbac:
++
++    ## @param created - boolean - required
++    ## If true, create & use RBAC resources
++    #
++    create: true
++
++    ## @param serviceAccountName - string - required
++    ## Ignored if clusterAgentrbac.create is true
++    #
++    serviceAccountName: default
++
+   ## @param metricsProvider - object - required
+   ## Enable the metricsProvider to be able to scale based on metrics in Datadog
+   #
+@@ -386,14 +395,6 @@ clusterAgent:
+       ##
+       port: 443
+ 
+-  ## @param clusterChecks - object - required
+-  ## Enable the Cluster Checks feature on both the cluster-agents and the daemonset
+-  ## ref: https://docs.datadoghq.com/agent/autodiscovery/clusterchecks/
+-  ## Autodiscovery via Kube Service annotations is automatically enabled
+-  #
+-  clusterChecks:
+-    enabled: false
+-
+   ## @param confd - list of objects - optional
+   ## Provide additional cluster check configurations
+   ## Each key will become a file in /conf.d
+@@ -412,12 +413,12 @@ clusterAgent:
+   ## Datadog cluster-agent resource requests and limits.
+   #
+   resources: {}
+-#    requests:
+-#      cpu: 200m
+-#      memory: 256Mi
+-#    limits:
+-#      cpu: 200m
+-#      memory: 256Mi
++  # requests:
++  #   cpu: 200m
++  #   memory: 256Mi
++  # limits:
++  #   cpu: 200m
++  #   memory: 256Mi
+ 
+   ## @param priorityclassName - string - optional
+   ## Name of the priorityClass to apply to the Cluster Agent
+@@ -431,24 +432,39 @@ clusterAgent:
+   #
+   # nodeSelector: {}
+ 
+-  ## @param livenessProbe - object - optional
++  ## @param healthPort - integer - optional - default: 8080
++  ## Port number use the cluster-agent to server healthz endpoint
++  healthPort: 8080
++
++  ## @param livenessProbe - object - required
+   ## Override the agent's liveness probe logic from the default:
+   ## In case of issues with the probe, you can disable it with the
+   ## following values, to allow easier investigating:
+   #
+-  # livenessProbe:
+-  #   exec:
+-  #     command: ["/bin/true"]
++  livenessProbe:
++    httpGet:
++      port: 5000
++      path: /metrics
++      scheme: HTTP
+ 
+-  ## @param strategy - string - optional
++  ## @param readinessProbe - object - required
++  ## Override the cluster-agent's readiness probe logic from the default:
++  #
++  readinessProbe:
++    httpGet:
++      port: 5000
++      path: /metrics
++      scheme: HTTP
++
++  ## @param strategy - string - required
+   ## Allow the Cluster Agent deployment to perform a rolling update on helm update
+   ## ref: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy
+   #
+-  # strategy:
+-  #   type: RollingUpdate
+-  #   rollingUpdate:
+-  #     maxSurge: 1
+-  #     maxUnavailable: 0
++  strategy:
++    type: RollingUpdate
++    rollingUpdate:
++      maxSurge: 1
++      maxUnavailable: 0
+ 
+   ## @param podAnnotations - list of key:value strings - optional
+   ## Annotations to add to the cluster-agents's pod(s)
+@@ -456,11 +472,6 @@ clusterAgent:
+   # podAnnotations:
+   #   key: "value"
+ 
+-  ## @param readinessProbe - object - optional
+-  ## Override the cluster-agent's readiness probe logic from the default:
+-  #
+-  # readinessProbe:
+-
+   ## @param useHostNetwork - boolean - optional
+   ## Bind ports on the hostNetwork. Useful for CNI networking where hostPort might
+   ## not be supported. The ports need to be available on all hosts. It can be
+@@ -491,20 +502,6 @@ clusterAgent:
+   #
+   # datadog_cluster_yaml: {}
+ 
+-rbac:
+-
+-  ## @param created - boolean - required
+-  ## If true, create & use RBAC resources
+-  #
+-  create: true
+-
+-  ## @param serviceAccountName - string - required
+-  ## Ignored if rbac.create is true
+-  #
+-  serviceAccountName: default
+-
+-tolerations: []
+-
+ kubeStateMetrics:
+ 
+   ## @param enabled - boolean - required
+@@ -513,37 +510,7 @@ kubeStateMetrics:
+   #
+   enabled: true
+ 
+-kube-state-metrics:
+-  rbac:
+-    ## @param created - boolean - required
+-    ## If true, create & use RBAC resources
+-    #
+-    create: true
+-
+-  serviceAccount:
+-    ## @param created - boolean - required
+-    ## If true, create ServiceAccount, require rbac kube-state-metrics.rbac.create true
+-    #
+-    create: true
+-    ## @param name - string - required
+-    ## The name of the ServiceAccount to use.
+-    ## If not set and create is true, a name is generated using the fullname template
+-    #
+-    name:
+-
+-  ## @param resources - object - optional
+-  ## Resource requests and limits for the kube-state-metrics container.
+-  #
+-  # resources:
+-  #   requests:
+-  #     cpu: 200m
+-  #     memory: 256Mi
+-  #   limits:
+-  #     cpu: 200m
+-  #     memory: 256Mi
+-
+-daemonset:
+-
++agents:
+   ## @param enabled - boolean - required
+   ## You should keep Datadog DaemonSet enabled!
+   ## The exceptional case could be a situation when you need to run
+@@ -554,17 +521,55 @@ daemonset:
+   #
+   enabled: true
+ 
+-  ## @param useDedicatedContainers - boolean - optional
+-  ## Deploy each datadog agent process in a separate container. Allow fine-grained
+-  ## control over allocated resources and better isolation.
++  ## @param image - object - required
++  ## Define the Datadog image to work with.
+   #
+-  # useDedicatedContainers: false
++  image:
++
++    ## @param repository - string - required
++    ## Define the repository to use:
++    ## use "datadog/agent" for Datadog Agent 7
++    ## use "datadog/dogstatsd" for Standalone Datadog Agent DogStatsD 7
++    #
++    repository: datadog/agent
++
++    ## @param tag - string - required
++    ## Define the Agent version to use.
++    ## Use 7-jmx to enable jmx fetch collection
++    #
++    tag: "7"
++
++    ## @param pullPolicy - string - required
++    ## The Kubernetes pull policy.
++    #
++    pullPolicy: IfNotPresent
++
++    ## @param pullSecrets - list of key:value strings - optional
++    ## It is possible to specify docker registry credentials
++    ## See https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
++    #
++    # pullSecrets:
++    #   - name: "<REG_SECRET>"
++
++  ## @param rbac - object - required
++  ## Provide Daemonset RBAC configuration
++  rbac:
++
++    ## @param created - boolean - required
++    ## If true, create & use RBAC resources
++    #
++    create: true
++
++    ## @param serviceAccountName - string - required
++    ## Ignored if daemonset.rbac.create is true
++    #
++    serviceAccountName: default
+ 
+   containers:
+ 
+     agent:
+       ## @param env - list - required
+-      ## Additionnal environment variables for the agent container.
++      ## Additional environment variables for the agent container.
+       #
+       # env:
+ 
+@@ -586,9 +591,24 @@ daemonset:
+       #    cpu: 200m
+       #    memory: 256Mi
+ 
++      ## @param livenessProbe - object - required
++      ## Override the agent's liveness probe logic from the default:
++      ## In case of issues with the probe, you can disable it with the
++      ## following values, to allow easier investigating:
++      #
++      livenessProbe:
++        httpGet:
++          path: /health
++          port: 5555
++        initialDelaySeconds: 15
++        periodSeconds: 15
++        timeoutSeconds: 5
++        successThreshold: 1
++        failureThreshold: 6
++
+     processAgent:
+       ## @param env - list - required
+-      ## Additionnal environment variables for the process-agent container.
++      ## Additional environment variables for the process-agent container.
+       #
+       # env:
+ 
+@@ -612,7 +632,7 @@ daemonset:
+ 
+     traceAgent:
+       ## @param env - list - required
+-      ## Additionnal environment variables for the trace-agent container.
++      ## Additional environment variables for the trace-agent container.
+       #
+       # env:
+ 
+@@ -634,9 +654,21 @@ daemonset:
+       #    cpu: 100m
+       #    memory: 200Mi
+ 
++      ## @param livenessProbe - object - optional
++      ## Override the trace agent's liveness probe logic from the default:
++      ## In case of issues with the probe, you can disable it with the
++      ## following values, to allow easier investigating:
++      #
++      livenessProbe:
++        tcpSocket:
++          port: 8126
++        initialDelaySeconds: 15
++        periodSeconds: 15
++        timeoutSeconds: 5
++
+     systemProbe:
+       ## @param env - list - required
+-      ## Additionnal environment variables for the system-probe container.
++      ## Additional environment variables for the system-probe container.
+       #
+       # env:
+ 
+@@ -658,6 +690,34 @@ daemonset:
+       #    cpu: 100m
+       #    memory: 200Mi
+ 
++    initContainers:
++      ## @param resources - object - required
++      ## Resource requests and limits for the init containers.
++      #
++      resources: {}
++      #  requests:
++      #    cpu: 100m
++      #    memory: 200Mi
++      #  limits:
++      #    cpu: 100m
++      #    memory: 200Mi
++
++  ## @param volumes - list of objects - optional
++  ## Specify additional volumes to mount in the dd-agent container
++  #
++  # volumes:
++  #   - hostPath:
++  #       path: <HOST_PATH>
++  #     name: <VOLUME_NAME>
++
++  ## @param volumeMounts - list of objects - optional
++  ## Specify additional volumes to mount in the dd-agent container
++  #
++  # volumeMounts:
++  #   - name: <VOLUME_NAME>
++  #     mountPath: <CONTAINER_PATH>
++  #     readOnly: true
++
+   ## @param useHostNetwork - boolean - optional
+   ## Bind ports on the hostNetwork. Useful for CNI networking where hostPort might
+   ## not be supported. The ports need to be available on all hosts. It Can be
+@@ -668,22 +728,6 @@ daemonset:
+   #
+   # useHostNetwork: true
+ 
+-  ## @param useHostPort - boolean - optional
+-  ## Sets the hostPort to the same value of the container port. Needs to be used
+-  ## to receive traces in a standard APM set up. Can be used as for sending custom metrics.
+-  ## The ports need to be available on all hosts.
+-  ##
+-  ## WARNING: Make sure that hosts using this are properly firewalled otherwise
+-  ## metrics and traces are accepted from any host able to connect to this host.
+-  #
+-  # useHostPort: true
+-
+-  ## @param useHostPID - boolean - optional
+-  ## Run the agent in the host's PID namespace. This is required for Dogstatsd origin
+-  ## detection to work. See https://docs.datadoghq.com/developers/dogstatsd/unix_socket/
+-  #
+-  # useHostPID: true
+-
+   ## @param podAnnotations - list of key:value strings - optional
+   ## Annotations to add to the DaemonSet's Pods
+   #
+@@ -711,10 +755,10 @@ daemonset:
+   ## Allow the DaemonSet to perform a rolling update on helm update
+   ## ref: https://kubernetes.io/docs/tasks/manage-daemon/update-daemon-set/
+   #
+-  # updateStrategy:
+-  #   type: RollingUpdate
+-  #   rollingUpdate:
+-  #     maxUnavailable: "10%"
++  updateStrategy:
++    type: RollingUpdate
++    rollingUpdate:
++      maxUnavailable: "10%"
+ 
+   ## @param priorityClassName - string - optional
+   ## Sets PriorityClassName if defined.
+@@ -761,73 +805,66 @@ daemonset:
+   #   # agent version >= 6.15
+   #   # jmx_use_container_support: true
+ 
+-deployment:
++clusterChecksRunner:
++
+   ## @param enabled - boolean - required
+-  ## Apart from DaemonSet, deploy Datadog agent pods and related service for
+-  ## applications that want to send custom metrics. Provides DogStatsD service.
++  ## If true, deploys agent dedicated for running the Cluster Checks instead of running in the Daemonset's agents.
++  ## ref: https://docs.datadoghq.com/agent/autodiscovery/clusterchecks/
+   #
+   enabled: false
+ 
+-  ## @param replicas - integer - required
+-  ## If you want to use datadog.collectEvents, keep deployment.replicas set to 1.
+-  #
+-  replicas: 1
+-
+-  ## @param affinity - object - required
+-  ## Affinity for pod assignment
+-  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+-  #
+-  affinity: {}
+-
+-  ## @param tolerations - array - required
+-  ## Tolerations for pod assignment
+-  ## Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
++  ## @param image - object - required
++  ## Define the Datadog image to work with.
+   #
+-  tolerations: []
++  image:
+ 
+-  ## @param dogstatsdNodePort - integer - optional
+-  ## If you're using a NodePort-type service and need a fixed port, set this parameter.
+-  #
+-  # dogstatsdNodePort: 8125
++    ## @param repository - string - required
++    ## Define the repository to use:
++    ## use "datadog/agent" for Datadog Agent 7
++    ## use "datadog/dogstatsd" for Standalone Datadog Agent DogStatsD 7
++    #
++    repository: datadog/agent
+ 
+-  ## @param traceNodePort - integer - optional
+-  ## If you're using a NodePort-type service and need a fixed port, set this parameter.
+-  #
+-  # traceNodePort: 8126
++    ## @param tag - string - required
++    ## Define the Agent version to use.
++    ## Use 7-jmx to enable jmx fetch collection
++    #
++    tag: "7"
+ 
+-  ## @param service - object - required
+-  ##
+-  #
+-  service:
+-    type: ClusterIP
+-    annotations: {}
++    ## @param pullPolicy - string - required
++    ## The Kubernetes pull policy.
++    #
++    pullPolicy: IfNotPresent
+ 
+-  ## @param priorityClassName - string - optional
+-  ## Sets PriorityClassName if defined.
+-  #
+-  # priorityClassName:
++    ## @param pullSecrets - list of key:value strings - optional
++    ## It is possible to specify docker registry credentials
++    ## See https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
++    #
++    # pullSecrets:
++    #   - name: "<REG_SECRET>"
+ 
+-clusterchecksDeployment:
++  ## @param rbac - object - required
++  ## Provide Cluster Checks Deployment pods RBAC configuration
++  rbac:
+ 
+-  ## @param enabled - boolean - required
+-  ## If true, deploys agent dedicated for running the Cluster Checks instead of running in the Daemonset's agents.
+-  ## ref: https://docs.datadoghq.com/agent/autodiscovery/clusterchecks/
+-  #
+-  enabled: false
++    ## @param created - boolean - required
++    ## If true, create & use RBAC resources
++    #
++    create: true
+ 
+-  rbac:
+     ## @param dedicated - boolean - required
+     ## If true, use a dedicated RBAC resource for the cluster checks agent(s)
+     #
+     dedicated: false
++
+     ## @param serviceAccountName - string - required
+-    ## Ignored if rbac.create is true
++    ## Ignored if clusterChecksRunner.rbac.create is true
+     #
+     serviceAccountName: default
+ 
+   ## @param replicas - integer - required
+-  ## If you want to deploy the cluckerchecks agent in HA, keep at least clusterchecksDeployment.replicas set to 2.
+-  ## And increase the clusterchecksDeployment.replicas according to the number of Cluster Checks.
++  ## If you want to deploy the cluckerchecks agent in HA, keep at least clusterChecksRunner.replicas set to 2.
++  ## And increase the clusterChecksRunner.replicas according to the number of Cluster Checks.
+   #
+   replicas: 2
+ 
+@@ -853,11 +890,11 @@ clusterchecksDeployment:
+   ## Allow the ClusterChecks deployment to perform a rolling update on helm update
+   ## ref: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy
+   #
+-  # strategy:
+-  #   type: RollingUpdate
+-  #   rollingUpdate:
+-  #     maxSurge: 1
+-  #     maxUnavailable: 0
++  strategy:
++    type: RollingUpdate
++    rollingUpdate:
++      maxSurge: 1
++      maxUnavailable: 0
+ 
+   ## @param nodeSelector - object - optional
+   ## Allow the ClusterChecks Deployment to schedule on selected nodes
+@@ -887,3 +924,33 @@ clusterchecksDeployment:
+   # env:
+   #   - name: <ENV_VAR_NAME>
+   #     value: <ENV_VAR_VALUE>
++
++
++kube-state-metrics:
++  rbac:
++    ## @param created - boolean - required
++    ## If true, create & use RBAC resources
++    #
++    create: true
++
++  serviceAccount:
++    ## @param created - boolean - required
++    ## If true, create ServiceAccount, require rbac kube-state-metrics.rbac.create true
++    #
++    create: true
++    ## @param name - string - required
++    ## The name of the ServiceAccount to use.
++    ## If not set and create is true, a name is generated using the fullname template
++    #
++    name:
++
++  ## @param resources - object - optional
++  ## Resource requests and limits for the kube-state-metrics container.
++  #
++  # resources:
++  #   requests:
++  #     cpu: 200m
++  #     memory: 256Mi
++  #   limits:
++  #     cpu: 200m
++  #     memory: 256Mi

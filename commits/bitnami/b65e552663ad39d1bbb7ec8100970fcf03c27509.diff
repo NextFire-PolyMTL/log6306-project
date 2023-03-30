@@ -1,0 +1,939 @@
+commit b65e552663ad39d1bbb7ec8100970fcf03c27509
+Author: Juan Ariza <juan@bitnami.com>
+Date:   Mon Apr 9 16:12:49 2018 +0200
+
+    Adding new Helpers functions + refactor
+
+diff --git a/bitnami/elasticsearch/README.md b/bitnami/elasticsearch/README.md
+index 22f220d5a1..59614e6c2e 100644
+--- a/bitnami/elasticsearch/README.md
++++ b/bitnami/elasticsearch/README.md
+@@ -51,7 +51,7 @@ The following tables lists the configurable parameters of the Elasticsearch char
+ |---------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------|
+ | `image.registry`                                  | Elasticsearch image repository                                                                                            | `docker.io`                                                         |
+ | `image.repository`                                | Elasticsearch image name                                                                                                  | `bitnami/elasticsearch`                                             |
+-| `image.repository`                                | Elasticsearch image tag                                                                                                   | `{VERSION}`                                                         |
++| `image.tag`                                       | Elasticsearch image tag                                                                                                   | `{VERSION}`                                                         |
+ | `image.pullPolicy`                                | Image pull policy                                                                                                         | `IfNotPresent`                                                      |
+ | `image.pullSecrets`                               | Specify image pull secrets                                                                                                | `nil`                                                               |
+ | `name`                                            | Elasticsearch cluster name                                                                                                | `elastic`                                                           |
+@@ -63,13 +63,13 @@ The following tables lists the configurable parameters of the Elasticsearch char
+ | `master.heapSize`                                 | Master-eligible node heap size                                                                                            | `128m`                                                              |
+ | `master.antiAffinity`                             | Master-eligible node pod anti-affinity policy                                                                             | `soft`                                                              |
+ | `master.resources`                                | CPU/Memory resource requests/limits for master-eligible nodes pods                                                        | `requests: { cpu: "25m", memory: "256Mi" }`                         |
+-| `master.livenessProbe.enabled`                    | Turn on and off liveness probe (master-eligible nodes pod)                                                                | `true`                                                              |
++| `master.livenessProbe.enabled`                    | Enable/disable the liveness probe (master-eligible nodes pod)                                                             | `true`                                                              |
+ | `master.livenessProbe.initialDelaySeconds`        | Delay before liveness probe is initiated (master-eligible nodes pod)                                                      | `90`                                                                |
+ | `master.livenessProbe.periodSeconds`              | How often to perform the probe (master-eligible nodes pod)                                                                | `10`                                                                |
+ | `master.livenessProbe.timeoutSeconds`             | When the probe times out (master-eligible nodes pod)                                                                      | `5`                                                                 |
+ | `master.livenessProbe.successThreshold`           | Minimum consecutive successes for the probe to be considered successful after having failed (master-eligible nodes pod)   | `1`                                                                 |
+ | `master.livenessProbe.failureThreshold`           | Minimum consecutive failures for the probe to be considered failed after having succeeded                                 | `5`                                                                 |
+-| `master.readinessProbe.enabled`                   | Turn on and off readiness probe (master-eligible nodes pod)                                                               | `true`                                                              |
++| `master.readinessProbe.enabled`                   | Enable/disable the readiness probe (master-eligible nodes pod)                                                            | `true`                                                              |
+ | `master.readinessProbe.initialDelaySeconds`       | Delay before readiness probe is initiated (master-eligible nodes pod)                                                     | `90`                                                                |
+ | `master.readinessProbe.periodSeconds`             | How often to perform the probe (master-eligible nodes pod)                                                                | `10`                                                                |
+ | `master.readinessProbe.timeoutSeconds`            | When the probe times out (master-eligible nodes pod)                                                                      | `5`                                                                 |
+@@ -82,13 +82,13 @@ The following tables lists the configurable parameters of the Elasticsearch char
+ | `coordinating.service.type`                       | Coordinating-only node kubernetes service type                                                                            | `ClusterIP`                                                         |
+ | `coordinating.service.port`                       | Elasticsearch REST API port                                                                                               | `ClusterIP`                                                         |
+ | `coordinating.resources`                          | CPU/Memory resource requests/limits for coordinating-only nodes pods                                                      | `requests: { cpu: "25m", memory: "256Mi" }`                         |
+-| `coordinating.livenessProbe.enabled`              | Turn on and off liveness probe (coordinating-only nodes pod)                                                              | `true`                                                              |
++| `coordinating.livenessProbe.enabled`              | Enable/disable the liveness probe (coordinating-only nodes pod)                                                           | `true`                                                              |
+ | `coordinating.livenessProbe.initialDelaySeconds`  | Delay before liveness probe is initiated (coordinating-only nodes pod)                                                    | `90`                                                                |
+ | `coordinating.livenessProbe.periodSeconds`        | How often to perform the probe (coordinating-only nodes pod)                                                              | `10`                                                                |
+ | `coordinating.livenessProbe.timeoutSeconds`       | When the probe times out (coordinating-only nodes pod)                                                                    | `5`                                                                 |
+ | `coordinating.livenessProbe.successThreshold`     | Minimum consecutive successes for the probe to be considered successful after having failed (coordinating-only nodes pod) | `1`                                                                 |
+ | `coordinating.livenessProbe.failureThreshold`     | Minimum consecutive failures for the probe to be considered failed after having succeeded                                 | `5`                                                                 |
+-| `coordinating.readinessProbe.enabled`             | Turn on and off readiness probe (coordinating-only nodes pod)                                                             | `true`                                                              |
++| `coordinating.readinessProbe.enabled`             | Enable/disable the readiness probe (coordinating-only nodes pod)                                                          | `true`                                                              |
+ | `coordinating.readinessProbe.initialDelaySeconds` | Delay before readiness probe is initiated (coordinating-only nodes pod)                                                   | `90`                                                                |
+ | `coordinating.readinessProbe.periodSeconds`       | How often to perform the probe (coordinating-only nodes pod)                                                              | `10`                                                                |
+ | `coordinating.readinessProbe.timeoutSeconds`      | When the probe times out (coordinating-only nodes pod)                                                                    | `5`                                                                 |
+@@ -104,13 +104,13 @@ The following tables lists the configurable parameters of the Elasticsearch char
+ | `data.persistence.storageClass`                   | Persistent Volume Storage Class                                                                                           | ``                                                                  |
+ | `data.persistence.accessModes`                    | Persistent Volume Access Modes                                                                                            | `[ReadWriteOnce]`                                                   |
+ | `data.persistence.size`                           | Persistent Volume Size                                                                                                    | `8Gi`                                                               |
+-| `data.livenessProbe.enabled`                      | Turn on and off liveness probe (data nodes pod)                                                                           | `true`                                                              |
++| `data.livenessProbe.enabled`                      | Enable/disable the liveness probe (data nodes pod)                                                                        | `true`                                                              |
+ | `data.livenessProbe.initialDelaySeconds`          | Delay before liveness probe is initiated (data nodes pod)                                                                 | `90`                                                                |
+ | `data.livenessProbe.periodSeconds`                | How often to perform the probe (data nodes pod)                                                                           | `10`                                                                |
+ | `data.livenessProbe.timeoutSeconds`               | When the probe times out (data nodes pod)                                                                                 | `5`                                                                 |
+ | `data.livenessProbe.successThreshold`             | Minimum consecutive successes for the probe to be considered successful after having failed (data nodes pod)              | `1`                                                                 |
+ | `data.livenessProbe.failureThreshold`             | Minimum consecutive failures for the probe to be considered failed after having succeeded                                 | `5`                                                                 |
+-| `data.readinessProbe.enabled`                     | Turn on and off readiness probe (data nodes pod)                                                                          | `true`                                                              |
++| `data.readinessProbe.enabled`                     | Enable/disable the readiness probe (data nodes pod)                                                                       | `true`                                                              |
+ | `data.readinessProbe.initialDelaySeconds`         | Delay before readiness probe is initiated (data nodes pod)                                                                | `90`                                                                |
+ | `data.readinessProbe.periodSeconds`               | How often to perform the probe (data nodes pod)                                                                           | `10`                                                                |
+ | `data.readinessProbe.timeoutSeconds`              | When the probe times out (data nodes pod)                                                                                 | `5`                                                                 |
+@@ -122,13 +122,13 @@ The following tables lists the configurable parameters of the Elasticsearch char
+ | `ingest.heapSize`                                 | Ingest node heap size                                                                                                     | `128m`                                                              |
+ | `ingest.antiAffinity`                             | Ingest node pod anti-affinity policy                                                                                      | `soft`                                                              |
+ | `ingest.resources`                                | CPU/Memory resource requests/limits for ingest nodes pods                                                                 | `requests: { cpu: "25m", memory: "256Mi" }`                         |
+-| `ingest.livenessProbe.enabled`                    | Turn on and off liveness probe (ingest nodes pod)                                                                         | `true`                                                              |
++| `ingest.livenessProbe.enabled`                    | Enable/disable the liveness probe (ingest nodes pod)                                                                      | `true`                                                              |
+ | `ingest.livenessProbe.initialDelaySeconds`        | Delay before liveness probe is initiated (ingest nodes pod)                                                               | `90`                                                                |
+ | `ingest.livenessProbe.periodSeconds`              | How often to perform the probe (ingest nodes pod)                                                                         | `10`                                                                |
+ | `ingest.livenessProbe.timeoutSeconds`             | When the probe times out (ingest nodes pod)                                                                               | `5`                                                                 |
+ | `ingest.livenessProbe.successThreshold`           | Minimum consecutive successes for the probe to be considered successful after having failed (ingest nodes pod)            | `1`                                                                 |
+ | `ingest.livenessProbe.failureThreshold`           | Minimum consecutive failures for the probe to be considered failed after having succeeded                                 | `5`                                                                 |
+-| `ingest.readinessProbe.enabled`                   | Turn on and off readiness probe (ingest nodes pod)                                                                        | `true`                                                              |
++| `ingest.readinessProbe.enabled`                   | Enable/disable the readiness probe (ingest nodes pod)                                                                     | `true`                                                              |
+ | `ingest.readinessProbe.initialDelaySeconds`       | Delay before readiness probe is initiated (ingest nodes pod)                                                              | `90`                                                                |
+ | `ingest.readinessProbe.periodSeconds`             | How often to perform the probe (ingest nodes pod)                                                                         | `10`                                                                |
+ | `ingest.readinessProbe.timeoutSeconds`            | When the probe times out (ingest nodes pod)                                                                               | `5`                                                                 |
+@@ -142,8 +142,6 @@ The following tables lists the configurable parameters of the Elasticsearch char
+ | `metrics.service.type`                            | Metrics exporter endpoint service type                                                                                    | `ClusterIP`                                                         |
+ | `metrics.resources`                               | Metrics exporter resource requests/limit                                                                                  | `requests: { cpu: "25m" }`                                          |
+ 
+-The above parameters map to the env variables defined in [bitnami/elasticsearch](http://github.com/bitnami/bitnami-docker-elasticsearch). For more information please refer to the [bitnami/elasticsearch](http://github.com/bitnami/bitnami-docker-elasticsearch) image documentation.
+-
+ Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
+ 
+ ```console
+@@ -160,8 +158,7 @@ Alternatively, a YAML file that specifies the values for the parameters can be p
+ $ helm install --name my-release -f values.yaml bitnami/elasticsearch
+ ```
+ 
+-> **Tip**: You can use the default [values.yaml](values.yaml)
+-> **Tip**: Use [values-production.yaml](values-production.yaml) for production environments.
++> **Tip**: You can use the default [values.yaml](values.yaml). [values-production.yaml](values-production.yaml) has defaults optimized for use in production environments.
+ 
+ ## Persistence
+ 
+diff --git a/bitnami/elasticsearch/templates/_helpers.tpl b/bitnami/elasticsearch/templates/_helpers.tpl
+index 85a040da82..87af0cc54d 100644
+--- a/bitnami/elasticsearch/templates/_helpers.tpl
++++ b/bitnami/elasticsearch/templates/_helpers.tpl
+@@ -2,7 +2,7 @@
+ {{/*
+ Expand the name of the chart.
+ */}}
+-{{- define "name" -}}
++{{- define "elasticsearch.name" -}}
+ {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
+ 
+@@ -10,11 +10,27 @@ Expand the name of the chart.
+ Create a default fully qualified app name.
+ We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+ */}}
+-{{- define "fullname" -}}
++{{- define "elasticsearch.fullname" -}}
+ {{- $name := default .Chart.Name .Values.nameOverride -}}
+ {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
+ 
++{{/*
++Create chart name and version as used by the chart label.
++*/}}
++{{- define "elasticsearch.chart" -}}
++{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*
++Return the proper ES image name
++*/}}
++{{- define "elasticsearch.image" -}}
++{{- $registryName :=  default .Values.image.registry "docker.io" -}}
++{{- $tag := default .Values.image.tag "latest" -}}
++{{- printf "%s/%s:%s" $registryName .Values.image.repository $tag -}}
++{{- end -}}
++
+ {{/*
+ Create a default fully qualified master name.
+ We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+@@ -59,3 +75,12 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this
+ {{- $name := default .Chart.Name .Values.nameOverride -}}
+ {{- printf "%s-%s-%s" .Release.Name $name .Values.metrics.name | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
++
++{{/*
++Return the proper ES exporter image name
++*/}}
++{{- define "metrics.image" -}}
++{{- $registryName :=  default .Values.metrics.image.registry "docker.io" -}}
++{{- $tag := default .Values.metrics.image.tag "latest" -}}
++{{- printf "%s/%s:%s" $registryName .Values.metrics.image.repository $tag -}}
++{{- end -}}
+diff --git a/bitnami/elasticsearch/templates/cm.yaml b/bitnami/elasticsearch/templates/cm.yaml
+index c414dd4792..fafa4d3be3 100644
+--- a/bitnami/elasticsearch/templates/cm.yaml
++++ b/bitnami/elasticsearch/templates/cm.yaml
+@@ -1,19 +1,19 @@
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+-  name: {{ template "fullname" . }}
++  name: {{ template "elasticsearch.fullname" . | quote }}
+   labels:
+-    app: {{ template "name" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
++    app: {{ template "elasticsearch.name" . | quote }}
++    chart: {{ template "elasticsearch.chart" . | quote }}
++    heritage: {{ .Release.Service | quote }}
++    release: {{ .Release.Name | quote }}
+ data:
+   elasticsearch_custom.yml: |-
+ 
+     cloud:
+       kubernetes:
+-        service: "{{ template "master.fullname" . }}"
+-        namespace: "{{ .Release.Namespace }}"
++        service: {{ template "master.fullname" . | quote }}
++        namespace: {{ .Release.Namespace | quote }}
+ 
+     discovery:
+       zen:
+diff --git a/bitnami/elasticsearch/templates/data-statefulset.yaml b/bitnami/elasticsearch/templates/data-statefulset.yaml
+index d97865c9b2..9e252ff822 100644
+--- a/bitnami/elasticsearch/templates/data-statefulset.yaml
++++ b/bitnami/elasticsearch/templates/data-statefulset.yaml
+@@ -1,27 +1,27 @@
+ apiVersion: apps/v1beta2
+ kind: StatefulSet
+ metadata:
+-  name: "{{ template "data.fullname" . }}"
++  name: {{ template "data.fullname" . | quote }}
+   labels:
+-    app: "{{ template "name" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    app: {{ template "elasticsearch.name" . | quote }}
++    chart: {{ template "elasticsearch.chart" . | quote }}
++    heritage: {{ .Release.Service | quote }}
++    release: {{ .Release.Name | quote }}
+     role: "data"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
+ spec:
+   selector:
+     matchLabels:
+-      release: "{{ .Release.Name }}"
++      app: {{{ template "elasticsearch.name" . | quote }}
++      release: {{ .Release.Name | quote }}
+       role: "data"
+-      app: {{ template "name" . }}
+   serviceName: "{{ template "data.fullname" . }}"
+   replicas: {{ .Values.data.replicas }}
+   template:
+     metadata:
+       labels:
+-        app: "{{ template "name" . }}"
++        app: {{{ template "elasticsearch.name" . | quote }}
++        release: {{ .Release.Name | quote }}
+         role: "data"
+-        release: "{{ .Release.Name }}"
+     spec:
+       serviceAccountName: {{ .Values.serviceAccountName | quote }}
+       {{- if eq .Values.data.antiAffinity "hard" }}
+@@ -31,9 +31,9 @@ spec:
+             - topologyKey: "kubernetes.io/hostname"
+               labelSelector:
+                 matchLabels:
+-                  app: "{{ template "name" . }}"
++                  app: {{{ template "elasticsearch.name" . | quote }}
++                  release: {{ .Release.Name | quote }}
+                   role: "data"
+-                  release: "{{ .Release.Name }}"
+       {{- else if eq .Values.data.antiAffinity "soft" }}
+       affinity:
+         podAntiAffinity:
+@@ -43,28 +43,28 @@ spec:
+               topologyKey: kubernetes.io/hostname
+               labelSelector:
+                 matchLabels:
+-                  app: "{{ template "name" . }}"
++                  app: {{{ template "elasticsearch.name" . | quote }}
++                  release: {{ .Release.Name | quote }}
+                   role: "data"
+-                  release: "{{ .Release.Name }}"
+       {{- end }}
+       initContainers:
+       - name: sysctl
+-        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+-        imagePullPolicy: "{{ .Values.image.pullPolicy }}"
++        image: {{ template "elasticsearch.image" . | quote }}
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         command: ["sysctl", "-w", "vm.max_map_count=262144"]
+         securityContext:
+           privileged: true
+       containers:
+       - name: {{ template "data.fullname" . }}
+-        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+-        imagePullPolicy: "{{ .Values.image.pullPolicy }}"
++        image: {{ template "elasticsearch.image" . | quote }}
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: ELASTICSEARCH_CLUSTER_NAME
+-          value: "{{ .Values.name }}"
++          value: {{ .Values.name | quote }}
+         - name: ELASTICSEARCH_PLUGINS
+-          value: "{{ .Values.plugins }}"
++          value: {{ .Values.plugins | quote }}
+         - name: ELASTICSEARCH_HEAP_SIZE
+-          value: "{{ .Values.ingest.heapSize }}"
++          value: {{ .Values.coordinating.heapSize | quote }}
+         - name: ELASTICSEARCH_IS_DEDICATED_NODE
+           value: "yes"
+         - name: ELASTICSEARCH_NODE_TYPE
+@@ -72,16 +72,28 @@ spec:
+         ports:
+         - name: transport
+           containerPort: 9300
++        {- if .Values.data.livenessProbe.enabled }}
+         livenessProbe:
++          initialDelaySeconds: {{ .Values.data.livenessProbe.initialDelaySeconds }}
++          periodSeconds: {{ .Values.data.livenessProbe.periodSeconds }}
++          timeoutSeconds: {{ .Values.data.livenessProbe.timeoutSeconds }}
++          successThreshold: {{ .Values.data.livenessProbe.successThreshold }}
++          failureThreshold: {{ .Values.data.livenessProbe.failureThreshold }}
+           httpGet:
+             path: /_cluster/health?local=true
+             port: 9200
+-          initialDelaySeconds: 90
++        {{- end }}
++        {{- if .Values.data.readinessProbe.enabled }}
+         readinessProbe:
++          initialDelaySeconds: {{ .Values.data.livenessProbe.initialDelaySeconds }}
++          periodSeconds: {{ .Values.data.livenessProbe.periodSeconds }}
++          timeoutSeconds: {{ .Values.data.livenessProbe.timeoutSeconds }}
++          successThreshold: {{ .Values.data.livenessProbe.successThreshold }}
++          failureThreshold: {{ .Values.data.livenessProbe.failureThreshold }}
+           httpGet:
+             path: /_cluster/health?local=true
+             port: 9200
+-          initialDelaySeconds: 5
++        {{- end }}
+         resources:
+ {{ toYaml .Values.data.resources | indent 10 }}
+         volumeMounts:
+@@ -93,7 +105,7 @@ spec:
+       volumes:
+       - name: "config"
+         configMap:
+-          name: "{{ template "fullname" . }}"
++          name: {{ template "elasticsearch.fullname" . | quote }}
+ {{- if .Values.data.persistence.enabled }}
+   volumeClaimTemplates:
+   - metadata:
+@@ -109,12 +121,12 @@ spec:
+ {{- if (eq "-" .Values.data.persistence.storageClass) }}
+       storageClassName: ""
+ {{- else }}
+-      storageClassName: "{{ .Values.data.persistence.storageClass }}"
++      storageClassName: {{ .Values.data.persistence.storageClass | quote }}
+ {{- end }}
+ {{- end }}
+       resources:
+         requests:
+-          storage: "{{ .Values.data.persistence.size }}"
++          storage: {{ .Values.data.persistence.size | quote }}
+ {{- else }}
+       - name: "data"
+         emptyDir: {}
+diff --git a/bitnami/elasticsearch/templates/master-deploy.yaml b/bitnami/elasticsearch/templates/master-deploy.yaml
+index 0b4a7c5bb4..38d0c59ba6 100644
+--- a/bitnami/elasticsearch/templates/master-deploy.yaml
++++ b/bitnami/elasticsearch/templates/master-deploy.yaml
+@@ -1,21 +1,21 @@
+ apiVersion: extensions/v1beta1
+ kind: Deployment
+ metadata:
+-  name: "{{ template "master.fullname" . }}"
++  name: {{ template "master.fullname" . | quote }}
+   labels:
+-    app: "{{ template "name" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    app: {{ template "elasticsearch.name" . | quote }}
++    chart: {{ template "elasticsearch.chart" . | quote }}
++    heritage: {{ .Release.Service | quote }}
++    release: {{ .Release.Name | quote }}
+     role: "master"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
+ spec:
+   replicas: {{ .Values.master.replicas }}
+   template:
+     metadata:
+       labels:
+-        app: "{{ template "name" . }}"
++        app: {{ template "elasticsearch.name" . | quote }}
++        release: {{ .Release.Name | quote }}
+         role: "master"
+-        release: "{{ .Release.Name }}"
+     spec:
+       serviceAccountName: {{ .Values.serviceAccountName | quote }}
+       {{- if eq .Values.master.antiAffinity "hard" }}
+@@ -25,9 +25,9 @@ spec:
+             - topologyKey: "kubernetes.io/hostname"
+               labelSelector:
+                 matchLabels:
+-                  app: "{{ template "name" . }}"
++                  app: {{ template "elasticsearch.name" . | quote }}
++                  release: {{ .Release.Name | quote }}
+                   role: "master"
+-                  release: "{{ .Release.Name }}"
+       {{- else if eq .Values.master.antiAffinity "soft" }}
+       affinity:
+         podAntiAffinity:
+@@ -37,9 +37,9 @@ spec:
+               topologyKey: kubernetes.io/hostname
+               labelSelector:
+                 matchLabels:
+-                  app: "{{ template "name" . }}"
++                  app: {{ template "elasticsearch.name" . | quote }}
++                  release: {{ .Release.Name | quote }}
+                   role: "master"
+-                  release: "{{ .Release.Name }}"
+       {{- end }}
+       {{- if .Values.image.pullSecrets }}
+       imagePullSecrets:
+@@ -49,22 +49,22 @@ spec:
+       {{- end }}
+       initContainers:
+       - name: sysctl
+-        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+-        imagePullPolicy: "{{ .Values.image.pullPolicy }}"
++        image: {{ template "elasticsearch.image" . | quote }}
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         command: ["sysctl", "-w", "vm.max_map_count=262144"]
+         securityContext:
+           privileged: true
+       containers:
+       - name: {{ template "master.fullname" . }}
+-        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        image: {{ template "elasticsearch.image" . | quote }}
+         imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: ELASTICSEARCH_CLUSTER_NAME
+-          value: "{{ .Values.name }}"
++          value: {{ .Values.name | quote }}
+         - name: ELASTICSEARCH_PLUGINS
+-          value: "{{ .Values.plugins }}"
++          value: {{ .Values.plugins | quote }}
+         - name: ELASTICSEARCH_HEAP_SIZE
+-          value: "{{ .Values.ingest.heapSize }}"
++          value: {{ .Values.coordinating.heapSize | quote }}
+         - name: ELASTICSEARCH_IS_DEDICATED_NODE
+           value: "yes"
+         - name: ELASTICSEARCH_NODE_TYPE
+@@ -105,6 +105,6 @@ spec:
+       volumes:
+       - name: "config"
+         configMap:
+-          name: "{{ template "fullname" . }}"
++          name: {{ template "elasticsearch.fullname" . | quote }}
+       - name: "data"
+         emptyDir: {}
+diff --git a/bitnami/elasticsearch/templates/master-svc.yaml b/bitnami/elasticsearch/templates/master-svc.yaml
+index c1291d35d1..5e5fabeec8 100644
+--- a/bitnami/elasticsearch/templates/master-svc.yaml
++++ b/bitnami/elasticsearch/templates/master-svc.yaml
+@@ -1,18 +1,19 @@
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: "{{ template "master.fullname" . }}"
++  name: {{ template "master.fullname" . | quote }}
+   labels:
+-    app: "{{ template "name" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
++    app: {{ template "elasticsearch.name" . | quote }}
++    chart: {{ template "elasticsearch.chart" . | quote }}
++    heritage: {{ .Release.Service | quote }}
++    release: {{ .Release.Name | quote }}
++    role: "master"
+ spec:
+   ports:
+   - name: transport
+     port: 9300
+     targetPort: transport
+   selector:
+-    app: "{{ template "name" . }}"
+-    release: "{{ .Release.Name }}"
++    app: {{ template "elasticsearch.name" . | quote }}
++    release: {{ .Release.Name | quote }} 
+     role: "master"
+diff --git a/bitnami/elasticsearch/templates/metrics-deploy.yaml b/bitnami/elasticsearch/templates/metrics-deploy.yaml
+index f1b29c5c92..caec394362 100644
+--- a/bitnami/elasticsearch/templates/metrics-deploy.yaml
++++ b/bitnami/elasticsearch/templates/metrics-deploy.yaml
+@@ -2,21 +2,21 @@
+ apiVersion: extensions/v1beta1
+ kind: Deployment
+ metadata:
+-  name: "{{ template "metrics.fullname" . }}"
++  name: {{ template "metrics.fullname" . | quote }}
+   labels:
+-    app: "{{ template "name" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    app: {{ template "elasticsearch.name" . | quote }}
++    chart: {{ template "elasticsearch.chart" . | quote }}
++    heritage: {{ .Release.Service | quote }}
++    release: {{ .Release.Name | quote }}
+     role: "metrics"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
+ spec:
+   replicas: 1
+   template:
+     metadata:
+       labels:
+-        app: "{{ template "name" . }}"
++        app: {{ template "elasticsearch.name" . | quote }}
++        release: {{ .Release.Name | quote }}
+         role: "metrics"
+-        release: "{{ .Release.Name }}"
+     spec:
+       {{- if .Values.image.pullSecrets }}
+       imagePullSecrets:
+@@ -25,12 +25,12 @@ spec:
+       {{- end}}
+       {{- end }}
+       containers:
+-      - name: "metrics"
+-        image: "{{ .Values.metrics.image.name }}:{{ .Values.metrics.image.tag }}"
+-        imagePullPolicy: "{{ .Values.metrics.image.pullPolicy }}"
++      - name: {{ template "metrics.fullname" . }}
++        image:  {{ template "metrics.image" . | quote }}
++        imagePullPolicy: {{ .Values.metrics.image.pullPolicy | quote }}
+         args: [ "-es.uri=http://{{ template "coordinating.fullname" . }}:{{ .Values.coordinating.service.port }}", "-es.all=true" ]
+         ports:
+-        - name: "metrics"
++        - name: metrics
+           containerPort: 9108
+         livenessProbe:
+           httpGet:
+diff --git a/bitnami/elasticsearch/templates/metrics-svc.yaml b/bitnami/elasticsearch/templates/metrics-svc.yaml
+index 3eed843a3d..a9a794f7c8 100644
+--- a/bitnami/elasticsearch/templates/metrics-svc.yaml
++++ b/bitnami/elasticsearch/templates/metrics-svc.yaml
+@@ -2,12 +2,13 @@
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: "{{ template "metrics.fullname" . }}"
++  name: {{ template "metrics.fullname" . | quote }}
+   labels:
+-    app: "{{ template "name" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
++    app: {{ template "elasticsearch.name" . | quote }}
++    chart: {{ template "elasticsearch.chart" . | quote }}
++    heritage: {{ .Release.Service | quote }}
++    release: {{ .Release.Name | quote }}
++    role: "metrics"
+   annotations:
+ {{ toYaml .Values.metrics.annotations | indent 4 }}
+ spec:
+@@ -16,7 +17,7 @@ spec:
+     port: 9108
+     targetPort: metrics
+   selector:
+-    app: "{{ template "name" . }}"
+-    release: "{{ .Release.Name }}"
++    app: {{ template "elasticsearch.name" . | quote }}
++    release: {{ .Release.Name | quote }}
+     role: "metrics"
+ {{- end }}
+diff --git a/bitnami/elasticsearch/values.yaml b/bitnami/elasticsearch/values.yaml
+index 57f5953150..c00870e6a2 100644
+--- a/bitnami/elasticsearch/values.yaml
++++ b/bitnami/elasticsearch/values.yaml
+@@ -197,7 +197,8 @@ metrics:
+   enabled: false
+   name: metrics
+   image:
+-    name: justwatch/elasticsearch_exporter
++    registry: docker.io
++    repository: justwatch/elasticsearch_exporter
+     tag: 1.0.1
+     pullPolicy: IfNotPresent
+   annotations:
+diff --git a/incubator/elasticsearch/templates/coordinating-deploy.yaml b/incubator/elasticsearch/templates/coordinating-deploy.yaml
+index 2278e931fe..81edf945af 100644
+--- a/incubator/elasticsearch/templates/coordinating-deploy.yaml
++++ b/incubator/elasticsearch/templates/coordinating-deploy.yaml
+@@ -1,21 +1,21 @@
+ apiVersion: extensions/v1beta1
+ kind: Deployment
+ metadata:
+-  name: "{{ template "coordinating.fullname" . }}"
++  name: {{ template "coordinating.fullname" . | quote }}
+   labels:
+-    app: "{{ template "name" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    app: {{ template "elasticsearch.name" . | quote }}
++    chart: {{ template "elasticsearch.chart" . | quote }}
++    heritage: {{ .Release.Service | quote }}
++    release: {{ .Release.Name | quote }}
+     role: "coordinating-only"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
+ spec:
+   replicas: {{ .Values.coordinating.replicas }}
+   template:
+     metadata:
+       labels:
+-        app: "{{ template "name" . }}"
++        app: {{ template "elasticsearch.name" . | quote }}
++        release: {{ .Release.Name | quote }}
+         role: "coordinating-only"
+-        release: "{{ .Release.Name }}"
+     spec:
+       serviceAccountName: {{ .Values.serviceAccountName | quote }}
+       {{- if eq .Values.coordinating.antiAffinity "hard" }}
+@@ -25,9 +25,9 @@ spec:
+             - topologyKey: "kubernetes.io/hostname"
+               labelSelector:
+                 matchLabels:
+-                  app: "{{ template "name" . }}"
++                  app:  {{ template "elasticsearch.name" . | quote }}
++                  release: {{ .Release.Name | quote }}
+                   role: "coordinating-only"
+-                  release: "{{ .Release.Name }}"
+       {{- else if eq .Values.coordinating.antiAffinity "soft" }}
+       affinity:
+         podAntiAffinity:
+@@ -37,9 +37,9 @@ spec:
+               topologyKey: kubernetes.io/hostname
+               labelSelector:
+                 matchLabels:
+-                  app: "{{ template "name" . }}"
++                  app: {{ template "elasticsearch.name" . | quote }}
++                  release: {{ .Release.Name | quote }}
+                   role: "coordinating-only"
+-                  release: "{{ .Release.Name }}"
+       {{- end }}
+       {{- if .Values.image.pullSecrets }}
+       imagePullSecrets:
+@@ -49,22 +49,22 @@ spec:
+       {{- end }}
+       initContainers:
+       - name: sysctl
+-        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        image: {{ template "elasticsearch.image" . | quote }}
+         imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         command: ["sysctl", "-w", "vm.max_map_count=262144"]
+         securityContext:
+           privileged: true
+       containers:
+       - name: {{ template "coordinating.fullname" . }}
+-        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+-        imagePullPolicy: "{{ .Values.image.pullPolicy }}"
++        image: {{ template "elasticsearch.image" . | quote }}
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: ELASTICSEARCH_CLUSTER_NAME
+-          value: "{{ .Values.name }}"
++          value: {{ .Values.name | quote }}
+         - name: ELASTICSEARCH_PLUGINS
+-          value: "{{ .Values.plugins }}"
++          value: {{ .Values.plugins | quote }}
+         - name: ELASTICSEARCH_HEAP_SIZE
+-          value: "{{ .Values.ingest.heapSize }}"
++          value: {{ .Values.coordinating.heapSize | quote }}
+         - name: ELASTICSEARCH_IS_DEDICATED_NODE
+           value: "yes"
+         - name: ELASTICSEARCH_NODE_TYPE
+@@ -74,16 +74,28 @@ spec:
+           containerPort: 9200
+         - name: transport
+           containerPort: 9300
++        {{- if .Values.coordinating.livenessProbe.enabled }}
+         livenessProbe:
++          initialDelaySeconds: {{ .Values.coordinating.livenessProbe.initialDelaySeconds }}
++          periodSeconds: {{ .Values.coordinating.livenessProbe.periodSeconds }}
++          timeoutSeconds: {{ .Values.coordinating.livenessProbe.timeoutSeconds }}
++          successThreshold: {{ .Values.coordinating.livenessProbe.successThreshold }}
++          failureThreshold: {{ .Values.coordinating.livenessProbe.failureThreshold }}
+           httpGet:
+             path: /_cluster/health?local=true
+-            port: "http"
+-          initialDelaySeconds: 90
++            port: http
++        {{- end }}
++        {{- if .Values.coordinating.readinessProbe.enabled}}
+         readinessProbe:
++          initialDelaySeconds: {{ .Values.coordinating.readinessProbe.initialDelaySeconds }}
++          periodSeconds: {{ .Values.coordinating.readinessProbe.periodSeconds }}
++          timeoutSeconds: {{ .Values.coordinating.readinessProbe.timeoutSeconds }}
++          successThreshold: {{ .Values.coordinating.readinessProbe.successThreshold }}
++          failureThreshold: {{ .Values.coordinating.readinessProbe.failureThreshold }}
+           httpGet:
+             path: /_cluster/health?local=true
+-            port: "http"
+-          initialDelaySeconds: 5
++            port: http
++        {{- end }}
+         resources:
+ {{ toYaml .Values.coordinating.resources | indent 10 }}
+         volumeMounts:
+@@ -95,6 +107,6 @@ spec:
+       volumes:
+       - name: "config"
+         configMap:
+-          name: "{{ template "fullname" . }}"
++          name: {{ template "elasticsearch.fullname" . | quote }}
+       - name: "data"
+         emptyDir: {}
+diff --git a/incubator/elasticsearch/templates/coordinating-svc.yaml b/incubator/elasticsearch/templates/coordinating-svc.yaml
+index 9ff218ce7d..c6855a9790 100644
+--- a/incubator/elasticsearch/templates/coordinating-svc.yaml
++++ b/incubator/elasticsearch/templates/coordinating-svc.yaml
+@@ -1,19 +1,20 @@
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: "{{ template "coordinating.fullname" . }}"
++  name: {{ template "coordinating.fullname" . | quote }}
+   labels:
+-    app: "{{ template "name" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
++    app: {{ template "elasticsearch.name" . | quote }}
++    chart: {{ template "elasticsearch.chart" . | quote }}
++    heritage: {{ .Release.Service | quote }}
++    release: {{ .Release.Name | quote }}
++    role: "coordinating-only"
+ spec:
+-  type: "{{ .Values.coordinating.service.type }}"
++  type: {{ .Values.coordinating.service.type | quote }}
+   ports:
+   - name: http
+     port: {{ .Values.coordinating.service.port }}
+     targetPort: http
+   selector:
+-    app: "{{ template "name" . }}"
+-    release: "{{ .Release.Name }}"
++    app: {{ template "elasticsearch.name" . | quote }}
++    release: {{ .Release.Name | quote }} 
+     role: "coordinating-only"
+diff --git a/incubator/elasticsearch/templates/ingest-deploy.yaml b/incubator/elasticsearch/templates/ingest-deploy.yaml
+index 5a4561b59e..22e451507d 100644
+--- a/incubator/elasticsearch/templates/ingest-deploy.yaml
++++ b/incubator/elasticsearch/templates/ingest-deploy.yaml
+@@ -2,21 +2,21 @@
+ apiVersion: extensions/v1beta1
+ kind: Deployment
+ metadata:
+-  name: "{{ template "ingest.fullname" . }}"
++  name: {{ template "ingest.fullname" . | quote }}
+   labels:
+-    app: "{{ template "name" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    app: {{ template "elasticsearch.name" . | quote }}
++    chart: {{ template "elasticsearch.chart" . | quote }}
++    heritage: {{ .Release.Service | quote }}
++    release: {{ .Release.Name | quote }}
+     role: "ingest"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
+ spec:
+   replicas: {{ .Values.ingest.replicas }}
+   template:
+     metadata:
+       labels:
+-        app: "{{ template "name" . }}"
++        app: {{ template "elasticsearch.name" . | quote }}
++        release: {{ .Release.Name | quote }}
+         role: "ingest"
+-        release: "{{ .Release.Name }}"
+     spec:
+       serviceAccountName: {{ .Values.serviceAccountName | quote }}
+       {{- if eq .Values.ingest.antiAffinity "hard" }}
+@@ -26,9 +26,9 @@ spec:
+             - topologyKey: "kubernetes.io/hostname"
+               labelSelector:
+                 matchLabels:
+-                  app: "{{ template "name" . }}"
++                  app: {{ template "elasticsearch.name" . | quote }}
++                  release: {{ .Release.Name | quote }}
+                   role: "ingest"
+-                  release: "{{ .Release.Name }}"
+       {{- else if eq .Values.ingest.antiAffinity "soft" }}
+       affinity:
+         podAntiAffinity:
+@@ -38,9 +38,9 @@ spec:
+               topologyKey: kubernetes.io/hostname
+               labelSelector:
+                 matchLabels:
+-                  app: "{{ template "name" . }}"
++                  app: {{ template "elasticsearch.name" . | quote }}
++                  release: {{ .Release.Name | quote }}
+                   role: "ingest"
+-                  release: "{{ .Release.Name }}"
+       {{- end }}
+       {{- if .Values.image.pullSecrets }}
+       imagePullSecrets:
+@@ -50,22 +50,22 @@ spec:
+       {{- end }}
+       initContainers:
+       - name: sysctl
+-        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+-        imagePullPolicy: "{{ .Values.image.pullPolicy }}"
++        image: {{ template "elasticsearch.image" . | quote }}
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         command: ["sysctl", "-w", "vm.max_map_count=262144"]
+         securityContext:
+           privileged: true
+       containers:
+       - name: {{ template "ingest.fullname" . }}
+-        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        image: {{ template "elasticsearch.image" . | quote }}
+         imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: ELASTICSEARCH_CLUSTER_NAME
+-          value: "{{ .Values.name }}"
++          value: {{ .Values.name | quote }}
+         - name: ELASTICSEARCH_PLUGINS
+-          value: "{{ .Values.plugins }}"
++          value: {{ .Values.plugins | quote }}
+         - name: ELASTICSEARCH_HEAP_SIZE
+-          value: "{{ .Values.ingest.heapSize }}"
++          value: {{ .Values.ingest.heapSize | quote }}
+         - name: ELASTICSEARCH_IS_DEDICATED_NODE
+           value: "yes"
+         - name: ELASTICSEARCH_NODE_TYPE
+@@ -73,16 +73,30 @@ spec:
+         ports:
+         - name: transport
+           containerPort: 9300
++        {{- if .Values.ingest.livenessProbe.enabled }}
+         livenessProbe:
++          initialDelaySeconds: {{ .Values.ingest.livenessProbe.initialDelaySeconds }}
++          periodSeconds: {{ .Values.ingest.livenessProbe.periodSeconds }}
++          timeoutSeconds: {{ .Values.ingest.livenessProbe.timeoutSeconds }}
++          successThreshold: {{ .Values.ingest.livenessProbe.successThreshold }}
++          failureThreshold: {{ .Values.ingest.livenessProbe.failureThreshold }}
+           httpGet:
+             path: /_cluster/health?local=true
+             port: 9200
+           initialDelaySeconds: 90
++        {{- end }}
++        {{- if .Values.ingest.readinessProbe.enabled}}
+         readinessProbe:
++          initialDelaySeconds: {{ .Values.ingest.readinessProbe.initialDelaySeconds }}
++          periodSeconds: {{ .Values.ingest.readinessProbe.periodSeconds }}
++          timeoutSeconds: {{ .Values.ingest.readinessProbe.timeoutSeconds }}
++          successThreshold: {{ .Values.ingest.readinessProbe.successThreshold }}
++          failureThreshold: {{ .Values.ingest.readinessProbe.failureThreshold }}
+           httpGet:
+             path: /_cluster/health?local=true
+             port: 9200
+           initialDelaySeconds: 5
++        {{- end}}
+         resources:
+ {{ toYaml .Values.ingest.resources | indent 10 }}
+         volumeMounts:
+@@ -94,7 +108,7 @@ spec:
+       volumes:
+       - name: "config"
+         configMap:
+-          name: "{{ template "fullname" . }}"
++          name: {{ template "elasticsearch.fullname" . | quote }}
+       - name: "data"
+         emptyDir: {}
+ {{- end }}
+diff --git a/incubator/elasticsearch/templates/ingest-svc.yaml b/incubator/elasticsearch/templates/ingest-svc.yaml
+index d02c841ee5..2018404091 100644
+--- a/incubator/elasticsearch/templates/ingest-svc.yaml
++++ b/incubator/elasticsearch/templates/ingest-svc.yaml
+@@ -2,19 +2,20 @@
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: "{{ template "ingest.fullname" . }}"
++  name: {{ template "ingest.fullname" . | quote }}
+   labels:
+-    app: "{{ template "name" . }}"
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
++    app: {{ template "elasticsearch.name" . | quote }}
++    chart: {{ template "elasticsearch.chart" . | quote }}
++    heritage: {{ .Release.Service | quote }}
++    release: {{ .Release.Name | quote }}
++    role: "ingest"
+ spec:
+   ports:
+   - name: transport
+     port: 9300
+     targetPort: transport
+   selector:
+-    app: "{{ template "name" . }}"
+-    release: "{{ .Release.Name }}"
++    app: {{ template "elasticsearch.name" . | quote }}
++    release: {{ .Release.Name | quote }}
+     role: "ingest"
+ {{- end }}
+diff --git a/incubator/elasticsearch/templates/role.yaml b/incubator/elasticsearch/templates/role.yaml
+index 8ed697d6f1..1c7a832e9f 100644
+--- a/incubator/elasticsearch/templates/role.yaml
++++ b/incubator/elasticsearch/templates/role.yaml
+@@ -3,10 +3,10 @@ kind: Role
+ metadata:
+   name: {{ .Values.serviceAccountName | quote }}
+   labels:
+-    app: {{ template "name" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: {{ .Release.Name | quote }}
++    app: {{ template "elasticsearch.name" . | quote }}
++    chart: {{ template "elasticsearch.chart" . | quote }}
+     heritage: {{ .Release.Service | quote }}
++    release: {{ .Release.Name | quote }}
+ rules:
+   - apiGroups: [""]
+     resources: ["endpoints"]
+diff --git a/incubator/elasticsearch/templates/rolebinding.yaml b/incubator/elasticsearch/templates/rolebinding.yaml
+index d72706f85b..5a4c75b558 100644
+--- a/incubator/elasticsearch/templates/rolebinding.yaml
++++ b/incubator/elasticsearch/templates/rolebinding.yaml
+@@ -3,10 +3,10 @@ kind: RoleBinding
+ metadata:
+   name: {{ .Values.serviceAccountName | quote }}
+   labels:
+-    app: {{ template "name" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: {{ .Release.Name | quote }}
++    app: {{ template "elasticsearch.name" . | quote }}
++    chart: {{ template "elasticsearch.chart" . | quote }}
+     heritage: {{ .Release.Service | quote }}
++    release: {{ .Release.Name | quote }}
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: Role
+diff --git a/incubator/elasticsearch/templates/serviceaccount.yaml b/incubator/elasticsearch/templates/serviceaccount.yaml
+index 16870adcd8..085b126557 100644
+--- a/incubator/elasticsearch/templates/serviceaccount.yaml
++++ b/incubator/elasticsearch/templates/serviceaccount.yaml
+@@ -3,7 +3,7 @@ kind: ServiceAccount
+ metadata:
+   name: {{ .Values.serviceAccountName | quote }}
+   labels:
+-    app: {{ template "name" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: {{ .Release.Name | quote }}
++    app: {{ template "elasticsearch.name" . | quote }}
++    chart: {{ template "elasticsearch.chart" . | quote }}
+     heritage: {{ .Release.Service | quote }}
++    release: {{ .Release.Name | quote }}
+diff --git a/incubator/elasticsearch/values-production.yaml b/incubator/elasticsearch/values-production.yaml
+index 77d0375fa2..188eb7093e 100644
+--- a/incubator/elasticsearch/values-production.yaml
++++ b/incubator/elasticsearch/values-production.yaml
+@@ -197,7 +197,8 @@ metrics:
+   enabled: true
+   name: metrics
+   image:
+-    name: justwatch/elasticsearch_exporter
++    registry: docker.io
++    repository: justwatch/elasticsearch_exporter
+     tag: 1.0.1
+     pullPolicy: IfNotPresent
+   annotations:

@@ -1,0 +1,219 @@
+commit 8c79f6c3754e4d6b6084f05a0df08d05cc8b7464
+Author: j_r0dd <285797+jr0dd@users.noreply.github.com>
+Date:   Mon Sep 13 10:18:36 2021 -0400
+
+    [uptime-robot] metrics refactor (#1181)
+    
+    * [uptimerobot-prometheus] metrics refactor
+    
+    * add template to rules
+    
+    * Update charts/stable/uptimerobot-prometheus/templates/prometheusrules.yaml
+    
+    Co-authored-by: ᗪєνιη ᗷυнʟ <onedr0p@users.noreply.github.com>
+    
+    Co-authored-by: ᗪєνιη ᗷυнʟ <onedr0p@users.noreply.github.com>
+
+diff --git a/charts/stable/uptimerobot-prometheus/Chart.yaml b/charts/stable/uptimerobot-prometheus/Chart.yaml
+index 3a5e4bbf..dc210245 100644
+--- a/charts/stable/uptimerobot-prometheus/Chart.yaml
++++ b/charts/stable/uptimerobot-prometheus/Chart.yaml
+@@ -2,7 +2,7 @@ apiVersion: v2
+ name: uptimerobot-prometheus
+ description: Prometheus Exporter for the official uptimerobot CLI
+ type: application
+-version: 5.0.0
++version: 6.0.0
+ appVersion: 0.0.1
+ keywords:
+   - uptimerobot
+diff --git a/charts/stable/uptimerobot-prometheus/README.md b/charts/stable/uptimerobot-prometheus/README.md
+index fd16c982..a27d0102 100644
+--- a/charts/stable/uptimerobot-prometheus/README.md
++++ b/charts/stable/uptimerobot-prometheus/README.md
+@@ -1,6 +1,6 @@
+ # uptimerobot-prometheus
+ 
+-![Version: 5.0.0](https://img.shields.io/badge/Version-5.0.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.0.1](https://img.shields.io/badge/AppVersion-0.0.1-informational?style=flat-square)
++![Version: 6.0.0](https://img.shields.io/badge/Version-6.0.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.0.1](https://img.shields.io/badge/AppVersion-0.0.1-informational?style=flat-square)
+ 
+ Prometheus Exporter for the official uptimerobot CLI
+ 
+@@ -83,7 +83,12 @@ You can find an [example grafana dashboard](https://github.com/lekpamartin/uptim
+ | image.repository | string | `"billimek/prometheus-uptimerobot-exporter"` | image repository |
+ | image.tag | string | `"0.0.1"` | image tag |
+ | ingress.main | object | See values.yaml | Enable and configure ingress settings for the chart under this key. |
+-| prometheus.serviceMonitor | object | See values.yaml | Enable and configure a Prometheus serviceMonitor for the chart under this key. See also the notes under `additionalContainers`. |
++| metrics.enabled | bool | See values.yaml | Enable and configure a Prometheus serviceMonitor for the chart under this key. |
++| metrics.prometheusRule | object | See values.yaml | Enable and configure Prometheus Rules for the chart under this key. |
++| metrics.prometheusRule.rules | list | See prometheusrules.yaml | Configure additionial rules for the chart under this key. |
++| metrics.serviceMonitor.interval | string | `"1m"` |  |
++| metrics.serviceMonitor.labels | object | `{}` |  |
++| metrics.serviceMonitor.scrapeTimeout | string | `"30s"` |  |
+ | service | object | See values.yaml | Configures service settings for the chart. |
+ 
+ ## Changelog
+@@ -92,6 +97,12 @@ All notable changes to this application Helm chart will be documented in this fi
+ 
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++### [6.0.0]
++
++#### Changed
++
++- **BREAKING**: Refactored Prometheus metrics section to add rules. Enabling metrics automatically enables the serviceMonitor.
++
+ ### [5.0.0]
+ 
+ #### Changed
+@@ -117,6 +128,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ 
+ - use helm-docs
+ 
++[6.0.0]: #600
+ [5.0.0]: #500
+ [4.0.0]: #400
+ [3.0.0]: #300
+diff --git a/charts/stable/uptimerobot-prometheus/README_CHANGELOG.md.gotmpl b/charts/stable/uptimerobot-prometheus/README_CHANGELOG.md.gotmpl
+index 322737ba..77808aea 100644
+--- a/charts/stable/uptimerobot-prometheus/README_CHANGELOG.md.gotmpl
++++ b/charts/stable/uptimerobot-prometheus/README_CHANGELOG.md.gotmpl
+@@ -9,6 +9,12 @@ All notable changes to this application Helm chart will be documented in this fi
+ 
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++### [6.0.0]
++
++#### Changed
++
++- **BREAKING**: Refactored Prometheus metrics section to add rules. Enabling metrics automatically enables the serviceMonitor.
++
+ ### [5.0.0]
+ 
+ #### Changed
+@@ -34,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ 
+ - use helm-docs
+ 
++[6.0.0]: #600
+ [5.0.0]: #500
+ [4.0.0]: #400
+ [3.0.0]: #300
+diff --git a/charts/stable/uptimerobot-prometheus/templates/prometheusrules.yaml b/charts/stable/uptimerobot-prometheus/templates/prometheusrules.yaml
+new file mode 100644
+index 00000000..93cd4d98
+--- /dev/null
++++ b/charts/stable/uptimerobot-prometheus/templates/prometheusrules.yaml
+@@ -0,0 +1,27 @@
++{{- if and .Values.metrics.enabled .Values.metrics.prometheusRule.enabled }}
++apiVersion: monitoring.coreos.com/v1
++kind: PrometheusRule
++metadata:
++  name: {{ include "common.names.fullname" . }}
++  labels:
++    {{- include "common.labels" . | nindent 4 }}
++    {{- with .Values.metrics.prometheusRule.labels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++spec:
++  groups:
++    - name: {{ include "common.names.fullname" . }}
++      rules:
++        - alert: UptimeRobotExporterAbsent
++          annotations:
++            description: Uptime Robot Exporter has disappeared from Prometheus service discovery.
++            summary: Uptime Robot Exporter is down.
++          expr: |
++            absent(up{job=~".*{{ include "common.names.fullname" . }}.*"} == 1)
++          for: 5m
++          labels:
++            severity: critical
++        {{- with .Values.metrics.prometheusRule.rules }}
++        {{- toYaml . | nindent 8 }}
++        {{- end }}
++{{- end }}
+diff --git a/charts/stable/uptimerobot-prometheus/templates/servicemonitor.yaml b/charts/stable/uptimerobot-prometheus/templates/servicemonitor.yaml
+index 5fdcf649..b4245480 100644
+--- a/charts/stable/uptimerobot-prometheus/templates/servicemonitor.yaml
++++ b/charts/stable/uptimerobot-prometheus/templates/servicemonitor.yaml
+@@ -1,11 +1,11 @@
+-{{- if .Values.prometheus.serviceMonitor.enabled }}
++{{- if .Values.metrics.enabled }}
+ apiVersion: monitoring.coreos.com/v1
+ kind: ServiceMonitor
+ metadata:
+-  name: {{ template "common.names.fullname" . }}
++  name: {{ include "common.names.fullname" . }}
+   labels:
+     {{- include "common.labels" . | nindent 4 }}
+-    {{- with .Values.prometheus.serviceMonitor.additionalLabels }}
++    {{- with .Values.metrics.serviceMonitor.labels }}
+     {{- toYaml . | nindent 4 }}
+     {{- end }}
+ spec:
+@@ -13,9 +13,12 @@ spec:
+     matchLabels:
+       {{- include "common.labels.selectorLabels" . | nindent 6 }}
+   endpoints:
+-  - port: http
+-    {{- with .Values.prometheus.serviceMonitor.interval }}
+-    interval: {{ . }}
+-    {{- end }}
+-    path: /metrics
++    - port: metrics
++      {{- with .Values.metrics.serviceMonitor.interval }}
++      interval: {{ . }}
++      {{- end }}
++      {{- with .Values.metrics.serviceMonitor.scrapeTimeout }}
++      scrapeTimeout: {{ . }}
++      {{- end }}
++      path: /metrics
+ {{- end }}
+diff --git a/charts/stable/uptimerobot-prometheus/values.yaml b/charts/stable/uptimerobot-prometheus/values.yaml
+index 1998a7ef..f4d526d3 100644
+--- a/charts/stable/uptimerobot-prometheus/values.yaml
++++ b/charts/stable/uptimerobot-prometheus/values.yaml
+@@ -27,6 +27,10 @@ service:
+   main:
+     ports:
+       http:
++        enabled: false
++      metrics:
++        enabled: true
++        protocol: TCP
+         port: 9705
+ 
+ ingress:
+@@ -35,11 +39,28 @@ ingress:
+   main:
+     enabled: false
+ 
+-prometheus:
++metrics:
+   # -- Enable and configure a Prometheus serviceMonitor for the chart under this key.
+-  # See also the notes under `additionalContainers`.
+   # @default -- See values.yaml
++  enabled: false
+   serviceMonitor:
+-    enabled: false
+     interval: 1m
+-    additionalLabels: {}
++    scrapeTimeout: 30s
++    labels: {}
++  # -- Enable and configure Prometheus Rules for the chart under this key.
++  # @default -- See values.yaml
++  prometheusRule:
++    enabled: false
++    labels: {}
++    # -- Configure additionial rules for the chart under this key.
++    # @default -- See prometheusrules.yaml
++    rules: []
++      # - alert: UptimeRobotExporterAbsent
++      #   annotations:
++      #     description: Uptime Robot Exporter has disappeared from Prometheus service discovery.
++      #     summary: Uptime Robot Exporter is down.
++      #   expr: |
++      #     absent(up{job=~".*uptimerobot.*"} == 1)
++      #   for: 5m
++      #   labels:
++      #     severity: critical

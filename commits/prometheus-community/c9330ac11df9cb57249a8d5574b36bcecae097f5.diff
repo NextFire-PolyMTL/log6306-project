@@ -1,0 +1,57 @@
+commit c9330ac11df9cb57249a8d5574b36bcecae097f5
+Author: arukiidou <arukiidou@yahoo.co.jp>
+Date:   Fri Jan 6 15:18:11 2023 +0900
+
+    [prometheus] vpa.yaml - bump apiVersion(v1beta1 to v1) (#2875)
+    
+    * [prometheus vpa.yaml - apiVersion(bump v1beta1 to v1)
+    
+    Signed-off-by: junya koyama <arukiidou@yahoo.co.jp>
+    
+    * [prometheus] clusterrolebinding.yaml - revert changes
+    
+    Signed-off-by: junya koyama <arukiidou@yahoo.co.jp>
+    
+    * [prometheus] clusterrolebinding.yaml - add printf
+    
+    Signed-off-by: junya koyama <arukiidou@yahoo.co.jp>
+    
+    * [prometheus] replace template to include
+    
+    Signed-off-by: junya koyama <arukiidou@yahoo.co.jp>
+    
+    * [prometheus] fix - revert namespace refactor
+    
+    Signed-off-by: junya koyama <arukiidou@yahoo.co.jp>
+    
+    * [prometheus] fix -
+    
+    Signed-off-by: junya koyama <arukiidou@yahoo.co.jp>
+    
+    Signed-off-by: junya koyama <arukiidou@yahoo.co.jp>
+
+diff --git a/charts/prometheus/Chart.yaml b/charts/prometheus/Chart.yaml
+index 7f5e89bd..2b11f616 100644
+--- a/charts/prometheus/Chart.yaml
++++ b/charts/prometheus/Chart.yaml
+@@ -1,7 +1,7 @@
+ apiVersion: v2
+ name: prometheus
+ appVersion: v2.41.0
+-version: 19.2.2
++version: 19.3.0
+ kubeVersion: ">=1.16.0-0"
+ description: Prometheus is a monitoring system and time series database.
+ home: https://prometheus.io/
+diff --git a/charts/prometheus/templates/vpa.yaml b/charts/prometheus/templates/vpa.yaml
+index 0e6376da..33c4a893 100644
+--- a/charts/prometheus/templates/vpa.yaml
++++ b/charts/prometheus/templates/vpa.yaml
+@@ -1,5 +1,5 @@
+-{{- if .Values.server.verticalAutoscaler.enabled -}}
+-apiVersion: autoscaling.k8s.io/v1beta2
++{{- if and (.Capabilities.APIVersions.Has "autoscaling.k8s.io/v1") (.Values.server.verticalAutoscaler.enabled) -}}
++apiVersion: autoscaling.k8s.io/v1
+ kind: VerticalPodAutoscaler
+ metadata:
+   labels:

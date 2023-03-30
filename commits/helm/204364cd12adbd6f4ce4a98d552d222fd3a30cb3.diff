@@ -1,0 +1,107 @@
+commit 204364cd12adbd6f4ce4a98d552d222fd3a30cb3
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Apr 4 14:47:36 2018 +0200
+
+    [stable/joomla] Refactor image property in values.yaml (#4642)
+    
+    * [stable/joomla] Refactor image properties in values.yaml
+    
+    * Delete duplicated property
+    
+    * Use rolling tag and refactor pullSecrets
+    
+    * Fix lint issue
+    
+    * Bump chart version
+    
+    * Update Chart.yaml
+
+diff --git a/stable/joomla/Chart.yaml b/stable/joomla/Chart.yaml
+index a8d309aa1..65318c834 100644
+--- a/stable/joomla/Chart.yaml
++++ b/stable/joomla/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: joomla
+-version: 0.6.2
++version: 1.0.0
+ appVersion: 3.8.6
+ description: PHP content management system (CMS) for publishing web content
+ keywords:
+diff --git a/stable/joomla/README.md b/stable/joomla/README.md
+index 6bdeccd97..8e575a2e3 100644
+--- a/stable/joomla/README.md
++++ b/stable/joomla/README.md
+@@ -46,9 +46,12 @@ The command removes all the Kubernetes components associated with the chart and
+ The following table lists the configurable parameters of the Joomla! chart and their default values.
+ 
+ | Parameter                         | Description                            | Default                                                   |
+-| --------------------------------- | -------------------------------------  | --------------------------------------------------------- |
+-| `image`                           | Joomla! image                          | `bitnami/joomla:{VERSION}`                                |
+-| `imagePullPolicy`                 | Image pull policy                      | `Always` if `image` tag is `latest`, else `IfNotPresent`  |
++| --------------------------------- | -------------------------------------- | --------------------------------------------------------- |
++| `image.registry`                  | Joomla! image registry                 | `docker.io`                                               |
++| `image.repository`                | Joomla! Image name                     | `bitnami/joomla`                                          |
++| `image.tag`                       | Joomla! Image tag                      | `{VERSION}`                                               |
++| `image.pullPolicy`                | Image pull policy                      | `Always` if `imageTag` is `latest`, else `IfNotPresent`   |
++| `image.pullSecrets`               | Specify image pull secrets             | `nil`                                                     |
+ | `joomlaUsername`                  | User of the application                | `user`                                                    |
+ | `joomlaPassword`                  | Application password                   | Randomly generated                                        |
+ | `joomlaEmail`                     | Admin email                            | `user@example.com`                                        |
+diff --git a/stable/joomla/templates/deployment.yaml b/stable/joomla/templates/deployment.yaml
+index 5fb5db44a..0b1c4f76f 100644
+--- a/stable/joomla/templates/deployment.yaml
++++ b/stable/joomla/templates/deployment.yaml
+@@ -14,10 +14,16 @@ spec:
+       labels:
+         app: {{ template "joomla.fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "joomla.fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: ALLOW_EMPTY_PASSWORD
+           value: {{ .Values.allowEmptyPassword | quote }}
+diff --git a/stable/joomla/values.yaml b/stable/joomla/values.yaml
+index 5b4f5b3d1..110f59acf 100644
+--- a/stable/joomla/values.yaml
++++ b/stable/joomla/values.yaml
+@@ -1,13 +1,21 @@
+-## Bitnami Joomla! image version
+-## ref: https://hub.docker.com/r/bitnami/joomla/tags/
++## Bitnami Joomla image version
++## ref: https://hub.docker.com/r/bitnami/dokuwiki/tags/
+ ##
+-image: bitnami/joomla:3.8.6-r1
+-
+-## Specify a imagePullPolicy
+-## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-# imagePullPolicy:
++image:
++  registry: docker.io
++  repository: bitnami/joomla
++  tag: 3.8.6
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
+ 
+ ## User of the application
+ ## ref: https://github.com/bitnami/bitnami-docker-joomla#environment-variables

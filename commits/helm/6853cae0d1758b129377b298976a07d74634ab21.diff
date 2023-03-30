@@ -1,0 +1,947 @@
+commit 6853cae0d1758b129377b298976a07d74634ab21
+Author: Mathew Wicks <thesuperzapper@users.noreply.github.com>
+Date:   Tue Sep 1 17:55:51 2020 +1000
+
+    [stable/airflow] version 7.6.0 (#23651)
+    
+    * [stable/airflow] refactor templates
+    
+    Signed-off-by: Mathew Wicks <thesuperzapper@users.noreply.github.com>
+    
+    * [stable/airflow] allow multiple flower replicas
+    
+    Signed-off-by: Mathew Wicks <thesuperzapper@users.noreply.github.com>
+    
+    * [stable/airflow] use percentage for maxSurge on webserver
+    
+    Signed-off-by: Mathew Wicks <thesuperzapper@users.noreply.github.com>
+    
+    * [stable/airflow] implement PodDisruptionBudget for all resources
+    
+    Signed-off-by: Mathew Wicks <thesuperzapper@users.noreply.github.com>
+    
+    * [stable/airflow] ensure correct service ports are used
+    
+    Signed-off-by: Mathew Wicks <thesuperzapper@users.noreply.github.com>
+    
+    * [stable/airflow] create `flower.minReadySeconds` value
+    
+    Signed-off-by: Mathew Wicks <thesuperzapper@users.noreply.github.com>
+    
+    * [stable/airflow] increase default celery worker concurrency to 16
+    
+    Signed-off-by: Mathew Wicks <thesuperzapper@users.noreply.github.com>
+    
+    * [stable/airflow] make pods safe-to-evict by default
+    
+    Signed-off-by: Mathew Wicks <thesuperzapper@users.noreply.github.com>
+    
+    * [stable/airflow] update google-gke example
+    
+    Signed-off-by: Mathew Wicks <thesuperzapper@users.noreply.github.com>
+    
+    * [stable/airflow] fix incorrect example annotation syntax
+    
+    Signed-off-by: Mathew Wicks <thesuperzapper@users.noreply.github.com>
+    
+    * [stable/airflow] update autoscaling docs
+    
+    Signed-off-by: Mathew Wicks <thesuperzapper@users.noreply.github.com>
+    
+    * [stable/airflow] fix helm typos from refactor
+    
+    Signed-off-by: Mathew Wicks <thesuperzapper@users.noreply.github.com>
+    
+    * [stable/airflow] release 7.6.0
+    
+    Signed-off-by: Mathew Wicks <thesuperzapper@users.noreply.github.com>
+
+diff --git a/stable/airflow/Chart.yaml b/stable/airflow/Chart.yaml
+index cf522762b..7fb621e07 100644
+--- a/stable/airflow/Chart.yaml
++++ b/stable/airflow/Chart.yaml
+@@ -1,7 +1,7 @@
+ apiVersion: v1
+ description: Airflow is a platform to programmatically author, schedule and monitor workflows
+ name: airflow
+-version: 7.5.0
++version: 7.6.0
+ appVersion: 1.10.10
+ icon: https://airflow.apache.org/_images/pin_large.png
+ home: https://airflow.apache.org/
+@@ -13,3 +13,4 @@ sources:
+ keywords:
+   - workflow
+   - dag
++  - airflow
+diff --git a/stable/airflow/README.md b/stable/airflow/README.md
+index e26602ad1..52a1bc1ef 100644
+--- a/stable/airflow/README.md
++++ b/stable/airflow/README.md
+@@ -39,6 +39,7 @@ kubectl exec \
+ > NOTE: for chart version numbers, see [Chart.yaml](Chart.yaml) or [helm hub](https://hub.helm.sh/charts/stable/airflow).
+ 
+ For steps you must take when upgrading this chart, please review:
++* [v7.5.X → v7.6.0](UPGRADE.md#v75x--v760)
+ * [v7.4.X → v7.5.0](UPGRADE.md#v74x--v750)
+ * [v7.3.X → v7.4.0](UPGRADE.md#v73x--v740)
+ * [v7.2.X → v7.3.0](UPGRADE.md#v72x--v730)
+@@ -223,12 +224,18 @@ For a worker pod you can calculate it: `WORKER_CONCURRENCY * 200Mi`, so for `10
+ Here is the `values.yaml` config for that example:
+ ```yaml
+ workers:
+-  replicas: 1
++  # the initial/minimum number of workers
++  replicas: 2
+ 
+   resources:
+     requests:
+       memory: "2Gi"
+ 
++  podDisruptionBudget:
++    enabled: true
++    ## prevents losing more than 20% of current worker task slots in a voluntary disruption
++    maxUnavailable: "20%"
++
+   autoscaling:
+     enabled: true
+     maxReplicas: 16
+@@ -243,11 +250,14 @@ workers:
+   celery:
+     instances: 10
+ 
+-    ## wait at most 10min for running tasks to complete
++    ## wait at most 9min for running tasks to complete before SIGTERM
++    ## WARNING: 
++    ##  - some cluster-autoscaler (GKE) will not respect graceful 
++    ##    termination periods over 10min
+     gracefullTermination: true
+-    gracefullTerminationPeriod: 600
++    gracefullTerminationPeriod: 540
+ 
+-  ## how many seconds (after the 10min) to wait before SIGKILL
++  ## how many seconds (after the 9min) to wait before SIGKILL
+   terminationPeriod: 60
+ 
+ dags:
+@@ -548,6 +558,7 @@ __Airflow Scheduler values:__
+ | `scheduler.podLabels` | Pod labels for the scheduler Deployment | `{}` |
+ | `scheduler.annotations` | annotations for the scheduler Deployment | `{}` |
+ | `scheduler.podAnnotations` | Pod Annotations for the scheduler Deployment | `{}` |
++| `scheduler.safeToEvict` | if we should tell Kubernetes Autoscaler that its safe to evict these Pods | `true` |
+ | `scheduler.podDisruptionBudget.*` | configs for the PodDisruptionBudget of the scheduler | `<see values.yaml>` |
+ | `scheduler.connections` | custom airflow connections for the airflow scheduler | `[]` |
+ | `scheduler.refreshConnections` | if we remove before adding a connection resulting in a refresh | `true` |
+@@ -559,7 +570,7 @@ __Airflow Scheduler values:__
+ | `scheduler.initialStartupDelay` | the number of seconds to wait (in bash) before starting the scheduler container | `0` |
+ | `scheduler.extraInitContainers` | extra init containers to run before the scheduler pod | `[]` |
+ 
+-__Airflow WebUI Values:__
++__Airflow Webserver Values:__
+ 
+ | Parameter | Description | Default |
+ | --- | --- | --- |
+@@ -572,6 +583,8 @@ __Airflow WebUI Values:__
+ | `web.podLabels` | Pod labels for the web Deployment | `{}` |
+ | `web.annotations` | annotations for the web Deployment | `{}` |
+ | `web.podAnnotations` | Pod annotations for the web Deployment | `{}` |
++| `web.safeToEvict` | if we should tell Kubernetes Autoscaler that its safe to evict these Pods | `true` |
++| `web.podDisruptionBudget.*` | configs for the PodDisruptionBudget of the web Deployment | `<see values.yaml>` |
+ | `web.service.*` | configs for the Service of the web pods | `<see values.yaml>` |
+ | `web.baseUrl` | sets `AIRFLOW__WEBSERVER__BASE_URL` | `http://localhost:8080` |
+ | `web.serializeDAGs` | sets `AIRFLOW__CORE__STORE_SERIALIZED_DAGS` | `false` |
+@@ -598,6 +611,8 @@ __Airflow Worker Values:__
+ | `workers.podLabels` | Pod labels for the worker StatefulSet | `{}` |
+ | `workers.annotations` | annotations for the worker StatefulSet | `{}` |
+ | `workers.podAnnotations` | Pod annotations for the worker StatefulSet | `{}` |
++| `workers.safeToEvict` | if we should tell Kubernetes Autoscaler that its safe to evict these Pods | `true` |
++| `workers.podDisruptionBudget.*` | configs for the PodDisruptionBudget of the worker StatefulSet | `<see values.yaml>` |
+ | `workers.autoscaling.*` | configs for the HorizontalPodAutoscaler of the worker Pods | `<see values.yaml>` |
+ | `workers.initialStartupDelay` | the number of seconds to wait (in bash) before starting each worker container | `0` |
+ | `workers.celery.*` | configs for the celery worker Pods | `<see values.yaml>` |
+@@ -618,11 +633,14 @@ __Airflow Flower Values:__
+ | `flower.podLabels` | Pod labels for the flower Deployment | `{}` |
+ | `flower.annotations` | annotations for the flower Deployment | `{}` |
+ | `flower.podAnnotations` | Pod annotations for the flower Deployment | `{}` |
++| `flower.safeToEvict` | if we should tell Kubernetes Autoscaler that its safe to evict these Pods | `true` |
++| `flower.podDisruptionBudget.*` | configs for the PodDisruptionBudget of the flower Deployment | `<see values.yaml>` |
+ | `flower.basicAuthSecret` | the name of a pre-created secret containing the basic authentication value for flower | `""` |
+ | `flower.basicAuthSecretKey` | the key within `flower.basicAuthSecret` containing the basic authentication string | `""` |
+ | `flower.urlPrefix` | sets `AIRFLOW__CELERY__FLOWER_URL_PREFIX` | `""` |
+ | `flower.service.*` | configs for the Service of the flower Pods | `<see values.yaml>` |
+ | `flower.initialStartupDelay` | the number of seconds to wait (in bash) before starting the flower container | `0` |
++| `flower.minReadySeconds` | the number of seconds to wait before declaring a new Pod available | `5` |
+ | `flower.extraConfigmapMounts` | extra ConfigMaps to mount on the flower Pods | `[]` |
+ 
+ __Airflow Logs Values:__
+@@ -672,6 +690,7 @@ __Airflow Database (Internal PostgreSQL) Values:__
+ | `postgresql.existingSecret` | the name of a pre-created secret containing the postgres password | `""` |
+ | `postgresql.existingSecretKey` | the key within `postgresql.passwordSecret` containing the password string | `postgresql-password` |
+ | `postgresql.persistence.*` | configs for the PVC of postgresql | `<see values.yaml>` |
++| `postgresql.master.*` | configs for the postgres StatefulSet | `<see values.yaml>` |
+ 
+ __Airflow Database (External) Values:__
+ 
+@@ -718,4 +737,4 @@ __Airflow Prometheus Values:__
+ | `serviceMonitor.interval` | the ServiceMonitor web endpoint path | `30s` |
+ | `prometheusRule.enabled` | if the PrometheusRule resources should be deployed | `false` |
+ | `prometheusRule.additionalLabels` | labels for PrometheusRule, so that Prometheus can select it | `{}` |
+-| `prometheusRule.groups` | alerting rules for Prometheus | `[]` |
+\ No newline at end of file
++| `prometheusRule.groups` | alerting rules for Prometheus | `[]` |
+diff --git a/stable/airflow/UPGRADE.md b/stable/airflow/UPGRADE.md
+index 64f851c35..597914616 100644
+--- a/stable/airflow/UPGRADE.md
++++ b/stable/airflow/UPGRADE.md
+@@ -1,5 +1,49 @@
+ # Upgrading Steps
+ 
++## `v7.5.X` → `v7.6.0`
++
++> __WARNING:__ 
++>
++> We now annotate all pods with `cluster-autoscaler.kubernetes.io/safe-to-evict` by default.
++> 
++> If you want to disable this:
++>  - Set: `flower.safeToEvict`, `scheduler.safeToEvict`, `web.safeToEvict`, `workers.safeToEvict` to `false`
++>  - Set: `postgresql.master.podAnnotations`, `redis.master.podAnnotations`, `redis.slave.podAnnotations` to `{}`
++>
++> Note for GKE:
++>  - GKE's cluster-autoscaler will not honor a `gracefulTerminationPeriod` of more than 10min,
++>    if your jobs need more than this amount of time to finish, please set `workers.safeToEvict` to `false`
++> 
++
++__The following IMPROVEMENTS have been made:__
++* The chart YAML has been refactored
++* You can now configure `safe-to-evict` annotations (so that pods with emptyDir Volumes can be evicted by cluster-autoscaler)
++* You can now create PodDisruptionBudgets for all components: {flower, webserver, worker}
++* The chart now forces the correct ports to be used (NOTE: this will not prevent you changing Service/Ingress ports)
++* You can now run multiple instances of flower
++* You can now specify minReadySeconds for flower
++
++__The following values have CHANGED DEFAULTS:__
++* `workers.celery.instances`:
++    * Is now `16` by default (letting each worker take 16 tasks)
++* `postgresql.master.podAnnotations`:
++    * Is now `{"cluster-autoscaler.kubernetes.io/safe-to-evict": "true"}`
++* `redis.master.podAnnotations`:
++    * Is now `{"cluster-autoscaler.kubernetes.io/safe-to-evict": "true"}`
++* `redis.slave.podAnnotations`:
++    * Is now `{"cluster-autoscaler.kubernetes.io/safe-to-evict": "true"}`
++
++__The following values have been ADDED:__
++* `flower.minReadySeconds`
++* `flower.podDisruptionBudget.*`
++* `flower.replicas`
++* `flower.safeToEvict`
++* `scheduler.safeToEvict`
++* `web.podDisruptionBudget.*`
++* `web.safeToEvict`
++* `workers.podDisruptionBudget.*`
++* `workers.safeToEvict`
++
+ ## `v7.4.X` → `v7.5.0`
+ 
+ __The following IMPROVEMENTS have been made:__
+@@ -15,18 +59,17 @@ __The following values have been ADDED:__
+ __The following IMPROVEMENTS have been made:__
+ 
+ * Reduced how likely it is for a celery worker to receive SIGKILL with graceful termination enabled.
+-  * Celery worker graceful shutdown lifecycle:
++  New celery worker graceful shutdown lifecycle:
+     1. prevent worker accepting new tasks
+     2. wait AT MOST `workers.celery.gracefullTerminationPeriod` for tasks to finish
+     3. send `SIGTERM` to worker
+     4. wait AT MOST `workers.terminationPeriod` for kill to finish
+     5. send `SIGKILL` to worker
+-  * NOTE: 
+-    * if you currently use a high value of `workers.terminationPeriod`, consider lowering it to `60` and setting a high value for `workers.celery.gracefullTerminationPeriod`
+ 
+ __The following values have been ADDED:__
+ 
+-* `workers.celery.gracefullTerminationPeriod`
++* `workers.celery.gracefullTerminationPeriod`:
++    * if you currently use a high value of `workers.terminationPeriod`, consider lowering it to `60` and setting a high value for `workers.celery.gracefullTerminationPeriod`
+ 
+ ## `v7.2.X` → `v7.3.0`
+ 
+@@ -232,4 +275,4 @@ __The following values have been ADDED:__
+ This version splits the specs for the NodeSelector, Affinity and Toleration features.
+ Instead of being global, and injected in every component, they are now defined _by component_ to provide more flexibility for your deployments. 
+ As such, the migration steps are really simple, just ust copy and paste your node/affinity/tolerance definitions in the four airflow components, which are `worker`, `scheduler`, `flower` and `web`. 
+-The default `values.yaml` file should help you with locating those.
+\ No newline at end of file
++The default `values.yaml` file should help you with locating those.
+diff --git a/stable/airflow/examples/google-gke/custom-values.yaml b/stable/airflow/examples/google-gke/custom-values.yaml
+index 651d15a02..43c9935cb 100644
+--- a/stable/airflow/examples/google-gke/custom-values.yaml
++++ b/stable/airflow/examples/google-gke/custom-values.yaml
+@@ -216,6 +216,21 @@ workers:
+   ##
+   replicas: 2
+ 
++  ## configs for the PodDisruptionBudget of the worker StatefulSet
++  ##
++  podDisruptionBudget:
++    ## if a PodDisruptionBudget resource is created for the worker StatefulSet
++    ##
++    enabled: true
++
++    ## the maximum unavailable pods/percentage for the worker StatefulSet
++    ##
++    ## NOTE:
++    ## - prevents loosing more than 20% of current worker task slots in a voluntary
++    ##   disruption
++    ##
++    maxUnavailable: "20%"
++
+   ## configs for the HorizontalPodAutoscaler of the worker Pods
+   ##
+   autoscaling:
+@@ -245,7 +260,12 @@ workers:
+ 
+     ## how many seconds to wait for tasks to finish before SIGTERM of the celery worker
+     ##
+-    gracefullTerminationPeriod: 600
++    ## WARNING:
++    ## - GKE cluster-autoscaler will not respect graceful termination period over 10min
++    ## NOTE:
++    ## - this gives any running tasks AT MOST 9min to complete
++    ##
++    gracefullTerminationPeriod: 540
+ 
+   ## how many seconds to wait after SIGTERM before SIGKILL of the celery worker
+   ##
+diff --git a/stable/airflow/templates/configmap-env.yaml b/stable/airflow/templates/config/configmap-env.yaml
+similarity index 92%
+rename from stable/airflow/templates/configmap-env.yaml
+rename to stable/airflow/templates/config/configmap-env.yaml
+index 09d871c68..5623fabd7 100644
+--- a/stable/airflow/templates/configmap-env.yaml
++++ b/stable/airflow/templates/config/configmap-env.yaml
+@@ -1,7 +1,7 @@
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+-  name: "{{ include "airflow.fullname" . }}-env"
++  name: {{ include "airflow.fullname" . }}-env
+   labels:
+     app: {{ include "airflow.labels.app" . }}
+     chart: {{ include "airflow.labels.chart" . }}
+@@ -36,10 +36,14 @@ data:
+   REDIS_PORT: "{{ .Values.externalRedis.port }}"
+   REDIS_DBNUM: "{{ .Values.externalRedis.databaseNumber }}"
+   {{- end }}
+-
++  {{- if .Values.flower.enabled }}
+   ## Airflow (Flower)
+   AIRFLOW__CELERY__FLOWER_URL_PREFIX: "{{ .Values.flower.urlPrefix }}"
++  AIRFLOW__CELERY__FLOWER_PORT: "5555"
++  {{- end }}
++  ## Airflow (Worker)
+   AIRFLOW__CELERY__WORKER_CONCURRENCY: "{{ .Values.workers.celery.instances }}"
++  AIRFLOW__CELERY__WORKER_LOG_SERVER_PORT: "8793"
+   {{- end }}
+ 
+   {{- if (eq .Values.airflow.executor "KubernetesExecutor") }}
+@@ -66,6 +70,7 @@ data:
+   AIRFLOW__CORE__ENABLE_XCOM_PICKLING: "false" # for forward compatibility with 2.0
+   AIRFLOW__CORE__EXECUTOR: "{{ .Values.airflow.executor }}"
+   AIRFLOW__WEBSERVER__BASE_URL: "{{ .Values.web.baseUrl }}"
++  AIRFLOW__WEBSERVER__WEB_SERVER_PORT: "8080"
+   {{- if .Values.airflow.fernetKey }}
+   AIRFLOW__CORE__FERNET_KEY: "{{ .Values.airflow.fernetKey }}"
+   {{- end }}
+diff --git a/stable/airflow/templates/configmap-scripts-git.yaml b/stable/airflow/templates/config/configmap-scripts-git.yaml
+similarity index 100%
+rename from stable/airflow/templates/configmap-scripts-git.yaml
+rename to stable/airflow/templates/config/configmap-scripts-git.yaml
+diff --git a/stable/airflow/templates/configmap-scripts.yaml b/stable/airflow/templates/config/configmap-scripts.yaml
+similarity index 100%
+rename from stable/airflow/templates/configmap-scripts.yaml
+rename to stable/airflow/templates/config/configmap-scripts.yaml
+diff --git a/stable/airflow/templates/configmap-variables-pools.yaml b/stable/airflow/templates/config/configmap-variables-pools.yaml
+similarity index 100%
+rename from stable/airflow/templates/configmap-variables-pools.yaml
+rename to stable/airflow/templates/config/configmap-variables-pools.yaml
+diff --git a/stable/airflow/templates/secret-connections.yaml b/stable/airflow/templates/config/secret-connections.yaml
+similarity index 100%
+rename from stable/airflow/templates/secret-connections.yaml
+rename to stable/airflow/templates/config/secret-connections.yaml
+diff --git a/stable/airflow/templates/deployments-flower.yaml b/stable/airflow/templates/flower/flower-deployment.yaml
+similarity index 94%
+rename from stable/airflow/templates/deployments-flower.yaml
+rename to stable/airflow/templates/flower/flower-deployment.yaml
+index ef135a442..5584be16f 100644
+--- a/stable/airflow/templates/deployments-flower.yaml
++++ b/stable/airflow/templates/flower/flower-deployment.yaml
+@@ -17,12 +17,13 @@ metadata:
+     {{- toYaml .Values.flower.labels | nindent 4 }}
+     {{- end }}
+ spec:
+-  replicas: 1
+-  minReadySeconds: 10
++  replicas: {{ .Values.flower.replicas }}
++  minReadySeconds: {{ .Values.flower.minReadySeconds }}
+   strategy:
++    # this is safe - multiple flower pods can run concurrently
+     type: RollingUpdate
+     rollingUpdate:
+-      maxSurge: 1
++      maxSurge: 25%
+       maxUnavailable: 0
+   selector:
+     matchLabels:
+@@ -32,10 +33,13 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        checksum/config-env: {{ include (print $.Template.BasePath "/configmap-env.yaml") . | sha256sum }}
++        checksum/config-env: {{ include (print $.Template.BasePath "/config/configmap-env.yaml") . | sha256sum }}
+         {{- if .Values.flower.podAnnotations }}
+         {{- toYaml .Values.flower.podAnnotations | nindent 8 }}
+         {{- end }}
++        {{- if .Values.flower.safeToEvict }}
++        cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
++        {{- end }}
+       labels:
+         app: {{ include "airflow.labels.app" . }}
+         component: flower
+diff --git a/stable/airflow/templates/ingress-flower.yaml b/stable/airflow/templates/flower/flower-ingress.yaml
+similarity index 85%
+rename from stable/airflow/templates/ingress-flower.yaml
+rename to stable/airflow/templates/flower/flower-ingress.yaml
+index 982da9765..2dd3a37f1 100644
+--- a/stable/airflow/templates/ingress-flower.yaml
++++ b/stable/airflow/templates/flower/flower-ingress.yaml
+@@ -1,5 +1,5 @@
+-{{- if and (.Values.flower.enabled)  (.Values.ingress.enabled) }}
+-apiVersion: extensions/v1beta1
++{{- if and (.Values.flower.enabled) (eq .Values.airflow.executor "CeleryExecutor") (.Values.ingress.enabled) }}
++apiVersion: networking.k8s.io/v1beta1
+ kind: Ingress
+ metadata:
+   name: {{ include "airflow.fullname" . }}-flower
+diff --git a/stable/airflow/templates/flower/flower-pdb.yaml b/stable/airflow/templates/flower/flower-pdb.yaml
+new file mode 100644
+index 000000000..0aaff54ce
+--- /dev/null
++++ b/stable/airflow/templates/flower/flower-pdb.yaml
+@@ -0,0 +1,24 @@
++{{- if and (.Values.flower.enabled) (eq .Values.airflow.executor "CeleryExecutor") (.Values.flower.podDisruptionBudget.enabled) }}
++apiVersion: policy/v1beta1
++kind: PodDisruptionBudget
++metadata:
++  name: {{ include "airflow.fullname" . }}-flower
++  labels:
++    app: {{ include "airflow.labels.app" . }}
++    component: flower
++    chart: {{ include "airflow.labels.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++spec:
++  {{- if .Values.flower.podDisruptionBudget.maxUnavailable }}
++  maxUnavailable: {{ .Values.flower.podDisruptionBudget.maxUnavailable }}
++  {{- end }}
++  {{- if .Values.flower.podDisruptionBudget.minAvailable }}
++  minAvailable: {{ .Values.flower.podDisruptionBudget.minAvailable }}
++  {{- end }}
++  selector:
++    matchLabels:
++      app: {{ include "airflow.labels.app" . }}
++      component: flower
++      release: {{ .Release.Name }}
++{{- end }}
+diff --git a/stable/airflow/templates/service-flower.yaml b/stable/airflow/templates/flower/flower-service.yaml
+similarity index 93%
+rename from stable/airflow/templates/service-flower.yaml
+rename to stable/airflow/templates/flower/flower-service.yaml
+index ac26355a6..99e5f3d6a 100644
+--- a/stable/airflow/templates/service-flower.yaml
++++ b/stable/airflow/templates/flower/flower-service.yaml
+@@ -1,4 +1,4 @@
+-{{- if .Values.flower.enabled }}
++{{- if and (.Values.flower.enabled) (eq .Values.airflow.executor "CeleryExecutor") }}
+ apiVersion: v1
+ kind: Service
+ metadata:
+diff --git a/stable/airflow/templates/monitoring-prometheus-rule.yaml b/stable/airflow/templates/monitoring/prometheus-rule.yaml
+similarity index 100%
+rename from stable/airflow/templates/monitoring-prometheus-rule.yaml
+rename to stable/airflow/templates/monitoring/prometheus-rule.yaml
+diff --git a/stable/airflow/templates/monitoring-service-monitor.yaml b/stable/airflow/templates/monitoring/service-monitor.yaml
+similarity index 100%
+rename from stable/airflow/templates/monitoring-service-monitor.yaml
+rename to stable/airflow/templates/monitoring/service-monitor.yaml
+diff --git a/stable/airflow/templates/role.yaml b/stable/airflow/templates/rbac/airflow-role.yaml
+similarity index 91%
+rename from stable/airflow/templates/role.yaml
+rename to stable/airflow/templates/rbac/airflow-role.yaml
+index daf75555d..2640f0717 100644
+--- a/stable/airflow/templates/role.yaml
++++ b/stable/airflow/templates/rbac/airflow-role.yaml
+@@ -1,5 +1,5 @@
+ {{- if .Values.rbac.create }}
+-apiVersion: rbac.authorization.k8s.io/v1beta1
++apiVersion: rbac.authorization.k8s.io/v1
+ kind: Role
+ metadata:
+   name: {{ include "airflow.fullname" . }}
+diff --git a/stable/airflow/templates/role-binding.yaml b/stable/airflow/templates/rbac/airflow-rolebinding.yaml
+similarity index 91%
+rename from stable/airflow/templates/role-binding.yaml
+rename to stable/airflow/templates/rbac/airflow-rolebinding.yaml
+index eb765e936..ba6d6e174 100644
+--- a/stable/airflow/templates/role-binding.yaml
++++ b/stable/airflow/templates/rbac/airflow-rolebinding.yaml
+@@ -1,5 +1,5 @@
+ {{- if .Values.rbac.create }}
+-apiVersion: rbac.authorization.k8s.io/v1beta1
++apiVersion: rbac.authorization.k8s.io/v1
+ kind: RoleBinding
+ metadata:
+   name: {{ include "airflow.fullname" . }}
+diff --git a/stable/airflow/templates/service-account.yaml b/stable/airflow/templates/rbac/airflow-serviceaccount.yaml
+similarity index 100%
+rename from stable/airflow/templates/service-account.yaml
+rename to stable/airflow/templates/rbac/airflow-serviceaccount.yaml
+diff --git a/stable/airflow/templates/deployments-scheduler.yaml b/stable/airflow/templates/scheduler/scheduler-deployment.yaml
+similarity index 96%
+rename from stable/airflow/templates/deployments-scheduler.yaml
+rename to stable/airflow/templates/scheduler/scheduler-deployment.yaml
+index 0c7b354df..f47b5b155 100644
+--- a/stable/airflow/templates/deployments-scheduler.yaml
++++ b/stable/airflow/templates/scheduler/scheduler-deployment.yaml
+@@ -18,8 +18,7 @@ metadata:
+ spec:
+   replicas: 1
+   strategy:
+-    # Kill the scheduler as soon as possible.
+-    # It will restart quickly with all the workers, minimizing the time they are not synchronized.
++    # this is safe as long as `maxSurge` is 0
+     type: RollingUpdate
+     rollingUpdate:
+       maxSurge: 0
+@@ -32,11 +31,11 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        checksum/config-env: {{ include (print $.Template.BasePath "/configmap-env.yaml") . | sha256sum }}
+-        checksum/config-git-clone: {{ include (print $.Template.BasePath "/configmap-scripts-git.yaml") . | sha256sum }}
+-        checksum/config-scripts: {{ include (print $.Template.BasePath "/configmap-scripts.yaml") . | sha256sum }}
+-        checksum/config-variables-pools: {{ include (print $.Template.BasePath "/configmap-variables-pools.yaml") . | sha256sum }}
+-        checksum/secret-connections: {{ include (print $.Template.BasePath "/secret-connections.yaml") . | sha256sum }}
++        checksum/config-env: {{ include (print $.Template.BasePath "/config/configmap-env.yaml") . | sha256sum }}
++        checksum/config-git-clone: {{ include (print $.Template.BasePath "/config/configmap-scripts-git.yaml") . | sha256sum }}
++        checksum/config-scripts: {{ include (print $.Template.BasePath "/config/configmap-scripts.yaml") . | sha256sum }}
++        checksum/config-variables-pools: {{ include (print $.Template.BasePath "/config/configmap-variables-pools.yaml") . | sha256sum }}
++        checksum/secret-connections: {{ include (print $.Template.BasePath "/config/secret-connections.yaml") . | sha256sum }}
+         {{- if and (.Values.dags.git.url) (.Values.dags.git.ref) }}
+         checksum/dags-git-ref: {{ .Values.dags.git.ref | sha256sum }}
+         {{- end }}
+@@ -46,6 +45,9 @@ spec:
+         {{- if .Values.scheduler.podAnnotations }}
+         {{- toYaml .Values.scheduler.podAnnotations | nindent 8 }}
+         {{- end }}
++        {{- if .Values.scheduler.safeToEvict }}
++        cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
++        {{- end }}
+       labels:
+         app: {{ include "airflow.labels.app" . }}
+         component: scheduler
+diff --git a/stable/airflow/templates/pdb-sheduler.yaml b/stable/airflow/templates/scheduler/scheduler-pdb.yaml
+similarity index 100%
+rename from stable/airflow/templates/pdb-sheduler.yaml
+rename to stable/airflow/templates/scheduler/scheduler-pdb.yaml
+diff --git a/stable/airflow/templates/deployments-web.yaml b/stable/airflow/templates/webserver/webserver-deployment.yaml
+similarity index 97%
+rename from stable/airflow/templates/deployments-web.yaml
+rename to stable/airflow/templates/webserver/webserver-deployment.yaml
+index 05e8afa61..a9ff40b91 100644
+--- a/stable/airflow/templates/deployments-web.yaml
++++ b/stable/airflow/templates/webserver/webserver-deployment.yaml
+@@ -19,10 +19,10 @@ spec:
+   replicas: {{ .Values.web.replicas }}
+   minReadySeconds: {{ .Values.web.minReadySeconds }}
+   strategy:
+-    # Smooth rolling update of the Web UI
++    # this is safe - multiple web pods can run concurrently
+     type: RollingUpdate
+     rollingUpdate:
+-      maxSurge: 1
++      maxSurge: 25%
+       maxUnavailable: 0
+   selector:
+     matchLabels:
+@@ -32,9 +32,9 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        checksum/config-env: {{ include (print $.Template.BasePath "/configmap-env.yaml") . | sha256sum }}
+-        checksum/config-git-clone: {{ include (print $.Template.BasePath "/configmap-scripts-git.yaml") . | sha256sum }}
+-        checksum/config-scripts: {{ include (print $.Template.BasePath "/configmap-scripts.yaml") . | sha256sum }}
++        checksum/config-env: {{ include (print $.Template.BasePath "/config/configmap-env.yaml") . | sha256sum }}
++        checksum/config-git-clone: {{ include (print $.Template.BasePath "/config/configmap-scripts-git.yaml") . | sha256sum }}
++        checksum/config-scripts: {{ include (print $.Template.BasePath "/config/configmap-scripts.yaml") . | sha256sum }}
+         {{- if and (.Values.dags.git.url) (.Values.dags.git.ref) }}
+         checksum/dags-git-ref: {{ .Values.dags.git.ref | sha256sum }}
+         {{- end }}
+@@ -44,6 +44,9 @@ spec:
+         {{- if .Values.web.podAnnotations }}
+         {{- toYaml .Values.web.podAnnotations | nindent 8 }}
+         {{- end }}
++        {{- if .Values.web.safeToEvict }}
++        cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
++        {{- end }}
+       labels:
+         app: {{ include "airflow.labels.app" . }}
+         component: web
+diff --git a/stable/airflow/templates/ingress-web.yaml b/stable/airflow/templates/webserver/webserver-ingress.yaml
+similarity index 97%
+rename from stable/airflow/templates/ingress-web.yaml
+rename to stable/airflow/templates/webserver/webserver-ingress.yaml
+index 8bbd5a51a..d570c7237 100644
+--- a/stable/airflow/templates/ingress-web.yaml
++++ b/stable/airflow/templates/webserver/webserver-ingress.yaml
+@@ -1,5 +1,5 @@
+ {{- if .Values.ingress.enabled }}
+-apiVersion: extensions/v1beta1
++apiVersion: networking.k8s.io/v1beta1
+ kind: Ingress
+ metadata:
+   name: {{ include "airflow.fullname" . }}-web
+diff --git a/stable/airflow/templates/webserver/webserver-pdb.yaml b/stable/airflow/templates/webserver/webserver-pdb.yaml
+new file mode 100644
+index 000000000..3e680cb6d
+--- /dev/null
++++ b/stable/airflow/templates/webserver/webserver-pdb.yaml
+@@ -0,0 +1,24 @@
++{{- if .Values.web.podDisruptionBudget.enabled }}
++apiVersion: policy/v1beta1
++kind: PodDisruptionBudget
++metadata:
++  name: {{ include "airflow.fullname" . }}-web
++  labels:
++    app: {{ include "airflow.labels.app" . }}
++    component: web
++    chart: {{ include "airflow.labels.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++spec:
++  {{- if .Values.web.podDisruptionBudget.maxUnavailable }}
++  maxUnavailable: {{ .Values.web.podDisruptionBudget.maxUnavailable }}
++  {{- end }}
++  {{- if .Values.web.podDisruptionBudget.minAvailable }}
++  minAvailable: {{ .Values.web.podDisruptionBudget.minAvailable }}
++  {{- end }}
++  selector:
++    matchLabels:
++      app: {{ include "airflow.labels.app" . }}
++      component: web
++      release: {{ .Release.Name }}
++{{- end }}
+diff --git a/stable/airflow/templates/service-web.yaml b/stable/airflow/templates/webserver/webserver-service.yaml
+similarity index 100%
+rename from stable/airflow/templates/service-web.yaml
+rename to stable/airflow/templates/webserver/webserver-service.yaml
+diff --git a/stable/airflow/templates/hpa-worker.yaml b/stable/airflow/templates/worker/worker-hpa.yaml
+similarity index 87%
+rename from stable/airflow/templates/hpa-worker.yaml
+rename to stable/airflow/templates/worker/worker-hpa.yaml
+index 691688780..21945c804 100644
+--- a/stable/airflow/templates/hpa-worker.yaml
++++ b/stable/airflow/templates/worker/worker-hpa.yaml
+@@ -1,5 +1,4 @@
+-{{- if .Values.workers.enabled -}}
+-{{- if .Values.workers.autoscaling.enabled -}}
++{{- if and (.Values.workers.enabled) (.Values.workers.autoscaling.enabled) }}
+ apiVersion: autoscaling/v2beta2
+ kind: HorizontalPodAutoscaler
+ metadata:
+@@ -20,4 +19,3 @@ spec:
+   metrics:
+     {{- toYaml .Values.workers.autoscaling.metrics | nindent 4 }}
+ {{- end }}
+-{{- end }}
+diff --git a/stable/airflow/templates/worker/worker-pdb.yaml b/stable/airflow/templates/worker/worker-pdb.yaml
+new file mode 100644
+index 000000000..0028e1c0f
+--- /dev/null
++++ b/stable/airflow/templates/worker/worker-pdb.yaml
+@@ -0,0 +1,24 @@
++{{- if and (.Values.workers.enabled) (.Values.workers.podDisruptionBudget.enabled) }}
++apiVersion: policy/v1beta1
++kind: PodDisruptionBudget
++metadata:
++  name: {{ include "airflow.fullname" . }}-worker
++  labels:
++    app: {{ include "airflow.labels.app" . }}
++    component: worker
++    chart: {{ include "airflow.labels.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++spec:
++  {{- if .Values.workers.podDisruptionBudget.maxUnavailable }}
++  maxUnavailable: {{ .Values.workers.podDisruptionBudget.maxUnavailable }}
++  {{- end }}
++  {{- if .Values.workers.podDisruptionBudget.minAvailable }}
++  minAvailable: {{ .Values.workers.podDisruptionBudget.minAvailable }}
++  {{- end }}
++  selector:
++    matchLabels:
++      app: {{ include "airflow.labels.app" . }}
++      component: worker
++      release: {{ .Release.Name }}
++{{- end }}
+diff --git a/stable/airflow/templates/service-worker.yaml b/stable/airflow/templates/worker/worker-service.yaml
+similarity index 100%
+rename from stable/airflow/templates/service-worker.yaml
+rename to stable/airflow/templates/worker/worker-service.yaml
+diff --git a/stable/airflow/templates/statefulsets-workers.yaml b/stable/airflow/templates/worker/worker-statefulset.yaml
+similarity index 95%
+rename from stable/airflow/templates/statefulsets-workers.yaml
+rename to stable/airflow/templates/worker/worker-statefulset.yaml
+index b0f8b7ce8..45064ecb0 100644
+--- a/stable/airflow/templates/statefulsets-workers.yaml
++++ b/stable/airflow/templates/worker/worker-statefulset.yaml
+@@ -1,6 +1,6 @@
+ {{- if .Values.workers.enabled }}
+-## Workers are not in deployment, but in StatefulSet, to allow each worker expose a mini-server
+-## that only serve logs, that will be used by the web server.
++## A StatefulSet is used to give workers consistent names for DNS,
++## allowing the web server to access the log files.
+ apiVersion: apps/v1
+ kind: StatefulSet
+ metadata:
+@@ -20,13 +20,11 @@ metadata:
+     {{- end }}
+ spec:
+   serviceName: "{{ include "airflow.fullname" . }}-worker"
++  replicas: {{ .Values.workers.replicas }}
+   updateStrategy:
+-    ## Kill the workers as soon as possible, the scheduler will restart the failed job later
+     type: RollingUpdate
+-  ## Use experimental burst mode for faster StatefulSet scaling
+-  ##   https://github.com/kubernetes/kubernetes/commit/c2c5051adf096ffd48bf1dcf5b11cb47e464ecdd
++  ## we do not need to guarantee the order in which workers are scaled
+   podManagementPolicy: Parallel
+-  replicas: {{ .Values.workers.replicas }}
+   selector:
+     matchLabels:
+       app: {{ include "airflow.labels.app" . }}
+@@ -35,9 +33,9 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        checksum/config-env: {{ include (print $.Template.BasePath "/configmap-env.yaml") . | sha256sum }}
+-        checksum/config-git-clone: {{ include (print $.Template.BasePath "/configmap-scripts-git.yaml") . | sha256sum }}
+-        checksum/config-scripts: {{ include (print $.Template.BasePath "/configmap-scripts.yaml") . | sha256sum }}
++        checksum/config-env: {{ include (print $.Template.BasePath "/config/configmap-env.yaml") . | sha256sum }}
++        checksum/config-git-clone: {{ include (print $.Template.BasePath "/config/configmap-scripts-git.yaml") . | sha256sum }}
++        checksum/config-scripts: {{ include (print $.Template.BasePath "/config/configmap-scripts.yaml") . | sha256sum }}
+         {{- if and (.Values.dags.git.url) (.Values.dags.git.ref) }}
+         checksum/dags-git-ref: {{ .Values.dags.git.ref | sha256sum }}
+         {{- end }}
+@@ -47,6 +45,9 @@ spec:
+         {{- if .Values.workers.podAnnotations }}
+         {{- toYaml .Values.workers.podAnnotations | nindent 8 }}
+         {{- end }}
++        {{- if .Values.workers.safeToEvict }}
++        cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
++        {{- end }}
+       labels:
+         app: {{ include "airflow.labels.app" . }}
+         component: worker
+diff --git a/stable/airflow/values.yaml b/stable/airflow/values.yaml
+index ab854131f..6103a9422 100644
+--- a/stable/airflow/values.yaml
++++ b/stable/airflow/values.yaml
+@@ -85,7 +85,7 @@ airflow:
+   ##
+   ## EXAMPLE:
+   ##   podAnnotations:
+-  ##     iam.amazonaws.com/role: airflow-Role
++  ##     iam.amazonaws.com/role: "airflow-Role"
+   ##
+   podAnnotations: {}
+ 
+@@ -199,6 +199,10 @@ scheduler:
+   ##
+   podAnnotations: {}
+ 
++  ## if we should tell Kubernetes Autoscaler that its safe to evict these Pods
++  ##
++  safeToEvict: true
++
+   ## configs for the PodDisruptionBudget of the scheduler
+   ##
+   podDisruptionBudget:
+@@ -352,6 +356,29 @@ web:
+   ##
+   podAnnotations: {}
+ 
++  ## if we should tell Kubernetes Autoscaler that its safe to evict these Pods
++  ##
++  safeToEvict: true
++
++  ## configs for the PodDisruptionBudget of the web Deployment
++  ##
++  podDisruptionBudget:
++    ## if a PodDisruptionBudget resource is created for the web Deployment
++    ##
++    ## WARNING:
++    ## - if you enable a PodDisruptionBudget, you should set `web.replicas` to a value
++    ##   large enough for Kubernetes to evict at least 1 Pod at a time
++    ##
++    enabled: false
++
++    ## the maximum unavailable pods/percentage for the web Deployment
++    ##
++    maxUnavailable: ""
++
++    ## the minimum available pods/percentage for the web Deployment
++    ##
++    minAvailable: ""
++
+   ## configs for the Service of the web Pods
+   ##
+   service:
+@@ -498,6 +525,32 @@ workers:
+   ##
+   podAnnotations: {}
+ 
++  ## if we should tell Kubernetes Autoscaler that its safe to evict these Pods
++  ##
++  safeToEvict: true
++
++  ## configs for the PodDisruptionBudget of the worker StatefulSet
++  ##
++  podDisruptionBudget:
++    ## if a PodDisruptionBudget resource is created for the worker StatefulSet
++    ##
++    ## WARNING:
++    ## - if you enable a PodDisruptionBudget, you should set `workers.replicas` to a value
++    ##   large enough for Kubernetes to evict at least 1 Pod at a time
++    ## - if you enable `workers.celery.gracefullTermination`, you should consider
++    ##   specifying a `workers.podDisruptionBudget.minAvailable` to prevent there
++    ##   not being enough available workers during graceful termination waiting periods
++    ##
++    enabled: false
++
++    ## the maximum unavailable pods/percentage for the worker StatefulSet
++    ##
++    maxUnavailable: ""
++
++    ## the minimum available pods/percentage for the worker StatefulSet
++    ##
++    minAvailable: ""
++
+   ## configs for the HorizontalPodAutoscaler of the worker Pods
+   ##
+   ## EXAMPLE:
+@@ -532,10 +585,14 @@ workers:
+     ## NOTE:
+     ## - sets AIRFLOW__CELERY__WORKER_CONCURRENCY
+     ##
+-    instances: 1
++    instances: 16
+ 
+     ## if we should wait for tasks to finish before SIGTERM of the celery worker
+     ##
++    ## WARNING:
++    ## - consider using `workers.podDisruptionBudget.*` to prevent there not being
++    ##   enough available workers during graceful termination waiting periods
++    ##
+     gracefullTermination: false
+ 
+     ## how many seconds to wait for tasks to finish before SIGTERM of the celery worker
+@@ -599,6 +656,10 @@ flower:
+   ##
+   resources: {}
+ 
++  ## the number of flower Pods to run
++  ##
++  replicas: 1
++
+   ## the nodeSelector configs for the flower Pods
+   ##
+   nodeSelector: {}
+@@ -627,6 +688,29 @@ flower:
+   ##
+   podAnnotations: {}
+ 
++  ## if we should tell Kubernetes Autoscaler that its safe to evict these Pods
++  ##
++  safeToEvict: true
++
++  ## configs for the PodDisruptionBudget of the flower Deployment
++  ##
++  podDisruptionBudget:
++    ## if a PodDisruptionBudget resource is created for the flower Deployment
++    ##
++    ## WARNING:
++    ## - if you enable a PodDisruptionBudget, you should set `flower.replicas` to a value
++    ##   large enough for Kubernetes to evict at least 1 Pod at a time
++    ##
++    enabled: false
++
++    ## the maximum unavailable pods/percentage for the flower Deployment
++    ##
++    maxUnavailable: ""
++
++    ## the minimum available pods/percentage for the flower Deployment
++    ##
++    minAvailable: ""
++
+   ## the name of a pre-created secret containing the basic authentication value for flower
+   ##
+   ## NOTE:
+@@ -660,6 +744,10 @@ flower:
+   ##
+   initialStartupDelay: 0
+ 
++  ## the number of seconds to wait before declaring a new Pod available
++  ##
++  minReadySeconds: 5
++
+   ## extra ConfigMaps to mount on the flower Pods
+   ##
+   ## EXAMPLE:
+@@ -1169,6 +1257,13 @@ postgresql:
+     ##
+     size: 8Gi
+ 
++  ## configs for the postgres StatefulSet
++  master:
++    ## annotations for the postgres Pod
++    ##
++    podAnnotations:
++      cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
++
+ ###################################
+ # Database - External Database
+ # - these configs are only used when `postgresql.enabled` is false
+@@ -1257,6 +1352,11 @@ redis:
+     ##
+     resources: {}
+ 
++    ## annotations for the master Pod
++    ##
++    podAnnotations:
++      cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
++
+     ## configs for the PVC of the redis master
+     ##
+     persistence:
+@@ -1290,6 +1390,11 @@ redis:
+     ##
+     resources: {}
+ 
++    ## annotations for the slave Pods
++    ##
++    podAnnotations:
++      cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
++
+     ## configs for the PVC of the redis slaves
+     ##
+     persistence:

@@ -1,0 +1,2854 @@
+commit d1442cf33a8cf4913d4ce88bcc9382fb23245526
+Author: ganga1980 <gangams@microsoft.com>
+Date:   Thu Mar 26 11:38:22 2020 -0700
+
+    [incubator/azuremonitor-containers] updates related to agent 03022020 release (#21610)
+    
+    * [bitnami/mariadb] Use buster in README example (#20733)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prestashop] Release 9.1.8 (#21061)
+    
+    * [stable/prestashop] Release 9.1.8 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodríguez Hernández <carrodher1179@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/orangehrm] Release 7.0.8 (#21059)
+    
+    * [stable/orangehrm] Release 7.0.8 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodríguez Hernández <carrodher1179@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/odoo] Release 13.0.3 (#21064)
+    
+    * [stable/odoo] Release 13.0.3 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodríguez Hernández <carrodher1179@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/joomla] Release 7.1.9 (#21070)
+    
+    * [stable/joomla] Release 7.1.9 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodríguez Hernández <carrodher1179@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/jasperreports] Release 7.0.8 (#21074)
+    
+    * [stable/jasperreports] Release 7.0.8 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodríguez Hernández <carrodher1179@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Changed RabbitMQ TLS secret type to kubernetes.io/tls. Can use cert-manager created secrets with this chart now. (#20907)
+    
+    Signed-off-by: Charalampos Kaidos <ckaidos@intracom-telecom.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Change generated comments synatx to Helm template comments. (#21085)
+    
+    Signed-off-by: Valentin Zayash <valioozz@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * - Adjust ES and mongodb secret name defaults to avoid potential collision with graylog secret (#21071)
+    
+    - Allow prepending http scheme to the ES uri fetched from a secret
+    
+    Signed-off-by: Mohamed Hazem <mhaz@hellofresh.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/datadog][v2.0.1] improve logs fields (#21086)
+    
+    Co-Authored-By: Vincent Boulineau <58430298+vboulineau@users.noreply.github.com>
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    
+    Co-authored-by: Vincent Boulineau <58430298+vboulineau@users.noreply.github.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [incubator/vault] Support additional selector for Vault service (#20995)
+    
+    * [incubator/vault] Support additional selector for Vault service
+    
+    Signed-off-by: Yong Wen Chua <lawliet89@users.noreply.github.com>
+    
+    * Fix typo
+    
+    Signed-off-by: Yong Wen Chua <lawliet89@users.noreply.github.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/osclass] Release 7.0.7 (#21117)
+    
+    * [stable/osclass] Release 7.0.7 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodríguez Hernández <carrodher1179@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/moodle] Release 7.2.4 (#21104)
+    
+    * [stable/moodle] Release 7.2.4 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodríguez Hernández <carrodher1179@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/jasperreports] Release 7.0.9 (#21119)
+    
+    * [stable/jasperreports] Release 7.0.9 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodríguez Hernández <carrodher1179@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/testlink] Release 7.1.4 (#21120)
+    
+    * [stable/testlink] Release 7.1.4 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodríguez Hernández <carrodher1179@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Add Adnan and Nedim to OWNERS file (#21121)
+    
+    Signed-off-by: Ciprian Hacman <ciprian.hacman@sematext.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prometheus-nats-exporter]: add prometheus-operator servicemonitor support (#21088)
+    
+    Signed-off-by: Alex Snast <alexsn@fb.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/wordpress] Move WP to non-root (#21099)
+    
+    * [stable/wordpress] Move WP to non-root
+    
+    Signed-off-by: juan131 <juan@bitnami.com>
+    
+    * [stable/wordpress] Update components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * README fixes and issue with validation
+    
+    Signed-off-by: Javier J. Salmeron Garcia <jsalmeron@vmware.com>
+    
+    Co-authored-by: Bitnami Bot <containers-bot@bitnami.com>
+    Co-authored-by: Javier J. Salmerón-García <jsalmeron@vmware.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prometheus] Use the new api for ingress (#21049)
+    
+    Signed-off-by: Adrian Berger <adrian.berger@bedag.ch>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prometheus-operator ] Bump operator version, update dependencies (#20572)
+    
+    * Fix CRD annotations, bump operator version
+    
+    Alter port on node-exporter because CI is down
+    
+    Signed-off-by: vas <vasily.sliouniaev@jet.com>
+    
+    * Update dependent charts to latest
+    
+    Signed-off-by: vas <vasily.sliouniaev@jet.com>
+    
+    * Update readme and cleanup-attempt template
+    
+    Signed-off-by: vas <vasily.sliouniaev@jet.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/pgadmin] README incorrect example (#20804)
+    
+    Within the README file there was an incorrect example where env.username
+    was given rather then env.email.
+    
+    Signed-off-by: Rowan Ruseler <rowanruseler@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Update percona to 5.7.26 and fix manifest to use apps/v1 (#20164)
+    
+    * Update percona to 5.7.26 and fix manifest to use apps/v1
+    
+    Signed-off-by: Salar Moghaddam <salarmgh@gmail.com>
+    
+    * Version bump
+    
+    Signed-off-by: Salar Moghaddam <salarmgh@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/chartmuseum] Allow using initContainer to set volume permissions (#21019)
+    
+    * [stable/chartmuseum] Use initContainer to set the permissions when securityContext is not available
+    
+    Signed-off-by: Dmitry Kharchenko <unclenorton@gmail.com>
+    
+    * [stable/chartmuseum] Use .Values.persistence.path for the PV mount path
+    
+    Signed-off-by: Dmitry Kharchenko <unclenorton@gmail.com>
+    
+    * [stable/chartmuseum] Correct the variable name in the readme
+    
+    Signed-off-by: Dmitry Kharchenko <unclenorton@gmail.com>
+    
+    * [stable/chartmuseum] Revert the changes to incubator chart
+    
+    Signed-off-by: Dmitry Kharchenko <unclenorton@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prometheus-adapter] Do not create custom metrics rbac (#20900)
+    
+    Commit b7afaf9d8875f6aa1cfed4c0422cb28e51d823a3 ("do not create
+    apiservice when not needed") from PR #20883 disabled the custom API
+    Service when no custom rules are used. However, we also need to not
+    deploy the cluster role as it has no use.
+    
+    Signed-off-by: Markos Chandras <markos@chandras.me>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * fix test race condition (#20967)
+    
+    Signed-off-by: Tuan Anh Nguyen <tuananh.nguyen-ext@commercetools.de>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/rabbitmq-ha] adds scrapeTimeout option on ServiceMonitor (#21093)
+    
+    * [stable/rabbitmq-ha] adds scrapeTimeout option on ServiceMonitor
+    
+    Signed-off-by: Felippe Mendonça <mendonca.felippe@gmail.com>
+    
+    * [stable/rabbitmq-ha]: bumps chart version
+    
+    Signed-off-by: Felippe Mendonça <mendonca.felippe@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/sysdig] fix setting env vars (#21106) (#21106)
+    
+    Signed-off-by: Brendan Germain <brendan.germain@nasdaq.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prometheus] Added configmapReload.enabled parameter (#20578) (#20912)
+    
+    * Added configmapReload.enabled parameter (#20578)
+    
+    Signed-off-by: Adrien Cunin <adrien.cunin@springernature.com>
+    
+    * Splitted configmapReload parameters
+    
+    It's now possible to independently change the parameters of the two
+    configmapReload containers using configmapReload.prometheus.* and
+    configmapReload.alertmanager.* parameters.
+    
+    Signed-off-by: Adrien Cunin <adrien.cunin@springernature.com>
+    
+    * Bumped chart version
+    
+    Signed-off-by: Adrien Cunin <adrien.cunin@springernature.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/pgadmin] Pr modifies pgadmin to accept enhanced_cookie_protection  env to fix ingress issue #18568 (#21045)
+    
+    * False and True should be forced otherwise it will be interpreted as boolean
+    
+    Signed-off-by: Rachad Abi Chahine <rachad.abi-chahine@hotmail.fr>
+    
+    * updates enhanced_cookie_protection
+    
+    Signed-off-by: Rachad Abi Chahine <rachad.abi-chahine@hotmail.fr>
+    
+    * adds the documentation of enhanced_cookie_protection in pgadmin
+    
+    Signed-off-by: Rachad Abi Chahine <rachad.abi-chahine@hotmail.fr>
+    
+    * as discussed I upgrade to 1.2.2
+    
+    Signed-off-by: Rachad Abi Chahine <rachad.abi-chahine@hotmail.fr>
+    
+    * Updates README.md to adds default env variables
+    
+    Signed-off-by: Rachad Abi Chahine <rachad.abi-chahine@hotmail.fr>
+    
+    * the value of enhanced_cookie_protection should be double quoted
+    
+    Signed-off-by: Rachad Abi Chahine <rachad.abi-chahine@hotmail.fr>
+    
+    * update README.md : the value of enhanced_cookie_protection should be double quoted
+    
+    Signed-off-by: Rachad Abi Chahine <rachad.abi-chahine@hotmail.fr>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Added fullname as prefix for init-scripts configmap name. (#21110)
+    
+    * Added fullname as prefix for init-scripts configmap name.
+    
+    Signed-off-by: Marcos Monteiro <marcos.monteiro@greenbricklabs.com>
+    
+    * Update Chart.yaml
+    
+    Signed-off-by: Marcos Monteiro <marcos.monteiro@greenbricklabs.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Upgrade to latest release 1.3.0 (#21101)
+    
+    Signed-off-by: Mike Unke <unke@b1-systems.de>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * update eventrouter to v0.3 (#21140)
+    
+    Signed-off-by: blakeroberts-wk <blake.roberts@workiva.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/minio] annotation fix (#21155)
+    
+    * annotation fix
+    Signed-off-by: ahmadali shafiee <mail@ahmadalli.net>
+    
+    * use with operator
+    Signed-off-by: ahmadali shafiee <mail@ahmadalli.net>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Use ksm chart for ksm (#21148)
+    
+    By leveraging the ksm chart we are deduplicating community effort.
+    
+    Signed-off-by: Naseem <naseem@transit.app>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * chore: use the new api for ingress (#20648)
+    
+    Signed-off-by: Abdulrahman Khalil <a.skhalil93@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/mongodb] updateStrategy added when useStatefulSet is true and serviceName added. (#21150)
+    
+    * updateStrategy added when useStatefulSet is true and serviceName added.
+    
+    Signed-off-by: Ahmet Kaftan <ahmet.kaftan@cloudnesil.com>
+    
+    * typo fix.
+    
+    Signed-off-by: Ahmet Kaftan <ahmet.kaftan@cloudnesil.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/wordpress] Fix issue with port number when using external dbs (#21172)
+    
+    Signed-off-by: juan131 <juan@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [mssql/linux] Allow setting tolerations, affinity, and securityContext (#20745)
+    
+    Signed-off-by: Gerard Godone-Maresca <ggodonemaresca+github@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Add runAsGroup in SecurityContext (#101) (#21173)
+    
+    Signed-off-by: devOpsHelm <devops+1@hazelcast.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Add runAsGroup in SecurityContext (#101) (#21174)
+    
+    Signed-off-by: devOpsHelm <devops+1@hazelcast.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/sealed-secrets] Add podLabels support (#21083)
+    
+    Signed-off-by: Joffrey Janiec <jjaniec@student.42.fr>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/nginx-ingress] match minReplicas to the documentation (#21184)
+    
+    Signed-off-by: Heechul Ryu <ryuhcii@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/influxdb] Additional auth job variables (#21075)
+    
+    * Adding hookDeletePolicy variable.
+    
+    Signed-off-by: Jeremy Roberts <jeremy@robertsisland.com>
+    
+    * Adding backoffLimit variable.
+    
+    Signed-off-by: Jeremy Roberts <jeremy@robertsisland.com>
+    
+    * Bumping chart version.
+    
+    Signed-off-by: Jeremy Roberts <jeremy@robertsisland.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/hazelcast-jet] Merge pull request #93 from gurbuzali/jet-4.0 (#21182)
+    
+    * Merge pull request #93 from gurbuzali/jet-4.0
+    
+    Signed-off-by: devOpsHelm <devops+1@hazelcast.com>
+    
+    * Fixed linter error
+    
+    Signed-off-by: Emin Demirci <emin@hazelcast.com>
+    
+    Co-authored-by: Emin Demirci <emin@hazelcast.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/osclass] Release 7.0.8 (#21143)
+    
+    * [stable/osclass] Release 7.0.8 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodríguez Hernández <carrodher1179@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/testlink] Release 7.1.5 (#21145)
+    
+    * [stable/testlink] Release 7.1.5 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodríguez Hernández <carrodher1179@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/ghost] Release 9.1.11 (#21192)
+    
+    * [stable/ghost] Release 9.1.11 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodríguez Hernández <carrodher1179@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/moodle] Release 7.2.5 (#21152)
+    
+    * [stable/moodle] Release 7.2.5 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodríguez Hernández <carrodher1179@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/sysdig] Upgrade to latest agent version (9.6.1) (#21213)
+    
+    Signed-off-by: Néstor Salceda <nestor.salceda@sysdig.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [newrelic-infra] Bump chart to latest version (#21187)
+    
+    Signed-off-by: Lennert Claeys <lclaeys@newrelic.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/postgresql] Add sidecars support (#21188)
+    
+    * [stable/postgresql] Add sidecars support
+    
+    Signed-off-by: Javier J. Salmeron Garcia <jsalmeron@vmware.com>
+    
+    * Fix if
+    
+    Signed-off-by: Javier J. Salmeron Garcia <jsalmeron@vmware.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/jenkins] update pluging versions (#21205)
+    
+    Signed-off-by: Torsten Walter <torsten.walter@syncier.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/consul] updated templating for ingress host (#21207)
+    
+    Signed-off-by: Yatharth Sharma <yatharth0045@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/nextcloud] add subPath option (#21210)
+    
+    * [stable/nextcloud] add subPath option
+    
+    [Why]
+    The user will now be able to specify nextcloud.persistence.subPath and
+    it will automatically set each of the nextcloud-data mounts properly
+    
+    Signed-off-by: Samantha McVey <samantham@posteo.net>
+    
+    * [stable/nextcloud] bump chart version to 1.9.2
+    
+    Signed-off-by: Samantha McVey <samantham@posteo.net>
+    
+    * [stable/nextcloud] document persistence.subPath option
+    
+    Signed-off-by: Samantha McVey <samantham@posteo.net>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Update README.md (#19876)
+    
+    bump version
+    
+    Signed-off-by: David Karlsen <david@davidkarlsen.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prometheus] Support tmpl files which are not YAML (#21208)
+    
+    Signed-off-by: Malte Krupa <github-nqyroppg@nafn.de>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/airflow] be able to change git sync target (#21217)
+    
+    Helpful when you want to sync to a subdir
+    
+    Signed-off-by: Steffen Tautenhahn <stevie-@users.noreply.github.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/hazelcast-jet] Merge pull request #103 from eminn/security-context (#21219)
+    
+    * Merge pull request #103 from eminn/security-context
+    
+    Signed-off-by: devOpsHelm <devops+1@hazelcast.com>
+    
+    * Fixed linter error
+    
+    Signed-off-by: Emin Demirci <emin@hazelcast.com>
+    
+    Co-authored-by: Emin Demirci <emin@hazelcast.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/traefik] Add distinct container SecurityContext tunable (#20743) (#20887)
+    
+    * [stable/traefik] Add distinct container SecurityContext tunable (#20743)
+    
+    Signed-off-by: David Kirchner <dpk@dpk.net>
+    
+    * [stable/traefik] Update new securityContext K8S API links to something more up to date
+    
+    Signed-off-by: David Kirchner <dpk@dpk.net>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Make liveness and readiness probes configurable (#19637)
+    
+    Signed-off-by: Maarten de Waard <maarten@greenhost.nl>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/drone] Add deprecation note in favor of official Charts (#21151)
+    
+    * [stable/drone] Add deprecation note in favor of official Charts
+    
+    Signed-off-by: Brad Rydzewski <brad.rydzewski@gmail.com>
+    
+    * bump chart version number
+    
+    Signed-off-by: Brad Rydzewski <brad.rydzewski@gmail.com>
+    
+    * remove maintainers to pass linting
+    
+    Signed-off-by: Brad Rydzewski <brad.rydzewski@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Allow configuring terminationGracePeriodSeconds (#21072)
+    
+    Signed-off-by: Jocelyn Lussier <jocelyn.lussier2@montreal.ca>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/falco] allow gRPC configuration using values (#21225)
+    
+    * [stable/falco] allow gRPC configuration using values
+    
+    Signed-off-by: Leonardo Grasso <me@leonardograsso.com>
+    
+    * [stable/falco] Update CHANGELOG.md
+    
+    Signed-off-by: Leonardo Grasso <me@leonardograsso.com>
+    
+    * [stable/falco] chart version bump
+    
+    Signed-off-by: Leonardo Grasso <me@leonardograsso.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Use selectorLabels helper in headless service (#21196)
+    
+    Signed-off-by: Steve Buzonas <steve@fancyguy.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/redis-ha] Fix label selector of haproxy servicemonitor (#20209)
+    
+    * [stable/redis-ha] Fix label selector of haproxy servicemonitor
+    
+    The old servicemonitor did not actually match the deployed service,
+    because the service uses redis-ha.fullname as a label
+    (https://github.com/helm/charts/blob/master/stable/redis-ha/templates/redis-haproxy-service.yaml#L9)
+    but the servicemonitor matches redis-ha.name.
+    
+    Signed-off-by: Max Rosin <m.rosin@syseleven.de>
+    
+    * Raise chart version after rebase
+    
+    Signed-off-by: Max Rosin <git@hackrid.de>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Add deprecation notice. (#21231)
+    
+    Signed-off-by: Naseem <naseem@transit.app>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Add deprecation notice. (#21234)
+    
+    Signed-off-by: Naseem <naseem@transit.app>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/sealed-secrets] Upgrade to v0.10.0 (#21238)
+    
+    Signed-off-by: David Karlsen <david@davidkarlsen.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * chore(grafana): update grafana version (#21214)
+    
+    Signed-off-by: Abdulrahman Khalil <a.skhalil93@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Merge pull request #104 from eminn/fsGroup-helm3-fix (#21239)
+    
+    Signed-off-by: devOpsHelm <devops+1@hazelcast.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/cerebro] Add ability to set tls skip verify via vaules file (#21178)
+    
+    * Update Chart.yaml
+    
+    Signed-off-by: Raul Garcia <garcia@denic.de>
+    
+    * Add ability skip tls verification
+    
+    Signed-off-by: Raul Garcia <garcia@denic.de>
+    
+    * Update configmap.yaml
+    
+    fixed mixed behavior
+    
+    Signed-off-by: Raul Garcia <garcia@denic.de>
+    
+    * Update stable/cerebro/Chart.yaml
+    
+    Signed-off-by: David Karlsen <david@davidkarlsen.com>
+    
+    Co-authored-by: David J. M. Karlsen <david@davidkarlsen.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/kube-state-metrics] Add missing permission for volumeattachments collector (#21079)
+    
+    When enabling the volumeattachments collector, the following error is
+    logged without this permission:
+    
+    Failed to list *v1.VolumeAttachment: volumeattachments.storage.k8s.io is forbidden: User "XXXXX:kube-state-metrics" cannot list resource "volumeattachments" in API group "storage.k8s.io" at the cluster scope
+    
+    Signed-off-by: Fabrice Rabaute <fabrice@arista.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * make configurable securityContext at statefulset spec level (#102) (#21218)
+    
+    Signed-off-by: devOpsHelm <devops+1@hazelcast.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/elastic-stack] update requirements for 1.16 (#18620)
+    
+    Signed-off-by: a1kemist <lsnelson33@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/mongodb-replicaset] feature: add support for extra containers and volumes (#20875)
+    
+    * add support for extra containers and volumes
+    
+    Signed-off-by: Oluwaseun Obajobi <oba@obajobi.com>
+    
+    * fix: updated the pull request with recommended changes
+    
+    Signed-off-by: Oluwaseun Obajobi <oba@obajobi.com>
+    
+    * update the chart version to `3.12.0`
+    
+    Signed-off-by: Oluwaseun Obajobi <oba@obajobi.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [sonatype-nexus] provide granular resource requests to nexus backup container (#21123)
+    
+    Signed-off-by: Jeff Knurek <j.knurek@travelaudience.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prometheus-operator] Add ThanosRuler resources to ClusterRole (#21190)
+    
+    * Add ThanosRuler resources to ClusterRole
+    
+    Signed-off-by: Steve Buzonas <steve@fancyguy.com>
+    
+    * Bump chart version
+    
+    Signed-off-by: Steve Buzonas <steve@fancyguy.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * fix hard-coded path and default to "/" (#21253)
+    
+    * fix hard-coded path and default to "/"
+    
+    Signed-off-by: Joe Steffee <jsteffee@flexera.com>
+    
+    * bump version
+    
+    Signed-off-by: Joe Steffee <jsteffee@flexera.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/kube-state-metrics] Enable all collectors by default (#21245)
+    
+    Signed-off-by: Manuel Rüger <manuel@rueg.eu>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Deprecate sonatype-nexus chart (#21255)
+    
+    Signed-off-by: Rob Kernick <rjkernick@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/cluster-autoscaler] reuse existing service account (#21204)
+    
+    * [stable/cluster-autoscaler] reuse existing service account
+    
+    Signed-off-by: Nicolas Degory <nicolas.degory@gmail.com>
+    
+    * refactor service account name in values.yaml
+    
+    Signed-off-by: Nicolas Degory <nicolas.degory@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [prometheus/stable] auto import of dashboards with helm template(helm 3) (#21263)
+    
+    * [prometheus/stable] auto import of dashboards with helm template(helm 3)
+    
+    Signed-off-by: gowrisankar <gowrisankar.m01@sap.com>
+    
+    * Fix the chart version
+    
+    Signed-off-by: gowrisankar <gowrisankar.m01@sap.com>
+    
+    Co-authored-by: gowrisankarm <gowrisankar.m01@sap.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/kube-state-metrics] Only create PSP RBAC if rbac.create is true. (#19986)
+    
+    Signed-off-by: Cédric de Saint Martin <cdesaintmartin@wiremind.fr>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prometheus-redis-exporter] Fix secret key path in deployment (#21259)
+    
+    * Update secret key path in deployment
+    
+    Signed-off-by: Ken Thompson <ken.thompson23@gmail.com>
+    
+    * Clarify use of SSL connections in redis address
+    
+    Signed-off-by: Ken Thompson <ken.thompson23@gmail.com>
+    
+    * Update chart version
+    
+    Signed-off-by: Ken Thompson <ken.thompson23@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/elasticsearch-curator] load envs from secrets first (#20874)
+    
+    * [stable/elasticsearch-curator] load envs from secrets first
+    
+    allows using environment variable composition with env
+    variables that are loaded from secrets (e.g. for loading
+    a HTTP password and then compositing it into a full
+    basic auth env variable).
+    
+    Signed-off-by: Marvin Beckers <marvin.beckers@cerence.com>
+    
+    * stable/elasticsearch-curator: bump version
+    
+    Signed-off-by: Marvin Beckers <marvin.beckers@cerence.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/memcached] fixes updateStrategy for Deployment (#18989)
+    
+    * [stable/memcached] fixes updateStrategy for Deployment
+    
+    Signed-off-by: Raffael Sahli <sahli@gyselroth.com>
+    
+    * bump chart version
+    
+    Signed-off-by: Raffael Sahli <sahli@gyselroth.com>
+    
+    * bump chart version
+    
+    Signed-off-by: Raffael Sahli <sahli@gyselroth.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prometheus-operator] add enforcedNamespaceLabel option to the prom operator (#21132)
+    
+    Signed-off-by: Will Salt <williamejsalt@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/datadog] Revert "Mount the directory containing the CRI socket instead of the socket itself" (#21268)
+    
+    This reverts commit 24b4881ecb9ae7c4368359d59df4fcc968493356.
+    
+    Fixes #21223
+    
+    Signed-off-by: Lénaïc Huard <lenaic.huard@datadoghq.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/nginx-ingress] add instruction to make it work with nlb (#21260)
+    
+    * add instruction to make it work with nlb
+    
+    Signed-off-by: KongZ <goonohc@gmail.com>
+    
+    * bump version
+    
+    Signed-off-by: KongZ <goonohc@gmail.com>
+    
+    * bump version
+    
+    Signed-off-by: KongZ <goonohc@gmail.com>
+    
+    * bump version
+    
+    Signed-off-by: KongZ <goonohc@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * configurable upgrade strategy type (#21272)
+    
+    The default is 'Recreate' in order to avoid issues with multi-attach
+    volmue errors
+    
+    Signed-off-by: Jeff Billimek <jeffrey_k_billimek@homedepot.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/mongodb-replicaset] Namespace override (#21203)
+    
+    Signed-off-by: Mohammad Forutan <mforutan@users.noreply.github.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * fix(values): move maxmindLicenseKey under controller (#21282)
+    
+    Signed-off-by: azman0101 <azman0101@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prometheus] Set rollingUpdate to null when strategy is Recreate (#21289)
+    
+    This change improves handling of deployment strategy parameters:
+    
+    1) Improve documentation on strategy parameters.
+    
+    2) Document & use alertmanager.strategy.type, which was present in
+       values.yaml but unused. Alertmanager was previous using server.strategy
+    
+    3) Set strategy.rollingUpdate to null when strategy.type is 'Recreate'.
+       This is necessary to prevent the following error on an upgrade
+       switching the strategy type from 'RollingUpdate' to 'Recreate':
+    
+       ```
+       UPGRADE FAILED: Deployment.apps "prometheus-server" is invalid:
+       spec.strategy.rollingUpdate: Forbidden: may not be specified
+       when strategy `type` is 'Recreate'
+       ```
+    
+    Signed-off-by: Alexandre Rebert <alex@forallsecure.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/postgresql] Updated helper functions to use KubeVersion.Version instead of deprecated KubeVersion.GitVerson (#21236)
+    
+    * [stable/postgresql] Setting kubernetes version to KubeVersion.Version and defaulting to deprecated KubeVersion.GitVersion
+    
+    Signed-off-by: Brian Dunnigan <bdun1013dev@gmail.com>
+    
+    * [stable/postgresql] Bumping chart version
+    
+    Signed-off-by: Brian Dunnigan <bdun1013dev@gmail.com>
+    
+    * [stable/postgresql] Added kubeVersion helper that works in Helm 2.x and 3.x
+    
+    Signed-off-by: Brian Dunnigan <bdun1013dev@gmail.com>
+    
+    * [stable/postgresql] Simplified kubeVersion helper function
+    
+    Signed-off-by: Brian Dunnigan <bdun1013dev@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/suitecrm] Release 8.0.9 (#21278)
+    
+    * [stable/suitecrm] Release 8.0.9 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prestashop] Release 9.1.9 (#21270)
+    
+    * [stable/prestashop] Release 9.1.9 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/phabricator] Release 9.0.11 (#21279)
+    
+    * [stable/phabricator] Release 9.0.11 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/drupal] Release 6.2.9 (#21280)
+    
+    * [stable/drupal] Release 6.2.9 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * stable/graylog Adding the possibility of specifying your own URI for the GeoLite DDBB location (#21267)
+    
+    * Author: Josep Manel Andres Moscardo <titansmc@gmail.com>
+    Date:   Thu Mar 5 09:41:15 2020 +0100
+    
+     Changes to be committed:
+            modified:   templates/configmap.yaml
+            modified:   values.yaml
+    
+    Signed-off-by: Josep Manel Andres Moscardo <titansmc@gmail.com>
+    
+    * Author: Josep Manel Andres Moscardo <titansmc@gmail.com>
+    Date:   Thu Mar 5 09:46:15 2020 +0100
+    
+     Changes to be committed:
+            modified:   templates/configmap.yaml
+            modified:   values.yaml
+    Signed-off-by: Josep Manel Andres Moscardo <titansmc@gmail.com>
+    
+    * Author: Josep Manel Andres Moscardo <titansmc@gmail.com>
+    
+    Date:   Thu Mar 5 09:46:15 2020 +0100
+    
+     Changes to be committed:
+            modified:   templates/configmap.yaml
+            modified:   values.yaml
+    Signed-off-by: Josep Manel Andres Moscardo <titansmc@gmail.com>
+    
+            modified:   Chart.yaml
+    bumped Chart.yaml version
+    
+    * Author: Josep Manel Andres Moscardo <titansmc@gmail.com>
+    
+    Date:   Thu Mar 5 09:46:15 2020 +0100
+    
+    Signed-off-by: Josep Manel Andres Moscardo <titansmc@gmail.com>
+            modified:   README.md
+    
+    * Author: Josep Manel Andres Moscardo <titansmc@gmail.com>
+    
+    Signed-off-by: Josep Manel Andres Moscardo <titansmc@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/elasticsearch] Adds imagePullSecrets to test image (#21048)
+    
+    Signed-off-by: Marcos Estevez <marcos.stvz@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prometheus-operator] Fix roles for k8s >1.15 (#21261)
+    
+    Signed-off-by: Eric Bailey <e.bailey@sportradar.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/fluentd] Enable use of statefulset without autoscaling (#19668)
+    
+    Signed-off-by: Dale Tristram <dale.tristram@sprinthive.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/external-dns]use the latest GH link of externaldns (#21291)
+    
+    * [stable/external-dns]use the latest GH link of externaldns
+    
+    Signed-off-by: Tariq Ibrahim <tariq181290@gmail.com>
+    
+    * [stable/external-dns]use the latest GH link of externaldns
+    
+    Signed-off-by: Tariq Ibrahim <tariq181290@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Revert "[stable/postgresql] Updated helper functions to use KubeVersion.Version instead of deprecated KubeVersion.GitVerson (#21236)" (#21308)
+    
+    This reverts commit 6b848abd21a2c8fd0acfba751282f404162a30e5.
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/rabbitmq-ha] Added 'topicPermission' key in definitions.json secret (#20656)
+    
+    * Added the possibility of adding "topic_prmissions" key in definitions.json
+    
+    Signed-off-by: Andrea Gilardoni <andrea.gilardoni96@gmail.com>
+    
+    * Version Bump
+    
+    Signed-off-by: Andrea Gilardoni <andrea.gilardoni96@gmail.com>
+    
+    * Fixing version bump
+    
+    Signed-off-by: Andrea Gilardoni <andrea.gilardoni96@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Add deprecation notice. (#21232)
+    
+    Signed-off-by: Naseem <naseem@transit.app>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/kapacitor] Chart deprecation (#21247)
+    
+    * Add deprecation notice.
+    
+    Signed-off-by: Naseem <naseem@transit.app>
+    
+    * Deprecate chart.
+    
+    Signed-off-by: Naseem <naseem@transit.app>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/drupal] Release 6.2.10 (#21297)
+    
+    * [stable/drupal] Release 6.2.10 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/owncloud] Release 8.1.6 (#21299)
+    
+    * [stable/owncloud] Release 8.1.6 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Add deprecation notice. (#21233)
+    
+    Signed-off-by: Naseem <naseem@transit.app>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/influxdb] Chart deprecation (#21246)
+    
+    * Add deprecation notice.
+    
+    Signed-off-by: Naseem <naseem@transit.app>
+    
+    * Deprecate chart.
+    
+    Signed-off-by: Naseem <naseem@transit.app>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/pgadmin] deprecated (#21275)
+    
+    * [stable/pgadmin] deprecated
+    
+    Moved towards a new repo: https://github.com/rowanruseler/helm-charts
+    
+    helm hub: https://hub.helm.sh/charts/runix/pgadmin4
+    
+    Signed-off-by: Rowan Ruseler <rowanruseler@gmail.com>
+    
+    * [stable/pgadmin] duplication of key description
+    
+    Signed-off-by: Rowan Ruseler <rowanruseler@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/unifi] Adding captive portal service (#21241)
+    
+    * [stable/unifi] Adding captive portal service
+    Signed-off-by: Arno Dubois <arno.du@orange.fr>
+    
+    Signed-off-by: Arno DUBOIS <arnodubois@sweetpunk.com>
+    
+    * [stable/unifi] Annnd bumping version
+    Signed-off-by: Arno Dubois <arno.du@orange.fr>
+    
+    Signed-off-by: Arno DUBOIS <arnodubois@sweetpunk.com>
+    
+    * Added an enabled switch
+    
+    Signed-off-by: Arno DUBOIS <arnodubois@sweetpunk.com>
+    
+    * [stable/unifi] Fixing feedbacks
+    
+    Signed-off-by: Arno DUBOIS <arnodubois@sweetpunk.com>
+    
+    * [stable/unifi] Adding captive portal ingress
+    
+    Signed-off-by: Arno DUBOIS <arnodubois@sweetpunk.com>
+    
+    * [stable/unifi] Better table formatting
+    
+    Signed-off-by: Arno DUBOIS <arnodubois@sweetpunk.com>
+    
+    * [stable/unifi] Fixed ingress
+    
+    Signed-off-by: Arno DUBOIS <arnodubois@sweetpunk.com>
+    
+    Co-authored-by: Arno DUBOIS <arnodubois@sweetpunk.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/chaoskube] Support adding pod labels. (#20914)
+    
+    Signed-off-by: Afolabi Badmos <afolabi@badmos.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/minio] allow ingress to have empty host (#21315)
+    
+    Allow enabling ingress with a host not set. Currently, it's not possible
+    if we want to enable ingress, but does not want to set a host for the
+    ingress rule.
+    
+    With this patch, if you set the host to be an empty string, the host
+    field in the Ingress rule won't be set, allowing all inbound traffic
+    regardless of the host used.
+    
+    Tested with this values:
+    
+    ```yaml
+    ingress:
+      enabled: true
+      hosts:
+      - ""
+    ```
+    
+    ```bash
+    $ helm template . myvalues.yaml
+    ...
+    kind: Ingress
+    metadata:
+      name: release-name-minio
+      labels:
+        app: minio
+        chart: minio-5.0.12
+        release: release-name
+        heritage: Tiller
+    spec:
+      rules:
+        - http:
+            paths:
+              - path: /
+                backend:
+                  serviceName: release-name-minio
+                  servicePort: 9000
+    ```
+    
+    Signed-off-by: Jie Yu <yujie.jay@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/minio] remove references for old env docs (#21318)
+    
+    Signed-off-by: Harshavardhana <harsha@minio.io>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/unifi] Fixed some mistakes with nodePort (#21320)
+    
+    Signed-off-by: Arno <arno.du@orange.fr>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/unifi] Ingress was not referring to the good service (#21321)
+    
+    Signed-off-by: Arno <arno.du@orange.fr>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/datadog] Fix trace agent and useConfigMap (#21317)
+    
+    Signed-off-by: Gerard Godone-Maresca <ggodonemaresca+github@gmail.com>
+    
+    Co-authored-by: Gerard Godone-Maresca <ggodonemaresca+github@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/cluster-autoscaler] ClusterRole leases and version bump to 1.17.1 (#21311)
+    
+    * fix(cluster-autoscaler): ClusterRole leases and version bump to 1.17.1
+    
+    Signed-off-by: Scott Crooks <scott.crooks@gmail.com>
+    
+    * docs(cluster-autoscaler): Adding version to README.md
+    
+    Signed-off-by: Scott Crooks <scott.crooks@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/rabbitmq] Move chart to distributed bitnami repository (#21310)
+    
+    * Deprecate Rabbitmq chart
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    * Add text to README and NOTES
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    * Fix wording
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/external-dns] Added custom volume support (#21285)
+    
+    Signed-off-by: Dan Sexton <dan.b.sexton@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/moodle] Release 7.2.6 (#21314)
+    
+    * [stable/moodle] Release 7.2.6 updating components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    * Run "helm dependency update" using latest Helm 2
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    
+    Co-authored-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/datadog] Honor image pull policy in init containers (#21298)
+    
+    * [stable/datadog] Honor image pull policy setting in init containers
+    
+    Signed-off-by: Lénaïc Huard <lenaic.huard@datadoghq.com>
+    
+    * [stable/datadog] Pass DD_CRI_SOCKET_PATH to the init container
+    
+    Signed-off-by: Lénaïc Huard <lenaic.huard@datadoghq.com>
+    
+    * [stable/datadog] Bump version and fill changelog
+    
+    Signed-off-by: Lénaïc Huard <lenaic.huard@datadoghq.com>
+    
+    * daemonset.useDedicatedContainers should be removed
+    
+    Signed-off-by: Lénaïc Huard <lenaic.huard@datadoghq.com>
+    
+    Co-authored-by: Matt Canty <56073682+matt-canty-dragon@users.noreply.github.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/redis] Move chart to distributed bitnami repository (#21333)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/airflow]Add optional security context to airflow deployments (#21024)
+    
+    * Add optional security context to airflow deployments
+    
+    Signed-off-by: Ziyang Liu <zliu@chanzuckerbreg.com>
+    
+    * Address a typo in README.md
+    
+    Signed-off-by: Ziyang Liu <zliu@chanzuckerberg.com>
+    Signed-off-by: Ziyang Liu <zliu@chanzuckerbreg.com>
+    
+    * add missing service account name to flower and web
+    
+    Signed-off-by: Ziyang Liu <zliu@chanzuckerbreg.com>
+    
+    * add missing service account name to flower and web
+    
+    Signed-off-by: Ziyang Liu <zliu@chanzuckerbreg.com>
+    
+    * update version
+    
+    Signed-off-by: Ziyang Liu <zliu@chanzuckerbreg.com>
+    
+    Co-authored-by: Ziyang Liu <zliu@chanzuckerbreg.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/nginx-ingress] Allow projected volumes in controller-psp.yaml (#21322)
+    
+    Signed-off-by: Karl-Philipp Richter <krichter@posteo.de>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/instana-agent] Chart version 1.0.24 (#21350)
+    
+    Signed-off-by: Instana CD <instanacd@instana.com>
+    
+    Co-authored-by: Instana CD <instanacd@instana.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Fixed a compatibility issue with K8s 1.11 (#21353)
+    
+    Signed-off-by: Chaoran Yu <yuchaoran2011@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prometheus-operator] Bump operator version. Closes #20503 (#21304)
+    
+    * [stable/prometheus-operator] Bump operator version. Closes #20503
+    
+    Signed-off-by: Jean Baptiste Favre <github@jbfavre.org>
+    
+    * [stable/prometheus-operator] Update README
+    
+    Signed-off-by: Jean Baptiste Favre <github@jbfavre.org>
+    
+    * [stable/prometheus-operator] Bump prometheus-config-reloader image tag
+    
+    Signed-off-by: Jean Baptiste Favre <github@jbfavre.org>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/external-dns] Fix for mounting CA certs from host (#21346)
+    
+    Signed-off-by: Dan Sexton <dan.b.sexton@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/node-problem-detector] Add custom labels to daemonset (#21334)
+    
+    Add the ability to use custom labels to daemonset.
+    
+    Signed-off-by: Markos Chandras <markos@chandras.me>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Allow to override AlertManager's target port (#21251)
+    
+    Signed-off-by: Mickaël Canévet <mickael.canevet@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/atlantis] Updating AWS to not require 'credentials' for use with IRSA (#21305)
+    
+    * fix(atlantis): Updating AWS to not require 'credentials' for use with IRSA
+    
+    Signed-off-by: Scott Crooks <scott.crooks@gmail.com>
+    
+    * fix(atlantis): Only making 'credentials' optional
+    
+    Signed-off-by: Scott Crooks <scott.crooks@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/sysdig] Update latest agent version (9.7.0) (#21357)
+    
+    Signed-off-by: Néstor Salceda <nestor.salceda@sysdig.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Update grafana version to include fix from #21196 (#21271)
+    
+    Signed-off-by: Steve Buzonas <steve@fancyguy.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Airflow updates (#21368)
+    
+    - Install variables before running initdb; custom connections
+      may require variables to be defined.
+    
+    - Install connections before running initdb; models may
+      depend on custom db connections.
+    
+    - Fix URI-style connections: `--conn_type` and `--conn_uri` are
+      not compatible flags.
+    
+    - Fix the default "variables:" value in values.yaml: this should
+      be a string with a JSON object inside, not a yaml map, and
+      this caused confusing warning output from coalesce.go.
+    
+    Signed-off-by: Nathan J. Mehl <n@oden.io>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/postgresql] - Fix readme typo (#21256)
+    
+    * bitnami/influxdb was stated in the upgrade section instead of stable/postgresql
+    
+    Signed-off-by: semyont <semyont@gmail.com>
+    
+    * bump patch version
+    
+    Signed-off-by: semyont <semyont@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/node-problem-detector]: Bump to 0.8.1 NPD (#21360)
+    
+    The new version brings the following fixes
+    
+    - Fixed several potential busy loops
+    - Added a k8s-exporter-heartbeat-period flag to make the heart beat period of K8s exporter configurable.
+    - Fixed a potential NPD panic caused by close of closed channel
+    - Added Stackdriver exporter for NPD
+    - Collect a lot more useful CPU/disk/memory metrics
+    - Fix a few metric units for disk metrics and the calculation for disk_avg_queue_len
+    - Fix the first 0 value metrics reported for disk_avg_queue_len
+    - Improve network_problem.sh to support nf_conntrack and report error when conntrack table is 90% full.
+    - Support host_uptime metrics for CentOS
+    
+    Signed-off-by: Markos Chandras <markos@chandras.me>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/kube-ops-view] Add nodeSelector (#20696)
+    
+    * add nodeSelector
+    
+    Signed-off-by: Victor SALAUN <vsalaun@talend.com>
+    
+    * Update stable/kube-ops-view/templates/deployment.yaml
+    
+    Co-Authored-By: Stella Coëpeau <31846959+scoepeau@users.noreply.github.com>
+    Signed-off-by: Victor SALAUN <vsalaun@talend.com>
+    
+    * Update stable/kube-ops-view/templates/deployment.yaml
+    
+    Co-Authored-By: Stella Coëpeau <31846959+scoepeau@users.noreply.github.com>
+    Signed-off-by: Victor SALAUN <vsalaun@talend.com>
+    
+    Co-authored-by: Stella Coëpeau <31846959+scoepeau@users.noreply.github.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/external-dns] Release 2.20.2 updating components versions (#21370)
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/mongodb] Release 7.8.8 updating components versions (#21367)
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * feat(home-assistant): Make service port name configurable (#20623)
+    
+    This allows for compatibility with istio-enabled setups, which need the port name to start with `http`
+    
+    Signed-off-by: Mike Bryant <mike@mikebryant.me.uk>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/openebs] Update jiva image to 1.7.1 (#21379)
+    
+    Signed-off-by: mittachaitu <sai.chaithanya@mayadata.io>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/postgresql] Move chart to distributed bitnami repository (#21408)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/kubewatch] Move chart to distributed bitnami repository (#21393)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/external] Move chart to distributed bitnami repository (#21396)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/mongodb] Move chart to distributed bitnami repository (#21398)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prometheus-redis-exporter] Add support for Prometheus Operator Rules (#21387)
+    
+    * Bump chart version
+    
+    Signed-off-by: dahei <david.heinrich@cortado.com>
+    
+    * Update README.md
+    
+    Signed-off-by: dahei <david.heinrich@cortado.com>
+    
+    * Add values and example rules
+    
+    Signed-off-by: dahei <david.heinrich@cortado.com>
+    
+    * Add prometheusrule template
+    
+    Signed-off-by: dahei <david.heinrich@cortado.com>
+    
+    * Uncommented parameters / removed trailing space
+    
+    Signed-off-by: dahei <david.heinrich@cortado.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/phpmyadmin] Move chart to distributed bitnami repository (#21407)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/parse] Move chart to distributed bitnami repository (#21410)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/phabricator] Move chart to distributed bitnami repository (#21411)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/suitecrm] Move chart to distributed bitnami repository (#21413)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/testlink] Move chart to distributed bitnami repository (#21414)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/wordpress] Move chart to distributed bitnami repository (#21415)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/nats] Move chart to distributed bitnami repository (#21416)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/mariadb] Move chart to distributed bitnami repository (#21417)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/redmine] Move chart to distributed bitnami repository (#21418)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/falco] Make kernel module dir writable (#21380)
+    
+    * Make kernel module dir writable
+    
+    Signed-off-by: Salvatore Mazzarino <dev@mazzarino.cz>
+    
+    * Add CHANGELOG
+    
+    Signed-off-by: Salvatore Mazzarino <dev@mazzarino.cz>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/jasperreports] Move chart to distributed bitnami repository (#21391)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/joomla] Move chart to distributed bitnami repository (#21392)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/dokuwiki] Move chart to distributed bitnami repository (#21394)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/drupal] Move chart to distributed bitnami repository (#21395)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/ghost] Move chart to distributed bitnami repository (#21397)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/mediawiki] Move chart to distributed bitnami repository (#21399)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/moodle] Move chart to distributed bitnami repository (#21400)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/orangehrm] Move chart to distributed bitnami repository (#21402)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/osclass] Move chart to distributed bitnami repository (#21403)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/owncloud] Move chart to distributed bitnami repository (#21404)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/opencart] Move chart to distributed bitnami repository (#21405)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/odoo] Move chart to distributed bitnami repository (#21406)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prestashop] Move chart to distributed bitnami repository (#21409)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/phpbb] Move chart to distributed bitnami repository (#21412)
+    
+    Signed-off-by: Carlos Rodriguez Hernandez <crhernandez@bitnami.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/airflow] adding podLabels to web, scheduler, flower and worker pods (#21423)
+    
+    * adding podLabels for worker, scheduler, web and flower pods Signed-off-by: Brian Hawley <brianhawley@gmail.com>
+    
+    Signed-off-by: Brian Hawley <brian.hawley@kasasa.com>
+    
+    * adding podLabels for worker, scheduler, web and flower pods Signed-off-by: Brian Hawley <brianhawley@gmail.com>
+    
+    Signed-off-by: Brian Hawley <brian.hawley@kasasa.com>
+    
+    * adding podLabels for worker, scheduler, web and flower pods Signed-off-by: Brian Hawley <brianhawley@gmail.com>
+    
+    Signed-off-by: Brian Hawley <brian.hawley@kasasa.com>
+    
+    * bumping chart version
+    
+    Signed-off-by: Brian Hawley <brian.hawley@kasasa.com>
+    
+    Co-authored-by: Brian Hawley <brian.hawley@kasasa.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/minio] tls scheme variable incorrectly scoped (#21373)
+    
+    remove local scope on $scheme in if-block, otherwise always "http"
+    
+    Signed-off-by: Brien Dieterle <briend@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/datadog] add datadog.env in all containers (#21369)
+    
+    Signed-off-by: cedric lamoriniere <cedric.lamoriniere@datadoghq.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prometheus-pushgateway] upgrade to latest release (#21424)
+    
+    Signed-off-by: David Karlsen <david@davidkarlsen.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Made terminationGracePeriodSeconds configurable (#21385)
+    
+    Signed-off-by: Michal Koziorowski <Michal.Koziorowski@tomtom.com>
+    
+    Co-authored-by: Michal Koziorowski <Michal.Koziorowski@tomtom.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/datadog] Introduce processAgent.processCollection  (#21420)
+    
+    * [stable/datadog] Introduce processAgent.processCollection to correctly configure DD_PROCESS_AGENT_ENABLED
+    
+    Signed-off-by: Ivan Ilichev <ivan.ilichev@datadoghq.com>
+    
+    * Change the default for processCollection to false in accordance with process agent settings
+    
+    Signed-off-by: Ivan Ilichev <ivan.ilichev@datadoghq.com>
+    
+    * Update chart version
+    
+    Signed-off-by: Ivan Ilichev <ivan.ilichev@datadoghq.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * stable/airflow: revert initdb order change (#21426)
+    
+    The init order change in https://github.com/helm/charts/pull/21368
+    was the wrong solution to the problem at hand (circular dependencies
+    between a custom db hook and initdb) and can create init failures
+    when installing with a blank db.  Reverting.
+    
+    Signed-off-by: Nathan J. Mehl <n@oden.io>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/falco] certs configuration and service for Falco gRPC server (#21436)
+    
+    * [stable/falco] add headless service for falco gRPC server
+    
+    Signed-off-by: Leonardo Grasso <me@leonardograsso.com>
+    
+    * [stable/falco] gRPC certificates configuration
+    
+    Signed-off-by: Leonardo Grasso <me@leonardograsso.com>
+    
+    * [stable/falco] Update CHANGELOG.md and bump version
+    
+    Signed-off-by: Leonardo Grasso <me@leonardograsso.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/newrelic-infrastructure] Upgrade the New Relic k8s integration to v1.16.0 (#21435)
+    
+    * Upgrade the New Relic k8s integration to v1.16.0
+    
+    Signed-off-by: Douglas Camata <dcamata@newrelic.com>
+    
+    * Bump chart's patch instead of minor version
+    
+    Signed-off-by: Douglas Camata <dcamata@newrelic.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * adding examples for enabling githubauth (#21431)
+    
+    Signed-off-by: gowrisankar <gowrisankar.m01@sap.com>
+    
+    Co-authored-by: gowrisankar <gowrisankar.m01@sap.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/kafka-manager] Ensure manager job gets run on an amd64 node in hybrid clusters (#20613)
+    
+    * Ensure manager job gets run on an amd64 in hybrid clouds
+    
+    - zenko/kafka-manager docker image is only available for amd64 so ensure job doesn't get scheduled on unsupported architecture
+    
+    Signed-off-by: Jon Stelly <967068+jonstelly@users.noreply.github.com>
+    
+    * Bump chart version
+    
+    Signed-off-by: Jon Stelly <967068+jonstelly@users.noreply.github.com>
+    
+    * Version bump
+    
+    Signed-off-by: Jon Stelly <967068+jonstelly@users.noreply.github.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/chartmuseum] Add serviceMonitor to chartmuseum chart (#21455)
+    
+    * Add serviceMonitor to chartmuseum chart
+    
+    Signed-off-by: Philippe Dagenais <pgdagenais@gmail.com>
+    
+    * Remove unneeded ) -- fix linting
+    
+    Signed-off-by: Philippe Dagenais <pgdagenais@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Fix typo and update docs (#21386)
+    
+    Signed-off-by: John Kost <jkost@bandwidth.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/minio] Fix templating error starting with go 1.14 (#21446) (#21447)
+    
+    Signed-off-by: Clément BUCHART <clement@buchart.dev>
+    
+    Co-authored-by: Clément BUCHART <clement@buchart.dev>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/spinnaker] update spinnaker dependencies (#20917)
+    
+    * [stable/spinnaker] update spinnaker dependencies
+    
+    Signed-off-by: Robbert Rijkse <rrijkse@homex.com>
+    
+    * Fix requirements.lock CI error
+    
+    Signed-off-by: Robbert Rijkse <rrijkse@homex.com>
+    
+    * Update Minio default values
+    Signed-off-by: Robbert Rijkse <rrijkse@homex.com>
+    
+    * bump version to 2.0.0-rc1
+    
+    Signed-off-by: Paul Czarkowski <username.taken@gmail.com>
+    
+    * update spinnaker version to latest patch release
+    
+    Signed-off-by: Paul Czarkowski <username.taken@gmail.com>
+    
+    * update halyard config for minio bucket changes
+    
+    Signed-off-by: Paul Czarkowski <username.taken@gmail.com>
+    
+    Co-authored-by: Paul Czarkowski <username.taken@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/kube-state-metrics] Add PodDisruptionBudget (#21340)
+    
+    Signed-off-by: Peter Rifel <pgrifel@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prometheus-snmp-exporter] Fix serviceMonitor params (#19985)
+    
+    The template for prometheus-snmp-exporter's serviceMonitor checks
+    for `.Values.serviceMonitor.params.enabled` but then tries to insert
+    `.Values.conf.params.conf` instead.
+    
+    This change was already part of PR #18389 but that was closed due
+    to inactivity.
+    
+    Signed-off-by: Helge Sychla <helge.sychla@travelping.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/openebs] update openebs charts to 1.8.0 release (#21448)
+    
+    - Updated README
+    - Updated chart version
+    - Updated values.yaml
+    
+    Signed-off-by: Akhil Mohan <akhil.mohan@mayadata.io>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/jenkins] Add `master.jenkinsHome` and `master.jenkinsRef` options (#21466)
+    
+    * [stable/jenkins] Add `master.jenkinsHome` and `master.jenkinsRef` options
+    
+    Signed-off-by: Victor J. Diaz <victorjadiaz@outlook.com>
+    
+    * [stable/jenkins] Update README with `master.jenkinsHome` and `master.jenkinsRef` options
+    
+    Signed-off-by: Victor J. Diaz <victorjadiaz@outlook.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Add parameter additionalLabels to serviceMonitor template (#21450)
+    
+    Signed-off-by: Maria.Kotlyarevskaya <maria.kotlyarevskaya@nordigy.ru>
+    
+    Co-authored-by: Maria.Kotlyarevskaya <maria.kotlyarevskaya@nordigy.ru>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/datadog] Add PodDisruptionBudget to Cluster Agent and Cluster Check Runners (#21433)
+    
+    Signed-off-by: Peter Rifel <pgrifel@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/grafana] Revert "[stable/grafana] move datasource provider to containers (#209… (#21442)
+    
+    * Revert "[stable/grafana] move datasource provider to containers (#20985)"
+    
+    This reverts commit 18e4853b
+    
+    fixes #20909
+    
+    Signed-off-by: Dan Vulpe <dvulpe@gmail.com>
+    
+    * updated version to 5.0.7
+    
+    Signed-off-by: Dan Vulpe <dvulpe@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/mongodb-replicaset] Fix init script for newer mongodb versions (#21356)
+    
+    * Fix init script for newer MongoDB versions
+    
+    Signed-off-by: ricoberger <mail@ricoberger.de>
+    
+    * Bump chart version
+    
+    Signed-off-by: ricoberger <mail@ricoberger.de>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prometheus-operator] bump prometheus-node-exporter version (#20958)
+    
+    * bump prometheus-node-exporter version
+    
+    Signed-off-by: Sergey Monakhov <monakhov@puzl.ee>
+    
+    * update lock file
+    
+    Signed-off-by: Sergey Monakhov <monakhov@puzl.ee>
+    
+    * update requirements
+    
+    Signed-off-by: Sergey Monakhov <monakhov@puzl.ee>
+    
+    * update lock file
+    
+    Signed-off-by: Sergey Monakhov <monakhov@puzl.ee>
+    
+    * bump prometheus-node-exporter version
+    
+    Signed-off-by: Sergey Monakhov <monakhov@puzl.ee>
+    
+    * remove requirements.lock
+    
+    Signed-off-by: Sergey Monakhov <monakhov@puzl.ee>
+    
+    * bump prometheus-node-exporter version
+    
+    Signed-off-by: Sergey Monakhov <monakhov@puzl.ee>
+    
+    * bump prometheus-node-exporter version
+    
+    Signed-off-by: Sergey Monakhov <monakhov@puzl.ee>
+    
+    * remove requirements.lock
+    
+    Signed-off-by: Sergey Monakhov <monakhov@puzl.ee>
+    
+    * bump prometheus-node-exporter version using helm2
+    
+    Signed-off-by: Sergey Monakhov <monakhov@puzl.ee>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Fixed: wrong variable at serviceMonitor template, introduce servicemonitor: enabled option and make additionalLables inherited under it (#21478)
+    
+    Signed-off-by: Maria.Kotlyarevskaya <maria.kotlyarevskaya@nordigy.ru>
+    
+    Co-authored-by: Maria.Kotlyarevskaya <maria.kotlyarevskaya@nordigy.ru>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/graylog] Add sidecar support, privileged access and load balance across various inputs (#21375)
+    
+    * [stable/graylog] Add support for a single LB for all inputs
+    
+    Opens up the option to host all inputs behind a single service instead
+    of requiring n+2 services for UDP and TCP
+    
+    Signed-off-by: Chris Barton <chris.barton@recurly.com>
+    
+    * [stable/graylog] Add support for sidecar containers
+    
+    There are cases when a sidecar container is appropriate to run with the
+    Graylog server. One such use case is mounting a FUSE backend for
+    enterprise archives
+    
+    Signed-off-by: Chris Barton <chris.barton@recurly.com>
+    
+    * [stable/graylog] Allow to run as privileged
+    
+    Signed-off-by: Chris Barton <chris.barton@recurly.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * add support for additionalPorts and vseditor (#21482)
+    
+    - support additionalPorts
+    - vseditor changed logic for no passwords
+    - support to enable access to editor when home assistant does not start
+    
+    Signed-off-by: Vegetto <git@angelnu.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/weave-scope] Add Satyam and Akash as reviewers and approvers (#21488)
+    
+    * Add Satyam and Akash as reviewers and approvers
+    
+    Signed-off-by: Akash Srivastava <akashsrivastava4927@gmail.com>
+    
+    * Bump up the chart version from 1.1.9 to 1.1.10
+    
+    Signed-off-by: Akash Srivastava <akashsrivastava4927@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Bumping home-assistant image to 0.106.6 (#21491)
+    
+    Signed-off-by: Jeff Billimek <jeff@billimek.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/mongodb-replicaset] Add support to customize updateStrategy (#20968)
+    
+    * add support to customize updateStrategy
+    
+    Signed-off-by: Tuan Anh Nguyen <tuananh.nguyen-ext@commercetools.de>
+    
+    * minor version bump
+    
+    Signed-off-by: Tuan Anh Nguyen <tuananh.nguyen-ext@commercetools.de>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * s/DataDog/Datadog (#21498)
+    
+    Signed-off-by: Gabriel Aszalos <gabriel.aszalos@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/sysdig] Use stable API and fix configmap issues (#21500)
+    
+    Signed-off-by: Néstor Salceda <nestor.salceda@sysdig.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * chore(nginx-ingress): fix hpa issue (#21361)
+    
+    Signed-off-by: Abdulrahman Khalil <a.skhalil93@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * enable deployment annotations, bump chart version (#21502)
+    
+    Signed-off-by: Ryan Holt <ryan@ryanholt.net>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/datalog] Do not enable the `cri` check when running on a `docker` setup (#21476)
+    
+    Signed-off-by: Lénaïc Huard <lenaic.huard@datadoghq.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/datadog] Add some missing syscalls to the `system-probe` seccomp profile (#21456)
+    
+    The added syscalls are syscalls that an unconfined `system-probe` would do.
+    
+    Signed-off-by: Lénaïc Huard <lenaic.huard@datadoghq.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/minio] corrected syntax error in statefulset (#21503)
+    
+    * corrected syntax error in statefulset
+    
+    Signed-off-by: Thomas Wilkinson <thomas.wilkinson@us.ibm.com>
+    
+    * chart version bump
+    
+    Signed-off-by: Thomas Wilkinson <thomas.wilkinson@us.ibm.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/redis-ha] Make emptyDir configurable from values (#21489)
+    
+    Signed-off-by: Jeroen Castelein <jeroencastelein11@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/nginx-ingress] fix service selector (#21512)
+    
+    * fixes #21508
+    
+    Signed-off-by: Syunsuke Komma <syunsuke@weseek.co.jp>
+    
+    * bump chart version
+    
+    Signed-off-by: Syunsuke Komma <syunsuke@weseek.co.jp>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/gocd] Bump up GoCD Version to 20.2.0 (#21518)
+    
+    * Bump up GoCD Version to 20.2.0
+    
+    Signed-off-by: GoCD Build User <go-cd@googlegroups.com>
+    
+    * Updated Changelog.
+    
+    Signed-off-by: GoCD Build User <go-cd@googlegroups.com>
+    
+    Co-authored-by: GoCD Build User <go-cd@googlegroups.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Bump the node-red container version to 1.0.4 (#21493)
+    
+    Signed-off-by: Jeff Billimek <jeff@billimek.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/home-assistant] Fixes typo in README (#21504)
+    
+    Signed-off-by: Mathilde Leroi <mathilde.leroi@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/hazelcast] use ct(chart-testing) tool & updated OWNERS files (#21519)
+    
+    * use ct(chart-testing) tool & updated OWNERS files
+    
+    Signed-off-by: devOpsHelm <devops+1@hazelcast.com>
+    
+    * removed ci folder to prevent test failures
+    
+    Signed-off-by: hasancelik <hasan@hazelcast.com>
+    
+    Co-authored-by: hasancelik <hasan@hazelcast.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/hazelcast-jet] use ct(chart-testing) tool & updated OWNERS files (#21520)
+    
+    * use ct(chart-testing) tool & updated OWNERS files
+    
+    Signed-off-by: devOpsHelm <devops+1@hazelcast.com>
+    
+    * removed ci folder to prevent test failures
+    
+    Signed-off-by: hasancelik <hasan@hazelcast.com>
+    
+    Co-authored-by: hasancelik <hasan@hazelcast.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Fix Management Center SSL (#109) (#21521)
+    
+    Signed-off-by: devOpsHelm <devops+1@hazelcast.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Bumping the container version to 5.12.35 (#21492)
+    
+    Signed-off-by: Jeff Billimek <jeff@billimek.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/openvpn] Add ability to use images from private registries. (#20949)
+    
+    * [stable/openvpn] Add ability to use images from private registries.
+    
+    Signed-off-by: JustinStGermain <justinstgermain@j2.localdomain>
+    
+    * [stable/openvpn] Update chart version.
+    
+    Signed-off-by: JustinStGermain <justinstgermain@j2.localdomain>
+    
+    Co-authored-by: JustinStGermain <justinstgermain@j2.localdomain>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/datadog] Correct handling of processAgent.processCollection setting (#21525)
+    
+    * Correct handling of processAgent.processCollection setting
+    
+    This addresses the issue when process agent would terminate if `processAgent.processCollection` was set to `false`.
+    
+    Setting `DD_PROCESS_AGENT_ENABLED` to `false` results in termination of process agent. To disable process collection we need to leave this env var as not set on this container.
+    
+    Signed-off-by: Ivan Ilichev <ivan.ilichev@datadoghq.com>
+    
+    * Bump chart version
+    
+    Signed-off-by: Ivan Ilichev <ivan.ilichev@datadoghq.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/nginx-ingress] fix service selector(metrics/webhook) (#21524)
+    
+    * fix metrics/webhook service selector
+    
+    Signed-off-by: Syunsuke Komma <syunsuke@weseek.co.jp>
+    
+    * bump chart version
+    
+    Signed-off-by: Syunsuke Komma <syunsuke@weseek.co.jp>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/datadog] Fix `system-probe` startup on latest versions of containerd (#21526)
+    
+    Here is the error that this change fixes:
+    ```
+      State:          Waiting
+        Reason:       CrashLoopBackOff
+      Last State:     Terminated
+        Reason:       StartError
+        Message:      failed to create containerd task: OCI runtime create failed: container_linux.go:349: starting container process caused "close exec fds: ensure /proc/self/fd is on procfs: operation not permitted": unknown
+        Exit Code:    128
+     ```
+    
+    Signed-off-by: Lénaïc Huard <lenaic.huard@datadoghq.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prometheus-operator] Update missing definitions in README.md (#21264)
+    
+    * Update missing definitions in README.md
+    
+    Signed-off-by: Valentin Zayash <valioozz@gmail.com>
+    
+    * Bump Chart version
+    
+    Signed-off-by: Valentin Zayash <valioozz@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * prometheus node exporter: Configure exposing IP (#21490)
+    
+    Right now node exporter exposes the user defined port on all the
+    interfaces using `0.0.0.0`.
+    
+    This commit changes the behavior by adding a boolean
+    `service.listenOnAllInterfaces` which lets user decide if it should
+    expose the node exporter pod on all interfaces or only on the IP which
+    pod is assigned.
+    
+    Signed-off-by: Suraj Deshmukh <surajd.service@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * stable/datadog - Set DD_APM_ENABLED to false in container-agent.yaml template (#21510)
+    
+    * enable deployment annotations, bump chart version (#21502)
+    
+    Signed-off-by: Ryan Holt <ryan@ryanholt.net>
+    Signed-off-by: Omer Lifshitz <omer.lifshitz@datadoghq.com>
+    
+    * [stable/datalog] Do not enable the `cri` check when running on a `docker` setup (#21476)
+    
+    Signed-off-by: Lénaïc Huard <lenaic.huard@datadoghq.com>
+    Signed-off-by: Omer Lifshitz <omer.lifshitz@datadoghq.com>
+    
+    * [stable/datadog] Add some missing syscalls to the `system-probe` seccomp profile (#21456)
+    
+    The added syscalls are syscalls that an unconfined `system-probe` would do.
+    
+    Signed-off-by: Lénaïc Huard <lenaic.huard@datadoghq.com>
+    Signed-off-by: Omer Lifshitz <omer.lifshitz@datadoghq.com>
+    
+    * [stable/minio] corrected syntax error in statefulset (#21503)
+    
+    * corrected syntax error in statefulset
+    
+    Signed-off-by: Thomas Wilkinson <thomas.wilkinson@us.ibm.com>
+    
+    * chart version bump
+    
+    Signed-off-by: Thomas Wilkinson <thomas.wilkinson@us.ibm.com>
+    Signed-off-by: Omer Lifshitz <omer.lifshitz@datadoghq.com>
+    
+    * [stable/redis-ha] Make emptyDir configurable from values (#21489)
+    
+    Signed-off-by: Jeroen Castelein <jeroencastelein11@gmail.com>
+    Signed-off-by: Omer Lifshitz <omer.lifshitz@datadoghq.com>
+    
+    * Set DD_APM_ENABLED
+    
+    With the new Helm chart, even if `datadog.apm.enabled` is set to false, it reverts to the docker defaults (true).
+    Having the trace-agent running in the background is pretty harmless from a resource overhead standpoint, however, the logic of the helm chart will automatically do the 8126 port-forwarding, and since we don't want non-apm customers to have this port exposed, we need to respect the chart settings.
+    
+    Signed-off-by: Omer Lifshitz <omer.lifshitz@datadoghq.com>
+    
+    * Bumped version
+    
+    Signed-off-by: Omer Lifshitz <omer.lifshitz@datadoghq.com>
+    
+    * 2.0.12
+    
+    Fixed a bug where datadog.apm.enabled was not being respected
+    
+    Signed-off-by: Omer Lifshitz <omer.lifshitz@datadoghq.com>
+    
+    * re-applying the changes
+    
+    Signed-off-by: Omer Lifshitz <omer.lifshitz@datadoghq.com>
+    
+    Co-authored-by: Ryan Holt <ryan@ryanholt.net>
+    Co-authored-by: Lénaïc Huard <L3n41c@users.noreply.github.com>
+    Co-authored-by: Thomas Wilkinson <thomas@capnajax.com>
+    Co-authored-by: Jeroen Castelein <jeroen.castelein@kpn.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/gangway] add logic for applying env vars and pod annotations (#20486)
+    
+    * Added logic to allow loading secrets from ENV Vars and apply pod annotations
+    
+    Signed-off-by: cten <cxtenberge5@gmail.com>
+    
+    * Added logic to allow loading secrets from ENV Vars and apply pod annotations
+    
+    Signed-off-by: cten <cxtenberge5@gmail.com>
+    
+    * Bumped version
+    
+    Signed-off-by: cten <cxtenberge5@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Update image to 5.0.0 (#21481)
+    
+    Signed-off-by: Naseem <naseem@transit.app>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [incubator/sparkoperator] Use `securitycontext` from the chart values for the init and cleanup jobs too (#21539)
+    
+    * Use `securitycontext` from the chart values for the init and cleanup jobs too
+    
+    Signed-off-by: Wout Maaskant <wout.maaskant@riskident.com>
+    
+    * Bump version
+    
+    Signed-off-by: Wout Maaskant <wout.maaskant@riskident.com>
+    
+    Co-authored-by: Wout Maaskant <wout.maaskant@riskident.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [incubator/sparkoperator] Upgraded to the latest release version (#21540)
+    
+    Signed-off-by: Yinan Li <ynli@google.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/gocd] Remove https port (#21548)
+    
+    * [stable/gocd] Remove usages of 8154 https port
+    
+    Signed-off-by: GaneshSPatil <ganeshpl@thoughtworks.com>
+    
+    * Update docs to mention about TLS changes
+    
+    Signed-off-by: GaneshSPatil <ganeshpl@thoughtworks.com>
+    
+    * Bump up chart version to 1.24.0
+    
+    Signed-off-by: GaneshSPatil <ganeshpl@thoughtworks.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/grafana] Add support for extraExposePorts (#21547)
+    
+    * Add support for extraExposePorts
+    
+    Signed-off-by: Insein Jee <inseinjee@gmail.com>
+    
+    * Bump the chart version(5.0.7 -> 5.0.8)
+    
+    Signed-off-by: Insein Jee <inseinjee@gmail.com>
+    Signed-off-by: inseinjee <inseinjee@gmail.com>
+    
+    * Remove trailing spaces
+    
+    Signed-off-by: inseinjee <inseinjee@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/prometheus] Make service account annotations configurable (#21537)
+    
+    This change makes the annotations for service accounts configurable.
+    
+    This change is useful when you need to set specific annotations to
+    service accounts, for example when using IAM Roles for service accounts
+    in AWS EKS.
+    
+    Signed-off-by: Hyeonseop Lee <hyeonseop@ls-al.me>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/metrics-server] Update rbac apiversion from v1beta1 to v1 (#21553)
+    
+    Signed-off-by: Mike Tougeron <tougeron@adobe.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/dex] Add securityContext to deployment (#21487)
+    
+    Signed-off-by: Frederik Mogensen <sodiaf@gmail.com>
+    
+    Co-authored-by: Frederik Mogensen <sodiaf@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * add jenkinsUriPrefix to casc reload url (#21561)
+    
+    Signed-off-by: Marc Trölitzsch <Marc.Troelitzsch@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/jenkins] Remove stale ssh key references in JCasC auto-reload (#21354)
+    
+    * [stable/jenkins] Remove stale ssh key references in JCasC auto-reload
+    
+    Update JCasC auto-reload docs and remove stale ssh key references from version "1.8.0 JCasC auto reload works without ssh keys"
+    
+    Removes:
+    `master.adminSshKey`
+    `master.sidecars.configAutoReload.sshTcpPort`
+    
+    Signed-off-by: Aaron McDonald <wmcdona89@gmail.com>
+    
+    * remove template `jenkins.gen-key`
+    
+    Signed-off-by: Aaron McDonald <wmcdona89@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/cerebro] Add ability to disable livenessProbe/readinessProbe. (#21191)
+    
+    * [stable/cerebro] Add ability to disable livenessProbe/readinessProbe.
+    
+    Signed-off-by: Cédric de Saint Martin <cdesaintmartin@wiremind.fr>
+    
+    * Add myself as maintainer.
+    
+    Signed-off-by: Cédric de Saint Martin <cdesaintmartin@wiremind.fr>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/cluster-autoscaler] Update rbac apiversion from v1beta1 to v1 (#21552)
+    
+    Signed-off-by: Mike Tougeron <tougeron@adobe.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/minecraft] Modify one comment line in stable/minecraft/values.yaml, you can put URL to download FTB package (#21576)
+    
+    Signed-off-by: Dimitri Leurs <dimitri.leurs@gmail.com>
+    
+    Signed-off-by: Leurs Dimitri <dimitri.leurs@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/gocd] Update ingress doc (#21560)
+    
+    * [stable/gocd] Add docs for ingress
+    
+    Signed-off-by: Varsha Varadarajan <varshasvaradarajan@gmail.com>
+    
+    * [stable/gocd] Update changelog.
+    
+    Signed-off-by: Varsha Varadarajan <varshasvaradarajan@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [stable/cockroachdb]: Update version to v19.2.5 (#21584)
+    
+    Signed-off-by: Daniel Harrison <daniel.harrison@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Adding redis-ha deprecation warning (#21567)
+    
+    Signed-off-by: Aaron Layfield <aaron.layfield@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * Upgrade metabase to 0.34.3 (#21582)
+    
+    Signed-off-by: Albert Wang <amwang217@gmail.com>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * [incubator/aws-alb-ingress-controller] Bump image version to 1.1.6 (#21603)
+    
+    Signed-off-by: Ivan Mora Perez <ivan@opentodo.net>
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * udate affinities
+    
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * fix lint errors
+    
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * fix lint errors
+    
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    * address pr feedback
+    
+    Signed-off-by: Ganga Mahesh Siddem <gangams@microsoft.com>
+    
+    Co-authored-by: Carlos Rodríguez Hernández <crhernandez@bitnami.com>
+    Co-authored-by: Bitnami Bot <containers@bitnami.com>
+    Co-authored-by: Carlos Rodríguez Hernández <carrodher1179@gmail.com>
+    Co-authored-by: Babis K <babis_k@outlook.com>
+    Co-authored-by: Valentin Zayash <VLZZZ@users.noreply.github.com>
+    Co-authored-by: Mohamed Hazem <mhaz@hellofresh.com>
+    Co-authored-by: Cedric Lamoriniere <cedric.lamoriniere@datadoghq.com>
+    Co-authored-by: Vincent Boulineau <58430298+vboulineau@users.noreply.github.com>
+    Co-authored-by: Yong Wen Chua <lawliet89@users.noreply.github.com>
+    Co-authored-by: Ciprian Hacman <ciprian.hacman@sematext.com>
+    Co-authored-by: Alex Snast <alexsn@fb.com>
+    Co-authored-by: Juan Ariza Toledano <juan@bitnami.com>
+    Co-authored-by: Bitnami Bot <containers-bot@bitnami.com>
+    Co-authored-by: Javier J. Salmerón-García <jsalmeron@vmware.com>
+    Co-authored-by: Adrian Berger <43774417+adberger@users.noreply.github.com>
+    Co-authored-by: Vasily Sliouniaev <vasily.sliouniaev@jet.com>
+    Co-authored-by: rowanr <rowanruseler@gmail.com>
+    Co-authored-by: Salar Moghaddam <salar.mgh@gmail.com>
+    Co-authored-by: Dmitry Kharchenko <unclenorton@gmail.com>
+    Co-authored-by: Markos Chandras <hwoarang@users.noreply.github.com>
+    Co-authored-by: Tuan Anh Nguyen <48820639+tuananhnguyen-ct@users.noreply.github.com>
+    Co-authored-by: Felippe Mendonça <mendonca.felippe@gmail.com>
+    Co-authored-by: Brendan Germain <brendan.germain@gmail.com>
+    Co-authored-by: Adrien Cunin <adrien@adriencunin.fr>
+    Co-authored-by: ABI CHAHINE <rachad.abi-chahine@hotmail.fr>
+    Co-authored-by: marcos-monteiro <61216114+marcos-monteiro@users.noreply.github.com>
+    Co-authored-by: Mike Unke <chrpme@users.noreply.github.com>
+    Co-authored-by: Blake Roberts <blake.roberts@workiva.com>
+    Co-authored-by: ahmadali shafiee <mail@ahmadalli.net>
+    Co-authored-by: Naseem <naseem@transit.app>
+    Co-authored-by: Abdulrahman Khalil <a.skhalil93@gmail.com>
+    Co-authored-by: Ahmet Kaftan <ahmet.kaftan@cloudnesil.com>
+    Co-authored-by: Gerard Godone-Maresca <8977984+ggmaresca@users.noreply.github.com>
+    Co-authored-by: devOpsHelm <54980549+devOpsHelm@users.noreply.github.com>
+    Co-authored-by: Joffrey Janiec <jjaniec@student.42.fr>
+    Co-authored-by: Heechul Ryu <ryuhcii@gmail.com>
+    Co-authored-by: Jeremy Roberts <jeremy@robertsisland.com>
+    Co-authored-by: Emin Demirci <emin@hazelcast.com>
+    Co-authored-by: Néstor Salceda <nestor.salceda@sysdig.com>
+    Co-authored-by: Lennert Claeys <lclaeys@newrelic.com>
+    Co-authored-by: Torsten Walter <torsten.walter@syncier.com>
+    Co-authored-by: Yatharth Sharma <yatharth0045@gmail.com>
+    Co-authored-by: Samantha McVey <samantham@posteo.net>
+    Co-authored-by: Rodolfo Rodriguez <me@rodolforodriguez.dev>
+    Co-authored-by: Malte <github-nqyroppg@nafn.de>
+    Co-authored-by: Steffen Tautenhahn <stevie-@users.noreply.github.com>
+    Co-authored-by: David Kirchner <dpk@dpk.net>
+    Co-authored-by: Maarten <maarten@greenhost.nl>
+    Co-authored-by: Brad Rydzewski <brad.rydzewski@gmail.com>
+    Co-authored-by: joceluss <46075025+joceluss@users.noreply.github.com>
+    Co-authored-by: Leonardo Grasso <me@leonardograsso.com>
+    Co-authored-by: Steve Buzonas <steve@fancyguy.com>
+    Co-authored-by: Max Rosin <git@hackrid.de>
+    Co-authored-by: David J. M. Karlsen <david@davidkarlsen.com>
+    Co-authored-by: Raúl Garcia Sanchez <info@raulgarcia.de>
+    Co-authored-by: Fabrice <jfr@core-services.fr>
+    Co-authored-by: Logan Nelson <lsnelson33@gmail.com>
+    Co-authored-by: Oluwaseun Obajobi <oba@obajobi.com>
+    Co-authored-by: Kubernetes Prow Robot <k8s-ci-robot@users.noreply.github.com>
+    Co-authored-by: gowrisankarm <gowrisankar.m01@sap.com>
+    Co-authored-by: Brian Dunnigan <bdun1013dev@gmail.com>
+    Co-authored-by: jandres - moscardo <titansmc@gmail.com>
+    Co-authored-by: Marcos Estévez <marcos.stvz@gmail.com>
+    Co-authored-by: Eric Bailey <yurrriq@users.noreply.github.com>
+    Co-authored-by: Dale Tristram <dale.tristram@sprinthive.com>
+    Co-authored-by: Tariq Ibrahim <tariq181290@gmail.com>
+    Co-authored-by: Andrea Gilardoni <alcheagle@users.noreply.github.com>
+    Co-authored-by: Arno DUBOIS <arno.du@orange.fr>
+    Co-authored-by: Arno DUBOIS <arnodubois@sweetpunk.com>
+    Co-authored-by: Afolabi Badmos <afolabi@badmos.com>
+    Co-authored-by: Jie Yu <yujie.jay@gmail.com>
+    Co-authored-by: Harshavardhana <harsha@minio.io>
+    Co-authored-by: Gerard Godone-Maresca <ggodonemaresca+github@gmail.com>
+    Co-authored-by: Scott Crooks <sc250024@users.noreply.github.com>
+    Co-authored-by: Dan Sexton <dan.b.sexton@gmail.com>
+    Co-authored-by: Lénaïc Huard <L3n41c@users.noreply.github.com>
+    Co-authored-by: Matt Canty <56073682+matt-canty-dragon@users.noreply.github.com>
+    Co-authored-by: ziyangczi <41968256+ziyangczi@users.noreply.github.com>
+    Co-authored-by: Ziyang Liu <zliu@chanzuckerbreg.com>
+    Co-authored-by: Karl-Philipp Richter <krichter@posteo.de>
+    Co-authored-by: Dahlia B <149529+dlbock@users.noreply.github.com>
+    Co-authored-by: Instana CD <instanacd@instana.com>
+    Co-authored-by: Chaoran Yu <yuchaoran2011@gmail.com>
+    Co-authored-by: Jean Baptiste Favre <github@jbfavre.org>
+    Co-authored-by: Mickaël Canévet <mickael.canevet@gmail.com>
+    Co-authored-by: memory <github@memory.blank.org>
+    Co-authored-by: Semyon Teplisky <semyont@gmail.com>
+    Co-authored-by: Victor SALAUN <3106586+victorsalaun@users.noreply.github.com>
+    Co-authored-by: Stella Coëpeau <31846959+scoepeau@users.noreply.github.com>
+    Co-authored-by: Mike Bryant <mike@mikebryant.me.uk>
+    Co-authored-by: sai chaithanya <sai.chaithanya@mayadata.io>
+    Co-authored-by: DaveOHenry <20969773+DaveOHenry@users.noreply.github.com>
+    Co-authored-by: Salvatore Mazzarino <dev@mazzarino.cz>
+    Co-authored-by: brian hawley <brianhawley@gmail.com>
+    Co-authored-by: Brian Hawley <brian.hawley@kasasa.com>
+    Co-authored-by: Brien Dieterle <briend@gmail.com>
+    Co-authored-by: Michal Koziorowski <mkozioro@users.noreply.github.com>
+    Co-authored-by: Michal Koziorowski <Michal.Koziorowski@tomtom.com>
+    Co-authored-by: Ivan Ilichev <ivan.ilichev@datadoghq.com>
+    Co-authored-by: memory <n@oden.io>
+    Co-authored-by: Douglas Camata <dcamata@newrelic.com>
+    Co-authored-by: Gowrisankar <gowrisankarbeece@gmail.com>
+    Co-authored-by: Jon Stelly <967068+jonstelly@users.noreply.github.com>
+    Co-authored-by: Philippe Dagenais <pgdagenais@gmail.com>
+    Co-authored-by: John Kost <41963650+johnkost@users.noreply.github.com>
+    Co-authored-by: Clément BUCHART <clement.buchart+github@gmail.com>
+    Co-authored-by: Clément BUCHART <clement@buchart.dev>
+    Co-authored-by: Robbert Rijkse <rrijkse@homex.com>
+    Co-authored-by: Paul Czarkowski <username.taken@gmail.com>
+    Co-authored-by: Peter Rifel <rifelpet@users.noreply.github.com>
+    Co-authored-by: Helge Sychla <helge.sychla@travelping.com>
+    Co-authored-by: Akhil Mohan <akhil.mohan@mayadata.io>
+    Co-authored-by: Victor J. Diaz Ayuste <vdiaz@paradigmadigital.com>
+    Co-authored-by: Maria Kotlyarevskaya <jasssstkn@yahoo.com>
+    Co-authored-by: Maria.Kotlyarevskaya <maria.kotlyarevskaya@nordigy.ru>
+    Co-authored-by: Dan Vulpe <dvulpe@users.noreply.github.com>
+    Co-authored-by: Rico Berger <ricoberger@users.noreply.github.com>
+    Co-authored-by: Sergey Monakhov <monakhov@puzl.ee>
+    Co-authored-by: Chris Barton <chris.barton@recurly.com>
+    Co-authored-by: Vegetto <github@angelnu.com>
+    Co-authored-by: Akash Srivastava <akashsrivastava4927@gmail.com>
+    Co-authored-by: Jeff Billimek <jeff@billimek.com>
+    Co-authored-by: Gabriel Aszalos <gabriel.aszalos@gmail.com>
+    Co-authored-by: Ryan Holt <ryan@ryanholt.net>
+    Co-authored-by: Thomas Wilkinson <thomas@capnajax.com>
+    Co-authored-by: Jeroen Castelein <jeroen.castelein@kpn.com>
+    Co-authored-by: Syunsuke Komma <syunsuke@weseek.co.jp>
+    Co-authored-by: gocd-ci-user <godev+gocd-ci-user@thoughtworks.com>
+    Co-authored-by: GoCD Build User <go-cd@googlegroups.com>
+    Co-authored-by: MathildeLeroi <mleroi@student.42.fr>
+    Co-authored-by: hasancelik <hasan@hazelcast.com>
+    Co-authored-by: j771 <51765166+j771@users.noreply.github.com>
+    Co-authored-by: JustinStGermain <justinstgermain@j2.localdomain>
+    Co-authored-by: Suraj Deshmukh <surajd.service@gmail.com>
+    Co-authored-by: Omer Lifshitz <omeriko@gmail.com>
+    Co-authored-by: cten <cxtenberge5@gmail.com>
+    Co-authored-by: scheleaap <scheleaap@users.noreply.github.com>
+    Co-authored-by: Wout Maaskant <wout.maaskant@riskident.com>
+    Co-authored-by: Yinan Li <ynli@google.com>
+    Co-authored-by: Ganesh S Patil <ganeshpl@thoughtworks.com>
+    Co-authored-by: InseinJee <33472993+inseinjee@users.noreply.github.com>
+    Co-authored-by: Hyeonseop Lee <hyeonseop@ls-al.me>
+    Co-authored-by: Mike Tougeron <mtougeron@users.noreply.github.com>
+    Co-authored-by: Frederik Mogensen <fmo@trifork.com>
+    Co-authored-by: Frederik Mogensen <sodiaf@gmail.com>
+    Co-authored-by: Marc Trölitzsch <46501118+marcfrederick@users.noreply.github.com>
+    Co-authored-by: wmcdona89 <wmcdona89@gmail.com>
+    Co-authored-by: Cédric de Saint Martin <cdesaintmartin@wiremind.fr>
+    Co-authored-by: dleurs <58068925+dleurs@users.noreply.github.com>
+    Co-authored-by: Varsha Varadarajan <varshavaradarajan@users.noreply.github.com>
+    Co-authored-by: Daniel Harrison <daniel.harrison@gmail.com>
+    Co-authored-by: Aaron Layfield <Aaron.Layfield@gmail.com>
+    Co-authored-by: Albert Wang <amwang217@gmail.com>
+    Co-authored-by: Ivan Mora Pérez <ivan@opentodo.net>
+
+diff --git a/incubator/azuremonitor-containers/Chart.yaml b/incubator/azuremonitor-containers/Chart.yaml
+index 4a4be930e..457260596 100644
+--- a/incubator/azuremonitor-containers/Chart.yaml
++++ b/incubator/azuremonitor-containers/Chart.yaml
+@@ -2,7 +2,7 @@ apiVersion: v1
+ appVersion: 7.0.0-1
+ description: Helm chart for deploying Azure Monitor container monitoring agent in Kubernetes
+ name: azuremonitor-containers
+-version: 2.6.0
++version: 2.6.1
+ kubeVersion: "^1.10.0-0"
+ keywords:
+   - monitoring
+diff --git a/incubator/azuremonitor-containers/templates/omsagent-daemonset.yaml b/incubator/azuremonitor-containers/templates/omsagent-daemonset.yaml
+index 5417a43f2..9b916ed7f 100644
+--- a/incubator/azuremonitor-containers/templates/omsagent-daemonset.yaml
++++ b/incubator/azuremonitor-containers/templates/omsagent-daemonset.yaml
+@@ -56,6 +56,8 @@ spec:
+          valueFrom:
+             fieldRef:
+               fieldPath: status.hostIP
++       - name: USER_ASSIGNED_IDENTITY_CLIENT_ID
++         value: ""
+        {{- if .Values.omsagent.logsettings.logflushintervalsecs }}
+        - name: FBIT_SERVICE_FLUSH_INTERVAL
+          value: {{ .Values.omsagent.logsettings.logflushintervalsecs | quote }}
+@@ -103,7 +105,7 @@ spec:
+         periodSeconds: 60
+    nodeSelector:
+     beta.kubernetes.io/os: linux
+-   {{- with .Values.omsagent.affinity }}
++   {{- with .Values.omsagent.daemonset.affinity }}
+    affinity: {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.omsagent.tolerations }}
+diff --git a/incubator/azuremonitor-containers/templates/omsagent-deployment.yaml b/incubator/azuremonitor-containers/templates/omsagent-deployment.yaml
+index 2cd63aac8..cd1a28b7e 100644
+--- a/incubator/azuremonitor-containers/templates/omsagent-deployment.yaml
++++ b/incubator/azuremonitor-containers/templates/omsagent-deployment.yaml
+@@ -57,6 +57,8 @@ spec:
+          valueFrom:
+             fieldRef:
+               fieldPath: status.hostIP
++       - name: USER_ASSIGNED_IDENTITY_CLIENT_ID
++         value: ""
+        securityContext:
+          privileged: true
+        ports:
+@@ -94,12 +96,12 @@ spec:
+         periodSeconds: 60
+    nodeSelector:
+     beta.kubernetes.io/os: linux
+-   {{- with .Values.omsagent.affinity }}
++   {{- with .Values.omsagent.deployment.affinity }}
+    affinity: {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.omsagent.tolerations }}
+    tolerations: {{- toYaml . | nindent 8 }}
+-   {{- end }}         
++   {{- end }}
+    volumes:
+     - name: docker-sock
+       hostPath:
+diff --git a/incubator/azuremonitor-containers/templates/omsagent-rbac.yaml b/incubator/azuremonitor-containers/templates/omsagent-rbac.yaml
+index 2a261d7d3..edeb86f60 100644
+--- a/incubator/azuremonitor-containers/templates/omsagent-rbac.yaml
++++ b/incubator/azuremonitor-containers/templates/omsagent-rbac.yaml
+@@ -19,7 +19,7 @@ metadata:
+     heritage: {{ .Release.Service }}
+ rules:
+ - apiGroups: [""]
+-  resources: ["pods", "events", "nodes", "nodes/stats", "nodes/metrics", "namespaces", "services"]
++  resources: ["pods", "events", "nodes", "nodes/stats", "nodes/metrics", "nodes/spec", "namespaces", "services"]
+   verbs: ["list", "get", "watch"]
+ - apiGroups: ["apps", "extensions"]
+   resources: ["replicasets"]
+diff --git a/incubator/azuremonitor-containers/templates/omsagent-rs-configmap.yaml b/incubator/azuremonitor-containers/templates/omsagent-rs-configmap.yaml
+index 60edab065..e3f8ce848 100644
+--- a/incubator/azuremonitor-containers/templates/omsagent-rs-configmap.yaml
++++ b/incubator/azuremonitor-containers/templates/omsagent-rs-configmap.yaml
+@@ -18,6 +18,7 @@ data:
+       tag oms.containerinsights.KubePodInventory
+       run_interval 60
+       log_level debug
++      custom_metrics_azure_regions eastus,southcentralus,westcentralus,westus2,southeastasia,northeurope,westeurope,southafricanorth,centralus,northcentralus,eastus2,koreacentral,eastasia,centralindia,uksouth,canadacentral,francecentral,japaneast,australiaeast
+      </source>
+ 
+      #Kubernetes events
+@@ -26,7 +27,7 @@ data:
+       tag oms.containerinsights.KubeEvents
+       run_interval 60
+       log_level debug
+-      </source>  
++      </source>
+ 
+      #Kubernetes Nodes
+      <source>
+@@ -34,7 +35,7 @@ data:
+       tag oms.containerinsights.KubeNodeInventory
+       run_interval 60
+       log_level debug
+-     </source>  
++     </source>
+ 
+      #Kubernetes health
+      <source>
+@@ -82,7 +83,7 @@ data:
+       buffer_queue_full_action drop_oldest_chunk
+       flush_interval 20s
+       retry_limit 10
+-      retry_wait 5s      
++      retry_wait 5s
+       max_retry_wait 5m
+      </match>
+ 
+@@ -99,7 +100,7 @@ data:
+       retry_limit 10
+       retry_wait 5s
+       max_retry_wait 5m
+-     </match>   
++     </match>
+ 
+      <match oms.containerinsights.KubeServices**>
+       type out_oms
+@@ -173,7 +174,7 @@ data:
+       retry_limit 10
+       retry_wait 30s
+       max_retry_wait 9m
+-      retry_mdm_post_wait_minutes 60
++      retry_mdm_post_wait_minutes 30
+      </match>
+ 
+      <match oms.api.wincadvisorperf**>
+@@ -204,7 +205,7 @@ data:
+       retry_limit 10
+       retry_wait 5s
+       max_retry_wait 5m
+-      retry_mdm_post_wait_minutes 60
++      retry_mdm_post_wait_minutes 30
+      </match>
+ 
+      <match kubehealth.Signals**>
+@@ -221,6 +222,21 @@ data:
+       retry_wait 5s
+       max_retry_wait 5m
+      </match>
++
++     <match oms.api.InsightsMetrics**>
++      type out_oms
++      log_level debug
++      num_threads 5
++      buffer_chunk_limit 4m
++      buffer_type file
++      buffer_path %STATE_DIR_WS%/out_oms_insightsmetrics*.buffer
++      buffer_queue_limit 20
++      buffer_queue_full_action drop_oldest_chunk
++      flush_interval 20s
++      retry_limit 10
++      retry_wait 5s
++      max_retry_wait 5m
++    </match>
+ metadata:
+   name: omsagent-rs-config
+   namespace: kube-system
+diff --git a/incubator/azuremonitor-containers/values.yaml b/incubator/azuremonitor-containers/values.yaml
+index 5c9947f5f..d7411aa51 100644
+--- a/incubator/azuremonitor-containers/values.yaml
++++ b/incubator/azuremonitor-containers/values.yaml
+@@ -6,9 +6,9 @@
+ ## ref: https://github.com/Microsoft/OMS-docker/tree/ci_feature_prod
+ omsagent:
+   image:
+-    tag: "ciprod01072020"
++    tag: "ciprod03022020"
+     pullPolicy: IfNotPresent
+-    dockerProviderVersion: "8.0.0-2"
++    dockerProviderVersion: "8.0.0-3"
+     agentVersion: "1.10.0.1"
+   ## To get your workspace id and key do the following
+   ## You can create a Azure Loganalytics workspace from portal.azure.com and get its ID & PRIMARY KEY from 'Advanced Settings' tab in the Ux.
+@@ -42,16 +42,32 @@ omsagent:
+   ## Pod scheduling preferences.
+   ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+   ##
+-  affinity:
+-    nodeAffinity:
+-      requiredDuringSchedulingIgnoredDuringExecution:
+-        nodeSelectorTerms:
+-          - labelSelector:
+-            matchExpressions:
+-              - key: type
+-                operator: NotIn
+-                values:
+-                  - virtual-kubelet
++  daemonset:
++    affinity:
++      nodeAffinity:
++        requiredDuringSchedulingIgnoredDuringExecution:
++          nodeSelectorTerms:
++            - labelSelector:
++              matchExpressions:
++                - key: type
++                  operator: NotIn
++                  values:
++                    - virtual-kubelet
++  deployment:
++    affinity:
++      nodeAffinity:
++        requiredDuringSchedulingIgnoredDuringExecution:
++          nodeSelectorTerms:
++            - labelSelector:
++              matchExpressions:
++                - key: type
++                  operator: NotIn
++                  values:
++                    - virtual-kubelet
++                - key: kubernetes.io/role
++                  operator: NotIn
++                  values:
++                    - master
+ 
+   ## Configure resource requests and limits
+   ## ref: http://kubernetes.io/docs/user-guide/compute-resources/

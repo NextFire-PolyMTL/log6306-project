@@ -1,0 +1,82 @@
+commit d3b3ef83a92672f7df02324f00e282d03b2ad160
+Author: Jeff Billimek <jeff@billimek.com>
+Date:   Fri Jul 26 23:39:18 2019 -0400
+
+    refactoring frigate ingress (#50)
+    
+    * frigate helm chart
+    
+    Signed-off-by: Jeff Billimek <jeff@billimek.com>
+    
+    * remove trailing spaces
+    
+    * bump chart version
+    
+    * refactoring frigate ingress
+
+diff --git a/frigate/Chart.yaml b/frigate/Chart.yaml
+index 70d86eb4..6df1973e 100644
+--- a/frigate/Chart.yaml
++++ b/frigate/Chart.yaml
+@@ -2,7 +2,7 @@ apiVersion: v1
+ appVersion: "0.2.0-beta"
+ description: Realtime object detection on RTSP cameras with the Google Coral
+ name: frigate
+-version: 0.1.1
++version: 0.1.2
+ keywords:
+   - tensorflow
+   - coral
+diff --git a/frigate/templates/ingress.yaml b/frigate/templates/ingress.yaml
+index 342a50f2..13006d1b 100644
+--- a/frigate/templates/ingress.yaml
++++ b/frigate/templates/ingress.yaml
+@@ -1,5 +1,6 @@
+ {{- if .Values.ingress.enabled -}}
+ {{- $fullName := include "frigate.fullname" . -}}
++{{- $ingressPath := .Values.ingress.path -}}
+ apiVersion: extensions/v1beta1
+ kind: Ingress
+ metadata:
+@@ -23,14 +24,12 @@ spec:
+ {{- end }}
+   rules:
+   {{- range .Values.ingress.hosts }}
+-    - host: {{ .host | quote }}
++    - host: {{ . | quote }}
+       http:
+         paths:
+-        {{- range .paths }}
+-          - path: {{ . }}
++          - path: {{ $ingressPath }}
+             backend:
+               serviceName: {{ $fullName }}
+               servicePort: http
+-        {{- end }}
+   {{- end }}
+-{{- end }}
++{{- end }}
+\ No newline at end of file
+diff --git a/frigate/values.yaml b/frigate/values.yaml
+index 6648c44b..a40ee6db 100644
+--- a/frigate/values.yaml
++++ b/frigate/values.yaml
+@@ -105,16 +105,14 @@ service:
+   ## Set the externalTrafficPolicy in the Service to either Cluster or Local
+   # externalTrafficPolicy: Cluster
+ 
+-
+ ingress:
+   enabled: false
+   annotations: {}
+     # kubernetes.io/ingress.class: nginx
+     # kubernetes.io/tls-acme: "true"
++  path: /
+   hosts:
+-    - host: chart-example.local
+-      paths: []
+-
++    - chart-example.local
+   tls: []
+   #  - secretName: chart-example-tls
+   #    hosts:

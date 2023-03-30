@@ -1,0 +1,164 @@
+commit 6c6237172d66dd8e940080820be98313d9c351ae
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Apr 4 13:54:28 2018 +0200
+
+    [stable/sugarcrm] Refactor image property in values.yaml (#4658)
+    
+    * [stable/sugarcrm] Refactor image properties in values.yaml
+    
+    * Use rolling tag and refactor pullSecrets
+    
+    * Fix lint issue
+    
+    * Update Chart.yaml
+
+diff --git a/stable/sugarcrm/Chart.yaml b/stable/sugarcrm/Chart.yaml
+index d12164fa3..4a85ca61a 100644
+--- a/stable/sugarcrm/Chart.yaml
++++ b/stable/sugarcrm/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: sugarcrm
+-version: 0.3.2
++version: 1.0.0
+ appVersion: 6.5.26
+ description: SugarCRM enables businesses to create extraordinary customer relationships with the most innovative and affordable CRM solution in the market.
+ keywords:
+diff --git a/stable/sugarcrm/README.md b/stable/sugarcrm/README.md
+index ff98d4683..3d78ae6e9 100644
+--- a/stable/sugarcrm/README.md
++++ b/stable/sugarcrm/README.md
+@@ -45,41 +45,44 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following table lists the configurable parameters of the SugarCRM chart and their default values.
+ 
+-|              Parameter              |               Description               |                   Default                   |
+-|-------------------------------------|-----------------------------------------|---------------------------------------------|
+-| `image`                             | SugarCRM image                          | `bitnami/sugarcrm:{VERSION}`                |
+-| `imagePullPolicy`                   | Image pull policy                       | `IfNotPresent`                              |
+-| `sugarcrmUsername`                  | User of the application                 | `user`                                      |
+-| `sugarcrmPassword`                  | Application password                    | _random 10 character alphanumeric string_   |
+-| `sugarcrmEmail`                     | Admin email                             | `user@example.com`                          |
+-| `sugarcrmLastname`                  | Last name                               | `Name`                                      |
+-| `sugarcrmHost`                      | Host domain or IP                       | `nil`                                       |
+-| `sugarcrmLoadBalancerIP`            | `loadBalancerIP` of the application     | `nil`                                       |
+-| `sugarcrmSmtpHost`                  | SMTP host                               | `nil`                                       |
+-| `sugarcrmSmtpPort`                  | SMTP port                               | `nil`                                       |
+-| `sugarcrmSmtpProtocol`              | SMTP Protocol                           | `nil`                                       |
+-| `sugarcrmSmtpUser`                  | SMTP user                               | `nil`                                       |
+-| `sugarcrmSmtpPassword`              | SMTP password                           | `nil`                                       |
+-| `allowEmptyPassword`                | Allow DB blank passwords                | `yes`                                       |
+-| `externalDatabase.host`             | Host of the external database           | `nil`                                       |
+-| `externalDatabase.port`             | Port of the external database           | `3306`                                      |
+-| `externalDatabase.user`             | Existing username in the external db    | `bn_sugarcrm`                               |
+-| `externalDatabase.password`         | Password for the above username         | `nil`                                       |
+-| `externalDatabase.database`         | Name of the existing databse            | `bitnami_sugarcrm`                          |
+-| `mariadb.enabled`                   | Wheter to use or not the mariadb chart  | `true`                                      |
+-| `mariadb.mariadbDatabase`           | Database name to create                 | `bitnami_sugarcrm`                          |
+-| `mariadb.mariadbUser`               | Database user to create                 | `bn_sugarcrm`                               |
+-| `mariadb.mariadbPassword`           | Password for the database               | `nil`                                       |
+-| `mariadb.mariadbRootPassword`       | MariaDB admin password                  | `nil`                                       |
+-| `serviceType`                       | Kubernetes Service type                 | `LoadBalancer`                              |
+-| `persistence.enabled`               | Enable persistence using PVC            | `true`                                      |
+-| `persistence.apache.storageClass`   | PVC Storage Class for apache volume     | `nil` (uses alpha storage class annotation) |
+-| `persistence.apache.accessMode`     | PVC Access Mode for apache volume       | `ReadWriteOnce`                             |
+-| `persistence.apache.size`           | PVC Storage Request for apache volume   | `1Gi`                                       |
+-| `persistence.sugarcrm.storageClass` | PVC Storage Class for SugarCRM volume   | `nil` (uses alpha storage class annotation) |
+-| `persistence.sugarcrm.accessMode`   | PVC Access Mode for SugarCRM volume     | `ReadWriteOnce`                             |
+-| `persistence.sugarcrm.size`         | PVC Storage Request for SugarCRM volume | `8Gi`                                       |
+-| `resources`                         | CPU/Memory resource requests/limits     | Memory: `512Mi`, CPU: `300m`                |
++|              Parameter              |               Description               |                        Default                          |
++|-------------------------------------|-----------------------------------------|-------------------------------------------------------- |
++| `image.registry`                    | SugarCRM image registry                 | `docker.io`                                             |
++| `image.repository`                  | SugarCRM image name                     | `bitnami/sugarcrm`                                      |
++| `image.tag`                         | SugarCRM image tag                      | `{VERSION}`                                             |
++| `image.pullPolicy`                  | Image pull policy                       | `Always` if `imageTag` is `latest`, else `IfNotPresent` |
++| `image.pullSecrets`                 | Specify image pull secrets              | `nil`                                                   |
++| `sugarcrmUsername`                  | User of the application                 | `user`                                                  |
++| `sugarcrmPassword`                  | Application password                    | _random 10 character alphanumeric string_               |
++| `sugarcrmEmail`                     | Admin email                             | `user@example.com`                                      |
++| `sugarcrmLastname`                  | Last name                               | `Name`                                                  |
++| `sugarcrmHost`                      | Host domain or IP                       | `nil`                                                   |
++| `sugarcrmLoadBalancerIP`            | `loadBalancerIP` of the application     | `nil`                                                   |
++| `sugarcrmSmtpHost`                  | SMTP host                               | `nil`                                                   |
++| `sugarcrmSmtpPort`                  | SMTP port                               | `nil`                                                   |
++| `sugarcrmSmtpProtocol`              | SMTP Protocol                           | `nil`                                                   |
++| `sugarcrmSmtpUser`                  | SMTP user                               | `nil`                                                   |
++| `sugarcrmSmtpPassword`              | SMTP password                           | `nil`                                                   |
++| `allowEmptyPassword`                | Allow DB blank passwords                | `yes`                                                   |
++| `externalDatabase.host`             | Host of the external database           | `nil`                                                   |
++| `externalDatabase.port`             | Port of the external database           | `3306`                                                  |
++| `externalDatabase.user`             | Existing username in the external db    | `bn_sugarcrm`                                           |
++| `externalDatabase.password`         | Password for the above username         | `nil`                                                   |
++| `externalDatabase.database`         | Name of the existing databse            | `bitnami_sugarcrm`                                      |
++| `mariadb.enabled`                   | Wheter to use or not the mariadb chart  | `true`                                                  |
++| `mariadb.mariadbDatabase`           | Database name to create                 | `bitnami_sugarcrm`                                      |
++| `mariadb.mariadbUser`               | Database user to create                 | `bn_sugarcrm`                                           |
++| `mariadb.mariadbPassword`           | Password for the database               | `nil`                                                   |
++| `mariadb.mariadbRootPassword`       | MariaDB admin password                  | `nil`                                                   |
++| `serviceType`                       | Kubernetes Service type                 | `LoadBalancer`                                          |
++| `persistence.enabled`               | Enable persistence using PVC            | `true`                                                  |
++| `persistence.apache.storageClass`   | PVC Storage Class for apache volume     | `nil` (uses alpha storage class annotation)             |
++| `persistence.apache.accessMode`     | PVC Access Mode for apache volume       | `ReadWriteOnce`                                         |
++| `persistence.apache.size`           | PVC Storage Request for apache volume   | `1Gi`                                                   |
++| `persistence.sugarcrm.storageClass` | PVC Storage Class for SugarCRM volume   | `nil` (uses alpha storage class annotation)             |
++| `persistence.sugarcrm.accessMode`   | PVC Access Mode for SugarCRM volume     | `ReadWriteOnce`                                         |
++| `persistence.sugarcrm.size`         | PVC Storage Request for SugarCRM volume | `8Gi`                                                   |
++| `resources`                         | CPU/Memory resource requests/limits     | Memory: `512Mi`, CPU: `300m`                            |
+ 
+ The above parameters map to the env variables defined in [bitnami/sugarcrm](http://github.com/bitnami/bitnami-docker-sugarcrm). For more information please refer to the [bitnami/sugarcrm](http://github.com/bitnami/bitnami-docker-sugarcrm) image documentation.
+ 
+diff --git a/stable/sugarcrm/templates/deployment.yaml b/stable/sugarcrm/templates/deployment.yaml
+index 5ef0274fa..867d76ab6 100644
+--- a/stable/sugarcrm/templates/deployment.yaml
++++ b/stable/sugarcrm/templates/deployment.yaml
+@@ -15,10 +15,16 @@ spec:
+         app: {{ template "name" . }}
+         release: "{{ .Release.Name }}"
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: ALLOW_EMPTY_PASSWORD
+           value: {{ .Values.allowEmptyPassword | quote }}
+diff --git a/stable/sugarcrm/values.yaml b/stable/sugarcrm/values.yaml
+index eaecd0917..d45557fa2 100644
+--- a/stable/sugarcrm/values.yaml
++++ b/stable/sugarcrm/values.yaml
+@@ -1,12 +1,21 @@
+ ## Bitnami SugarCRM image version
+ ## ref: https://hub.docker.com/r/bitnami/sugarcrm/tags/
+ ##
+-image: bitnami/sugarcrm:6.5.26-r3
+-
+-## Specify a imagePullPolicy
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-imagePullPolicy: IfNotPresent
++image:
++  registry: docker.io
++  repository: bitnami/sugarcrm
++  tag: 6.5.26
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
+ 
+ ## SugarCRM host to create application URLs
+ ## ref: https://github.com/bitnami/bitnami-docker-sugarcrm#configuration

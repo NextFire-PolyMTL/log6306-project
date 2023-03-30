@@ -1,0 +1,101 @@
+commit 196ab163882e20ec16cc0308f9e6b8ddf48df97a
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Apr 4 14:47:46 2018 +0200
+
+    [stable/jasperreports] Refactor image property in values.yaml (#4641)
+    
+    * [stable/jasperreports] Refactor image properties in values.yaml
+    
+    * Delete duplicated property
+    
+    * Use rolling tag and refactor pullSecrets
+    
+    * Fix lint issue
+    
+    * Update Chart.yaml
+
+diff --git a/stable/jasperreports/Chart.yaml b/stable/jasperreports/Chart.yaml
+index 8aceb195b..acf5d754a 100644
+--- a/stable/jasperreports/Chart.yaml
++++ b/stable/jasperreports/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: jasperreports
+-version: 0.3.1
++version: 1.0.0
+ appVersion: 6.4.2
+ description: The JasperReports server can be used as a stand-alone or embedded reporting
+   and BI server that offers web-based reporting, analytic tools and visualization,
+diff --git a/stable/jasperreports/README.md b/stable/jasperreports/README.md
+index 63d5d3fae..d95efce82 100644
+--- a/stable/jasperreports/README.md
++++ b/stable/jasperreports/README.md
+@@ -47,8 +47,11 @@ The following table lists the configurable parameters of the JasperReports chart
+ 
+ |           Parameter           |                 Description                  |                         Default                          |
+ |-------------------------------|----------------------------------------------|----------------------------------------------------------|
+-| `image`                       | JasperReports image                          | `bitnami/jasperreports:{VERSION}`                        |
+-| `imagePullPolicy`             | Image pull policy                            | `IfNotPresent`                                           |
++| `image.registry`              | JasperReports image registry                 | `docker.io`                                              |
++| `image.repository`            | JasperReports Image name                     | `bitnami/jasperreports`                                  |
++| `image.tag`                   | JasperReports Image tag                      | `{VERSION}`                                              |
++| `image.pullPolicy`            | Image pull policy                            | `Always` if `imageTag` is `latest`, else `IfNotPresent`  |
++| `image.pullSecrets`           | Specify image pull secrets                   | `nil`                                                    |
+ | `jasperreportsUsername`       | User of the application                      | `user`                                                   |
+ | `jasperreportsPassword`       | Application password                         | _random 10 character long alphanumeric string_           |
+ | `jasperreportsEmail`          | User email                                   | `user@example.com`                                       |
+diff --git a/stable/jasperreports/templates/deployment.yaml b/stable/jasperreports/templates/deployment.yaml
+index d89e1a230..72f157cc4 100644
+--- a/stable/jasperreports/templates/deployment.yaml
++++ b/stable/jasperreports/templates/deployment.yaml
+@@ -13,10 +13,16 @@ spec:
+       labels:
+         app: {{ template "jasperreports.fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "jasperreports.fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: ALLOW_EMPTY_PASSWORD
+           value: {{ .Values.allowEmptyPassword | quote }}
+diff --git a/stable/jasperreports/values.yaml b/stable/jasperreports/values.yaml
+index 69773903d..58b39f9d8 100644
+--- a/stable/jasperreports/values.yaml
++++ b/stable/jasperreports/values.yaml
+@@ -1,12 +1,21 @@
+ ## Bitnami JasperReports image version
+-## ref: https://hub.docker.com/r/bitnami/jasperreports/tags/
++## ref: https://hub.docker.com/r/bitnami/dokuwiki/tags/
+ ##
+-image: bitnami/jasperreports:6.4.2-r4
+-
+-## Specify a imagePullPolicy
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-imagePullPolicy: IfNotPresent
++image:
++  registry: docker.io
++  repository: bitnami/jasperreports
++  tag: 6.4.2
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
+ 
+ ## User of the application
+ ## ref: https://github.com/bitnami/bitnami-docker-jasperreports#configuration

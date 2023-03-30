@@ -1,0 +1,928 @@
+commit ddf4a5e7c937a669f47b90e628dcde24d3915219
+Author: Alejandro Moreno <amoreno@bitnami.com>
+Date:   Fri Sep 27 14:34:25 2019 +0000
+
+    Address review suggestions and refactor
+
+diff --git a/bitnami/fluentd/README.md b/bitnami/fluentd/README.md
+index d5e3144d39..623195d294 100644
+--- a/bitnami/fluentd/README.md
++++ b/bitnami/fluentd/README.md
+@@ -30,7 +30,7 @@ These commands deploy Fluentd on the Kubernetes cluster in the default configura
+ 
+ ## Uninstalling the Chart
+ 
+-To uninstall/delete the `my-release` statefulset:
++To uninstall/delete the `my-release` resources:
+ 
+ ```console
+ $ helm delete my-release
+@@ -42,79 +42,81 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following tables lists the configurable parameters of the kibana chart and their default values.
+ 
+-| Parameter                                       | Description                                                                                                    | Default                                                 |
+-| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+-| `global.imageRegistry`                          | Global Docker image registry                                                                                   | `nil`                                                   |
+-| `global.imagePullSecrets`                       | Global Docker registry secret names as an array                                                                | `[]` (does not add image pull secrets to deployed pods) |
+-| `global.storageClass`                           | Global storage class for dynamic provisioning                                                                  | `nil`                                                   |
+-| `image.registry`                                | Fluentd image registry                                                                                         | `docker.io`                                             |
+-| `image.repository`                              | Fluentd image name                                                                                             | `bitnami/fluentd`                                       |
+-| `image.tag`                                     | Fluentd image tag                                                                                              | `{TAG_NAME}`                                            |
+-| `image.pullPolicy`                              | Fluentd image pull policy                                                                                      | `IfNotPresent`                                          |
+-| `image.pullSecrets`                             | Specify docker-registry secret names as an array                                                               | `[]` (does not add image pull secrets to deployed pods) |
+-| `nameOverride`                                  | String to partially override fluentd.fullname template with a string (will prepend the release name)           | `nil`                                                   |
+-| `fullnameOverride`                              | String to fully override fluentd.fullname template with a string                                               | `nil`                                                   |
+-| `clusterDomain`                                 | Kubernetes DNS domain name to use                                                                              | `cluster.local`                                         |
+-| `forwarder.configFile`                          | Name of the config file that will be used by Fluentd at launch under the `/opt/bitnami/fluentd/conf` directory | `fluentd.conf`                                          |
+-| `forwarder.service.type`                        | Kubernetes Service type                                                                                        |                                                         | `ClusterIP` |
+-| `forwarder.service.port`                        | Kubernetes Service port - Fluentd transport port for the forwarders                                            | `24224`                                                 |
+-| `forwarder.service.nodePort`                    | Port to bind to for NodePort service type (client port)                                                        | `nil`                                                   |
+-| `forwarder.service.annotations`                 | Annotations for Fluentd service (evaluated as a template)                                                      | `{}`                                                    |
+-| `forwarder.service.loadBalancerIP`              | loadBalancerIP if Fluentd service type is `LoadBalancer`                                                       | `nil`                                                   |
+-| `forwarder.extraArgs`                           | Extra arguments for the Fluentd command line                                                                   | `nil`                                                   |
+-| `forwarder.extraEnv`                            | Extra environment variables to pass to the container                                                           | `{}`                                                    |
+-| `forwarder.livenessProbe.initialDelaySeconds`   | Delay before liveness probe is initiated                                                                       | `60`                                                    |
+-| `forwarder.livenessProbe.periodSeconds`         | How often to perform the probe                                                                                 | `10`                                                    |
+-| `forwarder.livenessProbe.timeoutSeconds`        | When the probe times out                                                                                       | `5`                                                     |
+-| `forwarder.livenessProbe.failureThreshold`      | Minimum consecutive failures for the probe to be considered failed after having succeeded.                     | `6`                                                     |
+-| `forwarder.livenessProbe.successThreshold`      | Minimum consecutive successes for the probe to be considered successful after having failed.                   | `1`                                                     |
+-| `forwarder.readinessProbe.initialDelaySeconds`  | Delay before readiness probe is initiated                                                                      | `5`                                                     |
+-| `forwarder.readinessProbe.periodSeconds`        | How often to perform the probe                                                                                 | `10`                                                    |
+-| `forwarder.readinessProbe.timeoutSeconds`       | When the probe times out                                                                                       | `5`                                                     |
+-| `forwarder.readinessProbe.failureThreshold`     | Minimum consecutive failures for the probe to be considered failed after having succeeded.                     | `6`                                                     |
+-| `forwarder.readinessProbe.successThreshold`     | Minimum consecutive successes for the probe to be considered successful after having failed.                   | `1`                                                     |
+-| `forwarder.updateStrategy`                      | Update strategy for the forwarder DaemonSet                                                                    | `RollingUpdate`                                         |
+-| `forwarder.resources`                           | Configure resource requests and limits                                                                         | `nil`                                                   |
+-| `forwarder.nodeSelector`                        | Node labels for pod assignment                                                                                 | `{}`                                                    |
+-| `forwarder.tolerations`                         | Tolerations for pod assignment                                                                                 | `[]`                                                    |
+-| `forwarder.affinity`                            | Affinity for pod assignment                                                                                    | `{}`                                                    |
+-| `forwarder.podAnnotations`                      | Pod annotations                                                                                                | `{}`                                                    |
+-| `aggregator.replicaCount`                       | Number of aggregator pods to deploy in the Stateful Set                                                        | `2`                                                     |
+-| `aggregator.configFile`                         | Name of the config file that will be used by Fluentd at launch under the `/opt/bitnami/fluentd/conf` directory | `fluentd.conf`                                          |
+-| `aggregator.service.type`                       | Kubernetes Service type                                                                                        |                                                         | `ClusterIP` |
+-| `aggregator.port`                               | Kubernetes Service port - Fluentd transport port for the aggregators                                           | `24224`                                                 |
+-| `aggregator.extraArgs`                          | Extra arguments for the Fluentd command line                                                                   | `nil`                                                   |
+-| `aggregator.extraEnv`                           | Extra environment variables to pass to the container                                                           | `{}`                                                    |
+-| `aggregator.livenessProbe.initialDelaySeconds`  | Delay before liveness probe is initiated                                                                       | `60`                                                    |
+-| `aggregator.livenessProbe.periodSeconds`        | How often to perform the probe                                                                                 | `10`                                                    |
+-| `aggregator.livenessProbe.timeoutSeconds`       | When the probe times out                                                                                       | `5`                                                     |
+-| `aggregator.livenessProbe.failureThreshold`     | Minimum consecutive failures for the probe to be considered failed after having succeeded.                     | `6`                                                     |
+-| `aggregator.livenessProbe.successThreshold`     | Minimum consecutive successes for the probe to be considered successful after having failed.                   | `1`                                                     |
+-| `aggregator.readinessProbe.initialDelaySeconds` | Delay before readiness probe is initiated                                                                      | `5`                                                     |
+-| `aggregator.readinessProbe.periodSeconds`       | How often to perform the probe                                                                                 | `10`                                                    |
+-| `aggregator.readinessProbe.timeoutSeconds`      | When the probe times out                                                                                       | `5`                                                     |
+-| `aggregator.readinessProbe.failureThreshold`    | Minimum consecutive failures for the probe to be considered failed after having succeeded.                     | `6`                                                     |
+-| `aggregator.readinessProbe.successThreshold`    | Minimum consecutive successes for the probe to be considered successful after having failed.                   | `1`                                                     |
+-| `aggregator.updateStrategy`                     | Update strategy for the aggregator DaemonSet                                                                   | `RollingUpdate`                                         |
+-| `aggregator.resources`                          | Configure resource requests and limits                                                                         | `nil`                                                   |
+-| `aggregator.nodeSelector`                       | Node labels for pod assignment                                                                                 | `{}`                                                    |
+-| `aggregator.tolerations`                        | Tolerations for pod assignment                                                                                 | `[]`                                                    |
+-| `aggregator.affinity`                           | Affinity for pod assignment                                                                                    | `{}`                                                    |
+-| `aggregator.podAnnotations`                     | Pod annotations                                                                                                | `{}`                                                    |
+-| `serviceAccount.create`                         | Specify whether a ServiceAccount should be created                                                             | `true`                                                  |
+-| `serviceAccount.name`                           | The name of the ServiceAccount to create                                                                       | Generated using the `fluentd.fullname` template         |
+-| `rbac.create`                                   | Specify whether RBAC resources should be created and used                                                      | `true`                                                  |
+-| `metrics.enabled`                               | Enable the export of Prometheus metrics                                                                        | `nil`                                                   |
+-| `metrics.service.port`                          | Prometheus metrics service port                                                                                | `24231`                                                 |
+-| `metrics.service.annotations`                   | Annotations for Prometheus metrics service                                                                     | `{}`                                                    |
+-| `tls.enabled`                                   | Enable the addition of TLS certificates                                                                        |                                                         | `false`     |
+-| `tls.caCertificate`                             | Ca certificate                                                                                                 | Certificate Authority (CA) bundle content               |
+-| `tls.serverCertificate`                         | Server certificate                                                                                             | Server certificate content                              |
+-| `tls.serverKey`                                 | Server Key                                                                                                     | Server private key content                              |
+-| `tls.existingSecret`                            | Existing secret with certificate content                                                                       | `nil`                                                   |
+-| `securityContext.enabled`                       | Enable security context                                                                                        | `true`                                                  |
+-| `securityContext.fsGroup`                       | Group ID for the container filesystem                                                                          | `1001`                                                  |
+-| `securityContext.runAsUser`                     | User ID for the container                                                                                      | `1001`                                                  |
++| Parameter                                       | Description                                                                                                    | Default                                                                                                 |
++| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
++| `global.imageRegistry`                          | Global Docker image registry                                                                                   | `nil`                                                                                                   |
++| `global.imagePullSecrets`                       | Global Docker registry secret names as an array                                                                | `[]` (does not add image pull secrets to deployed pods)                                                 |
++| `global.storageClass`                           | Global storage class for dynamic provisioning                                                                  | `nil`                                                                                                   |
++| `image.registry`                                | Fluentd image registry                                                                                         | `docker.io`                                                                                             |
++| `image.repository`                              | Fluentd image name                                                                                             | `bitnami/fluentd`                                                                                       |
++| `image.tag`                                     | Fluentd image tag                                                                                              | `{TAG_NAME}`                                                                                            |
++| `image.pullPolicy`                              | Fluentd image pull policy                                                                                      | `IfNotPresent`                                                                                          |
++| `image.pullSecrets`                             | Specify docker-registry secret names as an array                                                               | `[]` (does not add image pull secrets to deployed pods)                                                 |
++| `nameOverride`                                  | String to partially override fluentd.fullname template with a string (will prepend the release name)           | `nil`                                                                                                   |
++| `fullnameOverride`                              | String to fully override fluentd.fullname template with a string                                               | `nil`                                                                                                   |
++| `clusterDomain`                                 | Kubernetes DNS domain name to use                                                                              | `cluster.local`                                                                                         |
++| `forwarder.configFile`                          | Name of the config file that will be used by Fluentd at launch under the `/opt/bitnami/fluentd/conf` directory | `fluentd.conf`                                                                                          |
++| `forwarder.configMap`                           | Name of the config map that contains the Fluentd configuration files                                           | `nil`                                                                                                   |
++| `forwarder.extraArgs`                           | Extra arguments for the Fluentd command line                                                                   | `nil`                                                                                                   |
++| `forwarder.extraEnv`                            | Extra environment variables to pass to the container                                                           | `{}`                                                                                                    |
++| `forwarder.livenessProbe.enabled`               | Enable liveness probes for the forwarder                                                                       | `true`                                                                                                  |
++| `forwarder.livenessProbe.initialDelaySeconds`   | Delay before liveness probe is initiated                                                                       | `60`                                                                                                    |
++| `forwarder.livenessProbe.periodSeconds`         | How often to perform the probe                                                                                 | `10`                                                                                                    |
++| `forwarder.livenessProbe.timeoutSeconds`        | When the probe times out                                                                                       | `5`                                                                                                     |
++| `forwarder.livenessProbe.failureThreshold`      | Minimum consecutive failures for the probe to be considered failed after having succeeded.                     | `6`                                                                                                     |
++| `forwarder.livenessProbe.successThreshold`      | Minimum consecutive successes for the probe to be considered successful after having failed.                   | `1`                                                                                                     |
++| `forwarder.readinessProbe.enabled`              | Enable readiness probes for the forwarder                                                                      | `true`                                                                                                  |
++| `forwarder.readinessProbe.initialDelaySeconds`  | Delay before readiness probe is initiated                                                                      | `5`                                                                                                     |
++| `forwarder.readinessProbe.periodSeconds`        | How often to perform the probe                                                                                 | `10`                                                                                                    |
++| `forwarder.readinessProbe.timeoutSeconds`       | When the probe times out                                                                                       | `5`                                                                                                     |
++| `forwarder.readinessProbe.failureThreshold`     | Minimum consecutive failures for the probe to be considered failed after having succeeded.                     | `6`                                                                                                     |
++| `forwarder.readinessProbe.successThreshold`     | Minimum consecutive successes for the probe to be considered successful after having failed.                   | `1`                                                                                                     |
++| `forwarder.updateStrategy`                      | Update strategy for the forwarder DaemonSet                                                                    | `RollingUpdate`                                                                                         |
++| `forwarder.resources`                           | Configure resource requests and limits                                                                         | `nil`                                                                                                   |
++| `forwarder.nodeSelector`                        | Node labels for pod assignment                                                                                 | `{}`                                                                                                    |
++| `forwarder.tolerations`                         | Tolerations for pod assignment                                                                                 | `[]`                                                                                                    |
++| `forwarder.affinity`                            | Affinity for pod assignment                                                                                    | `{}`                                                                                                    |
++| `forwarder.podAnnotations`                      | Pod annotations                                                                                                | `{}`                                                                                                    |
++| `aggregator.replicaCount`                       | Number of aggregator pods to deploy in the Stateful Set                                                        | `2`                                                                                                     |
++| `aggregator.configFile`                         | Name of the config file that will be used by Fluentd at launch under the `/opt/bitnami/fluentd/conf` directory | `fluentd.conf`                                                                                          |
++| `aggregator.configMap`                          | Name of the config map that contains the Fluentd configuration files                                           | `nil`                                                                                                   |
++| `aggregator.port`                               | Kubernetes Service port - Fluentd transport port for the aggregators                                           | `24224`                                                                                                 |
++| `aggregator.extraArgs`                          | Extra arguments for the Fluentd command line                                                                   | `nil`                                                                                                   |
++| `aggregator.extraEnv`                           | Extra environment variables to pass to the container                                                           | `{}`                                                                                                    |
++| `aggregator.livenessProbe.enabled`              | Enable liveness probes for the aggregator                                                                      | `true`                                                                                                  |
++| `aggregator.livenessProbe.initialDelaySeconds`  | Delay before liveness probe is initiated                                                                       | `60`                                                                                                    |
++| `aggregator.livenessProbe.periodSeconds`        | How often to perform the probe                                                                                 | `10`                                                                                                    |
++| `aggregator.livenessProbe.timeoutSeconds`       | When the probe times out                                                                                       | `5`                                                                                                     |
++| `aggregator.livenessProbe.failureThreshold`     | Minimum consecutive failures for the probe to be considered failed after having succeeded.                     | `6`                                                                                                     |
++| `aggregator.livenessProbe.successThreshold`     | Minimum consecutive successes for the probe to be considered successful after having failed.                   | `1`                                                                                                     |
++| `aggregator.readinessProbe.enabled`             | Enable readiness probes for the aggregator                                                                     | `true`                                                                                                  |
++| `aggregator.readinessProbe.initialDelaySeconds` | Delay before readiness probe is initiated                                                                      | `5`                                                                                                     |
++| `aggregator.readinessProbe.periodSeconds`       | How often to perform the probe                                                                                 | `10`                                                                                                    |
++| `aggregator.readinessProbe.timeoutSeconds`      | When the probe times out                                                                                       | `5`                                                                                                     |
++| `aggregator.readinessProbe.failureThreshold`    | Minimum consecutive failures for the probe to be considered failed after having succeeded.                     | `6`                                                                                                     |
++| `aggregator.readinessProbe.successThreshold`    | Minimum consecutive successes for the probe to be considered successful after having failed.                   | `1`                                                                                                     |
++| `aggregator.updateStrategy`                     | Update strategy for the aggregator DaemonSet                                                                   | `RollingUpdate`                                                                                         |
++| `aggregator.resources`                          | Configure resource requests and limits                                                                         | `nil`                                                                                                   |
++| `aggregator.nodeSelector`                       | Node labels for pod assignment                                                                                 | `{}`                                                                                                    |
++| `aggregator.tolerations`                        | Tolerations for pod assignment                                                                                 | `[]`                                                                                                    |
++| `aggregator.affinity`                           | Affinity for pod assignment                                                                                    | `{}`                                                                                                    |
++| `aggregator.podAnnotations`                     | Pod annotations                                                                                                | `{}`                                                                                                    |
++| `serviceAccount.create`                         | Specify whether a ServiceAccount should be created                                                             | `true`                                                                                                  |
++| `serviceAccount.name`                           | The name of the ServiceAccount to create                                                                       | Generated using the `fluentd.fullname` template                                                         |
++| `rbac.create`                                   | Specify whether RBAC resources should be created and used                                                      | `true`                                                                                                  |
++| `metrics.enabled`                               | Enable the export of Prometheus metrics                                                                        | `nil`                                                                                                   |
++| `metrics.service.type`                          | Prometheus metrics service type                                                                                | `ClusterIP`                                                                                             |
++| `metrics.service.loadBalancerIP`                | Load Balancer IP if the Prometheus metrics server type is `LoadBalancer`                                       | `nil`                                                                                                   |
++| `metrics.service.port`                          | Prometheus metrics service port                                                                                | `24231`                                                                                                 |
++| `metrics.service.annotations`                   | Annotations for Prometheus metrics service                                                                     | `{ prometheus.io/scrape: "true", prometheus.io/port: "80", prometheus.io/path: "_prometheus/metrics" }` |
++| `tls.enabled`                                   | Enable the addition of TLS certificates                                                                        | `false`                                                                                                 |
++| `tls.caCertificate`                             | Ca certificate                                                                                                 | Certificate Authority (CA) bundle content                                                               |
++| `tls.serverCertificate`                         | Server certificate                                                                                             | Server certificate content                                                                              |
++| `tls.serverKey`                                 | Server Key                                                                                                     | Server private key content                                                                              |
++| `tls.existingSecret`                            | Existing secret with certificate content                                                                       | `nil`                                                                                                   |
++| `securityContext.enabled`                       | Enable security context                                                                                        | `true`                                                                                                  |
++| `securityContext.fsGroup`                       | Group ID for the container filesystem                                                                          | `1001`                                                                                                  |
++| `securityContext.runAsUser`                     | User ID for the container                                                                                      | `1001`                                                                                                  |
+ 
+ Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
+ 
+diff --git a/bitnami/fluentd/templates/NOTES.txt b/bitnami/fluentd/templates/NOTES.txt
+index fc5c33fa73..59bcdc5cfd 100644
+--- a/bitnami/fluentd/templates/NOTES.txt
++++ b/bitnami/fluentd/templates/NOTES.txt
+@@ -1,30 +1,14 @@
+ ** Please be patient while the chart is being deployed **
+ 
+-  Fluentd can be accessed within the cluster on port {{ .Values.forwarder.service.port }} at {{ template "fluentd.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
++  To verify that Fluentd has started, run:
+ 
+-  To access from outside the cluster execute the following commands:
++    kubectl get all -l "app.kubernetes.io/name={{ include "fluentd.name" . }},app.kubernetes.io/instance={{ .Release.Name }}"
+ 
+-{{- if contains "NodePort" .Values.forwarder.service.type }}
++  Logs are captured on each node by the forwarder pods and then sent to the aggregator pods. By default, the aggregator pods send the logs to the standard output.
++  You can see all the logs by running this command:
+ 
+-    export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ template "fluentd.fullname" . }})
+-    export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+-    curl http://$NODE_IP:$NODE_PORT/
+-{{- else if contains "LoadBalancer" .Values.forwarder.service.type }}
++    kubectl logs -l "app.kubernetes.io/component=aggregator"
++  
++  You can mount your own configuration files to the aggregators and the forwarders. For example, this is useful if you want to forward the aggregated logs to Elasticsearch or another service.
+ 
+-  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+-        Watch the status with: 'kubectl get svc --namespace {{ .Release.Namespace }} -w {{ template "fluentd.fullname" . }}'
+-
+-    export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "fluentd.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+-    curl http://$SERVICE_IP:{{ .Values.forwarder.service.port }}/
+-{{- else if contains "ClusterIP"  .Values.forwarder.service.type }}
+-
+-    kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ template "fluentd.fullname" . }} {{ .Values.forwarder.service.port }}:24224 &
+-    curl http://127.0.0.1:24224/
+-{{- end }}
+-
+-{{- if and (contains "bitnami/" .Values.image.repository) (not (.Values.image.tag | toString | regexFind "-r\\d+$|sha256:")) }}
+-
+-WARNING: Rolling tag detected ({{ .Values.image.repository }}:{{ .Values.image.tag }}), please note that it is strongly recommended to avoid using rolling tags in a production environment.
+-+info https://docs.bitnami.com/containers/how-to/understand-rolling-tags-containers/
+-
+-{{- end }}
++{{ include "fluentd.checkRollingTags" . }}
+diff --git a/bitnami/fluentd/templates/_helpers.tpl b/bitnami/fluentd/templates/_helpers.tpl
+index ddb842ff2b..ad9871c14d 100644
+--- a/bitnami/fluentd/templates/_helpers.tpl
++++ b/bitnami/fluentd/templates/_helpers.tpl
+@@ -41,6 +41,14 @@ app.kubernetes.io/instance: {{ .Release.Name }}
+ app.kubernetes.io/managed-by: {{ .Release.Service }}
+ {{- end -}}
+ 
++{{/*
++Labels to use on daemonset.spec.selector.matchLabels, statefulset.spec.selector.matchLabels and svc.spec.selector
++*/}}
++{{- define "fluentd.matchLabels" -}}
++app.kubernetes.io/name: {{ include "fluentd.name" . }}
++app.kubernetes.io/instance: {{ .Release.Name }}
++{{- end -}}
++
+ {{/*
+ Return the proper Fluentd image name
+ */}}
+@@ -138,3 +146,11 @@ Create the name of the service account to use
+     {{ default "default" .Values.serviceAccount.name }}
+ {{- end -}}
+ {{- end -}}
++
++{{/* Check if there are rolling tags in the images */}}
++{{- define "fluentd.checkRollingTags" -}}
++{{- if and (contains "bitnami/" .Values.image.repository) (not (.Values.image.tag | toString | regexFind "-r\\d+$|sha256:")) }}
++WARNING: Rolling tag detected ({{ .Values.image.repository }}:{{ .Values.image.tag }}), please note that it is strongly recommended to avoid using rolling tags in a production environment.
+++info https://docs.bitnami.com/containers/how-to/understand-rolling-tags-containers/
++{{- end }}
++{{- end -}}
+diff --git a/bitnami/fluentd/templates/aggregator-configmap.yaml b/bitnami/fluentd/templates/aggregator-configmap.yaml
+index 0df416e30b..d68ed831da 100644
+--- a/bitnami/fluentd/templates/aggregator-configmap.yaml
++++ b/bitnami/fluentd/templates/aggregator-configmap.yaml
+@@ -1,32 +1,63 @@
++{{- if not .Values.aggregator.configMap -}}
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+   name: {{ include "fluentd.fullname" . }}-aggregator-cm
+   labels: {{ include "fluentd.labels" . | nindent 4 }}
++    app.kubernetes.io/component: aggregator
+ data:
+-  aggregator.conf: |
++  fluentd.conf: |
++    {{- if .Values.metrics.enabled }}
++    # Prometheus Exporter Plugin
++    # input plugin that exports metrics
++    <source>
++      @type prometheus
++      port {{ .Values.metrics.service.port }}
++    </source>
++
++    # input plugin that collects metrics from MonitorAgent
++    <source>
++      @type prometheus_monitor
++      <labels>
++        host ${hostname}
++      </labels>
++    </source>
++
++    # input plugin that collects metrics for output plugin
++    <source>
++      @type prometheus_output_monitor
++      <labels>
++        host ${hostname}
++      </labels>
++    </source>
++    {{- end }}
++    
++    # Ignore fluentd own events
+     <match fluent.**>
+       @type null
+     </match>
+ 
+-    # TCP input
++    # TCP input to receive logs from the forwarders
+     <source>
+       @type forward
+       bind 0.0.0.0
+       port {{ .Values.aggregator.port }}
+     </source>
+ 
+-    # HTTP input
++    # HTTP input for the liveness and readiness probes
+     <source>
+       @type http
+       bind 0.0.0.0
+       port 9880
+     </source>
+ 
++    # Throw the healthcheck to the standard output instead of forwarding it
+     <match fluentd.healthcheck>
+       @type stdout
+     </match>
+ 
++    # Send the logs to the standard output
+     <match **>
+       @type stdout
+     </match>
++{{- end -}}
+diff --git a/bitnami/fluentd/templates/aggregator-statefulset.yaml b/bitnami/fluentd/templates/aggregator-statefulset.yaml
+index 6a111d02c6..29e4a33ddb 100644
+--- a/bitnami/fluentd/templates/aggregator-statefulset.yaml
++++ b/bitnami/fluentd/templates/aggregator-statefulset.yaml
+@@ -2,24 +2,18 @@ apiVersion: apps/v1
+ kind: StatefulSet
+ metadata:
+   name: {{ include "fluentd.fullname" . }}
+-  labels:
+-    {{- include "fluentd.labels" . | nindent 4 }}
++  labels: {{ include "fluentd.labels" . | nindent 4 }}
+     app.kubernetes.io/component: aggregator
+ spec:
+   selector:
+-    matchLabels:
+-      app.kubernetes.io/name: {{ include "fluentd.name" . }}
+-      app.kubernetes.io/instance: {{ .Release.Name }}
++    matchLabels: {{ include "fluentd.matchLabels" . | nindent 6 }}
+       app.kubernetes.io/component: aggregator
+   serviceName: {{ include "fluentd.fullname" . }}-headless
+   replicas: {{ .Values.aggregator.replicaCount }}
+-  updateStrategy:
+-    {{- toYaml .Values.aggregator.updateStrategy | nindent 4 }}
++  updateStrategy: {{ toYaml .Values.aggregator.updateStrategy | nindent 4 }}
+   template:
+     metadata:
+-      labels:
+-        app.kubernetes.io/name: {{ include "fluentd.name" . }}
+-        app.kubernetes.io/instance: {{ .Release.Name }}
++      labels: {{ include "fluentd.labels" . | nindent 8 }}
+         app.kubernetes.io/component: aggregator
+       annotations:
+         checksum/config: {{ include (print $.Template.BasePath "/aggregator-configmap.yaml") . | sha256sum }}
+@@ -35,12 +29,12 @@ spec:
+         runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+       {{- end }}
+       containers:
+-        - name: {{ .Chart.Name }}
++        - name: fluentd
+           image: {{ include "fluentd.image" . }}
+           imagePullPolicy: {{ .Values.image.pullPolicy }}
+           env:
+             - name: FLUENTD_CONF
+-              value: {{ default "fluentd.conf" .Values.aggregator.configFile }}
++              value: {{ .Values.aggregator.configFile }}
+             - name: FLUENTD_OPT
+               value: {{ .Values.aggregator.extraArgs }}
+             {{- if .Values.aggregator.extraEnv }}
+@@ -53,19 +47,37 @@ spec:
+             - name: tcp
+               containerPort: {{ .Values.aggregator.port }}
+               protocol: TCP
++            {{- if .Values.metrics.enabled }}
++            - name: metrics
++              containerPort: {{ .Values.metrics.service.port }}
++              protocol: TCP
++            {{- end }}
++          {{- if .Values.aggregator.livenessProbe.enabled }}
+           livenessProbe:
+             httpGet:
+               path: /fluentd.healthcheck?json=%7B%22ping%22%3A+%22pong%22%7D
+-              port: 9880
+-            initialDelaySeconds: 5
+-            timeoutSeconds: 1
++              port: http
++            initialDelaySeconds: {{ .Values.aggregator.livenessProbe.initialDelaySeconds }}
++            periodSeconds: {{ .Values.aggregator.livenessProbe.periodSeconds }}
++            timeoutSeconds: {{ .Values.aggregator.livenessProbe.timeoutSeconds }}
++            successThreshold: {{ .Values.aggregator.livenessProbe.successThreshold }}
++            failureThreshold: {{ .Values.aggregator.livenessProbe.failureThreshold }}
++          {{- end }}
++          {{- if .Values.aggregator.readinessProbe.enabled }}
++          readinessProbe:
++            httpGet:
++              path: /fluentd.healthcheck?json=%7B%22ping%22%3A+%22pong%22%7D
++              port: http
++            initialDelaySeconds: {{ .Values.aggregator.readinessProbe.initialDelaySeconds }}
++            periodSeconds: {{ .Values.aggregator.readinessProbe.periodSeconds }}
++            timeoutSeconds: {{ .Values.aggregator.readinessProbe.timeoutSeconds }}
++            successThreshold: {{ .Values.aggregator.readinessProbe.successThreshold }}
++            failureThreshold: {{ .Values.aggregator.readinessProbe.failureThreshold }}
++          {{- end }}
+           resources: {{ toYaml .Values.aggregator.resources | nindent 12 }}
+           volumeMounts:
+-            - name: fluentd-config-file
+-              mountPath: /opt/bitnami/fluentd/conf/fluentd.conf
+-              subPath: fluentd.conf
+-            - name: fluentd-extra-config
+-              mountPath: /opt/bitnami/fluentd/conf/conf.d
++            - name: fluentd-config
++              mountPath: /opt/bitnami/fluentd/conf
+             - name: buffer
+               mountPath: /opt/bitnami/fluentd/logs/buffers
+             {{- if .Values.tls.enabled }}
+@@ -85,12 +97,9 @@ spec:
+             - key: server_key.pem
+               path: server_key.pem
+         {{- end }}
+-        - name: fluentd-config-file
+-          configMap:
+-            name: {{ include "fluentd.fullname" . }}-cm
+-        - name: fluentd-extra-config
++        - name: fluentd-config
+           configMap:
+-            name: {{ include "fluentd.fullname" . }}-aggregator-cm
++            name: {{ if .Values.aggregator.configMap }}{{ .Values.aggregator.configMap }}{{- else }}{{ include "fluentd.fullname" . }}-aggregator-cm{{- end }}
+         - name: buffer
+           emptyDir: {}
+       {{- with .Values.aggregator.nodeSelector }}
+diff --git a/bitnami/fluentd/templates/clusterrole.yaml b/bitnami/fluentd/templates/clusterrole.yaml
+index 6d6368906f..c0e862e5d6 100644
+--- a/bitnami/fluentd/templates/clusterrole.yaml
++++ b/bitnami/fluentd/templates/clusterrole.yaml
+@@ -3,8 +3,7 @@ apiVersion: rbac.authorization.k8s.io/v1
+ kind: ClusterRole
+ metadata:
+   name: {{ include "fluentd.fullname" . }}
+-  labels:
+-    {{- include "fluentd.labels" . | nindent 4 }}
++  labels: {{ include "fluentd.labels" . | nindent 4 }}
+ rules:
+ - apiGroups:
+   - ""
+diff --git a/bitnami/fluentd/templates/clusterrolebinding.yaml b/bitnami/fluentd/templates/clusterrolebinding.yaml
+index 8e4662983b..2b62f14c7d 100644
+--- a/bitnami/fluentd/templates/clusterrolebinding.yaml
++++ b/bitnami/fluentd/templates/clusterrolebinding.yaml
+@@ -3,8 +3,7 @@ kind: ClusterRoleBinding
+ apiVersion: rbac.authorization.k8s.io/v1
+ metadata:
+   name: {{ include "fluentd.fullname" . }}
+-  labels:
+-    {{- include "fluentd.labels" . | nindent 4 }}
++  labels: {{ include "fluentd.labels" . | nindent 4 }}
+ roleRef:
+   kind: ClusterRole
+   apiGroup: rbac.authorization.k8s.io
+diff --git a/bitnami/fluentd/templates/configmap.yaml b/bitnami/fluentd/templates/configmap.yaml
+deleted file mode 100644
+index 0030d95a36..0000000000
+--- a/bitnami/fluentd/templates/configmap.yaml
++++ /dev/null
+@@ -1,8 +0,0 @@
+-apiVersion: v1
+-kind: ConfigMap
+-metadata:
+-  name: {{ include "fluentd.fullname" . }}-cm
+-  labels: {{ include "fluentd.labels" . | nindent 4 }}
+-data:
+-  fluentd.conf: |
+-    @include conf.d/*.conf
+diff --git a/bitnami/fluentd/templates/forwarder-configmap.yaml b/bitnami/fluentd/templates/forwarder-configmap.yaml
+index 240dc1b198..50a64e3626 100644
+--- a/bitnami/fluentd/templates/forwarder-configmap.yaml
++++ b/bitnami/fluentd/templates/forwarder-configmap.yaml
+@@ -1,26 +1,62 @@
++{{- if not .Values.forwarder.configMap -}}
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+   name: {{ include "fluentd.fullname" . }}-forwarder-cm
+   labels: {{ include "fluentd.labels" . | nindent 4 }}
++    app.kubernetes.io/component: forwarder
+ data:
+-  forwarder.conf: |
+-    <match fluent.**>
+-      @type null
+-    </match>
++  fluentd.conf: |
++    {{- if .Values.metrics.enabled }}
++    # Prometheus Exporter Plugin
++    # input plugin that exports metrics
++    <source>
++      @type prometheus
++      port {{ .Values.metrics.service.port }}
++    </source>
+ 
+-    # TCP input
++    # input plugin that collects metrics from MonitorAgent
+     <source>
+-      @type forward
+-      port {{ .Values.forwarder.service.port }}
++      @type prometheus_monitor
++      <labels>
++        host ${hostname}
++      </labels>
+     </source>
+ 
+-    # HTTP input
++    # input plugin that collects metrics for output plugin
++    <source>
++      @type prometheus_output_monitor
++      <labels>
++        host ${hostname}
++      </labels>
++    </source>
++
++    # input plugin that collects metrics for in_tail plugin
++    <source>
++      @type prometheus_tail_monitor
++      <labels>
++        host ${hostname}
++      </labels>
++    </source>
++    {{- end }}
++
++    # Ignore fluentd own events
++    <match fluent.**>
++      @type null
++    </match>
++
++    # HTTP input for the liveness and readiness probes
+     <source>
+       @type http
+       port 9880
+     </source>
+ 
++    # Throw the healthcheck to the standard output instead of forwarding it
++    <match fluentd.healthcheck>
++      @type stdout
++    </match>
++
++    # Get the logs from the containers running in the node
+     <source>
+       @type tail
+       path /var/log/containers/*.log
+@@ -36,15 +72,11 @@ data:
+       </parse>
+     </source>
+     
+-    <match fluentd.healthcheck>
+-      @type stdout
+-    </match>
+-
+     <filter kubernetes.**>
+       @type kubernetes_metadata
+     </filter>
+ 
+-    # Log Forwarding
++    # Forward all logs to the aggregators
+     <match **>
+       @type forward
+       {{- $fullName := (include "fluentd.fullname" .) }}
+@@ -65,36 +97,4 @@ data:
+         flush_interval 10s
+       </buffer>
+     </match>
+-  {{- if .Values.metrics.enabled }}
+-  metrics.conf: |
+-    # Prometheus Exporter Plugin
+-    # input plugin that exports metrics
+-    <source>
+-      @type prometheus
+-      port {{ .Values.metrics.service.port }}
+-    </source>
+-
+-    # input plugin that collects metrics from MonitorAgent
+-    <source>
+-      @type prometheus_monitor
+-      <labels>
+-        host ${hostname}
+-      </labels>
+-    </source>
+-
+-    # input plugin that collects metrics for output plugin
+-    <source>
+-      @type prometheus_output_monitor
+-      <labels>
+-        host ${hostname}
+-      </labels>
+-    </source>
+-
+-    # input plugin that collects metrics for in_tail plugin
+-    <source>
+-      @type prometheus_tail_monitor
+-      <labels>
+-        host ${hostname}
+-      </labels>
+-    </source>
+-  {{- end }}
++{{- end -}}
+diff --git a/bitnami/fluentd/templates/forwarder-daemonset.yaml b/bitnami/fluentd/templates/forwarder-daemonset.yaml
+index 92f36a2eca..039904bbe3 100644
+--- a/bitnami/fluentd/templates/forwarder-daemonset.yaml
++++ b/bitnami/fluentd/templates/forwarder-daemonset.yaml
+@@ -2,22 +2,16 @@ apiVersion: apps/v1
+ kind: DaemonSet
+ metadata:
+   name: {{ include "fluentd.fullname" . }}
+-  labels:
+-    {{- include "fluentd.labels" . | nindent 4 }}
++  labels: {{ include "fluentd.labels" . | nindent 4 }}
+     app.kubernetes.io/component: forwarder
+ spec:
+   selector:
+-    matchLabels:
+-      app.kubernetes.io/name: {{ include "fluentd.name" . }}
+-      app.kubernetes.io/instance: {{ .Release.Name }}
++    matchLabels: {{ include "fluentd.matchLabels" . | nindent 6 }}
+       app.kubernetes.io/component: forwarder
+-  updateStrategy:
+-    {{- toYaml .Values.forwarder.updateStrategy | nindent 4 }}
++  updateStrategy: {{ toYaml .Values.forwarder.updateStrategy | nindent 4 }}
+   template:
+     metadata:
+-      labels:
+-        app.kubernetes.io/name: {{ include "fluentd.name" . }}
+-        app.kubernetes.io/instance: {{ .Release.Name }}
++      labels: {{ include "fluentd.labels" . | nindent 8 }}
+         app.kubernetes.io/component: forwarder
+       annotations:
+         checksum/config: {{ include (print $.Template.BasePath "/forwarder-configmap.yaml") . | sha256sum }}
+@@ -34,21 +28,18 @@ spec:
+         runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+       {{- end }}
+       containers:
+-        - name: {{ .Chart.Name }}
++        - name: fluentd
+           image: {{ include "fluentd.image" . }}
+           imagePullPolicy: {{ .Values.image.pullPolicy }}
+           env:
+             - name: FLUENTD_CONF
+-              value: {{ default "fluentd.conf" .Values.forwarder.configFile }}
++              value: {{ .Values.forwarder.configFile }}
+             - name: FLUENTD_OPT
+               value: {{ .Values.forwarder.extraArgs }}
+             {{- if .Values.forwarder.extraEnv }}
+             {{- toYaml .Values.forwarder.extraEnv | nindent 12 }}
+             {{- end }}
+           ports:
+-            - name: tcp
+-              containerPort: {{ .Values.forwarder.service.port }}
+-              protocol: TCP
+             - name: http
+               containerPort: 9880
+               protocol: TCP
+@@ -57,19 +48,32 @@ spec:
+               containerPort: {{ .Values.metrics.service.port }}
+               protocol: TCP
+             {{- end }}
++          {{- if .Values.forwarder.livenessProbe.enabled }}
+           livenessProbe:
+             httpGet:
+               path: /fluentd.healthcheck?json=%7B%22ping%22%3A+%22pong%22%7D
+-              port: 9880
+-            initialDelaySeconds: 5
+-            timeoutSeconds: 1
++              port: http
++            initialDelaySeconds: {{ .Values.forwarder.livenessProbe.initialDelaySeconds }}
++            periodSeconds: {{ .Values.forwarder.livenessProbe.periodSeconds }}
++            timeoutSeconds: {{ .Values.forwarder.livenessProbe.timeoutSeconds }}
++            successThreshold: {{ .Values.forwarder.livenessProbe.successThreshold }}
++            failureThreshold: {{ .Values.forwarder.livenessProbe.failureThreshold }}
++          {{- end }}
++          {{- if .Values.forwarder.readinessProbe.enabled }}
++          readinessProbe:
++            httpGet:
++              path: /fluentd.healthcheck?json=%7B%22ping%22%3A+%22pong%22%7D
++              port: http
++            initialDelaySeconds: {{ .Values.forwarder.readinessProbe.initialDelaySeconds }}
++            periodSeconds: {{ .Values.forwarder.readinessProbe.periodSeconds }}
++            timeoutSeconds: {{ .Values.forwarder.readinessProbe.timeoutSeconds }}
++            successThreshold: {{ .Values.forwarder.readinessProbe.successThreshold }}
++            failureThreshold: {{ .Values.forwarder.readinessProbe.failureThreshold }}
++          {{- end }}
+           resources: {{ toYaml .Values.forwarder.resources | nindent 12 }}
+           volumeMounts:
+-            - name: fluentd-config-file
+-              mountPath: /opt/bitnami/fluentd/conf/fluentd.conf
+-              subPath: fluentd.conf
+-            - name: fluentd-extra-config
+-              mountPath: /opt/bitnami/fluentd/conf/conf.d
++            - name: fluentd-config
++              mountPath: /opt/bitnami/fluentd/conf
+             - name: buffer
+               mountPath: /opt/bitnami/fluentd/logs/buffers
+             {{- if .Values.tls.enabled }}
+@@ -78,6 +82,8 @@ spec:
+             {{- end }}
+             - name: varlog
+               mountPath: /var/log
++            - name: varlibdockercontainers
++              mountPath: /var/lib/docker/containers
+       volumes:
+         {{- if .Values.tls.enabled }}
+         - name: {{ template "fluentd.fullname" . }}-certs
+@@ -91,17 +97,17 @@ spec:
+             - key: server_key.pem
+               path: server_key.pem
+         {{- end }}
+-        - name: fluentd-config-file
++        - name: fluentd-config
+           configMap:
+-            name: {{ include "fluentd.fullname" . }}-cm
+-        - name: fluentd-extra-config
+-          configMap:
+-            name: {{ include "fluentd.fullname" . }}-forwarder-cm
++            name: {{ if .Values.forwarder.configMap }}{{ .Values.forwarder.configMap }}{{- else }}{{ include "fluentd.fullname" . }}-forwarder-cm{{- end }}
+         - name: buffer
+           emptyDir: {}
+         - name: varlog
+           hostPath:
+             path: /var/log
++        - name: varlibdockercontainers
++          hostPath:
++            path: /var/lib/docker/containers
+       {{- with .Values.forwarder.nodeSelector }}
+       nodeSelector:
+         {{- toYaml . | nindent 8 }}
+diff --git a/bitnami/fluentd/templates/serviceaccount.yaml b/bitnami/fluentd/templates/serviceaccount.yaml
+index d5f4ea1510..71973bc3d6 100644
+--- a/bitnami/fluentd/templates/serviceaccount.yaml
++++ b/bitnami/fluentd/templates/serviceaccount.yaml
+@@ -3,6 +3,5 @@ apiVersion: v1
+ kind: ServiceAccount
+ metadata:
+   name: {{ include "fluentd.serviceAccountName" . }}
+-  labels:
+-    {{- include "fluentd.labels" . | nindent 4 }}
++  labels: {{ include "fluentd.labels" . | nindent 4 }}
+ {{- end -}}
+\ No newline at end of file
+diff --git a/bitnami/fluentd/templates/svc-headless.yaml b/bitnami/fluentd/templates/svc-headless.yaml
+index eace46edb4..21fb653522 100644
+--- a/bitnami/fluentd/templates/svc-headless.yaml
++++ b/bitnami/fluentd/templates/svc-headless.yaml
+@@ -2,8 +2,7 @@ apiVersion: v1
+ kind: Service
+ metadata:
+   name: {{ include "fluentd.fullname" . }}-headless
+-  labels:
+-    {{- include "fluentd.labels" . | nindent 4 }}
++  labels: {{ include "fluentd.labels" . | nindent 4 }}
+     app.kubernetes.io/component: aggregator
+ spec:
+   type: ClusterIP
+@@ -12,7 +11,5 @@ spec:
+     - name: tcp
+       port: {{ .Values.aggregator.port }}
+       targetPort: tcp
+-  selector:
+-    app.kubernetes.io/name: {{ include "fluentd.name" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
++  selector: {{ include "fluentd.matchLabels" . | nindent 4 }}
+     app.kubernetes.io/component: aggregator
+\ No newline at end of file
+diff --git a/bitnami/fluentd/templates/svc.yaml b/bitnami/fluentd/templates/svc.yaml
+index 7c4992aba7..96d79ac7d6 100644
+--- a/bitnami/fluentd/templates/svc.yaml
++++ b/bitnami/fluentd/templates/svc.yaml
+@@ -1,38 +1,18 @@
++{{- if .Values.metrics.enabled }}
+ apiVersion: v1
+ kind: Service
+ metadata:
+   name: {{ include "fluentd.fullname" . }}
+-  labels:
+-    {{- include "fluentd.labels" . | nindent 4 }}
+-    app.kubernetes.io/component: forwarder
+-{{- if or (and .Values.metrics.enabled .Values.metrics.service.annotations) .Values.forwarder.service.annotations }}
+-  annotations:
+-  {{- if and .Values.metrics.enabled .Values.metrics.service.annotations }}
+-    {{- tpl (toYaml .Values.metrics.service.annotations) $ | nindent 4 }}
+-  {{- end }}
+-  {{- if and .Values.forwarder.service.annotations }}
+-    {{- tpl (toYaml .Values.forwarder.service.annotations) $ | nindent 4 }}
+-  {{- end }}
+-{{- end }}
++  labels: {{ include "fluentd.labels" . | nindent 4 }}
++  annotations: {{ tpl (toYaml .Values.metrics.service.annotations) $ | nindent 4 }}
+ spec:
+-  type: {{ .Values.forwarder.service.type }}
+-  {{- if eq .Values.forwarder.service.type "LoadBalancer" }} {{- if .Values.forwarder.service.loadBalancerIP }}
+-  loadBalancerIP: {{ .Values.forwarder.service.loadBalancerIP }}
+-  {{- end }} {{- end }}
+-  type: {{ .Values.forwarder.service.type }}
++  type: {{ .Values.metrics.service.type }}
++  {{- if and (eq .Values.metrics.service.type "LoadBalancer") .Values.metrics.service.loadBalancerIP }}
++  loadBalancerIP: {{ .Values.metrics.service.loadBalancerIP }}
++  {{- end }}
+   ports:
+-    - name: tcp
+-      targetPort: tcp
+-      port: {{ .Values.forwarder.service.port }}
+-      {{- if .Values.forwarder.service.nodePort }}
+-      nodePort: {{ .Values.forwarder.service.nodePort }}
+-      {{- end }}
+-    {{- if .Values.metrics.enabled }}
+     - name: metrics
+       port: {{ .Values.metrics.service.port }}
+       targetPort: metrics
+-    {{- end }}
+-  selector:
+-    app.kubernetes.io/name: {{ include "fluentd.name" . }}
+-    app.kubernetes.io/instance: {{ .Release.Name }}
+-    app.kubernetes.io/component: forwarder
++  selector: {{ include "fluentd.matchLabels" . | nindent 4 }}
++{{- end }}
+diff --git a/bitnami/fluentd/values.yaml b/bitnami/fluentd/values.yaml
+index fd6fa48b75..3b49aff092 100644
+--- a/bitnami/fluentd/values.yaml
++++ b/bitnami/fluentd/values.yaml
+@@ -14,7 +14,7 @@
+ image:
+   registry: docker.io
+   repository: bitnami/fluentd
+-  tag: 1.7.2-debian-9-r3
++  tag: 1.7.2-debian-9-r8
+   ## Specify a imagePullPolicy
+   ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+   ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+@@ -42,25 +42,11 @@ forwarder:
+   ## Name of the config file that will be used by Fluentd at launch
+   ## Fluentd will look for it under the /opt/bitnami/fluentd/conf directory
+   ##
+-  # configFile: fluentd.conf
+-  
+-  ## Service configuration
+-  ##
+-  service:
+-    type: ClusterIP
+-    ## Fluentd TCP forward port
+-    port: 24224
+-    ## Specify the nodePort value for the LoadBalancer and NodePort service types.
+-    ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
+-    ##
+-    # nodePort:
+-    ##
+-    ## Provide any additional annotations which may be required. This can be used to
+-    ## set the LoadBalancer service type to internal only.
+-    ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
+-    ##
+-    annotations: {}
+-    # loadBalancerIP:
++  configFile: fluentd.conf
++
++  ## Name of the configMap that contains the configuration files for fluentd
++  ## If not specified, one will be created by default
++  # configMap:
+ 
+   ## String with extra arguments for the Fluentd command line
+   ## ref: https://docs.fluentd.org/deployment/command-line-option
+@@ -78,12 +64,14 @@ forwarder:
+   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#configure-probes)
+   ##
+   livenessProbe:
++    enabled: true
+     initialDelaySeconds: 60
+     periodSeconds: 10
+     timeoutSeconds: 5
+     failureThreshold: 6
+     successThreshold: 1
+   readinessProbe:
++    enabled: true
+     initialDelaySeconds: 5
+     periodSeconds: 10
+     timeoutSeconds: 5
+@@ -139,7 +127,11 @@ aggregator:
+   ## Name of the config file that will be used by Fluentd at launch
+   ## Fluentd will look for it under the /opt/bitnami/fluentd/conf directory
+   ##
+-  # configFile: fluentd.conf
++  configFile: fluentd.conf
++
++  ## Name of the configMap that contains the configuration files for fluentd
++  ## If not specified, one will be created by default
++  # configMap:
+ 
+   ## Port which the forwarders will connect to to send the logs
+   ##
+@@ -161,12 +153,14 @@ aggregator:
+   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#configure-probes)
+   ##
+   livenessProbe:
++    enabled: true
+     initialDelaySeconds: 60
+     periodSeconds: 10
+     timeoutSeconds: 5
+     failureThreshold: 6
+     successThreshold: 1
+   readinessProbe:
++    enabled: true
+     initialDelaySeconds: 5
+     periodSeconds: 10
+     timeoutSeconds: 5
+@@ -237,14 +231,18 @@ rbac:
+ metrics:
+   enabled: false
+   service:
++    type: ClusterIP
++    # loadBalancerIP: 
+     port: 24231
+     ## Annotations for the Prometheus metrics service
+-    ## annotations:
+-    ##   prometheus.io/scrape: "true"
+-    ##   prometheus.io/port: "24231"
+-    ##   prometheus.io/path: "/metrics"
+-    annotations: {}
++    ##
++    annotations:
++      prometheus.io/scrape: "true"
++      prometheus.io/port: "24231"
++      prometheus.io/path: "/metrics"
+ 
++## Mount TLS certificates
++##
+ tls:
+   enabled: false
+   caCertificate: |-

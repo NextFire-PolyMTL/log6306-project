@@ -1,0 +1,136 @@
+commit 8ac5cb273449f7a9cd74c74b8f9460a56c774f38
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Apr 4 12:05:08 2018 +0200
+
+    [stable/odoo] Refactor image property in values.yaml (#4648)
+    
+    * [stable/odoo] Refactor image properties in values.yaml
+    
+    * Use rolling tag and refactor pullSecrets
+    
+    * Fix lint issue
+
+diff --git a/stable/odoo/Chart.yaml b/stable/odoo/Chart.yaml
+index 2ffd4d40d..da4f5d046 100644
+--- a/stable/odoo/Chart.yaml
++++ b/stable/odoo/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: odoo
+-version: 0.7.7
++version: 0.7.8
+ appVersion: 11.0.20180315
+ description: A suite of web based open source business apps.
+ keywords:
+diff --git a/stable/odoo/README.md b/stable/odoo/README.md
+index 8c5091a97..13e0e4e06 100644
+--- a/stable/odoo/README.md
++++ b/stable/odoo/README.md
+@@ -45,28 +45,31 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following table lists the configurable parameters of the Odoo chart and their default values.
+ 
+-|               Parameter               |                Description                |                   Default                   |
+-|---------------------------------------|-------------------------------------------|---------------------------------------------|
+-| `imageTag`                            | `bitnami/odoo` image tag                  | Odoo image version                          |
+-| `imagePullPolicy`                     | Image pull policy                         | `IfNotPresent`                              |
+-| `odooUsername`                        | User of the application                   | `user@example.com`                          |
+-| `odooPassword`                        | Admin account password                    | `bitnami`                                   |
+-| `odooEmail`                           | Admin account email                       | `user@example.com`                          |
+-| `smtpHost`                            | SMTP host                                 | `nil`                                       |
+-| `smtpPort`                            | SMTP port                                 | `nil`                                       |
+-| `smtpUser`                            | SMTP user                                 | `nil`                                       |
+-| `smtpPassword`                        | SMTP password                             | `nil`                                       |
+-| `smtpProtocol`                        | SMTP protocol [`ssl`, `tls`]              | `nil`                                       |
+-| `serviceType`                         | Kubernetes Service type                   | `LoadBalancer`                              |
+-| `resources`                           | CPU/Memory resource requests/limits       | Memory: `512Mi`, CPU: `300m`                |
+-| `persistence.storageClass`            | PVC Storage Class                         | `nil` (uses alpha storage class annotation) |
+-| `persistence.accessMode`              | PVC Access Mode                           | `ReadWriteOnce`                             |
+-| `persistence.size`                    | PVC Storage Request                       | `8Gi`                                       |
+-| `postgresql.postgresqlPassword`       | PostgreSQL password                       | `nil`                                       |
+-| `postgresql.persistence.enabled`      | Enable PostgreSQL persistence using PVC   | `true`                                      |
+-| `postgresql.persistence.storageClass` | PVC Storage Class for PostgreSQL volume   | `nil` (uses alpha storage class annotation) |
+-| `postgresql.persistence.accessMode`   | PVC Access Mode for PostgreSQL volume     | `ReadWriteOnce`                             |
+-| `postgresql.persistence.size`         | PVC Storage Request for PostgreSQL volume | `8Gi`                                       |
++|               Parameter               |                Description                |                   Default                               |
++|---------------------------------------|-------------------------------------------|-------------------------------------------------------- |
++| `image.registry`                      | Odoo image registry                       | `docker.io`                                             |
++| `image.repository`                    | Odoo Image name                           | `bitnami/odoo`                                          |
++| `image.tag`                           | Odoo Image tag                            | `{VERSION}`                                             |
++| `image.pullPolicy`                    | Image pull policy                         | `Always` if `imageTag` is `latest`, else `IfNotPresent` |
++| `image.pullSecrets`                   | Specify image pull secrets                | `nil`                                                   |
++| `odooUsername`                        | User of the application                   | `user@example.com`                                      |
++| `odooPassword`                        | Admin account password                    | `bitnami`                                               |
++| `odooEmail`                           | Admin account email                       | `user@example.com`                                      |
++| `smtpHost`                            | SMTP host                                 | `nil`                                                   |
++| `smtpPort`                            | SMTP port                                 | `nil`                                                   |
++| `smtpUser`                            | SMTP user                                 | `nil`                                                   |
++| `smtpPassword`                        | SMTP password                             | `nil`                                                   |
++| `smtpProtocol`                        | SMTP protocol [`ssl`, `tls`]              | `nil`                                                   |
++| `serviceType`                         | Kubernetes Service type                   | `LoadBalancer`                                          |
++| `resources`                           | CPU/Memory resource requests/limits       | Memory: `512Mi`, CPU: `300m`                            |
++| `persistence.storageClass`            | PVC Storage Class                         | `nil` (uses alpha storage class annotation)             |
++| `persistence.accessMode`              | PVC Access Mode                           | `ReadWriteOnce`                                         |
++| `persistence.size`                    | PVC Storage Request                       | `8Gi`                                                   |
++| `postgresql.postgresqlPassword`       | PostgreSQL password                       | `nil`                                                   |
++| `postgresql.persistence.enabled`      | Enable PostgreSQL persistence using PVC   | `true`                                                  |
++| `postgresql.persistence.storageClass` | PVC Storage Class for PostgreSQL volume   | `nil` (uses alpha storage class annotation)             |
++| `postgresql.persistence.accessMode`   | PVC Access Mode for PostgreSQL volume     | `ReadWriteOnce`                                         |
++| `postgresql.persistence.size`         | PVC Storage Request for PostgreSQL volume | `8Gi`                                                   |
+ 
+ The above parameters map to the env variables defined in [bitnami/odoo](http://github.com/bitnami/bitnami-docker-odoo). For more information please refer to the [bitnami/odoo](http://github.com/bitnami/bitnami-docker-odoo) image documentation.
+ 
+diff --git a/stable/odoo/templates/deployment.yaml b/stable/odoo/templates/deployment.yaml
+index 7b51d9143..2c7e63782 100644
+--- a/stable/odoo/templates/deployment.yaml
++++ b/stable/odoo/templates/deployment.yaml
+@@ -13,10 +13,16 @@ spec:
+       labels:
+         app: {{ template "odoo.fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "odoo.fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: POSTGRESQL_HOST
+           value: {{ template "odoo.postgresql.fullname" . }}
+diff --git a/stable/odoo/values.yaml b/stable/odoo/values.yaml
+index 658fe0129..250dda369 100644
+--- a/stable/odoo/values.yaml
++++ b/stable/odoo/values.yaml
+@@ -1,12 +1,21 @@
+ ## Bitnami Odoo image version
+ ## ref: https://hub.docker.com/r/bitnami/odoo/tags/
+ ##
+-image: bitnami/odoo:11.0.20180315-r0
+-
+-## Specify a imagePullPolicy
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-imagePullPolicy: IfNotPresent
++image:
++  registry: docker.io
++  repository: bitnami/odoo
++  tag: 11.0.20180315
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
+ 
+ ## User of the application
+ ## ref: https://github.com/bitnami/bitnami-docker-odoo#configuration

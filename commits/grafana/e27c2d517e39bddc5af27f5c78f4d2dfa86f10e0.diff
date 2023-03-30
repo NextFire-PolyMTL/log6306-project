@@ -1,0 +1,284 @@
+commit e27c2d517e39bddc5af27f5c78f4d2dfa86f10e0
+Author: Jan Jansen <jan.jansen@gdata.de>
+Date:   Wed May 25 10:38:17 2022 +0200
+
+    refactor metrics-generator
+    
+    Signed-off-by: Jan Jansen <jan.jansen@gdata.de>
+
+diff --git a/charts/tempo-distributed/README.md.gotmpl b/charts/tempo-distributed/README.md.gotmpl
+index e322c0ba..34314512 100644
+--- a/charts/tempo-distributed/README.md.gotmpl
++++ b/charts/tempo-distributed/README.md.gotmpl
+@@ -96,6 +96,7 @@ The other components are optional and must be explicitly enabled.
+ | querier | no |
+ | query-frontend | no |
+ | compactor | no |
++| metrics-generator | yes |
+ | memcached | yes |
+ | gateway | yes |
+ 
+@@ -112,6 +113,26 @@ The recommendation is to use object storage, such as S3, GCS, MinIO, etc., or on
+ 
+ Alternatively, in order to quickly test Tempo using the filestore, the [single binary chart](https://github.com/grafana/helm-charts/tree/main/charts/tempo) can be used.
+ 
++### Activate metrics generator
++
++Metrics-generator is disabled by default and can be activated by configuring the following values:
++
++```yaml
++metricsGenerator:
++  enabled: true
++  config:
++    storage_remote_write:
++     - url: http://cortex/api/v1/push
++       send_exemplars: true
++    #   headers:
++    #     x-scope-orgid: operations
++# Global overrides
++global_overrides:
++  metrics_generator_processors:
++    - service-graphs
++    - span-metrics
++```
++
+ ----
+ 
+ ### Directory and File Locations
+@@ -119,6 +140,7 @@ Alternatively, in order to quickly test Tempo using the filestore, the [single b
+ * Volumes are mounted to `/var/tempo`. The various directories Tempo needs should be configured as subdirectories (e. g. `/var/tempo/wal`, `/var/tempo/traces`). Tempo will create the directories automatically.
+ * The config file is mounted to `/conf/tempo-query.yaml` and passed as CLI arg.
+ 
++
+ ### Example configuration using S3 for storage
+ 
+ ```yaml
+diff --git a/charts/tempo-distributed/templates/metrics-generator/statefulset-metrics-generator.yaml b/charts/tempo-distributed/templates/metrics-generator/deployment-metrics-generator.yaml
+similarity index 75%
+rename from charts/tempo-distributed/templates/metrics-generator/statefulset-metrics-generator.yaml
+rename to charts/tempo-distributed/templates/metrics-generator/deployment-metrics-generator.yaml
+index ce252036..55b4eaef 100644
+--- a/charts/tempo-distributed/templates/metrics-generator/statefulset-metrics-generator.yaml
++++ b/charts/tempo-distributed/templates/metrics-generator/deployment-metrics-generator.yaml
+@@ -1,27 +1,22 @@
+ {{- if .Values.metricsGenerator.enabled }}
+ apiVersion: apps/v1
+-kind: StatefulSet
++kind: Deployment
+ metadata:
+-  name: {{ template "tempo.metricsGeneratorFullname" . }}
++  name: {{ include "tempo.metricsGeneratorFullname" . }}
+   namespace: {{ .Release.Namespace }}
+   labels:
+-    {{- include "tempo.metricsGeneratorLabels" . | nindent 4 }}
++  {{- include "tempo.metricsGeneratorLabels" . | nindent 4 }}
+   {{- with .Values.metricsGenerator.annotations }}
+   annotations:
+   {{- toYaml . | nindent 4 }}
+   {{- end }}
+ spec:
+-{{- if not .Values.metricsGenerator.autoscaling.enabled }}
++  minReadySeconds: 10
+   replicas: {{ .Values.metricsGenerator.replicas }}
+-{{- end }}
++  revisionHistoryLimit: 10
+   selector:
+     matchLabels:
+-      {{- include "tempo.metricsGeneratorSelectorLabels" . | nindent 6}}
+-  serviceName: metrics-generator
+-  podManagementPolicy: Parallel
+-  updateStrategy:
+-    rollingUpdate:
+-      partition: 0
++      {{- include "tempo.metricsGeneratorSelectorLabels" . | nindent 6 }}
+   template:
+     metadata:
+       labels:
+@@ -47,6 +42,7 @@ spec:
+         - args:
+             - -target=metrics-generator
+             - -config.file=/conf/tempo.yaml
++            - -mem-ballast-size-mbs=1024
+             {{- with .Values.metricsGenerator.extraArgs }}
+             {{- toYaml . | nindent 12 }}
+             {{- end }}
+@@ -54,12 +50,10 @@ spec:
+           imagePullPolicy: {{ .Values.tempo.image.pullPolicy }}
+           name: metrics-generator
+           ports:
+-            - name: grpc
+-              containerPort: 9095
+-            - name: http-memberlist
+-              containerPort: 7946
+-            - name: http
+-              containerPort: 3100
++            {{- range .Values.metricsGenerator.ports }}
++            - name: {{ .name | quote }}
++              containerPort: {{ .port }}
++            {{- end }}
+           {{- with .Values.metricsGenerator.extraEnv }}
+           env:
+             {{- toYaml . | nindent 12 }}
+@@ -101,24 +95,9 @@ spec:
+         - configMap:
+             name: {{ template "tempo.fullname" . }}
+           name: tempo-conf
++        - name: wal
++          emptyDir: {}
+         {{- with .Values.metricsGenerator.extraVolumes }}
+         {{- toYaml . | nindent 8 }}
+         {{- end }}
+-  {{- if not .Values.metricsGenerator.persistence.enabled }}
+-        - name: data
+-          emptyDir: {}
+-  {{- else }}
+-  volumeClaimTemplates:
+-    - metadata:
+-        name: data
+-      spec:
+-        accessModes:
+-          - ReadWriteOnce
+-        {{- with .Values.metricsGenerator.persistence.storageClass }}
+-        storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+-        {{- end }}
+-        resources:
+-          requests:
+-            storage: {{ .Values.metricsGenerator.persistence.size | quote }}
+-  {{- end }}
+ {{- end }}
+diff --git a/charts/tempo-distributed/templates/metrics-generator/hpa-metrics-generator.yaml b/charts/tempo-distributed/templates/metrics-generator/hpa-metrics-generator.yaml
+deleted file mode 100644
+index acafca50..00000000
+--- a/charts/tempo-distributed/templates/metrics-generator/hpa-metrics-generator.yaml
++++ /dev/null
+@@ -1,28 +0,0 @@
+-{{- if and .Values.metricsGenerator.enabled .Values.metricsGenerator.autoscaling.enabled }}
+-apiVersion: autoscaling/v2beta1
+-kind: HorizontalPodAutoscaler
+-metadata:
+-  name: {{ include "tempo.metricsGeneratorFullname" . }}
+-  labels:
+-    {{- include "tempo.metricsGeneratorLabels" . | nindent 4 }}
+-spec:
+-  scaleTargetRef:
+-    apiVersion: apps/v1
+-    kind: StatefulSet
+-    name: {{ include "tempo.metricsGeneratorFullname" . }}
+-  minReplicas: {{ .Values.metricsGenerator.autoscaling.minReplicas }}
+-  maxReplicas: {{ .Values.metricsGenerator.autoscaling.maxReplicas }}
+-  metrics:
+-  {{- with .Values.metricsGenerator.autoscaling.targetMemoryUtilizationPercentage }}
+-    - type: Resource
+-      resource:
+-        name: memory
+-        targetAverageUtilization: {{ . }}
+-  {{- end }}
+-  {{- with .Values.metricsGenerator.autoscaling.targetCPUUtilizationPercentage }}
+-    - type: Resource
+-      resource:
+-        name: cpu
+-        targetAverageUtilization: {{ . }}
+-  {{- end }}
+-{{- end }}
+diff --git a/charts/tempo-distributed/templates/metrics-generator/service-metrics-generator.yaml b/charts/tempo-distributed/templates/metrics-generator/service-metrics-generator.yaml
+index 22637cad..056b8a9a 100644
+--- a/charts/tempo-distributed/templates/metrics-generator/service-metrics-generator.yaml
++++ b/charts/tempo-distributed/templates/metrics-generator/service-metrics-generator.yaml
+@@ -8,14 +8,14 @@ metadata:
+     {{- include "tempo.metricsGeneratorLabels" . | nindent 4 }}
+ spec:
+   ports:
+-    - name: http
+-      port: 3100
++    {{- range .Values.metricsGenerator.ports }}
++    {{- if .service }}
++    - name: {{ .name | quote }}
++      port: {{ .port }}
+       protocol: TCP
+-      targetPort: 3100
+-    - name: grpc
+-      port: 9095
+-      protocol: TCP
+-      targetPort: 9095
++      targetPort: {{ .port }}
++    {{- end }}
++    {{- end }}
+   selector:
+     {{- include "tempo.metricsGeneratorSelectorLabels" . | nindent 4 }}
+ {{- end }}
+diff --git a/charts/tempo-distributed/values.yaml b/charts/tempo-distributed/values.yaml
+index f418af45..cf26f722 100644
+--- a/charts/tempo-distributed/values.yaml
++++ b/charts/tempo-distributed/values.yaml
+@@ -153,17 +153,6 @@ metricsGenerator:
+   annotations: {}
+   # -- Number of replicas for the metrics-generator
+   replicas: 1
+-  autoscaling:
+-    # -- Enable autoscaling for the metrics-generator
+-    enabled: false
+-    # -- Minimum autoscaling replicas for the metrics-generator
+-    minReplicas: 1
+-    # -- Maximum autoscaling replicas for the metrics-generator
+-    maxReplicas: 3
+-    # -- Target CPU utilisation percentage for the metrics-generator
+-    targetCPUUtilizationPercentage: 60
+-    # -- Target memory utilisation percentage for the metrics-generator
+-    targetMemoryUtilizationPercentage:
+   image:
+     # -- The Docker registry for the metrics-generator image. Overrides `tempo.image.registry`
+     registry: null
+@@ -213,22 +202,23 @@ metricsGenerator:
+   extraVolumeMounts: []
+   # -- Extra volumes for metrics-generator deployment
+   extraVolumes: []
+-  persistence:
+-    # -- Enable creating PVCs which is required when using boltdb-shipper
+-    enabled: false
+-    # -- Size of persistent disk
+-    size: 10Gi
+-    # -- Storage class to be used.
+-    # If defined, storageClassName: <storageClass>.
+-    # If set to "-", storageClassName: "", which disables dynamic provisioning.
+-    # If empty or set to null, no storageClassName spec is
+-    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
+-    storageClass: null
++  # -- Default ports
++  ports:
++    - name: grpc
++      port: 9095
++      service: true
++    - name: http-memberlist
++      port: 7946
++      service: false
++    - name: http
++      port: 3100
++      service: true
+   config:
+     #  MaxItems is the amount of edges that will be stored in the store.
+     service_graphs_max_items: 10000
+     storage_remote_write: []
+     # - url: http://cortex/api/v1/push
++    #   send_exemplars: true
+     #   headers:
+     #     x-scope-orgid: operations
+ 
+@@ -562,7 +552,7 @@ config: |
+         store: memberlist
+     processor:
+       service_graphs:
+-        max_items: {{ .Values.metricsGenerator.service_graphs_max_items }}
++        max_items: {{ .Values.metricsGenerator.config.service_graphs_max_items }}
+     storage:
+       path: /var/tempo/wal
+       remote_write:
+@@ -717,6 +707,9 @@ storage:
+ # Global overrides
+ global_overrides:
+   per_tenant_override_config: /conf/overrides.yaml
++  #metrics_generator_processors:
++  #  - service-graphs
++  #  - span-metrics
+ 
+ # Per tenants overrides
+ overrides: |

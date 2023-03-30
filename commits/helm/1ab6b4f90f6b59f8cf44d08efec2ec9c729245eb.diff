@@ -1,0 +1,106 @@
+commit 1ab6b4f90f6b59f8cf44d08efec2ec9c729245eb
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Apr 4 14:23:47 2018 +0200
+
+    [stable/mongodb] Refactor image property in values.yaml (#4646)
+    
+    * [stable/mongodb] Refactor image properties in values.yaml
+    
+    * Use rolling tag and refactor pullSecrets
+    
+    * Fix lint issue
+    
+    * Bump chart version
+    
+    * Update mongodb to version 3.7.3
+    
+    * Update Chart.yaml
+
+diff --git a/stable/mongodb/Chart.yaml b/stable/mongodb/Chart.yaml
+index 411cdbbcc..d02b1b815 100644
+--- a/stable/mongodb/Chart.yaml
++++ b/stable/mongodb/Chart.yaml
+@@ -1,6 +1,6 @@
+ name: mongodb
+-version: 0.4.29
+-appVersion: 3.7.1
++version: 1.0.0
++appVersion: 3.7.3
+ description: NoSQL document-oriented database that stores JSON-like documents with dynamic schemas, simplifying the integration of data in content-driven applications.
+ keywords:
+ - mongodb
+diff --git a/stable/mongodb/README.md b/stable/mongodb/README.md
+index 3fc61da61..b7fffe78b 100644
+--- a/stable/mongodb/README.md
++++ b/stable/mongodb/README.md
+@@ -45,8 +45,11 @@ The following table lists the configurable parameters of the MongoDB chart and t
+ 
+ |         Parameter                   |             Description                    |                         Default                          |
+ |----------------------------         |-------------------------------------       |----------------------------------------------------------|
+-| `image`                             | MongoDB image                              | `bitnami/mongodb:{VERSION}`                              |
+-| `imagePullPolicy`                   | Image pull policy                          | `Always` if `imageTag` is `latest`, else `IfNotPresent`. |
++| `image.registry`                    | MongoDB image registry                     | `docker.io`                                              |
++| `image.repository`                  | MongoDB Image name                         | `bitnami/mongodb`                                        |
++| `image.tag`                         | MongoDB Image tag                          | `{VERSION}`                                              |
++| `image.pullPolicy`                  | Image pull policy                          | `Always` if `imageTag` is `latest`, else `IfNotPresent`  |
++| `image.pullSecrets`                 | Specify image pull secrets                 | `nil`                                                    |
+ | `mongodbRootPassword`               | MongoDB admin password                     | `random alhpanumeric string (10)`                        |
+ | `mongodbUsername`                   | MongoDB custom user                        | `nil`                                                    |
+ | `mongodbPassword`                   | MongoDB custom user password               | `random alhpanumeric string (10)`                        |
+diff --git a/stable/mongodb/templates/deployment.yaml b/stable/mongodb/templates/deployment.yaml
+index a7e92f0a1..0abdf0b0b 100644
+--- a/stable/mongodb/templates/deployment.yaml
++++ b/stable/mongodb/templates/deployment.yaml
+@@ -16,11 +16,17 @@ spec:
+       {{- if .Values.nodeSelector }}
+       nodeSelector:
+ {{ toYaml .Values.nodeSelector | indent 8 }}
++      {{- end }}
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
+       {{- end }}
+       containers:
+       - name: {{ template "mongodb.fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: MONGODB_ROOT_PASSWORD
+           valueFrom:
+diff --git a/stable/mongodb/values.yaml b/stable/mongodb/values.yaml
+index a8ab91f16..ee3f3e45e 100644
+--- a/stable/mongodb/values.yaml
++++ b/stable/mongodb/values.yaml
+@@ -1,13 +1,21 @@
+ ## Bitnami MongoDB image version
+ ## ref: https://hub.docker.com/r/bitnami/mongodb/tags/
+ ##
+-image: bitnami/mongodb:3.7.1-r0
+-
+-## Specify a imagePullPolicy
+-## 'Always' if imageTag is 'latest', else set to 'IfNotPresent'
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-# imagePullPolicy:
++image:
++  registry: docker.io
++  repository: bitnami/mongodb
++  tag: 3.7.3
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
+ 
+ ## MongoDB admin password
+ ## ref: https://github.com/bitnami/bitnami-docker-mongodb/blob/master/README.md#setting-the-root-password-on-first-run

@@ -1,0 +1,56 @@
+commit 1af7e278a787036ef3e8dce7f388ca8ee6fa84cd
+Author: Pavel Storozhenko <storozhenkopf@gmail.com>
+Date:   Wed Oct 26 10:44:38 2022 +0200
+
+    [prometheus-blackbox-exporter] selfmonitor template refactor (#2590)
+    
+    Signed-off-by: Pavel Storozhenko <storozhenkopf@gmail.com>
+    
+    Signed-off-by: Pavel Storozhenko <storozhenkopf@gmail.com>
+
+diff --git a/charts/prometheus-blackbox-exporter/Chart.yaml b/charts/prometheus-blackbox-exporter/Chart.yaml
+index 8d87b290..bf4e5aa9 100644
+--- a/charts/prometheus-blackbox-exporter/Chart.yaml
++++ b/charts/prometheus-blackbox-exporter/Chart.yaml
+@@ -1,7 +1,7 @@
+ apiVersion: v2
+ description: Prometheus Blackbox Exporter
+ name: prometheus-blackbox-exporter
+-version: 7.1.2
++version: 7.1.3
+ appVersion: 0.22.0
+ home: https://github.com/prometheus/blackbox_exporter
+ sources:
+diff --git a/charts/prometheus-blackbox-exporter/templates/selfservicemonitor.yaml b/charts/prometheus-blackbox-exporter/templates/selfservicemonitor.yaml
+index f7ab892c..acf7c755 100644
+--- a/charts/prometheus-blackbox-exporter/templates/selfservicemonitor.yaml
++++ b/charts/prometheus-blackbox-exporter/templates/selfservicemonitor.yaml
+@@ -7,20 +7,21 @@ metadata:
+   namespace: {{ template "prometheus-blackbox-exporter.namespace" $ }}
+   labels:
+     {{- include "prometheus-blackbox-exporter.labels" $ | nindent 4 }}
+-    {{- if or $.Values.serviceMonitor.selfMonitor.labels .labels }}
+-    {{- toYaml (.labels | default $.Values.serviceMonitor.selfMonitor.labels) | nindent 4 }}
++    {{- if .Values.serviceMonitor.selfMonitor.labels  }}
++    {{- toYaml (.Values.serviceMonitor.selfMonitor.labels) | nindent 4 }}
+     {{- end }}
+ spec:
+   endpoints:
+   - path: /metrics
+-    interval: {{ .interval | default $.Values.serviceMonitor.selfMonitor.interval }}
+-    scrapeTimeout: {{ .scrapeTimeout | default $.Values.serviceMonitor.selfMonitor.scrapeTimeout }}
++    interval: {{ .Values.serviceMonitor.selfMonitor.interval }}
++    scrapeTimeout: {{ .Values.serviceMonitor.selfMonitor.scrapeTimeout }}
+     scheme: http
++
++{{- if .Values.serviceMonitor.selfMonitor.additionalRelabeling }}
+     relabelings:
+-{{- if concat (.additionalRelabeling | default list) $.Values.serviceMonitor.selfMonitor.additionalRelabeling }}
+-{{ toYaml (concat (.additionalRelabeling | default list) $.Values.serviceMonitor.selfMonitor.additionalRelabeling) | indent 6 }}
++{{ toYaml .Values.serviceMonitor.selfMonitor.additionalRelabeling | indent 6 }}
+ {{- end }}
+-  jobLabel: "{{ $.Release.Name }}"
++  jobLabel: "{{ .Release.Name }}"
+   selector:
+     matchLabels:
+       {{- include "prometheus-blackbox-exporter.selectorLabels" $ | nindent 6 }}

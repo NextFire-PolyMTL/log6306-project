@@ -1,0 +1,2905 @@
+commit 5741a6ded476bb88930c1f031f83890b59d26a21
+Author: Juan Ariza Toledano <juanariza@vmware.com>
+Date:   Fri Mar 12 13:14:10 2021 +0100
+
+    [bitnami/etcd] Major version: refactoring (#5682)
+    
+    * [bitnami/etcd] Major version: refactoring
+    
+    Signed-off-by: juan131 <juanariza@vmware.com>
+    
+    * Remove trailing spaces
+    
+    Signed-off-by: juan131 <juanariza@vmware.com>
+    
+    * Address suggestions from code review
+    
+    Signed-off-by: juan131 <juanariza@vmware.com>
+    
+    * [bitnami/etcd] Move logic to container
+    
+    Signed-off-by: juan131 <juanariza@vmware.com>
+    
+    * Do include default hooks in the values.yaml
+    
+    Signed-off-by: juan131 <juanariza@vmware.com>
+    
+    * Better approach for hooks
+    
+    Signed-off-by: juan131 <juanariza@vmware.com>
+    
+    * Simplify endpoints management
+    
+    Signed-off-by: juan131 <juanariza@vmware.com>
+    
+    * Use latest etcd image
+    
+    Signed-off-by: juan131 <juanariza@vmware.com>
+    
+    * [bitnami/etcd] Update components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    Co-authored-by: Bitnami Containers <containers@bitnami.com>
+
+diff --git a/bitnami/etcd/Chart.lock b/bitnami/etcd/Chart.lock
+index 4204971cc1..80aae23d87 100644
+--- a/bitnami/etcd/Chart.lock
++++ b/bitnami/etcd/Chart.lock
+@@ -1,6 +1,6 @@
+ dependencies:
+ - name: common
+   repository: https://charts.bitnami.com/bitnami
+-  version: 1.3.9
+-digest: sha256:de03bcd37a85979dadc44edf9094170791b0eb5004c9901b74c61c3a5c5f3af7
+-generated: "2021-02-10T08:14:59.001027396Z"
++  version: 1.4.1
++digest: sha256:81be4c0ebd0a81952423b24268e82697231b8c07991ee60b23b950ff1db003a2
++generated: "2021-03-03T12:54:24.246921+01:00"
+diff --git a/bitnami/etcd/Chart.yaml b/bitnami/etcd/Chart.yaml
+index bf5d9814a0..3123801185 100644
+--- a/bitnami/etcd/Chart.yaml
++++ b/bitnami/etcd/Chart.yaml
+@@ -1,7 +1,7 @@
+ annotations:
+   category: Database
+ apiVersion: v2
+-appVersion: 3.4.14
++appVersion: 3.4.15
+ dependencies:
+   - name: common
+     repository: https://charts.bitnami.com/bitnami
+@@ -25,4 +25,4 @@ name: etcd
+ sources:
+   - https://github.com/bitnami/bitnami-docker-etcd
+   - https://coreos.com/etcd/
+-version: 5.6.2
++version: 6.0.0
+diff --git a/bitnami/etcd/README.md b/bitnami/etcd/README.md
+index 1f35adf074..de06bab0c9 100644
+--- a/bitnami/etcd/README.md
++++ b/bitnami/etcd/README.md
+@@ -46,126 +46,183 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ ## Parameters
+ 
+-The following tables lists the configurable parameters of the etcd chart and their default values.
+-
+-| Parameter                                       | Description                                                                                                                                               | Default                                                     |
+-|-------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------|
+-| `global.imageRegistry`                          | Global Docker image registry                                                                                                                              | `nil`                                                       |
+-| `global.imagePullSecrets`                       | Global Docker registry secret names as an array                                                                                                           | `[]` (does not add image pull secrets to deployed pods)     |
+-| `global.storageClass`                           | Global storage class for dynamic provisioning                                                                                                             | `nil`                                                       |
+-| `image.registry`                                | etcd image registry                                                                                                                                       | `docker.io`                                                 |
+-| `image.repository`                              | etcd image name                                                                                                                                           | `bitnami/etcd`                                              |
+-| `image.tag`                                     | etcd image tag                                                                                                                                            | `{TAG_NAME}`                                                |
+-| `image.pullPolicy`                              | etcd image pull policy                                                                                                                                    | `IfNotPresent`                                              |
+-| `image.pullSecrets`                             | Specify docker-registry secret names as an array                                                                                                          | `[]` (does not add image pull secrets to deployed pods)     |
+-| `image.debug`                                   | Specify if debug values should be set                                                                                                                     | `false`                                                     |
+-| `nameOverride`                                  | String to partially override etcd.fullname template with a string (will prepend the release name)                                                         | `nil`                                                       |
+-| `fullnameOverride`                              | String to fully override etcd.fullname template with a string                                                                                             | `nil`                                                       |
+-| `hostAliases`                                   | Add deployment host aliases                                                                                                                               | `[]`                                                        |
+-| `volumePermissions.enabled`                     | Enable init container that changes volume permissions in the data directory (for cases where the default k8s `runAsUser` and `fsUser` values do not work) | `false`                                                     |
+-| `volumePermissions.image.registry`              | Init container volume-permissions image registry                                                                                                          | `docker.io`                                                 |
+-| `volumePermissions.image.repository`            | Init container volume-permissions image name                                                                                                              | `bitnami/bitnami-shell`                                     |
+-| `volumePermissions.image.tag`                   | Init container volume-permissions image tag                                                                                                               | `"10"`                                                      |
+-| `volumePermissions.image.pullPolicy`            | Init container volume-permissions image pull policy                                                                                                       | `Always`                                                    |
+-| `volumePermissions.resources`                   | Init container resource requests/limit                                                                                                                    | `nil`                                                       |
+-| `statefulset.updateStrategy`                    | Update strategy for the stateful set                                                                                                                      | `RollingUpdate`                                             |
+-| `statefulset.rollingUpdatePartition`            | Partition for Rolling Update strategy                                                                                                                     | `nil`                                                       |
+-| `statefulset.podManagementPolicy`               | Pod management policy for the stateful set                                                                                                                | `OrderedReady`                                              |
+-| `statefulset.replicaCount`                      | Number of etcd nodes                                                                                                                                      | `1`                                                         |
+-| `configFileConfigMap`                           | ConfigMap that contains a etcd.conf.yaml to be mounted                                                                                                    | `nil`                                                       |
+-| `envVarsConfigMap`                              | ConfigMap that contains environment variables to be set in the container                                                                                  | `nil`                                                       |
+-| `allowNoneAuthentication`                       | Allow to use etcd without configuring RBAC authentication                                                                                                 | `true`                                                      |
+-| `maxProcs`                                      | Set GOMAXPROCS environment variable to limit the number of CPUs                                                                                           | `nil`                                                       |
+-| `etcd.initialClusterState`                      | Initial cluster state. Allowed values: 'new' or 'existing'                                                                                                | `nil`                                                       |
+-| `auth.rbac.enabled`                             | Switch to enable the etcd authentication.                                                                                                                 | `true`                                                      |
+-| `auth.rbac.rootPassword`                        | Password for the root user                                                                                                                                | `nil`                                                       |
+-| `auth.rbac.existingSecret`                      | Name of the existing secret containing the root password                                                                                                  | `nil`                                                       |
+-| `auth.client.secureTransport`                   | Switch to encrypt client communication using TLS certificates                                                                                             | `false`                                                     |
+-| `auth.client.useAutoTLS`                        | Switch to automatically create the TLS certificates                                                                                                       | `false`                                                     |
+-| `auth.client.enableAuthentication`              | Switch to enable host authentication using TLS certificates. Requires existing secret.                                                                    | `secret`                                                    |
+-| `auth.client.existingSecret`                    | Name of the existing secret containing cert files for client communication.                                                                               | `nil`                                                       |
+-| `auth.client.certFilename`                      | Name of the file containing the client certificate.                                                                                                       | `cert.pem`                                                  |
+-| `auth.client.certKeyFilename`                   | Name of the file containing the client certificate private key.                                                                                           | `key.pem`                                                   |
+-| `auth.client.caFilename`                        | Name of the file containing the client CA certificate. If not specified and `enableAuthentication` or `rbac.enabled` is true, the default is is `ca.crt`. | `""`                                                        |
+-| `auth.peer.secureTransport`                     | Switch to encrypt peer communication using TLS certificates                                                                                               | `false`                                                     |
+-| `auth.peer.useAutoTLS`                          | Switch to automatically create the TLS certificates                                                                                                       | `false`                                                     |
+-| `auth.peer.enableAuthentication`                | Switch to enable host authentication using TLS certificates. Requires existing secret.                                                                    | `false`                                                     |
+-| `auth.peer.existingSecret`                      | Name of the existing secret containing cert files for peer communication.                                                                                 | `nil`                                                       |
+-| `auth.peer.certFilename`                        | Name of the file containing the peer certificate.                                                                                                         | `cert.pem`                                                  |
+-| `auth.peer.certKeyFilename`                     | Name of the file containing the peer certificate private key.                                                                                             | `key.pem`                                                   |
+-| `auth.peer.caFilename`                          | Name of the file containing the peer CA certificate. If not specified and `enableAuthentication` or `rbac.enabled` is true, the default is is `ca.crt`.   | `""`                                                        |
+-| `securityContext.enabled`                       | Enable security context                                                                                                                                   | `true`                                                      |
+-| `securityContext.fsGroup`                       | Group ID for the container                                                                                                                                | `1001`                                                      |
+-| `securityContext.runAsUser`                     | User ID for the container                                                                                                                                 | `1001`                                                      |
+-| `clusterDomain`                                 | Default Kubernetes cluster domain                                                                                                                         | `cluster.local`                                             |
+-| `service.type`                                  | Kubernetes Service type                                                                                                                                   | `ClusterIP`                                                 |
+-| `service.port`                                  | etcd client port                                                                                                                                          | `2379`                                                      |
+-| `service.clientPortNameOverride`                | etcd client port name override                                                                                                                            | `""`                                                        |
+-| `service.peerPort`                              | etcd peer port                                                                                                                                            | `2380`                                                      |
+-| `service.peerPortNameOverride`                  | etcd peer port name override                                                                                                                              | `""`                                                        |
+-| `service.nodePorts.clientPort`                  | Kubernetes etcd client node port                                                                                                                          | `""`                                                        |
+-| `service.nodePorts.peerPort`                    | Kubernetes etcd peer node port                                                                                                                            | `""`                                                        |
+-| `service.annotations`                           | Annotations for etcd service                                                                                                                              | `{}`                                                        |
+-| `service.loadBalancerIP`                        | loadBalancerIP if etcd service type is `LoadBalancer`                                                                                                     | `nil`                                                       |
+-| `service.loadBalancerSourceRanges`              | loadBalancerSourceRanges if etcd service type is `LoadBalancer`                                                                                           | `nil`                                                       |
+-| `service.externalIPs`                           | externalIPs for if etcd service                                                                                                                           | `nil`                                                       |
+-| `persistence.enabled`                           | Enable persistence using PVC                                                                                                                              | `true`                                                      |
+-| `persistence.storageClass`                      | PVC Storage Class for etcd volume                                                                                                                         | `nil`                                                       |
+-| `persistence.accessMode`                        | PVC Access Mode for etcd volume                                                                                                                           | `ReadWriteOnce`                                             |
+-| `persistence.selector`                          | PVC label selector for etcd volume                                                                                                                        | `{}`                                                        |
+-| `persistence.size`                              | PVC Storage Request for etcd volume                                                                                                                       | `8Gi`                                                       |
+-| `persistence.annotations`                       | Annotations for the PVC                                                                                                                                   | `{}`                                                        |
+-| `pdb.enabled`                                   | Pod Disruption Budget toggle                                                                                                                              | `false`                                                     |
+-| `pdb.minAvailable`                              | Minimum available pods                                                                                                                                    | `nil`                                                       |
+-| `pdb.maxUnavailable`                            | Maximum unavailable pods                                                                                                                                  | `nil`                                                       |
+-| `resources`                                     | CPU/Memory resource requests/limits                                                                                                                       | Memory: `256Mi`, CPU: `250m`                                |
+-| `livenessProbe.enabled`                         | Turn on and off liveness probe                                                                                                                            | `true`                                                      |
+-| `livenessProbe.initialDelaySeconds`             | Delay before liveness probe is initiated                                                                                                                  | `10`                                                        |
+-| `livenessProbe.periodSeconds`                   | How often to perform the probe                                                                                                                            | `10`                                                        |
+-| `livenessProbe.timeoutSeconds`                  | When the probe times out                                                                                                                                  | `5`                                                         |
+-| `livenessProbe.failureThreshold`                | Minimum consecutive failures for the probe to be considered failed after having succeeded.                                                                | `2`                                                         |
+-| `livenessProbe.successThreshold`                | Minimum consecutive successes for the probe to be considered successful after having failed                                                               | `1`                                                         |
+-| `readinessProbe.enabled`                        | Turn on and off readiness probe                                                                                                                           | `true`                                                      |
+-| `readinessProbe.initialDelaySeconds`            | Delay before liveness probe is initiated                                                                                                                  | `15`                                                        |
+-| `readinessProbe.periodSeconds`                  | How often to perform the probe                                                                                                                            | `10`                                                        |
+-| `readinessProbe.timeoutSeconds`                 | When the probe times out                                                                                                                                  | `5`                                                         |
+-| `readinessProbe.failureThreshold`               | Minimum consecutive failures for the probe to be considered failed after having succeeded.                                                                | `6`                                                         |
+-| `readinessProbe.successThreshold`               | Minimum consecutive successes for the probe to be considered successful after having failed                                                               | `1`                                                         |
+-| `statefulsetLabels`                             | Extra statefulset labels                                                                                                                                  | `{}` (evaluated as a template)                              |
+-| `podAnnotations`                                | Annotations to be added to pods                                                                                                                           | `{}`                                                        |
+-| `podLabels`                                     | Extra pod labels                                                                                                                                          | `{}` (evaluated as a template)                              |
+-| `podAffinityPreset`                             | Pod affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`                                                                       | `""`                                                        |
+-| `podAntiAffinityPreset`                         | Pod anti-affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`                                                                  | `soft`                                                      |
+-| `nodeAffinityPreset.type`                       | Node affinity preset type. Ignored if `affinity` is set. Allowed values: `soft` or `hard`                                                                 | `""`                                                        |
+-| `nodeAffinityPreset.key`                        | Node label key to match Ignored if `affinity` is set.                                                                                                     | `""`                                                        |
+-| `nodeAffinityPreset.values`                     | Node label values to match. Ignored if `affinity` is set.                                                                                                 | `[]`                                                        |
+-| `affinity`                                      | Affinity for pod assignment                                                                                                                               | `{}` (evaluated as a template)                              |
+-| `nodeSelector`                                  | Node labels for pod assignment                                                                                                                            | `{}` (evaluated as a template)                              |
+-| `tolerations`                                   | Tolerations for pod assignment                                                                                                                            | `[]` (evaluated as a template)                              |
+-| `priorityClassName`                             | Name of the existing priority class to be used by etcd pods.                                                                                              | `""`                                                        |
+-| `metrics.enabled`                               | Enable Prometheus exporter to expose etcd metrics                                                                                                         | `false`                                                     |
+-| `metrics.podAnnotations`                        | Annotations for enabling prometheus to access the metrics endpoint                                                                                        | {`prometheus.io/scrape: "true",prometheus.io/port: "2379"`} |
+-| `metrics.serviceMonitor.enabled`                | if `true`, creates a Prometheus Operator ServiceMonitor (also requires `metrics.enabled` to be `true`)                                                    | `false`                                                     |
+-| `metrics.serviceMonitor.namespace`              | Namespace in which Prometheus is running                                                                                                                  | `nil`                                                       |
+-| `metrics.serviceMonitor.interval`               | Interval at which metrics should be scraped.                                                                                                              | `nil` (Prometheus Operator default value)                   |
+-| `metrics.serviceMonitor.metricRelabelings`      | MetricRelabelConfigs to apply to samples before ingestion scraping                                                                                        | `[]`                                                        |
+-| `metrics.serviceMonitor.relabelings`            | RelabelConfigs to apply to samples before ingestion                                                                                                       | `[]`                                                        |
+-| `metrics.serviceMonitor.scheme`                 | HTTP scheme to use for scraping                                                                                                                           | `""` (Prometheus Operator default value)                    |
+-| `metrics.serviceMonitor.scrapeTimeout`          | Timeout after which the scrape is ended                                                                                                                   | `nil` (Prometheus Operator default value)                   |
+-| `metrics.serviceMonitor.selector`               | Prometheus instance selector labels                                                                                                                       | `nil`                                                       |
+-| `metrics.serviceMonitor.tlsConfig`              | TLS configuration used for scrape endpoints used by Prometheus                                                                                            | `nil`                                                       |
+-| `startFromSnapshot.enabled`                     | Initialize new cluster recovering an existing snapshot                                                                                                    | `false`                                                     |
+-| `startFromSnapshot.existingClaim`               | PVC containing the existing snapshot                                                                                                                      | `nil`                                                       |
+-| `startFromSnapshot.snapshotFilename`            | Snapshot filename                                                                                                                                         | `nil`                                                       |
+-| `disasterRecovery.enabled`                      | Enable auto disaster recovery by periodically snapshotting the keyspace                                                                                   | `false`                                                     |
+-| `disasterRecovery.debug`                        | Enable debug logging for snapshots                                                                                                                        | `false`                                                     |
+-| `disasterRecovery.cronjob.schedule`             | Schedule in Cron format to save snapshots                                                                                                                 | `*/30 * * * *`                                              |
+-| `disasterRecovery.cronjob.historyLimit`         | Number of successful finished jobs to retain                                                                                                              | `1`                                                         |
+-| `disasterRecovery.cronjob.snapshotHistoryLimit` | Number of etcd snapshots to retain, tagged by date                                                                                                        | `1`                                                         |
+-| `disasterRecovery.cronjob.podAnnotations`       | Pod annotations for cronjob pods                                                                                                                          | `{}`                                                        |
+-| `disasterRecovery.pvc.existingClaim`            | Provide an existing `PersistentVolumeClaim`, the value is evaluated as a template.                                                                        | `nil`                                                       |
+-| `disasterRecovery.pvc.size`                     | PVC Storage Request                                                                                                                                       | `2Gi`                                                       |
+-| `disasterRecovery.pvc.storageClassName`         | Storage Class for snapshots volume                                                                                                                        | `nfs`                                                       |
++The following tables lists the configurable parameters of the etcd chart and their default values per section/component:
++
++### Global parameters
++
++| Parameter                 | Description                                     | Default                                                 |
++|---------------------------|-------------------------------------------------|---------------------------------------------------------|
++| `global.imageRegistry`    | Global Docker image registry                    | `nil`                                                   |
++| `global.imagePullSecrets` | Global Docker registry secret names as an array | `[]` (does not add image pull secrets to deployed pods) |
++| `global.storageClass`     | Global storage class for dynamic provisioning   | `nil`                                                   |
++
++### Common parameters
++
++| Parameter           | Description                                                          | Default                        |
++|---------------------|----------------------------------------------------------------------|--------------------------------|
++| `nameOverride`      | String to partially override common.names.fullname                   | `nil`                          |
++| `fullnameOverride`  | String to fully override common.names.fullname                       | `nil`                          |
++| `commonLabels`      | Labels to add to all deployed objects                                | `{}`                           |
++| `commonAnnotations` | Annotations to add to all deployed objects                           | `{}`                           |
++| `clusterDomain`     | Default Kubernetes cluster domain                                    | `cluster.local`                |
++| `extraDeploy`       | Array of extra objects to deploy with the release                    | `[]` (evaluated as a template) |
++| `kubeVersion`       | Force target Kubernetes version (using Helm capabilities if not set) | `nil`                          |
++
++### etcd parameters
++
++| Parameter                           | Description                                                                               | Default                                                 |
++|-------------------------------------|-------------------------------------------------------------------------------------------|---------------------------------------------------------|
++| `image.registry`                    | etcd image registry                                                                       | `docker.io`                                             |
++| `image.repository`                  | etcd image name                                                                           | `bitnami/etcd`                                          |
++| `image.tag`                         | etcd image tag                                                                            | `{TAG_NAME}`                                            |
++| `image.pullPolicy`                  | etcd image pull policy                                                                    | `IfNotPresent`                                          |
++| `image.pullSecrets`                 | Specify docker-registry secret names as an array                                          | `[]` (does not add image pull secrets to deployed pods) |
++| `image.debug`                       | Specify if debug values should be set                                                     | `false`                                                 |
++| `auth.rbac.enabled`                 | Switch to enable RBAC authentication                                                      | `true`                                                  |
++| `auth.rbac.allowNoneAuthentication` | Allow to use etcd without configuring RBAC authentication                                 | `true`                                                  |
++| `auth.rbac.rootPassword`            | Password for the root user                                                                | `nil`                                                   |
++| `auth.rbac.existingSecret`          | Name of the existing secret containing the root password                                  | `nil`                                                   |
++| `auth.client.secureTransport`       | Switch to encrypt client-to-server communications using TLS certificates                  | `false`                                                 |
++| `auth.client.useAutoTLS`            | Switch to automatically create the TLS certificates                                       | `false`                                                 |
++| `auth.client.enableAuthentication`  | Switch to enable host authentication using TLS certificates. Requires existing secret     | `secret`                                                |
++| `auth.client.existingSecret`        | Name of the existing secret containing cert files for client-to-server communications     | `nil`                                                   |
++| `auth.client.certFilename`          | Name of the file containing the client certificate                                        | `cert.pem`                                              |
++| `auth.client.certKeyFilename`       | Name of the file containing the client certificate private key                            | `key.pem`                                               |
++| `auth.client.caFilename`            | Name of the file containing the client CA certificate                                     | `""`                                                    |
++| `auth.peer.secureTransport`         | Switch to encrypt server-to-server communications using TLS certificates                  | `false`                                                 |
++| `auth.peer.useAutoTLS`              | Switch to automatically create the TLS certificates                                       | `false`                                                 |
++| `auth.peer.enableAuthentication`    | Switch to enable host authentication using TLS certificates. Requires existing secret     | `false`                                                 |
++| `auth.peer.existingSecret`          | Name of the existing secret containing cert files for server-to-server communications     | `nil`                                                   |
++| `auth.peer.certFilename`            | Name of the file containing the peer certificate                                          | `cert.pem`                                              |
++| `auth.peer.certKeyFilename`         | Name of the file containing the peer certificate private key                              | `key.pem`                                               |
++| `auth.peer.caFilename`              | Name of the file containing the peer CA certificate                                       | `""`                                                    |
++| `initialClusterState`               | Initial cluster state. Allowed values: 'new' or 'existing'                                | `nil`                                                   |
++| `maxProcs`                          | Set GOMAXPROCS environment variable to limit the number of CPUs                           | `nil`                                                   |
++| `removeMemberOnContainerTermination`| Use a PreStop hook to remove the etcd members from the cluster on container termination   | `true`                                                  |
++| `configuration`                     | etcd configuration. Specify content for etcd.conf.yml                                     | `nil`                                                   |
++| `existingConfigmap`                 | Name of existing ConfigMap with etcd configuration                                        | `nil`                                                   |
++| `command`                           | Default container command (useful when using custom images)                               | `nil`                                                   |
++| `args`                              | Default container args (useful when using custom images)                                  | `nil`                                                   |
++| `extraEnvVars`                      | Extra environment variables to be set on etcd container                                   | `{}`                                                    |
++| `extraEnvVarsCM`                    | Name of existing ConfigMap containing extra env vars                                      | `nil`                                                   |
++| `extraEnvVarsSecret`                | Name of existing Secret containing extra env vars                                         | `nil`                                                   |
++
++### etcd statefulset parameters
++
++| Parameter                   | Description                                                                               | Default                        |
++|-----------------------------|-------------------------------------------------------------------------------------------|--------------------------------|
++| `replicaCount`              | Number of etcd replicas to deploy                                                         | `1`                            |
++| `containerPorts.client`     | Client port to expose at container level                                                  | `2379`                         |
++| `containerPorts.peer`       | Peer port to expose at container level                                                    | `2380`                         |
++| `podSecurityContext`        | etcd pods' Security Context                                                               | Check `values.yaml` file       |
++| `containerSecurityContext`  | etcd containers' Security Context                                                         | Check `values.yaml` file       |
++| `resources.limits`          | The resources limits for the etcd container                                               | `{}`                           |
++| `resources.requests`        | The requested resources for the etcd container                                            | `{}`                           |
++| `hostAliases`               | etcd pod host aliases                                                                     | `[]`                           |
++| `lifecycleHooks`            | Override default etcd container hooks                                                     | `{}`                           |
++| `livenessProbe`             | Liveness probe configuration for etcd                                                     | Check `values.yaml` file       |
++| `readinessProbe`            | Readiness probe configuration for etcd                                                    | Check `values.yaml` file       |
++| `startupProbe`              | Startup probe configuration for etcd                                                      | Check `values.yaml` file       |
++| `customLivenessProbe`       | Override default liveness probe                                                           | `nil`                          |
++| `customReadinessProbe`      | Override default readiness probe                                                          | `nil`                          |
++| `customStartupProbe`        | Override default startup probe                                                            | `nil`                          |
++| `updateStrategy`            | Strategy to use to update pods                                                            | Check `values.yaml` file       |
++| `podManagementPolicy`       | Pod management policy for the etcd statefulset                                            | `Parallel`                     |
++| `podAffinityPreset`         | Pod affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`       | `""`                           |
++| `podAntiAffinityPreset`     | Pod anti-affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`  | `soft`                         |
++| `nodeAffinityPreset.type`   | Node affinity preset type. Ignored if `affinity` is set. Allowed values: `soft` or `hard` | `""`                           |
++| `nodeAffinityPreset.key`    | Node label key to match. Ignored if `affinity` is set.                                    | `""`                           |
++| `nodeAffinityPreset.values` | Node label values to match. Ignored if `affinity` is set.                                 | `[]`                           |
++| `affinity`                  | Affinity for pod assignment                                                               | `{}` (evaluated as a template) |
++| `nodeSelector`              | Node labels for pod assignment                                                            | `{}` (evaluated as a template) |
++| `tolerations`               | Tolerations for pod assignment                                                            | `[]` (evaluated as a template) |
++| `podLabels`                 | Extra labels for etcd pods                                                                | `{}`                           |
++| `podAnnotations`            | Annotations for etcd pods                                                                 | `{}`                           |
++| `priorityClassName`         | Controller priorityClassName                                                              | `nil`                          |
++| `extraVolumeMounts`         | Optionally specify extra list of additional volumeMounts for etcd container(s)            | `[]`                           |
++| `extraVolumes`              | Optionally specify extra list of additional volumes for etcd pods                         | `[]`                           |
++| `initContainers`            | Add additional init containers to the etcd pods                                           | `{}` (evaluated as a template) |
++| `sidecars`                  | Add additional sidecar containers to the etcd pods                                        | `{}` (evaluated as a template) |
++
++### Exposure parameters
++
++| Parameter                          | Description                                                                        | Default                        |
++|------------------------------------|------------------------------------------------------------------------------------|--------------------------------|
++| `service.type`                     | Kubernetes Service type                                                            | `ClusterIP`                    |
++| `service.port`                     | etcd client port                                                                   | `2379`                         |
++| `service.clientPortNameOverride`   | etcd client port name override                                                     | `nil`                          |
++| `service.peerPort`                 | etcd peer port                                                                     | `2380`                         |
++| `service.peerPortNameOverride`     | etcd peer port name override                                                       | `nil`                          |
++| `service.nodePorts.clientPort`     | Kubernetes etcd client node port                                                   | `""`                           |
++| `service.nodePorts.peerPort`       | Kubernetes etcd peer node port                                                     | `""`                           |
++| `service.loadBalancerIP`           | LoadBalancerIP for the service                                                     | `nil`                          |
++| `service.loadBalancerSourceRanges` | Address(es) that are allowed when service is LoadBalancer                          | `[]`                           |
++| `service.externalIPs`              | ExternalIPs for the service                                                        | `[]`                           |
++| `service.annotations`              | Additional annotations for the etcd service                                        | `{}` (evaluated as a template) |
++
++### Persistence parameters
++
++| Parameter                          | Description                                                                        | Default                        |
++|------------------------------------|------------------------------------------------------------------------------------|--------------------------------|
++| `persistence.enabled`              | Enable etcd data persistence using PVC                                             | `true`                         |
++| `persistence.storageClass`         | PVC Storage Class for etcd data volume                                             | `nil`                          |
++| `persistence.accessMode`           | PVC Access Mode for etcd data volume                                               | `ReadWriteOnce`                |
++| `persistence.size`                 | PVC Storage Request for etcd data volume                                           | `8Gi`                          |
++| `persistence.selector`             | Selector to match an existing Persistent Volume                                    | `{}`(evaluated as a template)  |
++| `persistence.annotations`          | Annotations for the PVC                                                            | `{}`(evaluated as a template)  |
++
++### Volume Permissions parameters
++
++| Parameter                              | Description                                                                                                          | Default                                                 |
++|----------------------------------------|----------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------|
++| `volumePermissions.enabled`            | Enable init container that changes the owner and group of the persistent volume(s) mountpoint to `runAsUser:fsGroup` | `false`                                                 |
++| `volumePermissions.image.registry`     | Init container volume-permissions image registry                                                                     | `docker.io`                                             |
++| `volumePermissions.image.repository`   | Init container volume-permissions image name                                                                         | `bitnami/bitnami-shell`                                 |
++| `volumePermissions.image.tag`          | Init container volume-permissions image tag                                                                          | `"10"`                                                  |
++| `volumePermissions.image.pullPolicy`   | Init container volume-permissions image pull policy                                                                  | `Always`                                                |
++| `volumePermissions.image.pullSecrets`  | Specify docker-registry secret names as an array                                                                     | `[]` (does not add image pull secrets to deployed pods) |
++| `volumePermissions.resources.limits`   | Init container volume-permissions resource  limits                                                                   | `{}`                                                    |
++| `volumePermissions.resources.requests` | Init container volume-permissions resource  requests                                                                 | `{}`                                                    |
++
++### Metrics parameters
++
++| Parameter                                  | Description                                                                           | Default                                                     |
++|--------------------------------------------|---------------------------------------------------------------------------------------|-------------------------------------------------------------|
++| `metrics.enabled`                          | Expose etcd metrics                                                                   | `false`                                                     |
++| `metrics.podAnnotations`                   | Annotations for enabling prometheus to access the metrics endpoint                    | {`prometheus.io/scrape: "true",prometheus.io/port: "2379"`} |
++| `metrics.podMonitor.enabled`               | Create PodMonitor Resource for scraping metrics using PrometheusOperator              | `false`                                                     |
++| `metrics.podMonitor.namespace`             | Namespace in which Prometheus is running                                              | `nil`                                                       |
++| `metrics.podMonitor.interval`              | Specify the interval at which metrics should be scraped                               | `30s`                                                       |
++| `metrics.podMonitor.scrapeTimeout`         | Specify the timeout after which the scrape is ended                                   | `nil`                                                       |
++| `metrics.podMonitor.additionalLabels`      | Additional labels that can be used so PodMonitors will be discovered by Prometheus    | `{}`                                                        |
++| `metrics.podMonitor.scheme`                | Scheme to use for scraping                                                            | `http`                                                      |
++| `metrics.podMonitor.tlsConfig`             | TLS configuration used for scrape endpoints used by Prometheus                        | `nil`                                                       |
++
++### Snapshotting parameters
++
++| Parameter                                       | Description                                                                           | Default                                                     |
++|-------------------------------------------------|---------------------------------------------------------------------------------------|-------------------------------------------------------------|
++| `startFromSnapshot.enabled`                     | Initialize new cluster recovering an existing snapshot                                | `false`                                                     |
++| `startFromSnapshot.existingClaim`               | PVC containing the existing snapshot                                                  | `nil`                                                       |
++| `startFromSnapshot.snapshotFilename`            | Snapshot filename                                                                     | `nil`                                                       |
++| `disasterRecovery.enabled`                      | Enable auto disaster recovery by periodically snapshotting the keyspace               | `false`                                                     |
++| `disasterRecovery.cronjob.schedule`             | Schedule in Cron format to save snapshots                                             | `*/30 * * * *`                                              |
++| `disasterRecovery.cronjob.historyLimit`         | Number of successful finished jobs to retain                                          | `1`                                                         |
++| `disasterRecovery.cronjob.snapshotHistoryLimit` | Number of etcd snapshots to retain, tagged by date                                    | `1`                                                         |
++| `disasterRecovery.cronjob.podAnnotations`       | Pod annotations for cronjob pods                                                      | `{}` (evaluated as a template)                              |
++| `disasterRecovery.cronjob.resources.limits`     | Cronjob container resource limits                                                     | `{}`                                                        |
++| `disasterRecovery.cronjob.resources.requests`   | Cronjob container resource requests                                                   | `{}`                                                        |
++| `disasterRecovery.pvc.existingClaim`            | Provide an existing `PersistentVolumeClaim`, the value is evaluated as a template.    | `nil`                                                       |
++| `disasterRecovery.pvc.size`                     | PVC Storage Request                                                                   | `2Gi`                                                       |
++| `disasterRecovery.pvc.storageClassName`         | Storage Class for snapshots volume                                                    | `nfs`                                                       |
++
++### Other parameters
++
++| Parameter                  | Description                                                    | Default |
++|----------------------------|----------------------------------------------------------------|---------|
++| `pdb.create`               | Enable/disable a Pod Disruption Budget creation                | `false` |
++| `pdb.minAvailable`         | Minimum number/percentage of pods that should remain scheduled | `1`     |
++| `pdb.maxUnavailable`       | Maximum number/percentage of pods that may be made unavailable | `nil`   |
+ 
+ Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
+ 
+@@ -194,79 +251,71 @@ It is strongly recommended to use immutable tags in a production environment. Th
+ 
+ Bitnami will release a new chart updating its containers if a new version of the main container, significant changes, or critical vulnerabilities exist.
+ 
+-### Using custom configuration
++### Cluster configuration
+ 
+-In order to use custom configuration parameters, two options are available:
++The Bitnami etcd chart can be used to bootstrap an etcd cluster, easy to scale and with available features to implement disaster recovery.
+ 
+-- Using environment variables: etcd allows setting environment variables that map to configuration settings. In order to set extra environment variables, use the `envVarsConfigMap` value to point to a ConfigMap (shown in the below example) that contains them. This ConfigMap can be created with the `-f /tmp/configurationEnvVars.yaml` flag. Then deploy the chart with the `envVarsConfigMap=etcd-env-vars` parameter:
++Refer to the [chart documentation](https://docs.bitnami.com/kubernetes/infrastructure/etcd/configuration/understand-cluster/) for more information about all these details.
+ 
+-```console
+-$ cat << EOF > /tmp/configurationEnvVars.yaml
+-apiVersion: v1
+-kind: ConfigMap
+-metadata:
+-  name: etcd-env-vars
+-  namespace: default
+-data:
+-  ETCD_AUTO_COMPACTION_RETENTION: "0"
+-  ETCD_HEARTBEAT_INTERVAL: "150"
+-EOF
+-```
++### Enable security for etcd
+ 
+-- Using a custom `etcd.conf.yml`: The etcd chart allows mounting a custom etcd.conf.yml file as ConfigMap (named, for example, etcd-conf) and deploy it using the `configFileConfigMap=etcd-conf` parameter.
++The etcd chart can be configured with Role-based access control and TLS encryption to improve its security.
+ 
+-### Enable security for etcd
++[Learn more about security in the chart documentation](https://docs.bitnami.com/kubernetes/infrastructure/etcd/administration/enable-security/).
+ 
+-#### Configure RBAC
++## Persistence
+ 
+-In order to enable [Role-based access control for etcd](https://coreos.com/etcd/docs/latest/op-guide/authentication.html) you can set the following parameters:
++The [Bitnami etcd](https://github.com/bitnami/bitnami-docker-etcd) image stores the etcd data at the `/bitnami/etcd` path of the container. Persistent Volume Claims are used to keep the data across statefulsets.
+ 
+-```console
+-auth.rbac.enabled=true
+-auth.rbac.rootPassword=YOUR-PASSWORD
+-```
++The chart mounts a [Persistent Volume](https://kubernetes.io/docs/user-guide/persistent-volumes/) volume at this location. The volume is created using dynamic volume provisioning by default. An existing PersistentVolumeClaim can also be defined for this purpose.
+ 
+-The previous command will deploy etcd creating a `root` user with its associate `root` role with access to everything. The rest of users will use the `guest` role and won't have permissions to do anything.
++[Learn more about persistence in the chart documentation](https://docs.bitnami.com/kubernetes/infrastructure/etcd/configuration/chart-persistence/).
+ 
+-#### Configure certificated for peer communication
++### Using custom configuration
+ 
+-In order to enable secure transport between peer nodes deploy the helm chart with these options:
++In order to use custom configuration parameters, two options are available:
+ 
+-```console
+-auth.peer.secureTransport=true
+-auth.peer.useAutoTLS=true
++- Using environment variables: etcd allows setting environment variables that map to configuration settings. In order to set extra environment variables, you can use the `extraEnvVars` property. Alternatively, you can use a ConfigMap or a Secret with the environment variables using the `extraEnvVarsCM` or the `extraEnvVarsSecret` properties.
++
++```yaml
++extraEnvVars:
++  - name: ETCD_AUTO_COMPACTION_RETENTION
++    value: "0"
++  - name: ETCD_HEARTBEAT_INTERVAL
++    value: "150"
+ ```
+ 
+-#### Configure certificates for client communication
++- Using a custom `etcd.conf.yml`: The etcd chart allows mounting a custom `etcd.conf.yml` file as ConfigMap. In order to so, you can use the `configuration` property. Alternatively, you can use an existing ConfigMap using the `existingConfigmap` parameter.
+ 
+-In order to enable secure transport between client and server you have to create a secret containing the cert and key files and the CA used to sign those client certificates.
++### Sidecars and Init Containers
+ 
+-You can create that secret and deploy the helm chart with these options:
++If you have a need for additional containers to run within the same pod as the etcd app (e.g. an additional metrics or logging exporter), you can do so via the `sidecars` config parameter. Simply define your container according to the Kubernetes container spec.
+ 
+-```console
+-auth.client.secureTransport=true
+-auth.client.enableAuthentication=true
+-auth.client.existingSecret=etcd-client-certs
++```yaml
++sidecars:
++  - name: your-image-name
++    image: your-image
++    imagePullPolicy: Always
++    ports:
++      - name: portname
++       containerPort: 1234
+ ```
+ 
+-> Ref: [etcd security model](https://coreos.com/etcd/docs/latest/op-guide/security.html)
+->
+-> Ref: [Generate self-signed certificagtes for etcd](https://coreos.com/os/docs/latest/generate-self-signed-certificates.html)
++Similarly, you can add extra init containers using the `initContainers` parameter.
+ 
+-### Disaster recovery
+-
+-You can enable auto disaster recovery by periodically snapshotting the keyspace. If the cluster permanently loses more than (N-1)/2 members, it tries to recover the cluster from a previous snapshot. You can enable it using the following parameters:
+-
+-```console
+-persistence.enabled=true
+-disasterRecovery.enabled=true
+-disasterRecovery.pvc.size=2Gi
+-disasterRecovery.pvc.storageClassName=nfs
++```yaml
++initContainers:
++  - name: your-image-name
++    image: your-image
++    imagePullPolicy: Always
++    ports:
++      - name: portname
++        containerPort: 1234
+ ```
+ 
+-If `startFromSnapshot` is enabled at the same time than `disasterRecovery`, the PVC provided via `startFromSnapshot.existingClaim` will be used to store the periodical snapshots.
++### Deploying extra resources
+ 
+-> **Note**: Disaster recovery feature requires using volumes with ReadWriteMany access mode. For instance, you can use the stable/nfs-server-provisioner chart to provide NFS PVCs.
++There are cases where you may want to deploy extra objects, such a ConfigMap containing your app's configuration or some extra deployment with a micro service used by your app. For covering this case, the chart allows adding the full specification of other objects using the `extraDeploy` parameter.
+ 
+ ### Setting Pod's affinity
+ 
+@@ -274,51 +323,49 @@ This chart allows you to set your custom affinity using the `affinity` parameter
+ 
+ As an alternative, you can use of the preset configurations for pod affinity, pod anti-affinity, and node affinity available at the [bitnami/common](https://github.com/bitnami/charts/tree/master/bitnami/common#affinities) chart. To do so, set the `podAffinityPreset`, `podAntiAffinityPreset`, or `nodeAffinityPreset` parameters.
+ 
+-## Persistence
+-
+-The [Bitnami etcd](https://github.com/bitnami/bitnami-docker-etcd) image stores the etcd data at the `/bitnami/etcd` path of the container. Persistent Volume Claims are used to keep the data across statefulsets.
+-
+-By default, the chart mounts a [Persistent Volume](http://kubernetes.io/docs/user-guide/persistent-volumes/) at this location. The volume is created using dynamic volume provisioning. See the [Parameters](#parameters) section to configure the PVC.
+-
+-### Adjust permissions of persistent volume mountpoint
+-
+-As the image run as non-root by default, it is necessary to adjust the ownership of the persistent volume so that the container can write data into it.
+-
+-By default, the chart is configured to use Kubernetes Security Context to automatically change the ownership of the volume. However, this feature does not work in all Kubernetes distributions.
+-As an alternative, this chart supports using an initContainer to change the ownership of the volume before mounting it in the final destination.
+-
+-You can enable this initContainer by setting `volumePermissions.enabled` to `true`.
+-
+ ## Troubleshooting
+ 
+ Find more information about how to deal with common errors related to Bitnami’s Helm charts in [this troubleshooting guide](https://docs.bitnami.com/general/how-to/troubleshoot-helm-chart-issues).
+ 
+ ## Upgrading
+ 
+-### 5.2.0
++### To 6.0.0
+ 
+-This version also introduces `bitnami/common`, a [library chart](https://helm.sh/docs/topics/library_charts/#helm) as a dependency. More documentation about this new utility could be found [here](https://github.com/bitnami/charts/tree/master/bitnami/common#bitnami-common-library-chart). Please, make sure that you have updated the chart dependencies before executing any upgrade.
++This version introduces several features and performance improvements:
+ 
+-### To 5.0.0
++- The statefulset can now be scaled using `kubectl scale` command. Using `helm upgrade` to recalculate available endpoints is no longer needed.
++- The scripts used for bootstrapping, runtime reconfiguration, and disaster recovery have been refactored and moved to the etcd container (see [this PR](https://github.com/bitnami/bitnami-docker-etcd/pull/13)) with two purposes: removing technical debt & improving the stability.
++- Several parameters were reorganized to simplify the structure and follow the same standard used on other Bitnami charts:
++  - `etcd.initialClusterState` is renamed to `initialClusterState`.
++  - `statefulset.replicaCount` is renamed to `replicaCount`.
++  - `statefulset.podManagementPolicy` is renamed to `podManagementPolicy`.
++  - `statefulset.updateStrategy` and `statefulset.rollingUpdatePartition` are merged into `updateStrategy`.
++  - `securityContext.*` is deprecated in favor of `podSecurityContext` and `containerSecurityContext`.
++  - `configFileConfigMap` is deprecated in favor of `configuration` and `existingConfigmap`.
++  - `envVarsConfigMap` is deprecated in favor of `extraEnvVars`, `extraEnvVarsCM` and `extraEnvVarsSecret`.
++  - `allowNoneAuthentication` is renamed to `auth.rbac.allowNoneAuthentication`.
++- New parameters/features were added:
++  - `extraDeploy` to deploy any extra desired object.
++  - `initContainers` and `sidecars` to define custom init containers and sidecars.
++  - `extraVolumes` and `extraVolumeMounts` to define custom volumes and mount points.
++  - Probes can be now customized, and support to startup probes is added.
++  - LifecycleHooks can be customized using `lifecycleHooks` parameter.
++  - The default command/args can be customized using `command` and `args` parameters.
++- Metrics integration with Prometheus Operator does no longer use a ServiceMonitor object, but a PodMonitor instead.
+ 
+-[On November 13, 2020, Helm v2 support was formally finished](https://github.com/helm/charts#status-of-the-project), this major version is the result of the required changes applied to the Helm Chart to be able to incorporate the different features added in Helm v3 and to be consistent with the Helm project itself regarding the Helm v2 EOL.
++Consequences:
+ 
+-**What changes were introduced in this major version?**
++- Backwards compatibility is not guaranteed unless you adapt you **values.yaml** according to the changes described above.
+ 
+-- Previous versions of this Helm Chart use `apiVersion: v1` (installable by both Helm 2 and 3), this Helm Chart was updated to `apiVersion: v2` (installable by Helm 3 only). [Here](https://helm.sh/docs/topics/charts/#the-apiversion-field) you can find more information about the `apiVersion` field.
+-- The different fields present in the *Chart.yaml* file has been ordered alphabetically in a homogeneous way for all the Bitnami Helm Charts
++### To 5.2.0
+ 
+-**Considerations when upgrading to this version**
++This version introduces `bitnami/common`, a [library chart](https://helm.sh/docs/topics/library_charts/#helm) as a dependency. More documentation about this new utility could be found [here](https://github.com/bitnami/charts/tree/master/bitnami/common#bitnami-common-library-chart). Please, make sure that you have updated the chart dependencies before executing any upgrade.
+ 
+-- If you want to upgrade to this version from a previous one installed with Helm v3, you shouldn't face any issues
+-- If you want to upgrade to this version using Helm v2, this scenario is not supported as this version doesn't support Helm v2 anymore
+-- If you installed the previous version with Helm v2 and wants to upgrade to this version with Helm v3, please refer to the [official Helm documentation](https://helm.sh/docs/topics/v2_v3_migration/#migration-use-cases) about migrating from Helm v2 to v3
++### To 5.0.0
+ 
+-**Useful links**
++[On November 13, 2020, Helm v2 support formally ended](https://github.com/helm/charts#status-of-the-project). This major version is the result of the required changes applied to the Helm Chart to be able to incorporate the different features added in Helm v3 and to be consistent with the Helm project itself regarding the Helm v2 EOL.
+ 
+-- https://docs.bitnami.com/tutorials/resolve-helm2-helm3-post-migration-issues/
+-- https://helm.sh/docs/topics/v2_v3_migration/
+-- https://helm.sh/blog/migrate-from-helm-v2-to-helm-v3/
++[Learn more about this change and related upgrade considerations](https://docs.bitnami.com/kubernetes/infrastructure/etcd/administration/upgrade-helm3/).
+ 
+ ### To 4.4.14
+ 
+diff --git a/bitnami/etcd/ci/values-disaster-recovery.yaml b/bitnami/etcd/ci/values-disaster-recovery.yaml
+new file mode 100644
+index 0000000000..e4ed9afcf0
+--- /dev/null
++++ b/bitnami/etcd/ci/values-disaster-recovery.yaml
+@@ -0,0 +1,2 @@
++disasterRecovery:
++  enabled: true
+diff --git a/bitnami/etcd/ci/values-metrics.yaml b/bitnami/etcd/ci/values-metrics.yaml
+new file mode 100644
+index 0000000000..db1ecae582
+--- /dev/null
++++ b/bitnami/etcd/ci/values-metrics.yaml
+@@ -0,0 +1,2 @@
++metrics:
++  enabled: true
+diff --git a/bitnami/etcd/ci/values-pdb.yaml b/bitnami/etcd/ci/values-pdb.yaml
+new file mode 100644
+index 0000000000..fe85cc2450
+--- /dev/null
++++ b/bitnami/etcd/ci/values-pdb.yaml
+@@ -0,0 +1,2 @@
++pdb:
++  create: true
+diff --git a/bitnami/etcd/templates/NOTES.txt b/bitnami/etcd/templates/NOTES.txt
+index 458cf3858a..eaa9b4a488 100644
+--- a/bitnami/etcd/templates/NOTES.txt
++++ b/bitnami/etcd/templates/NOTES.txt
+@@ -1,55 +1,54 @@
+-{{- if contains .Values.service.type "LoadBalancer" }}
+-{{- if .Values.allowNoneAuthentication }}
++{{- if and (eq .Values.service.type "LoadBalancer") .Values.auth.rbac.allowNoneAuthentication }}
+ -------------------------------------------------------------------------------
+  WARNING
+ 
+-    By specifying "service.type=LoadBalancer" and "allowNoneAuthentication=true" you
+-    have most likely exposed the etcd service externally without any authentication
+-    mechanism.
++    By specifying "service.type=LoadBalancer", "auth.rbac.enabled=false" and
++    "auth.rbac.allowNoneAuthentication=true" you have most likely exposed the etcd
++    service externally without any authentication mechanism.
+ 
+     For security reasons, we strongly suggest that you switch to "ClusterIP" or
+-    "NodePort". As alternative, you can also switch to "usePassword=true"
+-    providing a valid password on "password" parameter.
++    "NodePort". As alternative, you can also switch to "auth.rbac.enabled=true"
++    providing a valid password on "auth.rbac.rootPassword" parameter.
+ 
+ -------------------------------------------------------------------------------
+ {{- end }}
+-{{- end }}
+ 
+ ** Please be patient while the chart is being deployed **
+ 
+ etcd can be accessed via port {{ .Values.service.port }} on the following DNS name from within your cluster:
+ 
+-    {{ template "etcd.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
++    {{ template "common.names.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
+ 
+-To set a key run the following command:
++To create a pod that you can use as a etcd client run the following command:
+ 
+-    export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ template "etcd.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+-    kubectl exec -it $POD_NAME -- etcdctl put /message Hello
++    kubectl run {{ template "common.names.fullname" . }}-client --restart='Never' --image {{ template "etcd.image" . }}{{- if .Values.auth.rbac.enabled }} --env ROOT_PASSWORD=$(kubectl get secret --namespace {{ .Release.Namespace }} {{ template "common.names.fullname" . }} -o jsonpath="{.data.etcd-root-password}" | base64 --decode){{- end }} --env ETCDCTL_ENDPOINTS="{{ template "common.names.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:{{ .Values.service.port }}" --namespace {{ .Release.Namespace }} --command -- sleep infinity
+ 
+-To get a key run the following command:
++Then, you can set/get a key using the commands below:
+ 
+-    export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ template "etcd.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+-    kubectl exec -it $POD_NAME -- etcdctl get /message
++    kubectl exec -it {{ template "common.names.fullname" . }}-client -- bash
++    {{- $etcdAuthOptions := include "etcd.authOptions" . }}
++    etcdctl {{ $etcdAuthOptions }} put /message Hello
++    etcdctl {{ $etcdAuthOptions }} get /message
+ 
+ To connect to your etcd server from outside the cluster execute the following commands:
+ 
+ {{- if contains "NodePort" .Values.service.type }}
+ 
+     export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+-    export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ template "etcd.fullname" . }})
++    export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ template "common.names.fullname" . }})
+     echo "etcd URL: http://$NODE_IP:$NODE_PORT/"
+ 
+ {{- else if contains "LoadBalancer" .Values.service.type }}
+ 
+   NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+-        Watch the status with: 'kubectl get svc --namespace {{ .Release.Namespace }} -w {{ template "etcd.fullname" . }}'
++        Watch the status with: 'kubectl get svc --namespace {{ .Release.Namespace }} -w {{ template "common.names.fullname" . }}'
+ 
+-    export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "etcd.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
++    export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "common.names.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+     echo "etcd URL: http://$SERVICE_IP:{{ .Values.service.port }}/"
+ 
+ {{- else if contains "ClusterIP" .Values.service.type }}
+ 
+-    kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ template "etcd.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }} &
++    kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ template "common.names.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }} &
+     echo "etcd URL: http://127.0.0.1:{{ .Values.service.port }}"
+ 
+ {{- end }}
+@@ -57,7 +56,7 @@ To connect to your etcd server from outside the cluster execute the following co
+ 
+  * As rbac is enabled you should add the flag `--user root:$ETCD_ROOT_PASSWORD` to the etcdctl commands. Use the command below to export the password:
+ 
+-    export ETCD_ROOT_PASSWORD=$(kubectl get secret --namespace {{ .Release.Namespace }} {{ template "etcd.fullname" . }} -o jsonpath="{.data.etcd-root-password}" | base64 --decode)
++    export ETCD_ROOT_PASSWORD=$(kubectl get secret --namespace {{ .Release.Namespace }} {{ template "common.names.fullname" . }} -o jsonpath="{.data.etcd-root-password}" | base64 --decode)
+ 
+ {{- end }}
+ {{- if .Values.auth.client.secureTransport }}
+@@ -73,19 +72,22 @@ To connect to your etcd server from outside the cluster execute the following co
+ 
+  * You should also export a proper etcdctl endpoint using the https schema. Eg.
+ 
+-    export ETCDCTL_ENDPOINTS=https://{{ template "etcd.fullname" . }}-0:{{ .Values.service.port }}
++    export ETCDCTL_ENDPOINTS=https://{{ template "common.names.fullname" . }}-0:{{ .Values.service.port }}
+ 
+ {{- end }}
+ {{- if .Values.auth.client.enableAuthentication }}
+ 
+  * As TLS host authentication is enabled you should add the flag `--ca-file /opt/bitnami/etcd/certs/client/{{ .Values.auth.client.caFilename | default "ca.crt"}}` to the etcdctl commands.
+ 
+-{{- end }}
+-{{- if and (contains "bitnami/" .Values.image.repository) (not (.Values.image.tag | toString | regexFind "-r\\d+$|sha256:")) }}
+-
+-WARNING: Rolling tag detected ({{ .Values.image.repository }}:{{ .Values.image.tag }}), please note that it is strongly recommended to avoid using rolling tags in a production environment.
+-+info https://docs.bitnami.com/containers/how-to/understand-rolling-tags-containers/
+-
+ {{- end }}
+ 
+-{{ include "etcd.validateValues" . }}
++{{- include "common.warnings.rollingTag" .Values.image }}
++{{- include "etcd.validateValues" . }}
++{{- $requiredPassword := list -}}
++{{- $secretName := include "etcd.secretName" . -}}
++{{- if and .Values.auth.rbac.enabled (not .Values.auth.rbac.existingSecret) -}}
++  {{- $requiredEtcdPassword := dict "valueKey" "auth.rbac.rootPassword" "secret" $secretName "field" "etcd-root-password" -}}
++  {{- $requiredPassword = append $requiredPassword $requiredEtcdPassword -}}
++{{- end -}}
++{{- $requiredEtcdPasswordErrors := include "common.validations.values.multiple.empty" (dict "required" $requiredPassword "context" $) -}}
++{{- include "common.errors.upgrade.passwords.empty" (dict "validationErrors" (list $requiredEtcdPasswordErrors) "context" $) -}}
+diff --git a/bitnami/etcd/templates/_helpers.tpl b/bitnami/etcd/templates/_helpers.tpl
+index 4d0a1d958f..f65093531b 100644
+--- a/bitnami/etcd/templates/_helpers.tpl
++++ b/bitnami/etcd/templates/_helpers.tpl
+@@ -1,74 +1,24 @@
+ {{/* vim: set filetype=mustache: */}}
+-{{/*
+-Expand the name of the chart.
+-*/}}
+-{{- define "etcd.name" -}}
+-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
+-
+-{{/*
+-Create a default fully qualified app name.
+-We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+-*/}}
+-{{- define "etcd.fullname" -}}
+-{{- if .Values.fullnameOverride -}}
+-{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+-{{- else -}}
+-{{- $name := default .Chart.Name .Values.nameOverride -}}
+-{{- if contains $name .Release.Name -}}
+-{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+-{{- else -}}
+-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
+-{{- end -}}
+-{{- end -}}
+ 
+ {{/*
+-Create chart name and version as used by the chart label.
+-*/}}
+-{{- define "etcd.chart" -}}
+-{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
+-
+-{{/*
+-Common labels
++Return the proper etcd image name
+ */}}
+-{{- define "etcd.labels" -}}
+-app.kubernetes.io/name: {{ include "etcd.name" . }}
+-helm.sh/chart: {{ include "etcd.chart" . }}
+-app.kubernetes.io/instance: {{ .Release.Name }}
+-app.kubernetes.io/managed-by: {{ .Release.Service }}
++{{- define "etcd.image" -}}
++{{ include "common.images.image" (dict "imageRoot" .Values.image "global" .Values.global) }}
+ {{- end -}}
+ 
+ {{/*
+-Labels to use on deploy.spec.selector.matchLabels and svc.spec.selector
++Return the proper image name (for the init container volume-permissions image)
+ */}}
+-{{- define "etcd.matchLabels" -}}
+-app.kubernetes.io/name: {{ include "etcd.name" . }}
+-app.kubernetes.io/instance: {{ .Release.Name }}
++{{- define "etcd.volumePermissions.image" -}}
++{{ include "common.images.image" (dict "imageRoot" .Values.volumePermissions.image "global" .Values.global) }}
+ {{- end -}}
+ 
+ {{/*
+-Return the proper etcd image name
+-*/}}
+-{{- define "etcd.image" -}}
+-{{- $registryName := .Values.image.registry -}}
+-{{- $repositoryName := .Values.image.repository -}}
+-{{- $tag := .Values.image.tag | toString -}}
+-{{/*
+-Helm 2.11 supports the assignment of a value to a variable defined in a different scope,
+-but Helm 2.9 and 2.10 doesn't support it, so we need to implement this if-else logic.
+-Also, we can't use a single if because lazy evaluation is not an option
++Return the proper Docker Image Registry Secret Names
+ */}}
+-{{- if .Values.global }}
+-    {{- if .Values.global.imageRegistry }}
+-        {{- printf "%s/%s:%s" .Values.global.imageRegistry $repositoryName $tag -}}
+-    {{- else -}}
+-        {{- printf "%s/%s:%s" $registryName $repositoryName $tag -}}
+-    {{- end -}}
+-{{- else -}}
+-    {{- printf "%s/%s:%s" $registryName $repositoryName $tag -}}
+-{{- end -}}
++{{- define "etcd.imagePullSecrets" -}}
++{{ include "common.images.pullSecrets" (dict "images" (list .Values.image .Values.volumePermissions.image) "global" .Values.global) }}
+ {{- end -}}
+ 
+ {{/*
+@@ -93,88 +43,68 @@ Return the proper etcd client protocol
+ {{- end -}}
+ {{- end -}}
+ 
+-{{/*
+-Return the proper Disaster Recovery PVC name
+-*/}}
+-{{- define "etcd.disasterRecovery.pvc.name" -}}
+-{{- if .Values.disasterRecovery.pvc.existingClaim -}}
+-{{- with .Values.disasterRecovery.pvc.existingClaim -}}
+-{{ tpl . $ }}
+-{{- end -}}
+-{{- else if .Values.startFromSnapshot.existingClaim -}}
+-{{- .Values.startFromSnapshot.existingClaim -}}
+-{{- else -}}
+-{{ template "etcd.fullname" . }}-snapshotter
+-{{- end -}}
+-{{- end -}}
+-
+ {{/*
+ Return the proper etcdctl authentication options
+ */}}
+ {{- define "etcd.authOptions" -}}
+-{{- $rbacOption := "--user root:$ETCD_ROOT_PASSWORD" -}}
++{{- $rbacOption := "--user root:$ROOT_PASSWORD" -}}
+ {{- $certsOption := " --cert $ETCD_CERT_FILE --key $ETCD_KEY_FILE" -}}
+ {{- $autoCertsOption := " --cert /bitnami/etcd/data/fixtures/client/cert.pem --key /bitnami/etcd/data/fixtures/client/key.pem" -}}
+ {{- $caOption := " --cacert $ETCD_TRUSTED_CA_FILE" -}}
+ {{- if .Values.auth.rbac.enabled -}}
+-{{- printf "%s" $rbacOption -}}
++    {{- printf "%s" $rbacOption -}}
+ {{- end -}}
+ {{- if and .Values.auth.client.secureTransport .Values.auth.client.useAutoTLS -}}
+-{{- printf "%s" $autoCertsOption -}}
++    {{- printf "%s" $autoCertsOption -}}
+ {{- else if and .Values.auth.client.secureTransport (not .Values.auth.client.useAutoTLS) -}}
+-{{- printf "%s" $certsOption -}}
+-{{- if .Values.auth.client.enableAuthentication -}}
+-{{- printf "%s" $caOption -}}
+-{{- end -}}
++    {{- printf "%s" $certsOption -}}
++    {{- if .Values.auth.client.enableAuthentication -}}
++        {{- printf "%s" $caOption -}}
++    {{- end -}}
+ {{- end -}}
+ {{- end -}}
+ 
+ {{/*
+-Return the etcd env vars ConfigMap name
++Return the etcd configuration configmap
+ */}}
+-{{- define "etcd.envVarsCM" -}}
+-{{- printf "%s" .Values.envVarsConfigMap -}}
++{{- define "etcd.configmapName" -}}
++{{- if .Values.existingConfigmap -}}
++    {{- printf "%s" (tpl .Values.existingConfigmap $) -}}
++{{- else -}}
++    {{- printf "%s-configuration" (include "common.names.fullname" .) -}}
++{{- end -}}
+ {{- end -}}
+ 
+ {{/*
+-Return the etcd env vars ConfigMap name
++Return true if a configmap object should be created
+ */}}
+-{{- define "etcd.configFileCM" -}}
+-{{- printf "%s" .Values.configFileConfigMap -}}
++{{- define "etcd.createConfigmap" -}}
++{{- if and .Values.configuration (not .Values.existingConfigmap) }}
++    {{- true -}}
++{{- end -}}
+ {{- end -}}
+ 
+ {{/*
+-Return the proper Docker Image Registry Secret Names
++Return the secret with etcd credentials
+ */}}
+-{{- define "etcd.imagePullSecrets" -}}
++{{- define "etcd.secretName" -}}
++    {{- if .Values.auth.rbac.existingSecret -}}
++        {{- printf "%s" .Values.auth.rbac.existingSecret -}}
++    {{- else -}}
++        {{- printf "%s" (include "common.names.fullname" .) -}}
++    {{- end -}}
++{{- end -}}
++
+ {{/*
+-Helm 2.11 supports the assignment of a value to a variable defined in a different scope,
+-but Helm 2.9 and 2.10 does not support it, so we need to implement this if-else logic.
+-Also, we can not use a single if because lazy evaluation is not an option
++Return the proper Disaster Recovery PVC name
+ */}}
+-{{- if .Values.global }}
+-{{- if .Values.global.imagePullSecrets }}
+-imagePullSecrets:
+-{{- range .Values.global.imagePullSecrets }}
+-  - name: {{ . }}
+-{{- end }}
+-{{- else if or .Values.image.pullSecrets .Values.volumePermissions.image.pullSecrets }}
+-imagePullSecrets:
+-{{- range .Values.image.pullSecrets }}
+-  - name: {{ . }}
+-{{- end }}
+-{{- range .Values.volumePermissions.image.pullSecrets }}
+-  - name: {{ . }}
+-{{- end }}
+-{{- end -}}
+-{{- else if or .Values.image.pullSecrets .Values.volumePermissions.image.pullSecrets }}
+-imagePullSecrets:
+-{{- range .Values.image.pullSecrets }}
+-  - name: {{ . }}
+-{{- end }}
+-{{- range .Values.volumePermissions.image.pullSecrets }}
+-  - name: {{ . }}
+-{{- end }}
++{{- define "etcd.disasterRecovery.pvc.name" -}}
++{{- if .Values.disasterRecovery.pvc.existingClaim -}}
++    {{- printf "%s" (tpl .Values.disasterRecovery.pvc.existingClaim $) -}}
++{{- else if .Values.startFromSnapshot.existingClaim -}}
++    {{- printf "%s" (tpl .Values.startFromSnapshot.existingClaim $) -}}
++{{- else -}}
++    {{- printf "%s-snapshotter" (include "common.names.fullname" .) }}
+ {{- end -}}
+ {{- end -}}
+ 
+@@ -220,74 +150,3 @@ etcd: disasterRecovery
+     Please enable persistence (--set persistence.enabled=true)
+ {{- end -}}
+ {{- end -}}
+-
+-{{/*
+-Return the proper image name (for the init container volume-permissions image)
+-*/}}
+-{{- define "etcd.volumePermissions.image" -}}
+-{{- $registryName := .Values.volumePermissions.image.registry -}}
+-{{- $repositoryName := .Values.volumePermissions.image.repository -}}
+-{{- $tag := .Values.volumePermissions.image.tag | toString -}}
+-{{/*
+-Helm 2.11 supports the assignment of a value to a variable defined in a different scope,
+-but Helm 2.9 and 2.10 doesn't support it, so we need to implement this if-else logic.
+-Also, we can't use a single if because lazy evaluation is not an option
+-*/}}
+-{{- if .Values.global }}
+-    {{- if .Values.global.imageRegistry }}
+-        {{- printf "%s/%s:%s" .Values.global.imageRegistry $repositoryName $tag -}}
+-    {{- else -}}
+-        {{- printf "%s/%s:%s" $registryName $repositoryName $tag -}}
+-    {{- end -}}
+-{{- else -}}
+-    {{- printf "%s/%s:%s" $registryName $repositoryName $tag -}}
+-{{- end -}}
+-{{- end -}}
+-
+-{{/*
+-Return the proper Storage Class
+-*/}}
+-{{- define "etcd.storageClass" -}}
+-{{/*
+-Helm 2.11 supports the assignment of a value to a variable defined in a different scope,
+-but Helm 2.9 and 2.10 does not support it, so we need to implement this if-else logic.
+-*/}}
+-{{- if .Values.global -}}
+-    {{- if .Values.global.storageClass -}}
+-        {{- if (eq "-" .Values.global.storageClass) -}}
+-            {{- printf "storageClassName: \"\"" -}}
+-        {{- else }}
+-            {{- printf "storageClassName: %s" .Values.global.storageClass -}}
+-        {{- end -}}
+-    {{- else -}}
+-        {{- if .Values.persistence.storageClass -}}
+-              {{- if (eq "-" .Values.persistence.storageClass) -}}
+-                  {{- printf "storageClassName: \"\"" -}}
+-              {{- else }}
+-                  {{- printf "storageClassName: %s" .Values.persistence.storageClass -}}
+-              {{- end -}}
+-        {{- end -}}
+-    {{- end -}}
+-{{- else -}}
+-    {{- if .Values.persistence.storageClass -}}
+-        {{- if (eq "-" .Values.persistence.storageClass) -}}
+-            {{- printf "storageClassName: \"\"" -}}
+-        {{- else }}
+-            {{- printf "storageClassName: %s" .Values.persistence.storageClass -}}
+-        {{- end -}}
+-    {{- end -}}
+-{{- end -}}
+-{{- end -}}
+-
+-{{/*
+-Renders a value that contains template.
+-Usage:
+-{{ include "etcd.tplValue" ( dict "value" .Values.path.to.the.Value "context" $) }}
+-*/}}
+-{{- define "etcd.tplValue" -}}
+-    {{- if typeIs "string" .value }}
+-        {{- tpl .value .context }}
+-    {{- else }}
+-        {{- tpl (.value | toYaml) .context }}
+-    {{- end }}
+-{{- end -}}
+diff --git a/bitnami/etcd/templates/configmap.yaml b/bitnami/etcd/templates/configmap.yaml
+new file mode 100644
+index 0000000000..9700cfa7c7
+--- /dev/null
++++ b/bitnami/etcd/templates/configmap.yaml
+@@ -0,0 +1,17 @@
++{{- if (include "etcd.createConfigmap" .) }}
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  name: {{ printf "%s-configuration" (include "common.names.fullname" .) -}}
++  namespace: {{ .Release.Namespace }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
++data:
++  etcd.conf.yml: |-
++    {{- include "common.tplvalues.render" ( dict "value" .Values.configuration "context" $ ) | nindent 4 }}
++{{- end }}
+diff --git a/bitnami/etcd/templates/cronjob.yaml b/bitnami/etcd/templates/cronjob.yaml
+index c923226ec6..3bcec34367 100644
+--- a/bitnami/etcd/templates/cronjob.yaml
++++ b/bitnami/etcd/templates/cronjob.yaml
+@@ -2,8 +2,15 @@
+ apiVersion: batch/v1beta1
+ kind: CronJob
+ metadata:
+-  name: {{ include "etcd.fullname" . }}-snapshotter
+-  labels: {{- include "etcd.labels" . | nindent 4 }}
++  name: {{ printf "%s-snapshotter" (include "common.names.fullname" .) }}
++  namespace: {{ .Release.Namespace }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ spec:
+   concurrencyPolicy: Forbid
+   schedule: {{ .Values.disasterRecovery.cronjob.schedule | quote }}
+@@ -12,31 +19,40 @@ spec:
+     spec:
+       template:
+         metadata:
+-          labels: {{- include "etcd.labels" . | nindent 12 }}
++          labels: {{- include "common.labels.standard" . | nindent 12 }}
+             app.kubernetes.io/component: snapshotter
+           {{- if .Values.disasterRecovery.cronjob.podAnnotations }}
+-          annotations: {{- include "etcd.tplValue" ( dict "value" .Values.disasterRecovery.cronjob.podAnnotations "context" $) | nindent 12 }}
++          annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.disasterRecovery.cronjob.podAnnotations "context" $) | nindent 12 }}
+           {{- end }}
+         spec:
+           restartPolicy: OnFailure
+-          {{- if .Values.securityContext.enabled }}
+-          securityContext:
+-            fsGroup: {{ .Values.securityContext.fsGroup }}
+-            runAsUser: {{ .Values.securityContext.runAsUser }}
++          {{- if .Values.podSecurityContext.enabled }}
++          securityContext: {{- omit .Values.podSecurityContext "enabled" | toYaml | nindent 12 }}
+           {{- end }}
+           containers:
+             - name: etcd-snapshotter
+               image: {{ include "etcd.image" . }}
+               imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
++              {{- if .Values.containerSecurityContext.enabled }}
++              securityContext: {{- omit .Values.containerSecurityContext "enabled" | toYaml | nindent 16 }}
++              {{- end }}
+               command:
+-                - /scripts/save-snapshot.sh
++                - /opt/bitnami/scripts/etcd/snapshot.sh
+               env:
+-              - name: BITNAMI_SNAPSHOT_DEBUG
+-                value: {{ ternary "true" "false" .Values.disasterRecovery.debug | quote }}
+               - name: BITNAMI_DEBUG
+                 value: {{ ternary "true" "false" .Values.image.debug | quote }}
+               - name: ETCDCTL_API
+                 value: "3"
++              - name: ETCD_ON_K8S
++                value: "yes"
++              {{- $releaseNamespace := .Release.Namespace }}
++              {{- $etcdFullname := include "common.names.fullname" . }}
++              {{- $etcdHeadlessServiceName := printf "%s-%s" $etcdFullname "headless" }}
++              {{- $clusterDomain := .Values.clusterDomain }}
++              - name: ETCD_CLUSTER_DOMAIN
++                value: {{ printf "%s.%s.svc.%s" $etcdHeadlessServiceName $releaseNamespace $clusterDomain | quote }}
++              - name: ETCD_SNAPSHOT_HISTORY_LIMIT
++                value: {{ .Values.disasterRecovery.cronjob.snapshotHistoryLimit | quote }}
+               {{- if .Values.auth.client.secureTransport }}
+               - name: ETCD_CERT_FILE
+                 value: "/opt/bitnami/etcd/certs/client/{{ .Values.auth.client.certFilename }}"
+@@ -56,16 +72,13 @@ spec:
+               - name: ETCD_ROOT_PASSWORD
+                 valueFrom:
+                   secretKeyRef:
+-                    name: {{ if .Values.auth.rbac.existingSecret }}{{ .Values.auth.rbac.existingSecret }}{{ else }}{{ include "etcd.fullname" . }}{{ end }}
++                    name: {{ include "etcd.secretName" . }}
+                     key: etcd-root-password
+               {{- end }}
+               {{- if .Values.disasterRecovery.cronjob.resources }}
+               resources: {{- toYaml .Values.disasterRecovery.cronjob.resources | nindent 16 }}
+               {{- end }}
+               volumeMounts:
+-                - name: scripts
+-                  mountPath: /scripts/save-snapshot.sh
+-                  subPath: save-snapshot.sh
+                 - name: snapshot-volume
+                   mountPath: /snapshots
+                 {{- if .Values.auth.client.secureTransport }}
+@@ -80,10 +93,6 @@ spec:
+                 secretName: {{ required "A secret containinig the client certificates is required" .Values.auth.client.existingSecret }}
+                 defaultMode: 256
+             {{- end }}
+-            - name: scripts
+-              configMap:
+-                name: {{ include "etcd.fullname" . }}-scripts
+-                defaultMode: 0755
+             - name: snapshot-volume
+               persistentVolumeClaim:
+                 claimName: {{ include "etcd.disasterRecovery.pvc.name" . }}
+diff --git a/bitnami/etcd/templates/extra-list.yaml b/bitnami/etcd/templates/extra-list.yaml
+new file mode 100644
+index 0000000000..9ac65f9e16
+--- /dev/null
++++ b/bitnami/etcd/templates/extra-list.yaml
+@@ -0,0 +1,4 @@
++{{- range .Values.extraDeploy }}
++---
++{{ include "common.tplvalues.render" (dict "value" . "context" $) }}
++{{- end }}
+diff --git a/bitnami/etcd/templates/pdb.yaml b/bitnami/etcd/templates/pdb.yaml
+index 245f851188..278370eee6 100644
+--- a/bitnami/etcd/templates/pdb.yaml
++++ b/bitnami/etcd/templates/pdb.yaml
+@@ -1,9 +1,16 @@
+-{{- if .Values.pdb.enabled }}
++{{- if .Values.pdb.create }}
+ apiVersion: policy/v1beta1
+ kind: PodDisruptionBudget
+ metadata:
+-  name: {{ template "etcd.fullname" . }}
+-  labels: {{- include "etcd.labels" . | nindent 4 }}
++  name: {{ include "common.names.fullname" . }}
++  namespace: {{ .Release.Namespace }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ spec:
+   {{- if .Values.pdb.minAvailable }}
+   minAvailable: {{ .Values.pdb.minAvailable }}
+@@ -12,5 +19,5 @@ spec:
+   maxUnavailable: {{ .Values.pdb.maxUnavailable }}
+   {{- end }}
+   selector:
+-    matchLabels: {{- include "etcd.matchLabels" . | nindent 6 }}
++    matchLabels: {{- include "common.labels.matchLabels" . | nindent 6 }}
+ {{- end }}
+diff --git a/bitnami/etcd/templates/podmonitor.yaml b/bitnami/etcd/templates/podmonitor.yaml
+new file mode 100644
+index 0000000000..38edee1587
+--- /dev/null
++++ b/bitnami/etcd/templates/podmonitor.yaml
+@@ -0,0 +1,38 @@
++{{- if and .Values.metrics.enabled .Values.metrics.podMonitor.enabled }}
++apiVersion: monitoring.coreos.com/v1
++kind: PodMonitor
++metadata:
++  name: {{ include "common.names.fullname" . }}
++  namespace: {{ ternary .Values.metrics.podMonitor.namespace .Release.Namespace (not (empty .Values.metrics.podMonitor.namespace)) }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++    {{- if .Values.metrics.podMonitor.additionalLabels }}
++    {{- include "common.tplvalues.render" (dict "value" .Values.metrics.podMonitor.additionalLabels "context" $) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
++spec:
++  podMetricsEndpoints:
++    - port: client
++      path: /metrics
++      {{- if .Values.metrics.podMonitor.interval }}
++      interval: {{ .Values.metrics.podMonitor.interval }}
++      {{- end }}
++      {{- if .Values.metrics.podMonitor.scrapeTimeout }}
++      scrapeTimeout: {{ .Values.metrics.podMonitor.scrapeTimeout }}
++      {{- end }}
++      {{- if .Values.metrics.podMonitor.scheme }}
++      scheme: {{ .Values.metrics.podMonitor.scheme }}
++      {{- end }}
++      {{- if .Values.metrics.podMonitor.tlsConfig }}
++      tlsConfig: {{- include "common.tplvalues.render" ( dict "value" .Values.metrics.podMonitor.tlsConfig "context" $ ) | nindent 8 }}
++      {{- end }}
++  namespaceSelector:
++    matchNames:
++      - {{ .Release.Namespace }}
++  selector:
++    matchLabels: {{- include "common.labels.matchLabels" . | nindent 6 }}
++{{- end }}
+diff --git a/bitnami/etcd/templates/scripts-configmap.yaml b/bitnami/etcd/templates/scripts-configmap.yaml
+deleted file mode 100644
+index 2fb8f26396..0000000000
+--- a/bitnami/etcd/templates/scripts-configmap.yaml
++++ /dev/null
+@@ -1,294 +0,0 @@
+-{{- $replicaCount := int .Values.statefulset.replicaCount }}
+-{{- $clientPort := int .Values.service.port }}
+-{{- $peerPort := int .Values.service.peerPort }}
+-{{- $etcdAuthOptions := include "etcd.authOptions" . }}
+-{{- $etcdFullname := include "etcd.fullname" . }}
+-{{- $releaseNamespace := .Release.Namespace }}
+-{{- $etcdHeadlessServiceName := printf "%s-%s" $etcdFullname "headless" }}
+-{{- $clusterDomain := .Values.clusterDomain }}
+-{{- $etcdPeerProtocol := include "etcd.peerProtocol" . }}
+-{{- $etcdClientProtocol := include "etcd.clientProtocol" . }}
+-{{- $initSnapshotPath := printf "/init-snapshot/%s" .Values.startFromSnapshot.snapshotFilename }}
+-{{- if and .Values.disasterRecovery.enabled .Values.startFromSnapshot.enabled (not .Values.disasterRecovery.pvc.existingClaim) }}
+-{{- $initSnapshotPath = printf "/snapshots/%s" .Values.startFromSnapshot.snapshotFilename }}
+-{{- end }}
+-{{- $snapshotHistoryLimit := .Values.disasterRecovery.cronjob.snapshotHistoryLimit }}
+-{{- $endpoints := list }}
+-{{- range $e, $i := until $replicaCount }}
+-{{- $endpoints = append $endpoints (printf "%s-%d.%s.%s.svc.%s:%d" $etcdFullname $i $etcdHeadlessServiceName $releaseNamespace $clusterDomain $clientPort) }}
+-{{- end }}
+-apiVersion: v1
+-kind: ConfigMap
+-metadata:
+-  name: {{ include "etcd.fullname" . }}-scripts
+-  labels: {{- include "etcd.labels" . | nindent 4 }}
+-data:
+-  setup.sh: |-
+-    #!/bin/bash
+-
+-    set -o errexit
+-    set -o pipefail
+-    set -o nounset
+-
+-    # Debug section
+-    exec 3>&1
+-    exec 4>&2
+-
+-    if [[ "${BITNAMI_DEBUG:-false}" = true ]]; then
+-        echo "==> Bash debug is on"
+-    else
+-        echo "==> Bash debug is off"
+-        exec 1>/dev/null
+-        exec 2>/dev/null
+-    fi
+-
+-    # Constants
+-    HOSTNAME="$(hostname -s)"
+-    AUTH_OPTIONS={{ $etcdAuthOptions | quote }}
+-    export ETCDCTL_ENDPOINTS={{ join "," $endpoints | quote }}
+-    export ROOT_PASSWORD="${ETCD_ROOT_PASSWORD:-}"
+-    if [[ -n "${ETCD_ROOT_PASSWORD:-}" ]]; then
+-      unset ETCD_ROOT_PASSWORD
+-    fi
+-    # Functions
+-    ## Store member id for later member replacement
+-    store_member_id() {
+-        while ! etcdctl $AUTH_OPTIONS member list; do sleep 1; done
+-        etcdctl $AUTH_OPTIONS member list | grep -w "$HOSTNAME" | awk '{ print $1}' | awk -F "," '{ print $1}' > "$ETCD_DATA_DIR/member_id"
+-        echo "==> Stored member id: $(cat ${ETCD_DATA_DIR}/member_id)" 1>&3 2>&4
+-        exit 0
+-    }
+-    ## Configure RBAC
+-    configure_rbac() {
+-        # When there's more than one replica, we can assume the 1st member
+-        # to be created is "{{ $etcdFullname }}-0" since a statefulset is used
+-        if [[ -n "${ROOT_PASSWORD:-}" ]] && [[ "$HOSTNAME" == "{{ $etcdFullname }}-0" ]]; then
+-            echo "==> Configuring RBAC authentication!" 1>&3 2>&4
+-            etcd &
+-            ETCD_PID=$!
+-            while ! etcdctl $AUTH_OPTIONS member list; do sleep 1; done
+-            echo "$ROOT_PASSWORD" | etcdctl $AUTH_OPTIONS user add root --interactive=false
+-            etcdctl $AUTH_OPTIONS auth enable
+-            kill "$ETCD_PID"
+-            sleep 5
+-        fi
+-    }
+-    ## Checks whether there was a disaster or not
+-    is_disastrous_failure() {
+-        local endpoints_array=(${ETCDCTL_ENDPOINTS//,/ })
+-        local active_endpoints=0
+-        local -r min_endpoints=$((({{ $replicaCount }} + 1)/2))
+-
+-        for e in "${endpoints_array[@]}"; do
+-            if [[ "$e" != "$ETCD_ADVERTISE_CLIENT_URLS" ]] && (unset -v ETCDCTL_ENDPOINTS; etcdctl $AUTH_OPTIONS  endpoint health --endpoints="$e"); then
+-                active_endpoints=$((active_endpoints + 1))
+-            fi
+-        done
+-{{- if .Values.disasterRecovery.enabled }}
+-        if [[ -f "/snapshots/.disaster_recovery" ]]; then
+-            if [[ $active_endpoints -eq $(({{ $replicaCount }} - 1)) ]]; then
+-                echo "==> I'm the last to recover from the disaster!" 1>&3 2>&4
+-                rm "/snapshots/.disaster_recovery" 1>&3 2>&4
+-            fi
+-            true
+-        else
+-            if [[ $active_endpoints -lt $min_endpoints ]]; then
+-                touch "/snapshots/.disaster_recovery" 1>&3 2>&4
+-                true
+-            else
+-                false
+-            fi
+-        fi
+-{{- else }}
+-        if [[ $active_endpoints -lt $min_endpoints ]]; then
+-            true
+-        else
+-            false
+-        fi
+-{{- end }}
+-    }
+-
+-    ## Check whether the member was successfully removed from the cluster
+-    should_add_new_member() {
+-        return_value=0
+-        if (grep -E "^Member[[:space:]]+[a-z0-9]+\s+removed\s+from\s+cluster\s+[a-z0-9]+$" "$(dirname "$ETCD_DATA_DIR")/member_removal.log") || \
+-           ! ([[ -d "$ETCD_DATA_DIR/member/snap" ]] && [[ -f "$ETCD_DATA_DIR/member_id" ]]); then
+-            rm -rf $ETCD_DATA_DIR/* 1>&3 2>&4
+-        else
+-            return_value=1
+-        fi
+-        rm -f "$(dirname "$ETCD_DATA_DIR")/member_removal.log" 1>&3 2>&4
+-        return $return_value
+-    }
+-
+-    if [[ ! -d "$ETCD_DATA_DIR" ]]; then
+-        echo "==> Creating data dir..." 1>&3 2>&4
+-        echo "==> There is no data at all. Initializing a new member of the cluster..." 1>&3 2>&4
+-{{- if .Values.startFromSnapshot.enabled }}
+-        if [[ -f "{{ $initSnapshotPath }}" ]]; then
+-            echo "==> Initializing member by restoring etcd cluster from snapshot..." 1>&3 2>&4
+-            etcdctl snapshot restore {{ $initSnapshotPath }} \
+-            {{- if gt $replicaCount 1 }}
+-              --name $ETCD_NAME \
+-              --initial-cluster $ETCD_INITIAL_CLUSTER \
+-              --initial-cluster-token $ETCD_INITIAL_CLUSTER_TOKEN \
+-              --initial-advertise-peer-urls $ETCD_INITIAL_ADVERTISE_PEER_URLS \
+-            {{- end }}
+-              --data-dir $ETCD_DATA_DIR 1>&3 2>&4
+-            store_member_id & 1>&3 2>&4
+-        else
+-            echo "==> There was no snapshot to perform data recovery!!" 1>&3 2>&4
+-            exit 1
+-        fi
+-{{- else }}
+-        store_member_id & 1>&3 2>&4
+-        configure_rbac
+-{{- end }}
+-    else
+-        echo "==> Detected data from previous deployments..." 1>&3 2>&4
+-        if [[ $(stat -c "%a" "$ETCD_DATA_DIR") != *700 ]]; then
+-            echo "==> Setting data directory permissions to 700 in a recursive way (required in etcd >=3.4.10)" 1>&3 2>&4
+-            chmod -R 700 $ETCD_DATA_DIR
+-        else
+-            echo "==> The data directory is already configured with the proper permissions" 1>&3 2>&4
+-        fi
+-        if [[ {{ $replicaCount }} -eq 1 ]]; then
+-            echo "==> Single node cluster detected!!" 1>&3 2>&4
+-        elif is_disastrous_failure; then
+-            echo "==> Cluster not responding!!" 1>&3 2>&4
+-{{- if .Values.disasterRecovery.enabled }}
+-            latest_snapshot_file="$(find /snapshots/ -maxdepth 1 -type f -name 'db-*' | sort | tail -n 1)"
+-            if [[ "${latest_snapshot_file}" != "" ]]; then
+-                echo "==> Restoring etcd cluster from snapshot..." 1>&3 2>&4
+-
+-                rm -rf $ETCD_DATA_DIR 1>&3 2>&4
+-                etcdctl snapshot restore "${latest_snapshot_file}" \
+-                  --name $ETCD_NAME \
+-                  --data-dir $ETCD_DATA_DIR \
+-                  --initial-cluster $ETCD_INITIAL_CLUSTER \
+-                  --initial-cluster-token $ETCD_INITIAL_CLUSTER_TOKEN \
+-                  --initial-advertise-peer-urls $ETCD_INITIAL_ADVERTISE_PEER_URLS 1>&3 2>&4
+-                store_member_id & 1>&3 2>&4
+-            else
+-                echo "==> There was no snapshot to perform data recovery!!" 1>&3 2>&4
+-                exit 1
+-            fi
+-{{- else }}
+-            echo "==> Disaster recovery is disabled, the cluster will try to recover on it's own..." 1>&3 2>&4
+-{{- end }}
+-        elif should_add_new_member; then
+-            echo "==> Adding new member to existing cluster..." 1>&3 2>&4
+-            etcdctl $AUTH_OPTIONS member add "$HOSTNAME" --peer-urls="{{ $etcdPeerProtocol }}://${HOSTNAME}.{{ $etcdHeadlessServiceName }}.{{ .Release.Namespace }}.svc.{{ $clusterDomain }}:{{ $peerPort }}" | grep "^ETCD_" > "$ETCD_DATA_DIR/new_member_envs"
+-            sed -ie "s/^/export /" "$ETCD_DATA_DIR/new_member_envs"
+-            echo "==> Loading env vars of existing cluster..." 1>&3 2>&4
+-            source "$ETCD_DATA_DIR/new_member_envs" 1>&3 2>&4
+-            store_member_id & 1>&3 2>&4
+-        else
+-            echo "==> Updating member in existing cluster..." 1>&3 2>&4
+-            etcdctl $AUTH_OPTIONS member update "$(cat "$ETCD_DATA_DIR/member_id")" --peer-urls="{{ $etcdPeerProtocol }}://${HOSTNAME}.{{ $etcdHeadlessServiceName }}.{{ .Release.Namespace }}.svc.{{ $clusterDomain }}:{{ $peerPort }}" 1>&3 2>&4
+-        fi
+-    fi
+-
+-    {{- if .Values.configFileConfigMap }}
+-    exec etcd --config-file /opt/bitnami/etcd/conf/etcd.conf.yml 1>&3 2>&4
+-    {{- else }}
+-    exec etcd 1>&3 2>&4
+-    {{- end }}
+-  prestop-hook.sh: |-
+-    #!/bin/bash
+-
+-    set -o errexit
+-    set -o pipefail
+-    set -o nounset
+-
+-    # Debug section
+-    exec 3>&1
+-    exec 4>&2
+-
+-    if [[ "${BITNAMI_DEBUG:-false}" = true ]]; then
+-      echo "==> Bash debug is on"
+-    else
+-      echo "==> Bash debug is off"
+-      exec 1>/dev/null
+-      exec 2>/dev/null
+-    fi
+-
+-    # Constants
+-    AUTH_OPTIONS={{ $etcdAuthOptions | quote }}
+-    export ETCDCTL_ENDPOINTS={{ join "," $endpoints | quote }}
+-
+-    etcdctl $AUTH_OPTIONS member remove --debug=true "$(cat "$ETCD_DATA_DIR/member_id")" > "$(dirname "$ETCD_DATA_DIR")/member_removal.log" 2>&1
+-  probes.sh: |-
+-    #!/bin/bash
+-
+-    set -o errexit
+-    set -o pipefail
+-    set -o nounset
+-
+-    # Debug section
+-    exec 3>&1
+-    exec 4>&2
+-
+-    if [[ "${BITNAMI_DEBUG:-false}" = true ]]; then
+-        echo "==> Bash debug is on"
+-    else
+-        echo "==> Bash debug is off"
+-        exec 1>/dev/null
+-        exec 2>/dev/null
+-    fi
+-
+-    # Constants
+-    AUTH_OPTIONS={{ $etcdAuthOptions | quote }}
+-
+-    echo "==> [DEBUG] Probing etcd cluster"
+-    echo "==> [DEBUG] Probe command: \"etcdctl $AUTH_OPTIONS endpoint health\""
+-    etcdctl $AUTH_OPTIONS endpoint health
+-{{- if .Values.disasterRecovery.enabled }}
+-  save-snapshot.sh: |-
+-    #!/bin/bash
+-
+-    set -o errexit
+-    set -o pipefail
+-    set -o nounset
+-
+-    # Debug section
+-    exec 3>&1
+-    exec 4>&2
+-
+-    if [[ "${BITNAMI_SNAPSHOT_DEBUG:-false}" = true ]] || [[ "${BITNAMI_DEBUG:-false}" = true ]]; then
+-        echo "==> Bash debug is on"
+-        set -x
+-    else
+-        echo "==> Bash debug is off"
+-        exec 1>/dev/null
+-        exec 2>/dev/null
+-    fi
+-
+-    # Constants
+-    AUTH_OPTIONS={{ $etcdAuthOptions | quote }}
+-    export ETCDCTL_ENDPOINTS={{ join "," $endpoints | quote }}
+-
+-    mkdir -p "/snapshots" 1>&3 2>&4
+-
+-    read -r -a endpoints <<< "$(tr ',;' ' ' <<< "$ETCDCTL_ENDPOINTS")"
+-    for endp in "${endpoints[@]}"; do
+-        echo "Using endpoint $endp" 1>&3 2>&4
+-        if (unset -v ETCDCTL_ENDPOINTS; etcdctl $AUTH_OPTIONS endpoint health --endpoints=${endp}); then
+-            echo "Snapshotting the keyspace..." 1>&3 2>&4
+-            current_time="$(date -u "+%Y-%m-%d_%H-%M")"
+-            unset -v ETCDCTL_ENDPOINTS; etcdctl $AUTH_OPTIONS snapshot save "/snapshots/db-${current_time}" --endpoints=${endp} 1>&3 2>&4
+-            find /snapshots/ -maxdepth 1 -type f -name 'db-*' \! -name "db-${current_time}" \
+-                | sort -r \
+-                | tail -n+$((1 + {{ $snapshotHistoryLimit }})) \
+-                | xargs rm -f 1>&3 2>&4
+-            exit 0
+-        else
+-            echo "Warning - etcd endpoint ${ETCDCTL_ENDPOINTS} not healthy" 1>&3 2>&4
+-            echo "Trying another endpoint." 1>&3 2>&4
+-        fi
+-    done
+-
+-    # exit with error if all endpoints are bad
+-    echo "Error - all etcd endpoints are unhealthy!" 1>&3 2>&4
+-    exit 1
+-{{- end }}
+diff --git a/bitnami/etcd/templates/secrets.yaml b/bitnami/etcd/templates/secrets.yaml
+index d06f2ec489..92e592d021 100644
+--- a/bitnami/etcd/templates/secrets.yaml
++++ b/bitnami/etcd/templates/secrets.yaml
+@@ -2,8 +2,15 @@
+ apiVersion: v1
+ kind: Secret
+ metadata:
+-  name: {{ include "etcd.fullname" . }}
+-  labels: {{- include "etcd.labels" . | nindent 4 }}
++  name: {{ include "common.names.fullname" . }}
++  namespace: {{ .Release.Namespace }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ type: Opaque
+ data:
+   {{- if .Values.auth.rbac.rootPassword }}
+diff --git a/bitnami/etcd/templates/servicemonitor.yaml b/bitnami/etcd/templates/servicemonitor.yaml
+deleted file mode 100644
+index caf5ebe33c..0000000000
+--- a/bitnami/etcd/templates/servicemonitor.yaml
++++ /dev/null
+@@ -1,40 +0,0 @@
+-{{- if and .Values.metrics.enabled .Values.metrics.serviceMonitor.enabled }}
+-apiVersion: monitoring.coreos.com/v1
+-kind: ServiceMonitor
+-metadata:
+-  name: {{ include "etcd.fullname" . }}
+-  {{- if .Values.metrics.serviceMonitor.namespace }}
+-  namespace: {{ .Values.metrics.serviceMonitor.namespace }}
+-  {{- end }}
+-  labels: {{- include "etcd.labels" . | nindent 4 }}
+-    {{- range $key, $value := .Values.metrics.serviceMonitor.selector }}
+-    {{ $key }}: {{ $value | quote }}
+-    {{- end }}
+-spec:
+-  selector:
+-    matchLabels: {{- include "etcd.matchLabels" . | nindent 6 }}
+-  endpoints:
+-    - port: client
+-      path: /metrics
+-      {{- if .Values.metrics.serviceMonitor.interval }}
+-      interval: {{ .Values.metrics.serviceMonitor.interval }}
+-      {{- end }}
+-      {{- if .Values.metrics.serviceMonitor.relabelings }}
+-      relabelings: {{- toYaml .Values.metrics.serviceMonitor.relabelings | nindent 8 }}
+-      {{- end }}
+-      {{- if .Values.metrics.serviceMonitor.metricRelabelings }}
+-      metricRelabelings: {{- toYaml .Values.metrics.serviceMonitor.metricRelabelings | nindent 8 }}
+-      {{- end }}
+-      {{- if .Values.metrics.serviceMonitor.scheme }}
+-      scheme: {{ .Values.metrics.serviceMonitor.scheme }}
+-      {{- end }}
+-      {{- if .Values.metrics.serviceMonitor.scrapeTimeout }}
+-      scrapeTimeout: {{ .Values.metrics.serviceMonitor.scrapeTimeout }}
+-      {{- end }}
+-      {{- if .Values.metrics.serviceMonitor.tlsConfig }}
+-      tlsConfig: {{- toYaml .Values.metrics.serviceMonitor.tlsConfig | nindent 8 }}
+-      {{- end }}
+-  namespaceSelector:
+-    matchNames:
+-      - {{ .Release.Namespace }}
+-{{- end }}
+diff --git a/bitnami/etcd/templates/snapshot-pvc.yaml b/bitnami/etcd/templates/snapshot-pvc.yaml
+index 127e9e5e8d..d5615776ce 100644
+--- a/bitnami/etcd/templates/snapshot-pvc.yaml
++++ b/bitnami/etcd/templates/snapshot-pvc.yaml
+@@ -2,8 +2,15 @@
+ kind: PersistentVolumeClaim
+ apiVersion: v1
+ metadata:
+-  name: {{ include "etcd.fullname" . }}-snapshotter
+-  labels: {{- include "etcd.labels" . | nindent 4 }}
++  name: {{ printf "%s-snapshotter" (include "common.names.fullname" .) }}
++  namespace: {{ .Release.Namespace }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ spec:
+   accessModes:
+     - ReadWriteMany
+diff --git a/bitnami/etcd/templates/statefulset.yaml b/bitnami/etcd/templates/statefulset.yaml
+index a798708051..9a0b508ed2 100644
+--- a/bitnami/etcd/templates/statefulset.yaml
++++ b/bitnami/etcd/templates/statefulset.yaml
+@@ -1,47 +1,42 @@
+-apiVersion: apps/v1
++apiVersion: {{ include "common.capabilities.statefulset.apiVersion" . }}
+ kind: StatefulSet
+ metadata:
+-  name: {{ include "etcd.fullname" . }}
+-  labels: {{- include "etcd.labels" . | nindent 4 }}
+-    {{- if .Values.statefulsetLabels }}
+-    {{- include "common.tplvalues.render" (dict "value" .Values.statefulsetLabels "context" $) | nindent 4 }}
++  name: {{ include "common.names.fullname" . }}
++  namespace: {{ .Release.Namespace }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
+     {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ spec:
++  replicas: {{ .Values.replicaCount }}
+   selector:
+-    matchLabels: {{- include "etcd.matchLabels" . | nindent 6 }}
+-  serviceName: {{ include "etcd.fullname" . }}-headless
+-  podManagementPolicy: {{ .Values.statefulset.podManagementPolicy }}
+-  replicas: {{ .Values.statefulset.replicaCount }}
+-  updateStrategy:
+-    type: {{ .Values.statefulset.updateStrategy }}
+-    {{- if (eq "Recreate" .Values.statefulset.updateStrategy) }}
+-    rollingUpdate: null
+-    {{- else if .Values.statefulset.rollingUpdatePartition }}
+-    rollingUpdate:
+-      partition: {{ .Values.statefulset.rollingUpdatePartition }}
+-    {{- end }}
++    matchLabels: {{- include "common.labels.matchLabels" . | nindent 6 }}
++  serviceName: {{ printf "%s-headless" (include "common.names.fullname" .) }}
++  podManagementPolicy: {{ .Values.podManagementPolicy }}
++  updateStrategy: {{- include "common.tplvalues.render" (dict "value" .Values.updateStrategy "context" $ ) | nindent 4 }}
+   template:
+     metadata:
+-      labels: {{- include "etcd.labels" . | nindent 8 }}
++      labels: {{- include "common.labels.standard" . | nindent 8 }}
+         {{- if .Values.podLabels }}
+         {{- include "common.tplvalues.render" (dict "value" .Values.podLabels "context" $) | nindent 8 }}
+         {{- end }}
+-      {{- if or .Values.podAnnotations (and .Values.metrics.enabled .Values.metrics.podAnnotations (not .Values.metrics.serviceMonitor.enabled)) }}
+       annotations:
+         {{- if .Values.podAnnotations }}
+-        {{- include "etcd.tplValue" ( dict "value" .Values.podAnnotations "context" $) | nindent 8 }}
++        {{- include "common.tplvalues.render" ( dict "value" .Values.podAnnotations "context" $) | nindent 8 }}
+         {{- end }}
+-        {{- if and .Values.metrics.enabled .Values.metrics.podAnnotations (not .Values.metrics.serviceMonitor.enabled) }}
+-        {{- include "etcd.tplValue" ( dict "value" .Values.metrics.podAnnotations "context" $) | nindent 8 }}
++        {{- if and .Values.metrics.enabled .Values.metrics.podAnnotations }}
++        {{- include "common.tplvalues.render" ( dict "value" .Values.metrics.podAnnotations "context" $) | nindent 8 }}
+         {{- end }}
+-      {{- end }}
+     spec:
+       {{- include "etcd.imagePullSecrets" . | nindent 6 }}
+       {{- if .Values.hostAliases }}
+       hostAliases: {{- include "common.tplvalues.render" (dict "value" .Values.hostAliases "context" $) | nindent 8 }}
+       {{- end }}
+       {{- if .Values.affinity }}
+-      affinity: {{- include "etcd.tplValue" (dict "value" .Values.affinity "context" $) | nindent 8 }}
++      affinity: {{- include "common.tplvalues.render" (dict "value" .Values.affinity "context" $) | nindent 8 }}
+       {{- else }}
+       affinity:
+         podAffinity: {{- include "common.affinities.pods" (dict "type" .Values.podAffinityPreset "context" $) | nindent 10 }}
+@@ -49,21 +44,23 @@ spec:
+         nodeAffinity: {{- include "common.affinities.nodes" (dict "type" .Values.nodeAffinityPreset.type "key" .Values.nodeAffinityPreset.key "values" .Values.nodeAffinityPreset.values) | nindent 10 }}
+       {{- end }}
+       {{- if .Values.nodeSelector }}
+-      nodeSelector: {{- include "etcd.tplValue" (dict "value" .Values.nodeSelector "context" $) | nindent 8 }}
++      nodeSelector: {{- include "common.tplvalues.render" (dict "value" .Values.nodeSelector "context" $) | nindent 8 }}
+       {{- end }}
+       {{- if .Values.tolerations }}
+-      tolerations: {{- include "etcd.tplValue" (dict "value" .Values.tolerations "context" $) | nindent 8 }}
++      tolerations: {{- include "common.tplvalues.render" (dict "value" .Values.tolerations "context" $) | nindent 8 }}
+       {{- end }}
+       {{- if .Values.priorityClassName }}
+       priorityClassName: {{ .Values.priorityClassName }}
+       {{- end }}
+-      {{- if .Values.securityContext.enabled }}
+-      securityContext:
+-        fsGroup: {{ .Values.securityContext.fsGroup }}
+-        runAsUser: {{ .Values.securityContext.runAsUser }}
++      {{- if .Values.podSecurityContext.enabled }}
++      securityContext: {{- omit .Values.podSecurityContext "enabled" | toYaml | nindent 8 }}
+       {{- end }}
+-      {{- if and .Values.volumePermissions.enabled .Values.persistence.enabled }}
++      {{- if or .Values.initContainers (and .Values.volumePermissions.enabled .Values.persistence.enabled) }}
+       initContainers:
++        {{- if .Values.initContainers }}
++        {{- include "common.tplvalues.render" (dict "value" .Values.initContainers "context" $) | nindent 8 }}
++        {{- end }}
++        {{- if and .Values.volumePermissions.enabled .Values.persistence.enabled }}
+         - name: volume-permissions
+           image: {{ include "etcd.volumePermissions.image" . }}
+           imagePullPolicy: {{ .Values.volumePermissions.image.pullPolicy | quote }}
+@@ -71,22 +68,22 @@ spec:
+             - /bin/bash
+             - -ec
+             - |
+-              chown -R {{ .Values.securityContext.runAsUser }}:{{ .Values.securityContext.fsGroup }} /bitnami/etcd
++              chown -R {{ .Values.containerSecurityContext.runAsUser }}:{{ .Values.podSecurityContext.fsGroup }} /bitnami/etcd
+           securityContext:
+             runAsUser: 0
+           {{- if .Values.volumePermissions.resources }}
+-          resources: {{- toYaml .Values.volumePermissions.resources | nindent 12 }}
++          resources: {{- include "common.tplvalues.render" (dict "value" .Values.volumePermissions.resources "context" $) | nindent 12 }}
+           {{- end }}
+           volumeMounts:
+             - name: data
+               mountPath: /bitnami/etcd
++        {{- end }}
+       {{- end }}
+       containers:
+-        # Variables to populate static cluster
+-        {{- $replicaCount := int .Values.statefulset.replicaCount }}
++        {{- $replicaCount := int .Values.replicaCount }}
+         {{- $clientPort := int .Values.service.port }}
+         {{- $peerPort := int .Values.service.peerPort }}
+-        {{- $etcdFullname := include "etcd.fullname" . }}
++        {{- $etcdFullname := include "common.names.fullname" . }}
+         {{- $releaseNamespace := .Release.Namespace }}
+         {{- $etcdHeadlessServiceName := printf "%s-%s" $etcdFullname "headless" }}
+         {{- $clusterDomain := .Values.clusterDomain }}
+@@ -95,20 +92,23 @@ spec:
+         - name: etcd
+           image: {{ include "etcd.image" . }}
+           imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+-          command:
+-            - /scripts/setup.sh
++          {{- if .Values.lifecycleHooks }}
++          lifecycle: {{- include "common.tplvalues.render" (dict "value" .Values.lifecycleHooks "context" $) | nindent 12 }}
++          {{- else if and (gt $replicaCount 1) .Values.removeMemberOnContainerTermination }}
+           lifecycle:
+             preStop:
+               exec:
+                 command:
+-                  - /scripts/prestop-hook.sh
+-          {{- if .Values.resources }}
+-          resources: {{- toYaml .Values.resources | nindent 12 }}
++                  - /opt/bitnami/scripts/etcd/prestop.sh
+           {{- end }}
+-          {{- if .Values.envVarsConfigMap }}
+-          envFrom:
+-            - configMapRef:
+-                name: {{ include "etcd.envVarsCM" . }}
++          {{- if .Values.containerSecurityContext.enabled }}
++          securityContext: {{- omit .Values.containerSecurityContext "enabled" | toYaml | nindent 12 }}
++          {{- end }}
++          {{- if .Values.command }}
++          command: {{- include "common.tplvalues.render" (dict "value" .Values.command "context" $) | nindent 12 }}
++          {{- end }}
++          {{- if .Values.args }}
++          args: {{- include "common.tplvalues.render" (dict "value" .Values.args "context" $) | nindent 12 }}
+           {{- end }}
+           env:
+             - name: BITNAMI_DEBUG
+@@ -123,10 +123,27 @@ spec:
+                   fieldPath: metadata.name
+             - name: ETCDCTL_API
+               value: "3"
++            - name: ETCD_ON_K8S
++              value: "yes"
++            - name: ETCD_START_FROM_SNAPSHOT
++              value: {{ ternary "yes" "no" .Values.startFromSnapshot.enabled | quote }}
++            - name: ETCD_DISASTER_RECOVERY
++              value: {{ ternary "yes" "no" .Values.disasterRecovery.enabled | quote }}
+             - name: ETCD_NAME
+               value: "$(MY_POD_NAME)"
+             - name: ETCD_DATA_DIR
+-              value: /bitnami/etcd/data
++              value: "/bitnami/etcd/data"
++            - name: ETCD_LOG_LEVEL
++              value: {{ ternary "debug" "info" .Values.image.debug | quote }}
++            - name: ALLOW_NONE_AUTHENTICATION
++              value: {{ ternary "yes" "no" (and (not .Values.auth.rbac.enabled) .Values.auth.rbac.allowNoneAuthentication) | quote }}
++            {{- if .Values.auth.rbac.enabled }}
++            - name: ETCD_ROOT_PASSWORD
++              valueFrom:
++                secretKeyRef:
++                  name: {{ include "etcd.secretName" . }}
++                  key: etcd-root-password
++            {{- end }}
+             - name: ETCD_ADVERTISE_CLIENT_URLS
+               value: "{{ $etcdClientProtocol }}://$(MY_POD_NAME).{{ $etcdHeadlessServiceName }}.{{ .Release.Namespace }}.svc.{{ $clusterDomain }}:{{ .Values.service.port }}"
+             - name: ETCD_LISTEN_CLIENT_URLS
+@@ -143,28 +160,15 @@ spec:
+             - name: ETCD_INITIAL_CLUSTER_TOKEN
+               value: "etcd-cluster-k8s"
+             - name: ETCD_INITIAL_CLUSTER_STATE
+-            {{- if not (empty .Values.etcd.initialClusterState) }}
+-              value: {{ .Values.etcd.initialClusterState | quote }}
+-            {{- else if .Release.IsInstall }}
+-              value: "new"
+-            {{- else }}
+-              value: "existing"
+-            {{- end }}
++              value: {{ default (ternary "new" "existing" .Release.IsInstall) .Values.initialClusterState | quote }}
+             {{- $initialCluster := list }}
+             {{- range $e, $i := until $replicaCount }}
+             {{- $initialCluster = append $initialCluster (printf "%s-%d=%s://%s-%d.%s.%s.svc.%s:%d" $etcdFullname $i $etcdPeerProtocol $etcdFullname $i $etcdHeadlessServiceName $releaseNamespace $clusterDomain $peerPort) }}
+             {{- end }}
+             - name: ETCD_INITIAL_CLUSTER
+               value: {{ join "," $initialCluster | quote }}
+-            {{- end }}
+-            - name: ALLOW_NONE_AUTHENTICATION
+-              value: {{ ternary "yes" "no" (or .Values.auth.rbac.enabled .Values.allowNoneAuthentication) | quote }}
+-            {{- if .Values.auth.rbac.enabled }}
+-            - name: ETCD_ROOT_PASSWORD
+-              valueFrom:
+-                secretKeyRef:
+-                  name: {{ if .Values.auth.rbac.existingSecret }}{{ .Values.auth.rbac.existingSecret }}{{ else }}{{ include "etcd.fullname" . }}{{ end }}
+-                  key: etcd-root-password
++            - name: ETCD_CLUSTER_DOMAIN
++              value: {{ printf "%s.%s.svc.%s" $etcdHeadlessServiceName $releaseNamespace $clusterDomain | quote }}
+             {{- end }}
+             {{- if and .Values.auth.client.secureTransport .Values.auth.client.useAutoTLS }}
+             - name: ETCD_AUTO_TLS
+@@ -202,43 +206,68 @@ spec:
+               value: "/opt/bitnami/etcd/certs/peer/{{ .Values.auth.peer.caFilename | default "ca.crt"}}"
+             {{- end }}
+             {{- end }}
++            {{- if .Values.extraEnvVars }}
++            {{- include "common.tplvalues.render" (dict "value" .Values.extraEnvVars "context" $) | nindent 12 }}
++            {{- end }}
++          envFrom:
++            {{- if .Values.extraEnvVarsCM }}
++            - configMapRef:
++                name: {{ include "common.tplvalues.render" (dict "value" .Values.extraEnvVarsCM "context" $) }}
++            {{- end }}
++            {{- if .Values.extraEnvVarsSecret }}
++            - secretRef:
++                name: {{ include "common.tplvalues.render" (dict "value" .Values.extraEnvVarsSecret "context" $) }}
++            {{- end }}
+           ports:
+             - name: client
+-              containerPort: 2379
++              containerPort: {{ .Values.containerPorts.client }}
++              protocol: TCP
+             - name: peer
+-              containerPort: 2380
++              containerPort: {{ .Values.containerPorts.peer }}
++              protocol: TCP
+           {{- if .Values.livenessProbe.enabled }}
+           livenessProbe:
+             exec:
+               command:
+-                - /scripts/probes.sh
++                - /opt/bitnami/scripts/etcd/healthcheck.sh
+             initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+             periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+             timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+             successThreshold: {{ .Values.livenessProbe.successThreshold }}
+             failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
++          {{- else if .Values.customLivenessProbe }}
++          livenessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.customLivenessProbe "context" $) | nindent 12 }}
+           {{- end }}
+           {{- if .Values.readinessProbe.enabled }}
+           readinessProbe:
+             exec:
+               command:
+-                - /scripts/probes.sh
++                - /opt/bitnami/scripts/etcd/healthcheck.sh
+             initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+             periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+             timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+             successThreshold: {{ .Values.readinessProbe.successThreshold }}
+             failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
++          {{- else if .Values.customReadinessProbe }}
++          readinessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.customReadinessProbe "context" $) | nindent 12 }}
++          {{- end }}
++          {{- if .Values.startupProbe.enabled }}
++          startupProbe:
++            exec:
++              command:
++                - /opt/bitnami/scripts/etcd/healthcheck.sh
++            initialDelaySeconds: {{ .Values.startupProbe.initialDelaySeconds }}
++            periodSeconds: {{ .Values.startupProbe.periodSeconds }}
++            timeoutSeconds: {{ .Values.startupProbe.timeoutSeconds }}
++            successThreshold: {{ .Values.startupProbe.successThreshold }}
++            failureThreshold: {{ .Values.startupProbe.failureThreshold }}
++          {{- else if .Values.customStartupProbe }}
++          startupProbe: {{- include "common.tplvalues.render" (dict "value" .Values.customStartupProbe "context" $) | nindent 12 }}
++          {{- end }}
++          {{- if .Values.resources }}
++          resources: {{- include "common.tplvalues.render" (dict "value" .Values.resources "context" $) | nindent 12 }}
+           {{- end }}
+           volumeMounts:
+-            - name: scripts
+-              mountPath: /scripts/setup.sh
+-              subPath: setup.sh
+-            - name: scripts
+-              mountPath: /scripts/prestop-hook.sh
+-              subPath: prestop-hook.sh
+-            - name: scripts
+-              mountPath: /scripts/probes.sh
+-              subPath: probes.sh
+             - name: data
+               mountPath: /bitnami/etcd
+             {{- if or (and .Values.startFromSnapshot.enabled (not .Values.disasterRecovery.enabled)) (and .Values.disasterRecovery.enabled .Values.startFromSnapshot.enabled .Values.disasterRecovery.pvc.existingClaim) }}
+@@ -249,7 +278,7 @@ spec:
+             - name: snapshot-volume
+               mountPath: /snapshots
+             {{- end }}
+-            {{- if .Values.configFileConfigMap }}
++            {{- if or .Values.configuration .Values.existingConfigmap }}
+             - name: etcd-config
+               mountPath: /opt/bitnami/etcd/conf/
+             {{- end }}
+@@ -263,11 +292,13 @@ spec:
+               mountPath: /opt/bitnami/etcd/certs/peer/
+               readOnly: true
+             {{- end }}
++            {{- if .Values.extraVolumeMounts }}
++            {{- include "common.tplvalues.render" (dict "value" .Values.extraVolumeMounts "context" $) | nindent 12 }}
++            {{- end }}
++        {{- if .Values.sidecars }}
++        {{- include "common.tplvalues.render" (dict "value" .Values.sidecars "context" $) | nindent 8 }}
++        {{- end }}
+       volumes:
+-        - name: scripts
+-          configMap:
+-            name: {{ include "etcd.fullname" . }}-scripts
+-            defaultMode: 0755
+         {{- if or (and .Values.startFromSnapshot.enabled (not .Values.disasterRecovery.enabled)) (and .Values.disasterRecovery.enabled .Values.startFromSnapshot.enabled .Values.disasterRecovery.pvc.existingClaim) }}
+         - name: init-snapshot-volume
+           persistentVolumeClaim:
+@@ -278,32 +309,35 @@ spec:
+           persistentVolumeClaim:
+             claimName: {{ include "etcd.disasterRecovery.pvc.name" . }}
+         {{- end }}
+-        {{- if .Values.configFileConfigMap }}
++        {{- if or .Values.configuration .Values.existingConfigmap }}
+         - name: etcd-config
+           configMap:
+-            name: {{ include "etcd.configFileCM" . }}
++            name: {{ include "etcd.configmapName" . }}
+         {{- end }}
+         {{- if or .Values.auth.client.enableAuthentication (and .Values.auth.client.secureTransport (not .Values.auth.client.useAutoTLS )) }}
+         - name: etcd-client-certs
+           secret:
+-            secretName: {{ required "A secret containinig the client certificates is required" .Values.auth.client.existingSecret }}
++            secretName: {{ required "A secret containing the client certificates is required" .Values.auth.client.existingSecret }}
+             defaultMode: 256
+         {{- end }}
+         {{- if or .Values.auth.peer.enableAuthentication (and .Values.auth.peer.secureTransport (not .Values.auth.peer.useAutoTLS )) }}
+         - name: etcd-peer-certs
+           secret:
+-            secretName: {{ required "A secret containinig the peer certificates is required" .Values.auth.peer.existingSecret }}
++            secretName: {{ required "A secret containing the peer certificates is required" .Values.auth.peer.existingSecret }}
+             defaultMode: 256
+         {{- end }}
+-{{- if not .Values.persistence.enabled }}
++        {{- if .Values.extraVolumes }}
++        {{- include "common.tplvalues.render" (dict "value" .Values.extraVolumes "context" $) | nindent 8 }}
++        {{- end }}
++  {{- if not .Values.persistence.enabled }}
+         - name: data
+           emptyDir: {}
+-{{- else }}
++  {{- else }}
+   volumeClaimTemplates:
+     - metadata:
+         name: data
+         {{- if .Values.persistence.annotations }}
+-        annotations: {{- include "etcd.tplValue" ( dict "value" .Values.persistence.annotations "context" $) | nindent 10 }}
++        annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.persistence.annotations "context" $) | nindent 10 }}
+         {{- end }}
+       spec:
+         accessModes:
+@@ -312,9 +346,9 @@ spec:
+         {{- end }}
+         resources:
+           requests:
+-            storage: {{ .Values.persistence.size | quote }}
+-        {{ include "etcd.storageClass" . }}
++            storage: {{ .Values.persistence.size | quote }}        
+         {{- if .Values.persistence.selector }}
+-        selector: {{- include "etcd.tplValue" ( dict "value" .Values.persistence.selector "context" $) | nindent 10 }}
++        selector: {{- include "common.tplvalues.render" ( dict "value" .Values.persistence.selector "context" $) | nindent 10 }}
+         {{- end }}
+-{{- end }}
++        {{ include "common.storage.class" (dict "persistence" .Values.persistence "global" .Values.global) }}
++  {{- end }}
+diff --git a/bitnami/etcd/templates/svc-headless.yaml b/bitnami/etcd/templates/svc-headless.yaml
+index 198d26f083..432c84a379 100644
+--- a/bitnami/etcd/templates/svc-headless.yaml
++++ b/bitnami/etcd/templates/svc-headless.yaml
+@@ -1,16 +1,23 @@
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: {{ include "etcd.fullname" . }}-headless
+-  labels: {{- include "etcd.labels" . | nindent 4 }}
++  name: {{ printf "%s-headless" (include "common.names.fullname" .) }}
++  namespace: {{ .Release.Namespace }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
+   annotations:
+     service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
++    {{- if .Values.commonAnnotations }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++    {{- end }}
+ spec:
+   type: ClusterIP
+   clusterIP: None
+   publishNotReadyAddresses: true
+   ports:
+-    {{- if .Values.auth.client.clientPortNameOverride }}
++    {{- if .Values.service.clientPortNameOverride }}
+     {{- if .Values.auth.client.secureTransport }}
+     - name: {{ .Values.service.clientPortNameOverride }}-ssl
+     {{- else}}
+@@ -21,7 +28,7 @@ spec:
+     {{- end }}
+       port: {{ .Values.service.port  }}
+       targetPort: client
+-    {{- if .Values.auth.client.peerPortNameOverride }}
++    {{- if .Values.service.peerPortNameOverride }}
+     {{- if .Values.auth.peer.secureTransport }}
+     - name: {{ .Values.service.peerPortNameOverride }}-ssl
+     {{- else}}
+@@ -32,4 +39,4 @@ spec:
+     {{- end }}
+       port: {{ .Values.service.peerPort  }}
+       targetPort: peer
+-  selector: {{- include "etcd.matchLabels" . | nindent 4 }}
++  selector: {{- include "common.labels.matchLabels" . | nindent 4 }}
+diff --git a/bitnami/etcd/templates/svc.yaml b/bitnami/etcd/templates/svc.yaml
+index c811371c14..40d027b022 100644
+--- a/bitnami/etcd/templates/svc.yaml
++++ b/bitnami/etcd/templates/svc.yaml
+@@ -1,11 +1,19 @@
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: {{ include "etcd.fullname" . }}
+-  labels: {{- include "etcd.labels" . | nindent 4 }}
+-  {{- if .Values.service.annotations }}
+-  annotations: {{- include "etcd.tplValue" ( dict "value" .Values.service.annotations "context" $) | nindent 4 }}
+-  {{- end }}
++  name: {{ include "common.names.fullname" . }}
++  namespace: {{ .Release.Namespace }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  annotations:
++    {{- if .Values.service.annotations }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.service.annotations "context" $) | nindent 4 }}
++    {{- end }}
++    {{- if .Values.commonAnnotations }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++    {{- end }}
+ spec:
+   type: {{ .Values.service.type }}
+   {{- if and (eq .Values.service.type "LoadBalancer") (not (empty .Values.service.loadBalancerIP)) }}
+@@ -15,15 +23,10 @@ spec:
+   loadBalancerSourceRanges: {{- toYaml .Values.service.loadBalancerSourceRanges | nindent 4 }}
+   {{- end }}
+   {{- if .Values.service.externalIPs }}
+-  externalIPs:
+-    {{ toYaml .Values.service.externalIPs | indent 4 }}
++  externalIPs: {{- toYaml .Values.service.externalIPs | nindent 4 }}
+   {{- end }}
+   ports:
+-    {{- if .Values.auth.client.clientPortNameOverride }}
+-    - name: {{ .Values.service.clientPortNameOverride }}
+-    {{- else }}
+-    - name: "client"
+-    {{- end }}
++    - name: {{ default "client" .Values.auth.client.clientPortNameOverride | quote }}
+       port: {{ .Values.service.port  }}
+       targetPort: client
+       {{- if and (or (eq .Values.service.type "NodePort") (eq .Values.service.type "LoadBalancer")) (not (empty .Values.service.nodePorts.clientPort)) }}
+@@ -31,11 +34,7 @@ spec:
+       {{- else if eq .Values.service.type "ClusterIP" }}
+       nodePort: null
+       {{- end }}
+-    {{- if .Values.auth.client.peerPortNameOverride }}
+-    - name: {{ .Values.service.peerPortNameOverride }}
+-    {{- else }}
+-    - name: "peer"
+-    {{- end }}
++    - name: {{ default "peer" .Values.auth.client.clientPortNameOverride | quote }}
+       port: {{ .Values.service.peerPort  }}
+       targetPort: peer
+       {{- if and (or (eq .Values.service.type "NodePort") (eq .Values.service.type "LoadBalancer")) (not (empty .Values.service.nodePorts.peerPort)) }}
+@@ -43,4 +42,4 @@ spec:
+       {{- else if eq .Values.service.type "ClusterIP" }}
+       nodePort: null
+       {{- end }}
+-  selector: {{- include "etcd.matchLabels" . | nindent 4 }}
++  selector: {{- include "common.labels.matchLabels" . | nindent 4 }}
+diff --git a/bitnami/etcd/values.yaml b/bitnami/etcd/values.yaml
+index 12fcbdbbe1..2a82f8a29c 100644
+--- a/bitnami/etcd/values.yaml
++++ b/bitnami/etcd/values.yaml
+@@ -14,7 +14,7 @@
+ image:
+   registry: docker.io
+   repository: bitnami/etcd
+-  tag: 3.4.14-debian-10-r69
++  tag: 3.4.15-debian-10-r9
+   ## Specify a imagePullPolicy
+   ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+   ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+@@ -23,271 +23,234 @@ image:
+   ## Optionally specify an array of imagePullSecrets.
+   ## Secrets must be manually created in the namespace.
+   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ## e.g:
++  ## pullSecrets:
++  ##   - myRegistryKeySecretName
+   ##
+-  # pullSecrets:
+-  #   - myRegistryKeySecretName
+-
++  pullSecrets: []
+   ## Set to true if you would like to see extra information on logs
+-  ## It turns BASH and/or NAMI debugging in the image and in etcd pod scripts
+   ##
+   debug: false
+ 
+-## String to partially override etcd.fullname template (will maintain the release name)
++## String to partially override common.names.fullname template (will maintain the release name)
+ ##
+ # nameOverride:
+ 
+-## String to fully override etcd.fullname template
++## String to fully override common.names.fullname template
+ ##
+ # fullnameOverride:
+ 
+-## Deployment pod host aliases
+-## https://kubernetes.io/docs/concepts/services-networking/add-entries-to-pod-etc-hosts-with-host-aliases/
++## Add labels to all the deployed resources
+ ##
+-hostAliases: []
++commonLabels: {}
+ 
+-## Init containers parameters:
+-## volumePermissions: Change the owner and group of the persistent volume mountpoint to runAsUser:fsGroup values from the securityContext section.
++## Add annotations to all the deployed resources
+ ##
+-volumePermissions:
+-  enabled: false
+-  image:
+-    registry: docker.io
+-    repository: bitnami/bitnami-shell
+-    tag: "10"
+-    pullPolicy: Always
+-    ## Optionally specify an array of imagePullSecrets.
+-    ## Secrets must be manually created in the namespace.
+-    ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+-    ##
+-    # pullSecrets:
+-    #   - myRegistryKeySecretName
+-  ## Init container' resource requests and limits
+-  ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+-  ##
+-  resources:
+-    # We usually recommend not to specify default resources and to leave this as a conscious
+-    # choice for the user. This also increases chances charts run on environments with little
+-    # resources, such as Minikube. If you do want to specify resources, uncomment the following
+-    # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+-    limits: {}
+-    #   cpu: 100m
+-    #   memory: 128Mi
+-    requests: {}
+-    #   cpu: 100m
+-    #   memory: 128Mi
++commonAnnotations: {}
+ 
+-## Statefulset parameters
++## Force target Kubernetes version (using Helm capabilities if not set)
+ ##
+-statefulset:
+-  ## Number of replicas
+-  ##
+-  replicaCount: 1
+-  ## Update strategy, can be set to RollingUpdate or OnDelete by default.
+-  ## https://kubernetes.io/docs/tutorials/stateful-application/basic-stateful-set/#updating-statefulsets
+-  ##
+-  updateStrategy: RollingUpdate
+-  ## Partition update strategy
+-  ## https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#partitions
+-  ##
+-  # rollingUpdatePartition:
+-  ## Pod management policy
+-  ## https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#pod-management-policies
+-  ##
+-  podManagementPolicy: Parallel
+-
+-## ConfigMap that includes the etcd.conf.yml file
+-##
+-# configFileConfigMap:
++kubeVersion: ""
+ 
+-## ConfigMap that includes extra environment variables
+-##
+-# envVarsConfigMap:
+-
+-## Allow to use etcd without configuring RBAC authentication
++## Kubernetes Cluster Domain
+ ##
+-allowNoneAuthentication: true
++clusterDomain: cluster.local
+ 
+-## Limits the number of operating system threads that can execute user-level
+-## Go code simultaneously by setting GOMAXPROCS environment variable
+-## ref: https://golang.org/pkg/runtime
++## Extra objects to deploy (value evaluated as a template)
+ ##
+-# maxProcs:
++extraDeploy: []
+ 
+-## Authentication parameteres
+-## https://github.com/bitnami/bitnami-docker-etcd#security
++## Authentication parameters
+ ##
+ auth:
++  ## Role-based access control parameters
++  ## ref: https://etcd.io/docs/current/op-guide/authentication/
++  ##
+   rbac:
+     enabled: true
+-    ## etcd root user password. The root user is always `root`
++    ## Allow to use etcd without configuring RBAC authentication
++    ##
++    allowNoneAuthentication: true
++    ## root user password. The root user is always `root`
+     ##
+-    # rootPassword:
+-    ## Name of the existing secret containing credentials for the root user.
++    rootPassword: ""
++    ## Name of the existing secret containing credentials for the root user
+     ##
+-    # existingSecret: name-of-existing-secret
++    existingSecret: ""
+ 
++  ## TLS authentication for client-to-server communications
++  ## ref: https://etcd.io/docs/current/op-guide/security/
++  ##
+   client:
+-    ## Switch to encrypt client communication using TLS certificates
++    ## Switch to encrypt client-to-server communications using TLS
+     ##
+     secureTransport: false
+     ## Switch to automatically create the TLS certificates
+     ##
+     useAutoTLS: false
+-    ## Switch to enable host authentication using TLS certificates. Requires existing secret.
++    ## Name of the existing secret containing the TLS certificates for client-to-server communications
+     ##
+-    enableAuthentication: false
+-    ## Name of the existing secret containing cert files for client communication.
++    existingSecret: ""
++    ## Switch to enable host authentication using TLS certificates. Requires existing secret
+     ##
+-    # existingSecret: name-of-existing-secret
+-    ## Name of the file containing the client certificate.
++    enableAuthentication: false
++    ## Name of the file containing the client certificate
+     ##
+     certFilename: cert.pem
+-    ## Name of the file containing the client certificate private key.
++    ## Name of the file containing the client certificate private key
+     ##
+     certKeyFilename: key.pem
+-    ## Name of the file containing the client CA certificate.
+-    ## If not specified and `enableAuthentication: true` or `rbac.enabled: true`, the default is is `ca.crt`.
++    ## Name of the file containing the client CA certificate
++    ## If not specified and `auth.client.enableAuthentication=true` or `auth.rbac.enabled=true`, the default is is `ca.crt`
+     ##
+     caFilename: ""
+ 
++  ## TLS authentication for server-to-server communications
++  ## ref: https://etcd.io/docs/current/op-guide/security/
++  ##
+   peer:
+-    ## Switch to encrypt peer communication using TLS certificates
++    ## Switch to encrypt server-to-server communications using TLS
+     ##
+     secureTransport: false
+     ## Switch to automatically create the TLS certificates
+     ##
+     useAutoTLS: false
+-    ## Switch to enable host authentication using TLS certificates. Requires existing secret.
++    ## Name of the existing secret containing the TLS certificates for server-to-server communications
+     ##
+-    enableAuthentication: false
+-    ## Name of the existing secret containing cert files for peer communication.
++    existingSecret: ""
++    ## Switch to enable host authentication using TLS certificates. Requires existing secret
+     ##
+-    # existingSecret: name-of-existing-secret
+-    ## Name of the file containing the peer certificate.
++    enableAuthentication: false
++    ## Name of the file containing the peer certificate
+     ##
+     certFilename: cert.pem
+-    ## Name of the file containing the peer certificate private key.
++    ## Name of the file containing the peer certificate private key
+     ##
+     certKeyFilename: key.pem
+-    ## Name of the file containing the peer CA certificate.
+-    ## If not specified and `enableAuthentication: true` or `rbac.enabled: true`, the default is is `ca.crt`.
++    ## Name of the file containing the peer CA certificate
++    ## If not specified and `auth.peer.enableAuthentication=true` or `rbac.enabled=true`, the default is is `ca.crt`
+     ##
+     caFilename: ""
+ 
+-## Kubernetes Security Context
+-## https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
++## Initial cluster state. Allowed values: 'new' or 'existing'
++## If this values is not set, the default values below are set:
++## - 'new': when installing the chart ('helm install ...')
++## - 'existing': when upgrading the chart ('helm upgrade ...')
+ ##
+-securityContext:
+-  enabled: true
+-  fsGroup: 1001
+-  runAsUser: 1001
++initialClusterState: ""
+ 
+-## Kubernetes Cluster Domain
++## Limits the number of operating system threads that can execute user-level
++## Go code simultaneously by setting GOMAXPROCS environment variable
++## ref: https://golang.org/pkg/runtime
+ ##
+-clusterDomain: cluster.local
++# maxProcs:
+ 
+-## etcd variables
++## Use a PreStop hook to remove the etcd members from the etcd cluster
++## they the containers are terminated
++## NOTE: Ignored if lifecycleHooks is set or replicaCount=1
+ ##
+-etcd:
+-  ## Initial cluster state. Allowed values: 'new' or 'existing'
+-  ## If this values is not set, the default values below are set:
+-  ## - 'new': when installing the chart ('helm install ...')
+-  ## - 'existing': when upgrading the chart ('helm upgrade ...')
+-  ##
+-  initialClusterState: ""
++removeMemberOnContainerTermination: true
+ 
+-## Service parameters
++## etcd configuration
++## Specify content for etcd.conf.yml
++## e.g:
++## configuration: |-
++##    foo: bar
++##    baz:
+ ##
+-service:
+-  ## K8s service type
+-  ##
+-  type: ClusterIP
+-  ## etcd client port
+-  ##
+-  port: 2379
+-  ## etcd client port name override
+-  ##
+-  clientPortNameOverride: ""
+-  ## etcd peer port
+-  ##
+-  peerPort: 2380
+-  ## etcd peer port name override
+-  ##
+-  peerPortNameOverride: ""
+-  ## Specify the nodePort(s) value(s) for the LoadBalancer and NodePort service types.
+-  ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
+-  ##
+-  nodePorts:
+-    clientPort: ""
+-    peerPort: ""
+-  ## Set the LoadBalancer service type to internal only.
+-  ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
+-  ##
+-  # loadBalancerIP:
+-  # loadBalancerSourceRanges: ["10.0.0.0/8"]
+-  externalIPs: []
+-  ## Provide any additional annotations which may be required. This can be used to
+-  ## set the LoadBalancer service type to internal only.
+-  ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
+-  ##
+-  annotations: {}
++# configuration:
+ 
+-## Enable persistence using Persistent Volume Claims
+-## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
++## Existing ConfigMap with etcd configuration
++## NOTE: When it's set the configuration parameter is ignored
+ ##
+-persistence:
+-  ## If true, use a Persistent Volume Claim, If false, use emptyDir
++# existingConfigmap:
++
++## An array to add extra env vars
++## e.g:
++## extraEnvVars:
++##   - name: FOO
++##     value: "bar"
++##
++extraEnvVars: []
++
++## ConfigMap with extra environment variables
++##
++extraEnvVarsCM: ""
++
++## Secret with extra environment variables
++##
++extraEnvVarsSecret: ""
++
++## Command and args for running the container (set to default if not set). Use array form
++##
++command: []
++args: []
++
++## Number of replicas
++##
++replicaCount: 1
++
++## Update strategy
++## ref: https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#update-strategies
++##
++updateStrategy:
++  ## Update strategy type, can be set to RollingUpdate or OnDelete.
+   ##
++  type: RollingUpdate
++
++## Pod management policy
++## ref: https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#pod-management-policies
++##
++podManagementPolicy: Parallel
++
++## etcd pod host aliases
++## ref: https://kubernetes.io/docs/concepts/services-networking/add-entries-to-pod-etc-hosts-with-host-aliases/
++##
++hostAliases: []
++
++## Override default etcd container hooks
++##
++lifecycleHooks: {}
++
++## etcd container ports to open
++##
++containerPorts:
++  client: 2379
++  peer: 2380
++
++## etcd containers' SecurityContext
++## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
++##
++podSecurityContext:
+   enabled: true
+-  ## Persistent Volume Storage Class
+-  ## If defined, storageClassName: <storageClass>
+-  ## If set to "-", storageClassName: "", which disables dynamic provisioning
+-  ## If undefined (the default) or set to null, no storageClassName spec is
+-  ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+-  ##   GKE, AWS & OpenStack)
+-  ##
+-  # storageClass: "-"
+-  ## Persistent Volume Claim annotations
+-  ##
+-  annotations: {}
+-  ## Persistent Volume Access Mode
+-  ##
+-  accessModes:
+-    - ReadWriteOnce
+-  ## Persistent Volume size
+-  ##
+-  size: 8Gi
+-  ## Persistent Volume selector
+-  ## Can specify a label selector to further filter the set of volumes.
+-  ## ref: https://kubernetes.io/docs/concepts/storage/persistent-volumes/#selector
+-  ##
+-  selector: {}
++  fsGroup: 1001
+ 
+-## Define a disruption budget
+-## ref: https://kubernetes.io/docs/concepts/workloads/pods/disruptions/
++## etcd pods' Security Context
++## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-container
+ ##
+-pdb:
+-  enabled: false
+-  # minAvailable: 1
+-  # maxUnavailable: 1
++containerSecurityContext:
++  enabled: true
++  runAsUser: 1001
++  runAsNonRoot: true
+ 
+-## Etcd containers' resource requests and limits
++## etcd containers' resource requests and limits
+ ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+ ##
+ resources:
+-  # We usually recommend not to specify default resources and to leave this as a conscious
+-  # choice for the user. This also increases chances charts run on environments with little
+-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
++  ## We usually recommend not to specify default resources and to leave this as a conscious
++  ## choice for the user. This also increases chances charts run on environments with little
++  ## resources, such as Minikube. If you do want to specify resources, uncomment the following
++  ## lines, adjust them as necessary, and remove the curly braces after 'resources:'.
++  ## e.g:
++  ## limits:
++  ##   cpu: 500m
++  ##   memory: 1Gi
++  ##
+   limits: {}
+-  #   cpu: 500m
+-  #   memory: 1Gi
+   requests: {}
+-  #   cpu: 250m
+-  #   memory: 256Mi
+ 
+-## Etcd containers' liveness and readiness probes
+-## ref: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#container-probes
++## Configure extra options for liveness, readiness and startup probes
++## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
+ ##
+ livenessProbe:
+   enabled: true
+@@ -303,18 +266,64 @@ readinessProbe:
+   timeoutSeconds: 5
+   successThreshold: 1
+   failureThreshold: 5
++startupProbe:
++  enabled: false
++  initialDelaySeconds: 0
++  periodSeconds: 10
++  timeoutSeconds: 5
++  successThreshold: 1
++  failureThreshold: 60
+ 
+-## Statefulset labels. Evaluated as a template
+-## Ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
++## Custom Liveness probes for etcd
++##
++customLivenessProbe: {}
++
++## Custom Readiness probes for etcd
+ ##
+-statefulsetLabels: {}
++customReadinessProbe: {}
++
++## Custom Startup probe for etcd
++##
++customStartupProbe: {}
++
++## Extra volumes to add to the etcd statefulset
++##
++extraVolumes: []
++
++## Extra volume mounts to add to etcd containers
++##
++extraVolumeMounts: []
++
++## Add init containers to the etcd pods.
++## e.g:
++## initContainers:
++##   - name: your-image-name
++##     image: your-image
++##     imagePullPolicy: Always
++##     ports:
++##       - name: portname
++##         containerPort: 1234
++##
++initContainers: {}
++
++## Add sidecars to the etcd pods.
++## e.g:
++## sidecars:
++##   - name: your-image-name
++##     image: your-image
++##     imagePullPolicy: Always
++##     ports:
++##       - name: portname
++##         containerPort: 1234
++##
++sidecars: {}
+ 
+ ## Pod annotations
+ ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
+ ##
+ podAnnotations: {}
+ 
+-## Pod labels. Evaluated as a template
++## Pod labels
+ ## Ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+ ##
+ podLabels: {}
+@@ -341,12 +350,12 @@ nodeAffinityPreset:
+   ##
+   type: ""
+   ## Node label key to match
+-  ## E.g.
++  ## e.g:
+   ## key: "kubernetes.io/e2e-az-name"
+   ##
+   key: ""
+   ## Node label values to match
+-  ## E.g.
++  ## e.g:
+   ## values:
+   ##   - e2e-az1
+   ##   - e2e-az2
+@@ -355,7 +364,7 @@ nodeAffinityPreset:
+ 
+ ## Affinity for pod assignment
+ ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+-## Note: podAffinityPreset, podAntiAffinityPreset, and  nodeAffinityPreset will be ignored when it's set
++## Note: podAffinityPreset, podAntiAffinityPreset, and nodeAffinityPreset will be ignored when it's set
+ ##
+ affinity: {}
+ 
+@@ -374,82 +383,189 @@ tolerations: []
+ ##
+ priorityClassName: ""
+ 
+-## Etcd Prometheus exporter configuration
++## etcd Pod Disruption Budget configuration
++## ref: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
++##
++pdb:
++  create: false
++  ## Min number of pods that must still be available after the eviction
++  ##
++  minAvailable: 1
++  ## Max number of pods that can be unavailable after the eviction
++  ##
++  # maxUnavailable: 1
++
++## Service parameters
++##
++service:
++  ## K8s service type
++  ##
++  type: ClusterIP
++  ## etcd client port
++  ##
++  port: 2379
++  ## etcd client port name override
++  ##
++  clientPortNameOverride: ""
++  ## etcd peer port
++  ##
++  peerPort: 2380
++  ## etcd peer port name override
++  ##
++  peerPortNameOverride: ""
++  ## Specify the nodePort(s) value(s) for the LoadBalancer and NodePort service types.
++  ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
++  ##
++  nodePorts:
++    clientPort: ""
++    peerPort: ""
++  ## loadBalancerIP for the etcd service (optional, cloud specific)
++  ## ref: http://kubernetes.io/docs/user-guide/services/#type-loadbalancer
++  ##
++  loadBalancerIP: ""
++  ## Load Balancer sources
++  ## ref: https://kubernetes.io/docs/tasks/access-application-cluster/configure-cloud-provider-firewall/#restrict-access-for-loadbalancer-service
++  ## e.g:
++  ## loadBalancerSourceRanges:
++  ##   - 10.10.10.0/24
++  ##
++  loadBalancerSourceRanges: []
++  ## External IPs
++  ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#external-ips
++  ##
++  externalIPs: []
++  ## Provide any additional annotations which may be required (evaluated as a template)
++  ##
++  annotations: {}
++
++## Enable persistence using Persistent Volume Claims
++## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
++##
++persistence:
++  ## If true, use a Persistent Volume Claim. If false, use emptyDir.
++  ##
++  enabled: true
++  ## Persistent Volume Storage Class
++  ## If defined, storageClassName: <storageClass>
++  ## If set to "-", storageClassName: "", which disables dynamic provisioning
++  ## If undefined (the default) or set to null, no storageClassName spec is
++  ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
++  ##   GKE, AWS & OpenStack)
++  ##
++  # storageClass: "-"
++  ## Persistent Volume Claim annotations (evaluated as a template)
++  ##
++  annotations: {}
++  ## Persistent Volume Access Modes
++  ##
++  accessModes:
++    - ReadWriteOnce
++  ## Persistent Volume size
++  ##
++  size: 8Gi
++  ## Provide any additional label selector to further filter the set of volumes (evaluated as a template)
++  ## ref: https://kubernetes.io/docs/concepts/storage/persistent-volumes/#selector
++  ##
++  selector: {}
++
++## Init containers parameters:
++## volumePermissions: Change the owner and group of the persistent volume mountpoint to runAsUser:fsGroup values from the securityContext section.
++##
++volumePermissions:
++  enabled: false
++  image:
++    registry: docker.io
++    repository: bitnami/bitnami-shell
++    tag: "10"
++    pullPolicy: Always
++    ## Optionally specify an array of imagePullSecrets.
++    ## Secrets must be manually created in the namespace.
++    ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++    ## e.g:
++    ## pullSecrets:
++    ##   - myRegistryKeySecretName
++    ##
++    pullSecrets: []
++
++  ## Init container' resource requests and limits
++  ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
++  ##
++  resources:
++    ## We usually recommend not to specify default resources and to leave this as a conscious
++    ## choice for the user. This also increases chances charts run on environments with little
++    ## resources, such as Minikube. If you do want to specify resources, uncomment the following
++    ## lines, adjust them as necessary, and remove the curly braces after 'resources:'.
++    ## e.g:
++    ## limits:
++    ##   cpu: 500m
++    ##   memory: 1Gi
++    ##
++    limits: {}
++    requests: {}
++
++## etcd metrics configuration
+ ##
+ metrics:
+   enabled: false
++  ## Annotations for the Prometheus metrics on etcd pods
++  ##
+   podAnnotations:
+     prometheus.io/scrape: "true"
+     prometheus.io/port: "2379"
+ 
+-  ## Prometheus Operator ServiceMonitor configuration
++  ## Prometheus Service Monitor
++  ## ref: https://github.com/coreos/prometheus-operator/blob/master/Documentation/api.md#endpoint
+   ##
+-  serviceMonitor:
++  podMonitor:
++    ## If the Prometheus Operator is installed in your cluster, set to true to create a PodMonitor entry
++    ##
+     enabled: false
+     ## Namespace in which Prometheus is running
+     ##
+     # namespace: monitoring
+-
+-    ## Interval at which metrics should be scraped.
+-    ## ref: https://github.com/coreos/prometheus-operator/blob/master/Documentation/api.md#endpoint
++    ## Specify the interval at which metrics should be scraped
+     ##
+-    # interval: 10s
+-
+-    ## MetricRelabelConfigs to apply to samples before ingestion
+-    ## ref: https://github.com/prometheus-operator/prometheus-operator/blob/master/Documentation/api.md#podmetricsendpoint
++    interval: 30s
++    ## Specify the timeout after which the scrape is ended
+     ##
+-    # metricRelabelings: []
+-
+-    ## RelabelConfigs to apply to samples before ingestion
+-    ## ref: https://github.com/prometheus-operator/prometheus-operator/blob/master/Documentation/api.md#podmetricsendpoint
++    # scrapeTimeout: 30s
++    ## Used to pass Labels that are used by the Prometheus installed in your cluster to select PodMonitors to work with
++    ## ref: https://github.com/coreos/prometheus-operator/blob/master/Documentation/api.md#prometheusspec
+     ##
+-    # relabelings: []
+-
+-    ## HTTP scheme to use for scraping.
++    additionalLabels: {}
++    ## Scheme to use for scraping.
+     ##
+-    # scheme: ""
+-
+-    ## Timeout after which the scrape is ended
+-    ## ref: https://github.com/coreos/prometheus-operator/blob/master/Documentation/api.md#endpoint
+-    ##
+-    # scrapeTimeout: 10s
+-
+-    ## ServiceMonitor selector labels
+-    ## ref: https://github.com/bitnami/charts/tree/master/bitnami/prometheus-operator#prometheus-configuration
+-    ##
+-    # selector:
+-    #   prometheus: my-prometheus
+-
++    scheme: http
+     ## TLS configuration for the endpoints to be scraped.
+     ## ref: https://github.com/prometheus-operator/prometheus-operator/blob/master/Documentation/api.md#tlsconfig
+-    # tlsConfig:
+-    #  ca:
+-    #    secret:
+-    #      name: existingSecretName
++    ## e.g:
++    ## tlsConfig:
++    ##   ca:
++    ##     secret:
++    ##       name: existingSecretName
++    ##
++    tlsConfig: {}
+ 
+-## Start a new etcd cluster recovering the data from an existing snaptshot before
+-## initializing the members
++## Start a new etcd cluster recovering the data from an existing snapshot
++## before bootstrapping
+ ##
+ startFromSnapshot:
+   enabled: false
+-  ## Existingn PVC containing the etcd snapshot
++  ## Existing PVC containing the etcd snapshot
+   ##
+-  # existingClaim
++  existingClaim: ""
+   ## Snapshot filename
+   ##
+-  # snapshotFilename
++  snapshotFilename: ""
+ 
+-## Enable auto disaster recovery by periodically snapshotting the keyspace
++## Enable auto disaster recovery by periodically snapshotting the keyspace:
+ ## - It creates a cronjob to periodically snapshotting the keyspace
+ ## - It also creates a ReadWriteMany PVC to store the snapshots
+-## If the cluster permanently loses more than (N-1)/2 members, it tries to recover
+-## the cluster from a previous snapshot.
++## If the cluster permanently loses more than (N-1)/2 members, it tries to
++## recover itself from the last available snapshot.
+ ##
+ disasterRecovery:
+   enabled: false
+-  ## Set to true if you would like to see extra information on logs for snapshotting
+-  ##
+-  debug: true
+   cronjob:
+     ## Schedule in Cron format to save snapshots
+     ## See https://en.wikipedia.org/wiki/Cron
+@@ -465,10 +581,21 @@ disasterRecovery:
+     ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
+     ##
+     podAnnotations: {}
+-    ## Configure resource requests and limits
++    ## Configure resource requests and limits for snapshotter containers
+     ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+     ##
+-    # resources:
++    resources:
++      ## We usually recommend not to specify default resources and to leave this as a conscious
++      ## choice for the user. This also increases chances charts run on environments with little
++      ## resources, such as Minikube. If you do want to specify resources, uncomment the following
++      ## lines, adjust them as necessary, and remove the curly braces after 'resources:'.
++      ## e.g:
++      ## limits:
++      ##   cpu: 500m
++      ##   memory: 1Gi
++      ##
++      limits: {}
++      requests: {}
+   pvc:
+     ## A manually managed Persistent Volume and Claim
+     ## If defined, PVC must be created manually before volume will be bound

@@ -1,0 +1,323 @@
+commit 0fc65ac6639e2f924bfcdba700af75cab055f5cd
+Author: j_r0dd <285797+jr0dd@users.noreply.github.com>
+Date:   Mon Sep 13 09:56:39 2021 -0400
+
+    [qbittorrent] metrics refactor (#1180)
+    
+    * [qbittorrent] metrics refactor
+    
+    * switch to official image for exporter
+    
+    * add template to rules
+    
+    * Update charts/stable/qbittorrent/templates/prometheusrules.yaml
+    
+    Co-authored-by: ᗪєνιη ᗷυнʟ <onedr0p@users.noreply.github.com>
+    
+    * Update charts/stable/qbittorrent/templates/prometheusrules.yaml
+    
+    Co-authored-by: ᗪєνιη ᗷυнʟ <onedr0p@users.noreply.github.com>
+    
+    Co-authored-by: ᗪєνιη ᗷυнʟ <onedr0p@users.noreply.github.com>
+
+diff --git a/charts/stable/qbittorrent/Chart.yaml b/charts/stable/qbittorrent/Chart.yaml
+index 18f39fe1..5a01452b 100644
+--- a/charts/stable/qbittorrent/Chart.yaml
++++ b/charts/stable/qbittorrent/Chart.yaml
+@@ -2,7 +2,7 @@ apiVersion: v2
+ appVersion: v4.3.7
+ description: qBittorrent is a cross-platform free and open-source BitTorrent client
+ name: qbittorrent
+-version: 12.2.1
++version: 13.0.0
+ kubeVersion: ">=1.16.0-0"
+ keywords:
+ - qbittorrent
+diff --git a/charts/stable/qbittorrent/README.md b/charts/stable/qbittorrent/README.md
+index 0e45408e..93f9b2b1 100644
+--- a/charts/stable/qbittorrent/README.md
++++ b/charts/stable/qbittorrent/README.md
+@@ -1,6 +1,6 @@
+ # qbittorrent
+ 
+-![Version: 12.2.1](https://img.shields.io/badge/Version-12.2.1-informational?style=flat-square) ![AppVersion: v4.3.7](https://img.shields.io/badge/AppVersion-v4.3.7-informational?style=flat-square)
++![Version: 13.0.0](https://img.shields.io/badge/Version-13.0.0-informational?style=flat-square) ![AppVersion: v4.3.7](https://img.shields.io/badge/AppVersion-v4.3.7-informational?style=flat-square)
+ 
+ qBittorrent is a cross-platform free and open-source BitTorrent client
+ 
+@@ -78,21 +78,23 @@ N/A
+ |-----|------|---------|-------------|
+ | env | object | See below | environment variables. See [image docs](https://docs.k8s-at-home.com/our-container-images/configuration/) for more details. |
+ | env.TZ | string | `"UTC"` | Set the container timezone |
+-| exporter.enabled | bool | See values.yaml | Enable and configure prometheus-qbittorrent-exporter sidecar and Prometheus podMonitor. |
+-| exporter.env.logLevel | string | `"INFO"` | log level [DEBUG|INFO|WARNING|ERROR|CRITICAL] |
+-| exporter.env.password | string | `"adminadmin"` | qbittorrent password update value after configuring qbittorrent |
+-| exporter.env.port | int | `9022` | metrics port |
+-| exporter.env.user | string | `"admin"` | qbittorrent username update value after configuring qbittorrent |
+-| exporter.image.pullPolicy | string | `"IfNotPresent"` | image pull policy |
+-| exporter.image.repository | string | `"ghcr.io/k8s-at-home/prometheus-qbittorrent-exporter"` | image repository |
+-| exporter.image.tag | string | `"v1.2.0"` | image tag |
+-| exporter.serviceMonitor.interval | string | `"15s"` |  |
+-| exporter.serviceMonitor.labels | object | `{}` |  |
+-| exporter.serviceMonitor.scrapeTimeout | string | `"5s"` |  |
+ | image.pullPolicy | string | `"IfNotPresent"` | image pull policy |
+ | image.repository | string | `"ghcr.io/k8s-at-home/qbittorrent"` | image repository |
+ | image.tag | string | `"v4.3.7"` | image tag |
+ | ingress.main | object | See values.yaml | Enable and configure ingress settings for the chart under this key. |
++| metrics.enabled | bool | See values.yaml | Enable and configure prometheus-qbittorrent-exporter sidecar and Prometheus podMonitor. |
++| metrics.exporter.env.logLevel | string | `"INFO"` | log level [DEBUG|INFO|WARNING|ERROR|CRITICAL] |
++| metrics.exporter.env.password | string | `"adminadmin"` | qbittorrent password update value after configuring qbittorrent |
++| metrics.exporter.env.port | int | `9022` | metrics port |
++| metrics.exporter.env.user | string | `"admin"` | qbittorrent username update value after configuring qbittorrent |
++| metrics.exporter.image.pullPolicy | string | `"IfNotPresent"` | image pull policy |
++| metrics.exporter.image.repository | string | `"ghcr.io/k8s-at-home/prometheus-qbittorrent-exporter"` | image repository |
++| metrics.exporter.image.tag | string | `"v1.2.0"` | image tag |
++| metrics.prometheusRule | object | See values.yaml | Enable and configure Prometheus Rules for the chart under this key. |
++| metrics.prometheusRule.rules | list | See prometheusrules.yaml | Configure additionial rules for the chart under this key. |
++| metrics.serviceMonitor.interval | string | `"15s"` |  |
++| metrics.serviceMonitor.labels | object | `{}` |  |
++| metrics.serviceMonitor.scrapeTimeout | string | `"5s"` |  |
+ | persistence | object | See values.yaml | Configure persistence settings for the chart under this key. |
+ | service | object | See values.yaml | Configures service settings for the chart. |
+ | settings.automaticPortSetup | bool | `false` | Enables automatic port configuration at startup This sets the qbittorrent port to the value of `service.bittorrent.ports.bittorrent.port`. |
+@@ -103,6 +105,12 @@ All notable changes to this application Helm chart will be documented in this fi
+ 
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++### [13.0.0]
++
++#### Changed
++
++- **BREAKING**: Refactored Prometheus metrics section to add rules. Enabling metrics automatically enables the serviceMonitor.
++
+ ### [12.2.0]
+ 
+ #### Changed
+@@ -142,6 +150,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ 
+ - Initial version
+ 
++[13.0.0]: #1300
+ [12.2.0]: #1220
+ [12.1.0]: #1210
+ [12.0.0]: #1200
+diff --git a/charts/stable/qbittorrent/README_CHANGELOG.md.gotmpl b/charts/stable/qbittorrent/README_CHANGELOG.md.gotmpl
+index 84298926..23b7a435 100644
+--- a/charts/stable/qbittorrent/README_CHANGELOG.md.gotmpl
++++ b/charts/stable/qbittorrent/README_CHANGELOG.md.gotmpl
+@@ -9,6 +9,12 @@ All notable changes to this application Helm chart will be documented in this fi
+ 
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++### [13.0.0]
++
++#### Changed
++
++- **BREAKING**: Refactored Prometheus metrics section to add rules. Enabling metrics automatically enables the serviceMonitor.
++
+ ### [12.2.0]
+ 
+ #### Changed
+@@ -48,6 +54,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ 
+ - Initial version
+ 
++[13.0.0]: #1300
+ [12.2.0]: #1220
+ [12.1.0]: #1210
+ [12.0.0]: #1200
+diff --git a/charts/stable/qbittorrent/templates/common.yaml b/charts/stable/qbittorrent/templates/common.yaml
+index 130ab55e..f6404ded 100644
+--- a/charts/stable/qbittorrent/templates/common.yaml
++++ b/charts/stable/qbittorrent/templates/common.yaml
+@@ -15,28 +15,28 @@ persistence:
+         defaultMode: 511
+ {{ end }}
+ 
+-{{ if .Values.exporter.enabled }}
++{{ if .Values.metrics.enabled }}
+ additionalContainers:
+   exporter:
+     name: exporter
+-    image: "{{ .Values.exporter.image.repository }}:{{ .Values.exporter.image.tag }}"
+-    imagePullPolicy: {{ .Values.exporter.image.pullPolicy }}
++    image: "{{ .Values.metrics.exporter.image.repository }}:{{ .Values.metrics.exporter.image.tag }}"
++    imagePullPolicy: {{ .Values.metrics.exporter.image.pullPolicy }}
+     env:
+       - name: QBITTORRENT_HOST
+         value: "http://localhost"
+       - name: QBITTORRENT_PORT
+         value: "{{ .Values.service.main.ports.http.port }}"
+       - name: QBITTORRENT_USER
+-        value: "{{ .Values.exporter.env.user }}"
++        value: "{{ .Values.metrics.exporter.env.user }}"
+       - name: QBITTORRENT_PASS
+-        value: "{{ .Values.exporter.env.password }}"
++        value: "{{ .Values.metrics.exporter.env.password }}"
+       - name: EXPORTER_PORT
+-        value: "{{ .Values.exporter.env.port }}"
++        value: "{{ .Values.metrics.exporter.env.port }}"
+       - name: EXPORTER_LOG_LEVEL
+-        value: "{{ .Values.exporter.env.logLevel }}"
++        value: "{{ .Values.metrics.exporter.env.logLevel }}"
+     ports:
+       - name: metrics
+-        containerPort: {{ .Values.exporter.env.port }}
++        containerPort: {{ .Values.metrics.exporter.env.port }}
+ 
+ service:
+   metrics:
+@@ -45,7 +45,7 @@ service:
+       metrics:
+         enabled: true
+         protocol: TCP
+-        port: {{ .Values.exporter.env.port }}
++        port: {{ .Values.metrics.exporter.env.port }}
+ {{ end }}
+ {{- end -}}
+ {{- $_ := mergeOverwrite .Values (include "qbittorrent.harcodedValues" . | fromYaml) -}}
+diff --git a/charts/stable/qbittorrent/templates/prometheusrules.yaml b/charts/stable/qbittorrent/templates/prometheusrules.yaml
+new file mode 100644
+index 00000000..07a1fa0e
+--- /dev/null
++++ b/charts/stable/qbittorrent/templates/prometheusrules.yaml
+@@ -0,0 +1,37 @@
++{{- if and .Values.metrics.enabled .Values.metrics.prometheusRule.enabled }}
++apiVersion: monitoring.coreos.com/v1
++kind: PrometheusRule
++metadata:
++  name: {{ include "common.names.fullname" . }}
++  labels:
++    {{- include "common.labels" . | nindent 4 }}
++    {{- with .Values.metrics.prometheusRule.labels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++spec:
++  groups:
++    - name: {{ include "common.names.fullname" . }}
++      rules:
++        - alert: qBittorrentExporterAbsent
++          annotations:
++            description: qBittorrent Exporter has disappeared from Prometheus
++              service discovery.
++            summary: qBittorrent Exporter is down.
++          expr: |
++            absent(up{job=~".*{{ include "common.names.fullname" . }}.*"} == 1)
++          for: 5m
++          labels:
++            severity: critical
++        - alert: qBittorrentDown
++          annotations:
++            description: qBittorrent service is down.
++            summary: qBittorrent is down.
++          expr: |
++            qbittorrent_up{job=~".*{{ include "common.names.fullname" . }}.*"} == 0
++          for: 5m
++          labels:
++            severity: critical
++        {{- with .Values.metrics.prometheusRule.rules }}
++        {{- toYaml . | nindent 8 }}
++        {{- end }}
++{{- end }}
+diff --git a/charts/stable/qbittorrent/templates/servicemonitor.yaml b/charts/stable/qbittorrent/templates/servicemonitor.yaml
+index c571a227..b4245480 100644
+--- a/charts/stable/qbittorrent/templates/servicemonitor.yaml
++++ b/charts/stable/qbittorrent/templates/servicemonitor.yaml
+@@ -1,11 +1,11 @@
+-{{- if .Values.exporter.enabled }}
++{{- if .Values.metrics.enabled }}
+ apiVersion: monitoring.coreos.com/v1
+ kind: ServiceMonitor
+ metadata:
+   name: {{ include "common.names.fullname" . }}
+   labels:
+     {{- include "common.labels" . | nindent 4 }}
+-    {{- with .Values.exporter.serviceMonitor.labels }}
++    {{- with .Values.metrics.serviceMonitor.labels }}
+     {{- toYaml . | nindent 4 }}
+     {{- end }}
+ spec:
+@@ -14,10 +14,10 @@ spec:
+       {{- include "common.labels.selectorLabels" . | nindent 6 }}
+   endpoints:
+     - port: metrics
+-      {{- with .Values.exporter.serviceMonitor.interval }}
++      {{- with .Values.metrics.serviceMonitor.interval }}
+       interval: {{ . }}
+       {{- end }}
+-      {{- with .Values.exporter.serviceMonitor.scrapeTimeout }}
++      {{- with .Values.metrics.serviceMonitor.scrapeTimeout }}
+       scrapeTimeout: {{ . }}
+       {{- end }}
+       path: /metrics
+diff --git a/charts/stable/qbittorrent/values.yaml b/charts/stable/qbittorrent/values.yaml
+index 82335a88..adfadddb 100644
+--- a/charts/stable/qbittorrent/values.yaml
++++ b/charts/stable/qbittorrent/values.yaml
+@@ -61,7 +61,7 @@ persistence:
+     enabled: false
+     mountPath: /downloads
+ 
+-exporter:
++metrics:
+   # -- Enable and configure prometheus-qbittorrent-exporter sidecar and Prometheus podMonitor.
+   # @default -- See values.yaml
+   enabled: false
+@@ -69,21 +69,39 @@ exporter:
+     interval: 15s
+     scrapeTimeout: 5s
+     labels: {}
+-  image:
+-    # -- image repository
+-    repository: ghcr.io/k8s-at-home/prometheus-qbittorrent-exporter
+-    # -- image tag
+-    tag: v1.2.0
+-    # -- image pull policy
+-    pullPolicy: IfNotPresent
+-  env:
+-    # -- qbittorrent username
+-    # update value after configuring qbittorrent
+-    user: "admin"
+-    # -- qbittorrent password
+-    # update value after configuring qbittorrent
+-    password: "adminadmin"
+-    # -- metrics port
+-    port: 9022
+-    # -- log level [DEBUG|INFO|WARNING|ERROR|CRITICAL]
+-    logLevel: INFO
++  # -- Enable and configure Prometheus Rules for the chart under this key.
++  # @default -- See values.yaml
++  prometheusRule:
++    enabled: false
++    labels: {}
++    # -- Configure additionial rules for the chart under this key.
++    # @default -- See prometheusrules.yaml
++    rules: []
++      # - alert: qBittorrentDown
++      #   annotations:
++      #     description: qBittorrent service is down.
++      #     summary: qBittorrent is down.
++      #   expr: |
++      #     qbittorrent_up == 0
++      #   for: 5m
++      #   labels:
++      #     severity: critical
++  exporter:
++    image:
++      # -- image repository
++      repository: esanchezm/prometheus-qbittorrent-exporter
++      # -- image tag
++      tag: v1.2.0
++      # -- image pull policy
++      pullPolicy: IfNotPresent
++    env:
++      # -- qbittorrent username
++      # update value after configuring qbittorrent
++      user: "admin"
++      # -- qbittorrent password
++      # update value after configuring qbittorrent
++      password: "adminadmin"
++      # -- metrics port
++      port: 9022
++      # -- log level [DEBUG|INFO|WARNING|ERROR|CRITICAL]
++      logLevel: INFO

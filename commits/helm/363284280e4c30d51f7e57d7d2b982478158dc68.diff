@@ -1,0 +1,99 @@
+commit 363284280e4c30d51f7e57d7d2b982478158dc68
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Apr 4 13:45:09 2018 +0200
+
+    [stable/phabricator] Refactor image property in values.yaml (#4654)
+    
+    * [stable/phabricator] Refactor image properties in values.yaml
+    
+    * Use rolling tag and refactor pullSecrets
+    
+    * Fix lint issue
+    
+    * Update Chart.yaml
+
+diff --git a/stable/phabricator/Chart.yaml b/stable/phabricator/Chart.yaml
+index d72a38971..0dbc9a418 100644
+--- a/stable/phabricator/Chart.yaml
++++ b/stable/phabricator/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: phabricator
+-version: 0.5.20
++version: 1.0.0
+ appVersion: 2018.12.0
+ description: Collection of open source web applications that help software companies build better software.
+ keywords:
+diff --git a/stable/phabricator/README.md b/stable/phabricator/README.md
+index ced394ce4..d21b257dc 100644
+--- a/stable/phabricator/README.md
++++ b/stable/phabricator/README.md
+@@ -47,8 +47,11 @@ The following table lists the configurable parameters of the Phabricator chart a
+ 
+ |               Parameter                |                 Description                  |                         Default                          |
+ |----------------------------------------|----------------------------------------------|----------------------------------------------------------|
+-| `image`                                | Phabricator image                            | `bitnami/phabricator:{VERSION}`                          |
+-| `imagePullPolicy`                      | Image pull policy                            | `Always` if `image` tag is `latest`, else `IfNotPresent` |
++| `image.registry`                       | Phabricator image registry                   | `docker.io`                                              |
++| `image.repository`                     | Phabricator image name                       | `bitnami/phabricator`                                    |
++| `image.tag`                            | Phabricator image tag                        | `{VERSION}`                                              |
++| `image.pullPolicy`                     | Image pull policy                            | `Always` if `imageTag` is `latest`, else `IfNotPresent`  |
++| `image.pullSecrets`                    | Specify image pull secrets                   | `nil`                                                    |
+ | `phabricatorHost`                      | Phabricator host to create application URLs  | `nil`                                                    |
+ | `phabricatorLoadBalancerIP`            | `loadBalancerIP` for the Phabricator Service | `nil`                                                    |
+ | `phabricatorUsername`                  | User of the application                      | `user`                                                   |
+diff --git a/stable/phabricator/templates/deployment.yaml b/stable/phabricator/templates/deployment.yaml
+index cc0f54e51..4b020a757 100644
+--- a/stable/phabricator/templates/deployment.yaml
++++ b/stable/phabricator/templates/deployment.yaml
+@@ -14,10 +14,16 @@ spec:
+       labels:
+         app: {{ template "phabricator.fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "phabricator.fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: MARIADB_HOST
+           value: {{ template "phabricator.mariadb.fullname" . }}
+diff --git a/stable/phabricator/values.yaml b/stable/phabricator/values.yaml
+index 5948bb570..c13635538 100644
+--- a/stable/phabricator/values.yaml
++++ b/stable/phabricator/values.yaml
+@@ -1,13 +1,21 @@
+ ## Bitnami Phabricator image version
+ ## ref: https://hub.docker.com/r/bitnami/phabricator/tags/
+ ##
+-image: bitnami/phabricator:2018.12.0-r0
+-
+-## Specify a imagePullPolicy
+-## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-# imagePullPolicy:
++image:
++  registry: docker.io
++  repository: bitnami/phabricator
++  tag: 2018.12.0
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
+ 
+ ## Phabricator host to create application URLs
+ ## ref: https://github.com/bitnami/bitnami-docker-phabricator#configuration

@@ -1,0 +1,209 @@
+commit cf300d9b736a66ccbb5326ea7a25f46fc3721a81
+Author: Marcos Bjoerkelund <marcosbc@users.noreply.github.com>
+Date:   Thu Jun 3 10:21:16 2021 +0200
+
+    [bitnami/discourse] MAJOR: Discourse image refactor (#6516)
+    
+    * [bitnami/discourse] MAJOR: Discourse image refactor
+    
+    * Fix chart deployment
+    
+    * [bitnami/discourse] Update components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    Co-authored-by: Bitnami Containers <containers@bitnami.com>
+
+diff --git a/bitnami/discourse/Chart.lock b/bitnami/discourse/Chart.lock
+index c438db6b30..ea29745792 100644
+--- a/bitnami/discourse/Chart.lock
++++ b/bitnami/discourse/Chart.lock
+@@ -7,6 +7,6 @@ dependencies:
+   version: 10.4.8
+ - name: redis
+   repository: https://charts.bitnami.com/bitnami
+-  version: 14.3.2
+-digest: sha256:c3d86a80d8c77d99da4de5c184ad1947a8fd4e5998d273bc5fe1ac0d6f07b0c8
+-generated: "2021-05-28T16:46:05.056977702Z"
++  version: 14.3.3
++digest: sha256:0426237c1c86e5e8c57847b440d43985d7592446ea7bc3ed877e435c62b8aee6
++generated: "2021-06-02T23:10:02.874961929Z"
+diff --git a/bitnami/discourse/Chart.yaml b/bitnami/discourse/Chart.yaml
+index 6cc85e0134..7295211545 100644
+--- a/bitnami/discourse/Chart.yaml
++++ b/bitnami/discourse/Chart.yaml
+@@ -35,4 +35,4 @@ sources:
+   - https://github.com/bitnami/bitnami-docker-discourse
+   - https://github.com/spinnaker
+   - https://www.discourse.org/
+-version: 3.0.7
++version: 4.0.0
+diff --git a/bitnami/discourse/README.md b/bitnami/discourse/README.md
+index 7196b905eb..aaf2530b6a 100644
+--- a/bitnami/discourse/README.md
++++ b/bitnami/discourse/README.md
+@@ -149,8 +149,8 @@ The following table lists the configurable parameters of the Discourse chart and
+ | Parameter                                    | Description                                                       | Default                                                 |
+ |----------------------------------------------|-------------------------------------------------------------------|---------------------------------------------------------|
+ | `sidekiq.containerSecurityContext`           | Container security context specification                          | `{}`                                                    |
+-| `sidekiq.command`                            | Custom command to override image cmd (evaluated as a template)    | `["/app-entrypoint.sh"]`                                |
+-| `sidekiq.args`                               | Custom args for the custom command (evaluated as a template)      | `["nami", "start", "--foreground", "discourse-sidekiq"` |
++| `sidekiq.command`                            | Custom command to override image cmd (evaluated as a template)    | `["/opt/bitnami/scripts/discourse/entrypoint.sh"]`      |
++| `sidekiq.args`                               | Custom args for the custom command (evaluated as a template)      | `["/opt/bitnami/scripts/discourse-sidekiq/run.sh"`      |
+ | `sidekiq.resources`                          | Sidekiq container's resource requests and limits                  | `{}`                                                    |
+ | `sidekiq.livenessProbe.enabled`              | Enable/disable livenessProbe                                      | `true`                                                  |
+ | `sidekiq.livenessProbe.initialDelaySeconds`  | Delay before liveness probe is initiated                          | `500`                                                   |
+@@ -438,6 +438,12 @@ Find more information about how to deal with common errors related to Bitnami’
+ 
+ ## Upgrading
+ 
++### To 4.0.0
++
++The [Bitnami Discourse](https://github.com/bitnami/bitnami-docker-discourse) image was refactored and now the source code is published in GitHub in the [`rootfs`](https://github.com/bitnami/bitnami-docker-discourse/tree/master/2/debian-10/rootfs) folder of the container image repository.
++
++Full compatibility is not guaranteed due to the amount of involved changes, however no breaking changes are expected.
++
+ ### To 3.0.0
+ 
+ This major updates the Redis<sup>TM</sup> subchart to it newest major, 14.0.0, which contains breaking changes. For more information on this subchart's major and the steps needed to migrate your data from your previous release, please refer to [Redis<sup>TM</sup> upgrade notes.](https://github.com/bitnami/charts/tree/master/bitnami/redis#to-1400).
+diff --git a/bitnami/discourse/templates/configmaps.yaml b/bitnami/discourse/templates/configmaps.yaml
+index daad1e5413..7888386da6 100644
+--- a/bitnami/discourse/templates/configmaps.yaml
++++ b/bitnami/discourse/templates/configmaps.yaml
+@@ -10,20 +10,24 @@ metadata:
+   annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+   {{- end }}
+ data:
+-  {{- $port:=.Values.service.port | toString }}
+-  DISCOURSE_HOSTNAME: "{{ include "discourse.host" . }}{{- if ne $port "80" }}:{{ .Values.service.port }}{{ end }}"
++  {{- $port := .Values.service.port | toString }}
++  DISCOURSE_HOST: "{{ include "discourse.host" . }}{{- if ne $port "80" }}:{{ .Values.service.port }}{{ end }}"
++  DISCOURSE_SKIP_INSTALL: {{ ternary "yes" "no" .Values.discourse.skipInstall | quote }}
++  DISCOURSE_SITE_NAME: {{ .Values.discourse.siteName | quote }}
+   DISCOURSE_USERNAME: {{ .Values.discourse.username | quote }}
+   DISCOURSE_EMAIL: {{ .Values.discourse.email | quote }}
+-  DISCOURSE_SITENAME: {{ .Values.discourse.siteName | quote }}
+-  REDIS_HOST: {{ template "discourse.redisHost" . }}
+-  REDIS_PORT_NUMBER: {{ template "discourse.redisPort" . }}
+-  POSTGRESQL_HOST: {{ template "discourse.databaseHost" . }}
+-  POSTGRESQL_PORT_NUMBER: {{ template "discourse.databasePort" . }}
+-  DISCOURSE_POSTGRESQL_NAME: {{ template "discourse.databaseName" . }}
+-  DISCOURSE_POSTGRESQL_USERNAME: {{ template "discourse.databaseUser" . }}
+-  POSTGRESQL_ROOT_USER: "postgres"
+-  {{- if .Values.discourse.skipInstall }}
+-  DISCOURSE_SKIP_INSTALL: "yes"
++  DISCOURSE_REDIS_HOST: {{ template "discourse.redisHost" . }}
++  DISCOURSE_REDIS_PORT_NUMBER: {{ template "discourse.redisPort" . }}
++  DISCOURSE_DATABASE_HOST: {{ template "discourse.databaseHost" . }}
++  DISCOURSE_DATABASE_PORT_NUMBER: {{ template "discourse.databasePort" . }}
++  DISCOURSE_DATABASE_NAME: {{ template "discourse.databaseName" . }}
++  DISCOURSE_DATABASE_USERNAME: {{ template "discourse.databaseUser" . }}
++  POSTGRESQL_CLIENT_DATABASE_HOST: {{ template "discourse.databaseHost" . }}
++  POSTGRESQL_CLIENT_DATABASE_PORT_NUMBER: {{ template "discourse.databasePort" . }}
++  {{- if or .Values.postgresql.enabled (not .Values.externalDatabase.postgresqlPostgresUser) }}
++  POSTGRESQL_CLIENT_POSTGRES_USER: "postgres"
+   {{- else }}
+-  DISCOURSE_SKIP_INSTALL: "no"
++  POSTGRESQL_CLIENT_POSTGRES_USER: {{ .Values.externalDatabase.postgresqlPostgresUser | quote }}
+   {{- end }}
++  POSTGRESQL_CLIENT_CREATE_DATABASE_NAME: {{ template "discourse.databaseName" . }}
++  POSTGRESQL_CLIENT_CREATE_DATABASE_EXTENSIONS: "hstore,pg_trgm"
+diff --git a/bitnami/discourse/templates/deployment.yaml b/bitnami/discourse/templates/deployment.yaml
+index 0d756069ef..14c6a58bf1 100644
+--- a/bitnami/discourse/templates/deployment.yaml
++++ b/bitnami/discourse/templates/deployment.yaml
+@@ -70,31 +70,25 @@ spec:
+           args: {{- include "common.tplvalues.render" (dict "value" .Values.discourse.args "context" $) | nindent 12 }}
+           {{- end }}
+           env:
+-            {{- if .Values.image.debug }}
+-            - name: NAMI_DEBUG
+-              value: "--log-level trace"
+-            {{- end }}
++            - name: BITNAMI_DEBUG
++              value: {{ ternary "true" "false" .Values.image.debug | quote }}
+             - name: DISCOURSE_PASSWORD
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ include "discourse.secretName" . }}
+                   key: discourse-password
+-            - name: DISCOURSE_POSTGRESQL_PASSWORD
++            - name: DISCOURSE_DATABASE_PASSWORD
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ include "discourse.postgresql.secretName" . }}
+                   key: postgresql-password
+-            {{- if and (not .Values.postgresql.enabled) .Values.externalDatabase.postgresqlPostgresUser }}
+-            - name: POSTGRESQL_ROOT_USER
+-              value: {{ .Values.externalDatabase.postgresqlPostgresUser | quote }}
+-            {{- end }}
+-            - name: POSTGRESQL_ROOT_PASSWORD
++            - name: POSTGRESQL_CLIENT_POSTGRES_PASSWORD
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ include "discourse.postgresql.secretName" . }}
+                   key: postgresql-postgres-password
+             {{- if (include "discourse.redis.auth.enabled" .) }}
+-            - name: REDIS_PASSWORD
++            - name: DISCOURSE_REDIS_PASSWORD
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ include "discourse.redis.secretName" . }}
+@@ -161,10 +155,8 @@ spec:
+           command: {{- include "common.tplvalues.render" (dict "value" .Values.sidekiq.command "context" $) | nindent 12 }}
+           args: {{- include "common.tplvalues.render" (dict "value" .Values.sidekiq.args "context" $) | nindent 12 }}
+           env:
+-            {{- if .Values.image.debug }}
+-            - name: NAMI_DEBUG
+-              value: "--log-level trace"
+-            {{- end }}
++            - name: BITNAMI_DEBUG
++              value: {{ ternary "true" "false" .Values.image.debug | quote }}
+             - name: DISCOURSE_HOST
+               value: "127.0.0.1"
+             - name: DISCOURSE_PORT
+@@ -203,7 +195,7 @@ spec:
+           {{- if .Values.sidekiq.livenessProbe.enabled }}
+           livenessProbe:
+             exec:
+-              command: ["/bin/sh", "-c", "nami status discourse-sidekiq"]
++              command: ["/bin/sh", "-c", "pgrep -f ^sidekiq"]
+             initialDelaySeconds: {{ .Values.sidekiq.livenessProbe.initialDelaySeconds }}
+             periodSeconds: {{ .Values.sidekiq.livenessProbe.periodSeconds }}
+             timeoutSeconds: {{ .Values.sidekiq.livenessProbe.timeoutSeconds }}
+@@ -215,7 +207,7 @@ spec:
+           {{- if .Values.sidekiq.readinessProbe.enabled }}
+           readinessProbe:
+             exec:
+-              command: ["/bin/sh", "-c", "nami status discourse-sidekiq"]
++              command: ["/bin/sh", "-c", "pgrep -f ^sidekiq"]
+             initialDelaySeconds: {{ .Values.sidekiq.readinessProbe.initialDelaySeconds }}
+             periodSeconds: {{ .Values.sidekiq.readinessProbe.periodSeconds }}
+             timeoutSeconds: {{ .Values.sidekiq.readinessProbe.timeoutSeconds }}
+diff --git a/bitnami/discourse/values.yaml b/bitnami/discourse/values.yaml
+index fc66c86e30..0a60e52859 100644
+--- a/bitnami/discourse/values.yaml
++++ b/bitnami/discourse/values.yaml
+@@ -23,7 +23,7 @@ replicaCount: 1
+ image:
+   registry: docker.io
+   repository: bitnami/discourse
+-  tag: 2.7.0-debian-10-r0
++  tag: 2.7.0-debian-10-r4
+   ## Specify a imagePullPolicy
+   ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+   ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+@@ -182,11 +182,11 @@ sidekiq:
+ 
+   ## Custom command to override image cmd
+   ##
+-  command: ['/app-entrypoint.sh']
++  command: ['/opt/bitnami/scripts/discourse/entrypoint.sh']
+ 
+   ## Custom args for the custom command:
+   ##
+-  args: ['nami', 'start', '--foreground', 'discourse-sidekiq']
++  args: ['/opt/bitnami/scripts/discourse-sidekiq/run.sh']
+ 
+   ## Sidekiq resource requests and limits
+   ## ref: http://kubernetes.io/docs/user-guide/compute-resources/

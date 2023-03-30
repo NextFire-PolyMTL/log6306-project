@@ -1,0 +1,869 @@
+commit 75e341de7bb079aa075022018683f84b32e70e09
+Author: Ryan Luckie <rtluckie@users.noreply.github.com>
+Date:   Fri May 25 05:20:33 2018 -0500
+
+    [stable/stolon] add stolon chart (#5490)
+    
+    * [stable/stolon] add stolon chart
+    
+    * Requested changes from reviewers
+    
+    - update image.pullPolicy
+    - update backend to use consul by default
+    - remove resource specs
+    - remove unused partials
+    - update apiVersion
+    - remove obsolete annotation
+    - update persistence spec to align with best practices
+    - fix case in values.yaml
+    
+    * don't install etcd by default
+    
+    * Refactor service and port definitions
+    
+    - refactor service manifests to allow more granular configuration
+    - update port definitions in values.yaml
+    
+    * Numerous fixes for issues found during testing
+    
+    - remove stolon.clusterName partial from _helpers.tpl and change manifests accordingly
+    - fix create-secrets-job
+    - refactor labels and selectors in all manifests to align with best practices
+    - add keeper-headless-service for statefulset
+    
+    * Changes to fix kubernetes as backend store
+    
+    - update label.app to support stolon requirements
+      - see https://github.com/sorintlab/stolon/commit/38ae6b13b5e161a5bfe0fbe01084ca060eaf2e76#diff-95cdd374e9440fde010ff35d65f8cf3fR54
+    - add .Values.store.kubeResourceKind
+    - make kubernetes default store in Values.yaml
+    - remove subcharts for consul and etcd
+    - add nodeSelector, affinity and toleration for keeper-statefulset
+    - clean up values.yaml
+    - update README to reflect changes
+    
+    * Requsted changes, cleanup, misc fixes
+    
+    - update image to latest version of stolon
+    - remove create-secrets-job and use native secrets w/ {{ if .Release.IsInstall }} to avoid overwriting secrets
+    - remove unnecessary keeper service
+    - remove unused template
+    - cleanup labels and selectors
+    - add component and stolon-cluster labels to support discovery in latest version of stolon
+    - add annotations to services, deployment and statefulset
+    - enable stolon metrics
+    
+    * Add pgParameters option
+    
+    - add ability to add postgresql.conf config options
+    - update create-cluster-job to use new config options
+    - remove deprecated config options
+    - update README and values.yaml
+    - move to master-pg10 image tag
+    
+    * Requested changes
+    
+    - revert to use stable stolon image
+    - add etcdImage to values
+    - fix indent
+    - remove initContainer annotation and replace with proper spec
+    - add component label to selector specs
+    
+    * Fix resource definitions
+
+diff --git a/stable/stolon/.helmignore b/stable/stolon/.helmignore
+new file mode 100644
+index 000000000..f0c131944
+--- /dev/null
++++ b/stable/stolon/.helmignore
+@@ -0,0 +1,21 @@
++# Patterns to ignore when building packages.
++# This supports shell glob matching, relative path matching, and
++# negation (prefixed with !). Only one pattern per line.
++.DS_Store
++# Common VCS dirs
++.git/
++.gitignore
++.bzr/
++.bzrignore
++.hg/
++.hgignore
++.svn/
++# Common backup files
++*.swp
++*.bak
++*.tmp
++*~
++# Various IDEs
++.project
++.idea/
++*.tmproj
+diff --git a/stable/stolon/Chart.yaml b/stable/stolon/Chart.yaml
+new file mode 100644
+index 000000000..64aea56a1
+--- /dev/null
++++ b/stable/stolon/Chart.yaml
+@@ -0,0 +1,12 @@
++name: stolon
++version: 0.1.0
++appVersion: 0.10.0
++description: Stolon - PostgreSQL cloud native High Availability.
++home: https://github.com/sorintlab/stolon
++icon: https://i.imgur.com/tIW8sAW.png
++sources:
++  - https://github.com/sorintlab/stolon
++maintainers:
++  - name: rtluckie
++    email: rluckie@cisco.com
++engine: gotpl
+diff --git a/stable/stolon/README.md b/stable/stolon/README.md
+new file mode 100644
+index 000000000..4cface9af
+--- /dev/null
++++ b/stable/stolon/README.md
+@@ -0,0 +1,67 @@
++# Stolon Helm Chart
++
++* Installs [Stolon](https://github.com/sorintlab/stolon) (HA PostgreSQL cluster)
++* Inspired by [this](https://github.com/lwolf/stolon-chart) and [stolon examples](https://github.com/sorintlab/stolon/tree/master/examples/kubernetes/statefulset)
++
++## TL;DR;
++
++```console
++$ helm install stable/stolon
++```
++
++## Installing the Chart
++
++To install the chart with the release name `my-release`:
++
++```console
++$ helm install --name my-release stable/stolon
++```
++
++## Backend
++
++Kubernetes is the default store backend. `consul`, `etcdv2` or `etcdv3` can also be used as the store backend.
++
++## Configuration
++
++| Parameter                               | Description                                    | Default                                                      |
++| --------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------ |
++| `image.repository`                      | `stolon` image repository                      | `sorintlab/stolon`                                           |
++| `image.tag`                             | `stolon` image tag                             | `v0.10.0-pg10`                                               |
++| `image.pullPolicy`                      | `stolon` image pull policy                     | `IfNotPresent`                                               |
++| `etcdImage.repository`                  | `etcd` image repository                        | `k8s.gcr.io/etcd-amd64`                                      |
++| `etcdImage.tag`                         | `etcd` image tag                               | `2.2.5`                                                      |
++| `etcdImage.pullPolicy`                  | `etcd` image pull policy                       | `IfNotPresent`                                               |
++| `debug`                                 | Debug mode                                     | `false`                                                      |
++| `persistence.enabled`                   | Use a PVC to persist data                      | `true`                                                       |
++| `persistence.storageClassName`          | Storage class name of backing PVC              | `""`                                                         |
++| `persistence.accessModes`               | Perisistent volumes access modes               | `["ReadWriteOnce"]`                                          |
++| `persistence.size`                      | Size of data volume                            | `10Gi`                                                       |
++| `rbac.create`                           | Specifies if RBAC resources should be created  | `true`                                                       |
++| `serviceAccount.create`                 | Specifies if ServiceAccount should be created  | `true`                                                       |
++| `serviceAccount.name`                   | Name of the generated serviceAccount           | Defaults to fullname template                                |
++| `superuserUsername`                     | Postgres superuser username                    | `stolon`                                                     |
++| `superuserPassword`                     | Postgres superuser password                    | random 40 characters                                         |
++| `replicationUsername`                   | Replication username                           | `repluser`                                                   |
++| `replicationPassword`                   | Replication password                           | random 40 characters                                         |
++| `store.backend`                         | Store backend (kubernetes/consul/etcd)         | `kubernetes`                                                 |
++| `store.endpoints`                       | Store backend endpoints                        | `nil`                                                        |
++| `store.kubeResourceKind`                | Kubernetes resource kind (only for kubernetes) | `configmap`                                                  |
++| `pgParameters`                          | [`postgresql.conf`][pgconf] options used during cluster creation | `{}`                                       |
++| `keeper.replicaCount`                   | Number of keeper nodes                         | `2`                                                          |
++| `keeper.resources`                      | Keeper resource requests/limit                 | `{}`                                                         |
++| `keeper.nodeSelector`                   | Node labels for keeper pod assignment          | `{}`                                                         |
++| `keeper.affinity`                       | Affinity settings for keeper pod assignment    | `{}`                                                         |
++| `keeper.tolerations`                    | Toleration labels for keeper pod assignment    | `[]`                                                         |
++| `proxy.replicaCount`                    | Number of proxy nodes                          | `2`                                                          |
++| `proxy.resources`                       | Proxy resource requests/limit                  | `{}`                                                         |
++| `proxy.nodeSelector`                    | Node labels for proxy pod assignment           | `{}`                                                         |
++| `proxy.affinity`                        | Affinity settings for proxy pod assignment     | `{}`                                                         |
++| `proxy.tolerations`                     | Toleration labels for proxy pod assignment     | `[]`                                                         |
++| `sentinel.replicaCount`                 | Number of sentinel nodes                       | `2`                                                          |
++| `sentinel.resources`                    | Sentinel resource requests/limit               | `{}`                                                         |
++| `sentinel.nodeSelector`                 | Node labels for sentinel pod assignment        | `{}`                                                         |
++| `sentinel.affinity`                     | Affinity settings for sentinel pod assignment  | `{}`                                                         |
++| `sentinel.tolerations`                  | Toleration labels for sentinel pod assignment  | `[]`                                                         |
++
++
++[pgconf]: https://github.com/postgres/postgres/blob/master/src/backend/utils/misc/postgresql.conf.sample
+diff --git a/stable/stolon/templates/NOTES.txt b/stable/stolon/templates/NOTES.txt
+new file mode 100644
+index 000000000..c3c7f02b7
+--- /dev/null
++++ b/stable/stolon/templates/NOTES.txt
+@@ -0,0 +1,4 @@
++Stolon cluster installed and initialized.
++
++To get superuser password run
++    PGPASSWORD=$(kubectl get secret --namespace {{ .Release.Namespace }} {{ template "stolon.fullname" . }} -o jsonpath="{.data.pg_su_password}" | base64 --decode; echo)
+diff --git a/stable/stolon/templates/_helpers.tpl b/stable/stolon/templates/_helpers.tpl
+new file mode 100644
+index 000000000..c267422a6
+--- /dev/null
++++ b/stable/stolon/templates/_helpers.tpl
+@@ -0,0 +1,42 @@
++{{/* vim: set filetype=mustache: */}}
++{{/*
++Expand the name of the chart.
++*/}}
++{{- define "stolon.name" -}}
++{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*
++Create a default fully qualified app name.
++We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
++If release name contains chart name it will be used as a full name.
++*/}}
++{{- define "stolon.fullname" -}}
++{{- if .Values.fullnameOverride -}}
++{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Create chart name and version as used by the chart label.
++*/}}
++{{- define "stolon.chart" -}}
++{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++
++{{/* Create the name of the service account to use */}}
++{{- define "stolon.serviceAccountName" -}}
++{{- if .Values.serviceAccount.create -}}
++    {{ default (include "stolon.fullname" .) .Values.serviceAccount.name }}
++{{- else -}}
++    {{ default "default" .Values.serviceAccount.name }}
++{{- end -}}
++{{- end -}}
+diff --git a/stable/stolon/templates/create-cluster-job.yaml b/stable/stolon/templates/create-cluster-job.yaml
+new file mode 100644
+index 000000000..32aa4c004
+--- /dev/null
++++ b/stable/stolon/templates/create-cluster-job.yaml
+@@ -0,0 +1,46 @@
++{{ if .Release.IsInstall }}
++apiVersion: batch/v1
++kind: Job
++metadata:
++  name: {{ template "stolon.fullname" . }}-create-cluster
++  labels:
++    app: {{ template "stolon.name" . }}
++    chart: {{ template "stolon.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++  annotations:
++    "helm.sh/hook-delete-policy": hook-succeeded
++spec:
++  template:
++    metadata:
++      labels:
++        app: {{ template "stolon.fullname" . }}
++        release: {{ .Release.Name }}
++    spec:
++      restartPolicy: OnFailure
++      serviceAccountName: {{ template "stolon.serviceAccountName" . }}
++  {{- if eq .Values.store.backend "etcdv2" "etcdv3" }}
++      initContainers:
++        - name: {{ .Chart.Name }}-etcd-wait
++          image: "{{ .Values.etcdImage.repository }}:{{ .Values.etcdImage.tag }}"
++          imagePullPolicy: {{ .Values.etcdImage.pullPolicy }}
++          command: ["sh", "-c", "while ! etcdctl --endpoints {{ .Values.store.endpoints }} cluster-health; do sleep 1 && echo -n .; done"]
++  {{- end }}
++      containers:
++        - name: {{ template "stolon.fullname" . }}
++          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++          imagePullPolicy: {{ .Values.image.pullPolicy }}
++          command: ["/usr/local/bin/stolonctl"]
++          args:
++            - init
++            - --cluster-name={{ template "stolon.fullname" . }}
++            - --store-backend={{ .Values.store.backend }}
++            {{- if eq .Values.store.backend "kubernetes" }}
++            - --kube-resource-kind={{ .Values.store.kubeResourceKind }}
++            {{- else }}
++            - --store-endpoints={{ .Values.store.endpoints }}
++            {{- end }}
++            - --yes
++            - '{"initMode":"new"{{- if .Values.pgParameters }},"pgParameters":{{ with .Values.pgParameters }}{{ toJson . }}{{- end }}{{- end }}}'
++{{ end }}
++
+diff --git a/stable/stolon/templates/keeper-headless-service.yaml b/stable/stolon/templates/keeper-headless-service.yaml
+new file mode 100644
+index 000000000..82f427b26
+--- /dev/null
++++ b/stable/stolon/templates/keeper-headless-service.yaml
+@@ -0,0 +1,24 @@
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ template "stolon.fullname" . }}-keeper-headless
++  labels:
++    app: {{ template "stolon.name" . }}
++    chart: {{ template "stolon.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++  annotations:
++{{- with .Values.keeper.service.annotations }}
++{{ toYaml . | indent 4 }}
++{{- end }}
++spec:
++  clusterIP: None
++  ports:
++  {{- range $key, $value := .Values.keeper.service.ports }}
++    - name: {{ $key }}
++{{ toYaml $value | indent 6 }}
++{{- end }}
++  selector:
++    app: {{ template "stolon.name" . }}
++    release: {{ .Release.Name }}
++    component: stolon-keeper
+diff --git a/stable/stolon/templates/keeper-statefulset.yaml b/stable/stolon/templates/keeper-statefulset.yaml
+new file mode 100644
+index 000000000..871163d45
+--- /dev/null
++++ b/stable/stolon/templates/keeper-statefulset.yaml
+@@ -0,0 +1,123 @@
++apiVersion: apps/v1beta2
++kind: StatefulSet
++metadata:
++  name: {{ template "stolon.fullname" . }}-keeper
++  labels:
++    app: {{ template "stolon.name" . }}
++    chart: {{ template "stolon.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++spec:
++  serviceName: {{ template "stolon.fullname" . }}-keeper-headless
++  replicas: {{ .Values.keeper.replicaCount }}
++  selector:
++    matchLabels:
++      app: {{ template "stolon.name" . }}
++      release: {{ .Release.Name }}
++      component: stolon-keeper
++  template:
++    metadata:
++      labels:
++        app: {{ template "stolon.name" . }}
++        release: {{ .Release.Name }}
++        component: stolon-keeper
++        stolon-cluster: {{ template "stolon.fullname" . }}
++      annotations:
++{{- with .Values.keeper.annotations }}
++{{ toYaml . | indent 8 }}
++{{- end }}
++    spec:
++      serviceAccountName: {{ template "stolon.serviceAccountName" . }}
++      terminationGracePeriodSeconds: 10
++      containers:
++        - name: {{ .Chart.Name }}
++          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++          imagePullPolicy: {{ .Values.image.pullPolicy }}
++          command:
++            - "/bin/bash"
++            - "-ec"
++            - |
++              # Generate our keeper uid using the pod index
++              IFS='-' read -ra ADDR <<< "$(hostname)"
++              export STKEEPER_UID="keeper${ADDR[-1]}"
++              export POD_IP=$(hostname -i)
++              export STKEEPER_PG_LISTEN_ADDRESS=$POD_IP
++              export STOLON_DATA=/stolon-data
++              chown stolon:stolon $STOLON_DATA
++              exec gosu stolon stolon-keeper --data-dir $STOLON_DATA
++          env:
++            - name: POD_NAME
++              valueFrom:
++                fieldRef:
++                  fieldPath: metadata.name
++            - name: STKEEPER_CLUSTER_NAME
++              value: {{ template "stolon.fullname" . }}
++            - name: STKEEPER_STORE_BACKEND
++              value: {{ .Values.store.backend | quote}}
++            {{- if eq .Values.store.backend "kubernetes" }}
++            - name: STKEEPER_KUBE_RESOURCE_KIND
++              value: {{ .Values.store.kubeResourceKind  | quote}}
++            {{- else }}
++            - name: STKEEPER_STORE_ENDPOINTS
++              value: {{ .Values.store.endpoints | quote}}
++            {{- end }}
++            - name: STKEEPER_PG_REPL_USERNAME
++              value: {{ .Values.replicationUsername | quote}}
++            - name: STKEEPER_PG_REPL_PASSWORDFILE
++              value: "/etc/secrets/stolon/pg_repl_password"
++            - name: STKEEPER_PG_SU_USERNAME
++              value: {{ .Values.superuserUsername | quote}}
++            - name: STKEEPER_PG_SU_PASSWORDFILE
++              value: "/etc/secrets/stolon/pg_su_password"
++            - name: STKEEPER_METRICS_LISTEN_ADDRESS
++              value: "0.0.0.0:8080"
++            - name: STKEEPER_DEBUG
++              value: {{ .Values.debug | quote}}
++          ports:
++{{- range $key, $value := .Values.ports }}
++            - name: {{ $key }}
++{{ toYaml $value | indent 14 }}
++{{- end }}
++          resources:
++{{ toYaml .Values.keeper.resources | indent 12 }}
++          volumeMounts:
++          - name: data
++            mountPath: /stolon-data
++          - name: stolon-secrets
++            mountPath: /etc/secrets/stolon
++{{- with .Values.keeper.nodeSelector }}
++      nodeSelector:
++{{ toYaml . | indent 8 }}
++{{- end }}
++{{- with .Values.keeper.affinity }}
++      affinity:
++{{ toYaml . | indent 8 }}
++{{- end }}
++{{- with .Values.keeper.tolerations }}
++      tolerations:
++{{ toYaml . | indent 8 }}
++{{- end }}
++      volumes:
++        - name: stolon-secrets
++          secret:
++            secretName: {{ template "stolon.fullname" . }}
++{{- if .Values.persistence.enabled }}
++  volumeClaimTemplates:
++    - metadata:
++        name: data
++      spec:
++        accessModes:
++  {{- range .Values.persistence.accessModes }}
++          - {{ . | quote }}
++  {{- end }}
++        resources:
++          requests:
++            storage: {{ .Values.persistence.size | quote }}
++  {{- if .Values.persistence.storageClassName }}
++    {{- if (eq "-" .Values.persistence.storageClassName) }}
++  storageClassName: ""
++    {{- else }}
++  storageClassName: "{{ .Values.persistence.storageClassName }}"
++    {{- end }}
++  {{- end }}
++{{- end }}
+diff --git a/stable/stolon/templates/proxy-deployment.yaml b/stable/stolon/templates/proxy-deployment.yaml
+new file mode 100644
+index 000000000..cf9a4440c
+--- /dev/null
++++ b/stable/stolon/templates/proxy-deployment.yaml
+@@ -0,0 +1,83 @@
++apiVersion: apps/v1beta2
++kind: Deployment
++metadata:
++  name: {{ template "stolon.fullname" . }}-proxy
++  labels:
++    app: {{ template "stolon.name" . }}
++    chart: {{ template "stolon.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++spec:
++  replicas: {{ .Values.proxy.replicaCount }}
++  selector:
++    matchLabels:
++      app: {{ template "stolon.name" . }}
++      release: {{ .Release.Name }}
++      component: stolon-proxy
++  template:
++    metadata:
++      labels:
++        app: {{ template "stolon.name" . }}
++        release: {{ .Release.Name }}
++        component: stolon-proxy
++        stolon-cluster: {{ template "stolon.fullname" . }}
++      annotations:
++{{- with .Values.proxy.annotations }}
++{{ toYaml . | indent 8 }}
++{{- end }}
++    spec:
++      containers:
++        - name: {{ .Chart.Name }}
++          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++          imagePullPolicy: {{ .Values.image.pullPolicy }}
++          command:
++            - "/bin/bash"
++            - "-ec"
++            - |
++              exec gosu stolon stolon-proxy
++          env:
++            - name: POD_NAME
++              valueFrom:
++                fieldRef:
++                  fieldPath: metadata.name
++            - name: STPROXY_CLUSTER_NAME
++              value: {{ template "stolon.fullname" . }}
++            - name: STPROXY_STORE_BACKEND
++              value: {{ .Values.store.backend | quote}}
++            {{- if eq .Values.store.backend "kubernetes" }}
++            - name: STPROXY_KUBE_RESOURCE_KIND
++              value: {{ .Values.store.kubeResourceKind  | quote}}
++            {{- else }}
++            - name: STPROXY_STORE_ENDPOINTS
++              value: {{ .Values.store.endpoints | quote}}
++            {{- end }}
++            - name: STPROXY_LISTEN_ADDRESS
++              value: {{ default "0.0.0.0" .Values.proxy.listenAddress | quote }}
++            - name: STPROXY_METRICS_LISTEN_ADDRESS
++              value: "0.0.0.0:8080"
++            - name: STPROXY_DEBUG
++              value: {{ .Values.debug | quote}}
++          ports:
++{{- range $key, $value := .Values.ports }}
++            - name: {{ $key }}
++{{ toYaml $value | indent 14 }}
++{{- end }}
++          resources:
++{{ toYaml .Values.proxy.resources | indent 12 }}
++          readinessProbe:
++            tcpSocket:
++              port: {{ .Values.ports.stolon.containerPort }}
++            initialDelaySeconds: 10
++            timeoutSeconds: 5
++{{- with .Values.proxy.nodeSelector }}
++      nodeSelector:
++{{ toYaml . | indent 8 }}
++{{- end }}
++{{- with .Values.proxy.affinity }}
++      affinity:
++{{ toYaml . | indent 8 }}
++{{- end }}
++{{- with .Values.proxy.tolerations }}
++      tolerations:
++{{ toYaml . | indent 8 }}
++{{- end }}
+diff --git a/stable/stolon/templates/proxy-service.yaml b/stable/stolon/templates/proxy-service.yaml
+new file mode 100644
+index 000000000..b81a6065f
+--- /dev/null
++++ b/stable/stolon/templates/proxy-service.yaml
+@@ -0,0 +1,34 @@
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ template "stolon.fullname" . }}-proxy
++  labels:
++    app: {{ template "stolon.name" . }}
++    chart: {{ template "stolon.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++  annotations:
++{{- with .Values.proxy.service.annotations }}
++{{ toYaml . | indent 4 }}
++{{- end }}
++spec:
++{{- if (or (eq .Values.proxy.service.type "ClusterIP") (empty .Values.proxy.service.type)) }}
++  type: ClusterIP
++  {{- if .Values.proxy.service.clusterIP }}
++  clusterIP: {{ .Values.proxy.service.clusterIP }}
++  {{end}}
++{{- else if eq .Values.proxy.service.type "LoadBalancer" }}
++  type: {{ .Values.proxy.service.type }}
++  loadBalancerIP: {{ .Values.proxy.service.loadBalancerIP }}
++{{- else }}
++  type: {{ .Values.proxy.service.type }}
++{{- end }}
++  ports:
++  {{- range $key, $value := .Values.proxy.service.ports }}
++    - name: {{ $key }}
++{{ toYaml $value | indent 6 }}
++{{- end }}
++  selector:
++    app: {{ template "stolon.name" . }}
++    release: {{ .Release.Name }}
++    component: stolon-proxy
+diff --git a/stable/stolon/templates/role.yaml b/stable/stolon/templates/role.yaml
+new file mode 100644
+index 000000000..bc58bd20d
+--- /dev/null
++++ b/stable/stolon/templates/role.yaml
+@@ -0,0 +1,20 @@
++{{- if .Values.rbac.create -}}
++apiVersion: rbac.authorization.k8s.io/v1beta1
++kind: Role
++metadata:
++  name: {{ template "stolon.fullname" . }}
++  labels:
++    app: {{ template "stolon.name" . }}
++    chart: {{ template "stolon.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++rules:
++- apiGroups:
++    - ""
++  resources:
++    - pods
++    - endpoints
++    - configmaps
++  verbs:
++    - "*"
++{{- end -}}
+diff --git a/stable/stolon/templates/rolebinding.yaml b/stable/stolon/templates/rolebinding.yaml
+new file mode 100644
+index 000000000..b7febdb20
+--- /dev/null
++++ b/stable/stolon/templates/rolebinding.yaml
+@@ -0,0 +1,18 @@
++{{- if .Values.rbac.create -}}
++apiVersion: rbac.authorization.k8s.io/v1beta1
++kind: RoleBinding
++metadata:
++  name: {{ template "stolon.fullname" . }}
++  labels:
++    app: {{ template "stolon.name" . }}
++    chart: {{ template "stolon.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++roleRef:
++  apiGroup: rbac.authorization.k8s.io
++  kind: Role
++  name: {{ template "stolon.fullname" . }}
++subjects:
++- kind: ServiceAccount
++  name: {{ template "stolon.serviceAccountName" . }}
++{{- end -}}
+diff --git a/stable/stolon/templates/secret.yaml b/stable/stolon/templates/secret.yaml
+new file mode 100644
+index 000000000..4ff884163
+--- /dev/null
++++ b/stable/stolon/templates/secret.yaml
+@@ -0,0 +1,25 @@
++{{ if .Release.IsInstall }}
++apiVersion: v1
++kind: Secret
++metadata:
++  name: {{ template "stolon.fullname" . }}
++  labels:
++    app: {{ template "stolon.name" . }}
++    chart: {{ template "stolon.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++type: Opaque
++data:
++  {{ if .Values.superuserPassword }}
++  pg_su_password:  {{ .Values.superuserPassword | b64enc | quote }}
++  {{ else }}
++  pg_su_password: {{ randAlphaNum 40 | b64enc | quote }}
++  {{ end }}
++
++  {{ if .Values.replicationPassword }}
++  pg_repl_password:  {{ .Values.replicationPassword | b64enc | quote }}
++  {{ else }}
++  pg_repl_password: {{ randAlphaNum 40 | b64enc | quote }}
++  {{ end }}
++
++{{ end }}
+diff --git a/stable/stolon/templates/sentinel-deployment.yaml b/stable/stolon/templates/sentinel-deployment.yaml
+new file mode 100644
+index 000000000..04f1da4f0
+--- /dev/null
++++ b/stable/stolon/templates/sentinel-deployment.yaml
+@@ -0,0 +1,72 @@
++apiVersion: apps/v1beta2
++kind: Deployment
++metadata:
++  name: {{ template "stolon.fullname" . }}-sentinel
++  labels:
++    app: {{ template "stolon.name" . }}
++    chart: {{ template "stolon.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++spec:
++  replicas: {{ .Values.sentinel.replicaCount }}
++  selector:
++    matchLabels:
++      app: {{ template "stolon.name" . }}
++      release: {{ .Release.Name }}
++      component: stolon-sentinel
++  template:
++    metadata:
++      labels:
++        app: {{ template "stolon.name" . }}
++        release: {{ .Release.Name }}
++        component: stolon-sentinel
++        stolon-cluster: {{ template "stolon.fullname" . }}
++      annotations:
++{{- with .Values.keeper.annotations }}
++{{ toYaml . | indent 8 }}
++{{- end }}
++    spec:
++      serviceAccountName: {{ template "stolon.serviceAccountName" . }}
++      containers:
++        - name: {{ .Chart.Name }}
++          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++          imagePullPolicy: {{ .Values.image.pullPolicy }}
++          command:
++            - "/bin/bash"
++            - "-ec"
++            - |
++              exec gosu stolon stolon-sentinel
++          env:
++            - name: POD_NAME
++              valueFrom:
++                fieldRef:
++                  fieldPath: metadata.name
++            - name: STSENTINEL_CLUSTER_NAME
++              value: {{ template "stolon.fullname" . }}
++            - name: STSENTINEL_STORE_BACKEND
++              value: {{ .Values.store.backend | quote}}
++            {{- if eq .Values.store.backend "kubernetes" }}
++            - name: STSENTINEL_KUBE_RESOURCE_KIND
++              value: {{ .Values.store.kubeResourceKind  | quote}}
++            {{- else }}
++            - name: STSENTINEL_STORE_ENDPOINTS
++              value: {{ .Values.store.endpoints | quote}}
++            {{- end }}
++            - name: STSENTINEL_METRICS_LISTEN_ADDRESS
++              value: "0.0.0.0:8080"
++            - name: STSENTINEL_DEBUG
++              value: {{ .Values.debug | quote}}
++          resources:
++{{ toYaml .Values.sentinel.resources | indent 12 }}
++{{- with .Values.sentinel.nodeSelector }}
++      nodeSelector:
++{{ toYaml . | indent 8 }}
++{{- end }}
++{{- with .Values.sentinel.affinity }}
++      affinity:
++{{ toYaml . | indent 8 }}
++{{- end }}
++{{- with .Values.sentinel.tolerations }}
++      tolerations:
++{{ toYaml . | indent 8 }}
++{{- end }}
+diff --git a/stable/stolon/templates/serviceaccount.yaml b/stable/stolon/templates/serviceaccount.yaml
+new file mode 100644
+index 000000000..108085910
+--- /dev/null
++++ b/stable/stolon/templates/serviceaccount.yaml
+@@ -0,0 +1,11 @@
++{{- if .Values.serviceAccount.create -}}
++apiVersion: v1
++kind: ServiceAccount
++metadata:
++  name: {{ template "stolon.serviceAccountName" . }}
++  labels:
++    app: {{ template "stolon.name" . }}
++    chart: {{ template "stolon.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++{{- end -}}
+diff --git a/stable/stolon/values.yaml b/stable/stolon/values.yaml
+new file mode 100644
+index 000000000..879c6481c
+--- /dev/null
++++ b/stable/stolon/values.yaml
+@@ -0,0 +1,98 @@
++image:
++  repository: sorintlab/stolon
++  tag: v0.10.0-pg10
++  pullPolicy: IfNotPresent
++
++# used by create-cluster-job when store.backend is etcd
++etcdImage:
++  repository: k8s.gcr.io/etcd-amd64
++  tag: 2.2.5
++  pullPolicy: IfNotPresent
++
++debug: false
++
++persistence:
++  enabled: true
++  ## If defined, storageClassName: <storageClass>
++  ## If set to "-", storageClassName: "", which disables dynamic provisioning
++  ## If undefined (the default) or set to null, no storageClassName spec is
++  ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
++  ##   GKE, AWS & OpenStack)
++  ##
++  storageClassName: ""
++  accessModes:
++    - ReadWriteOnce
++  size: 10Gi
++
++rbac:
++  create: true
++
++serviceAccount:
++  create: true
++  # The name of the ServiceAccount to use. If not set and create is true, a name is generated using the fullname template
++  # name: my-name
++
++superuserUsername: "stolon"
++
++## password for the superuser (default is 40 random chars)
++# superuserPassword: ""
++
++replicationUsername: "repluser"
++
++## password for the replication user (default is 40 random chars)
++# replicationPassword: "replPassword"
++
++## backend could be one of the following: consul, etcdv2, etcdv3 or kubernetes
++store:
++  backend: kubernetes
++#  endpoints: "http://stolon-consul:8500"
++  kubeResourceKind: configmap
++
++pgParameters: {}
++
++ports:
++  stolon:
++    containerPort: 5432
++  metrics:
++    containerPort: 8080
++
++keeper:
++  replicaCount: 2
++  annotations: {}
++  resources: {}
++  service:
++    type: ClusterIP
++    annotations: {}
++    ports:
++      keeper:
++        port: 5432
++        targetPort: 5432
++        protocol: TCP
++  nodeSelector: {}
++  affinity: {}
++  tolerations: []
++
++proxy:
++  replicaCount: 2
++  annotations: {}
++  resources: {}
++  service:
++    type: ClusterIP
++#    loadBalancerIP: ""
++    annotations: {}
++    ports:
++      proxy:
++        port: 5432
++        targetPort: 5432
++        protocol: TCP
++  nodeSelector: {}
++  affinity: {}
++  tolerations: []
++
++sentinel:
++  replicaCount: 2
++  annotations: {}
++  resources: {}
++  nodeSelector: {}
++  affinity: {}
++  tolerations: []

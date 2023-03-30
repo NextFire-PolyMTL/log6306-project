@@ -1,0 +1,101 @@
+commit 4d8bdc3c2917de5d0d29d59e7b1beade7e11975e
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Apr 4 13:54:08 2018 +0200
+
+    [stable/testlink] Refactor image property in values.yaml (#4660)
+    
+    * [stable/testlink] Refactor image properties in values.yaml
+    
+    * Use rolling tag and refactor pullSecrets
+    
+    * Fix lint issue
+    
+    * Bump chart version
+    
+    * Update Chart.yaml
+
+diff --git a/stable/testlink/Chart.yaml b/stable/testlink/Chart.yaml
+index ef1e99167..8f42424b3 100644
+--- a/stable/testlink/Chart.yaml
++++ b/stable/testlink/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: testlink
+-version: 0.5.2
++version: 1.0.0
+ appVersion: 1.9.16
+ description: Web-based test management system that facilitates software quality assurance.
+ icon: https://bitnami.com/assets/stacks/testlink/img/testlink-stack-220x234.png
+diff --git a/stable/testlink/README.md b/stable/testlink/README.md
+index cb232c2a2..9c889e47e 100644
+--- a/stable/testlink/README.md
++++ b/stable/testlink/README.md
+@@ -47,8 +47,11 @@ The following table lists the configurable parameters of the TestLink chart and
+ 
+ |              Parameter              |               Description               |                         Default                         |
+ |-------------------------------------|-----------------------------------------|---------------------------------------------------------|
+-| `image`                             | TestLink image                          | `bitnami/testlink:{VERSION}`                            |
+-| `imagePullPolicy`                   | Image pull policy                       | `Always` if `imageTag` is `latest`, else `IfNotPresent` |
++| `image.registry`                    | TestLink image registry                 | `docker.io`                                             |
++| `image.repository`                  | TestLink Image name                     | `bitnami/testlink`                                      |
++| `image.tag`                         | TestLink Image tag                      | `{VERSION}`                                             |
++| `image.pullPolicy`                  | Image pull policy                       | `Always` if `imageTag` is `latest`, else `IfNotPresent` |
++| `image.pullSecrets`                 | Specify image pull secrets              | `nil`                                                   |
+ | `testlinkUsername`                  | Admin username                          | `user`                                                  |
+ | `testlinkPassword`                  | Admin user password                     | _random 10 character long alphanumeric string_          |
+ | `testlinkEmail`                     | Admin user email                        | `user@example.com`                                      |
+diff --git a/stable/testlink/templates/deployment.yaml b/stable/testlink/templates/deployment.yaml
+index f42998118..e32ee2744 100644
+--- a/stable/testlink/templates/deployment.yaml
++++ b/stable/testlink/templates/deployment.yaml
+@@ -14,10 +14,16 @@ spec:
+       labels:
+         app: {{ template "fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: ALLOW_EMPTY_PASSWORD
+           value: {{ .Values.allowEmptyPassword | quote }}
+diff --git a/stable/testlink/values.yaml b/stable/testlink/values.yaml
+index 11995cc5f..aaab315a7 100644
+--- a/stable/testlink/values.yaml
++++ b/stable/testlink/values.yaml
+@@ -1,13 +1,21 @@
+ ## Bitnami TestLink image version
+ ## ref: https://hub.docker.com/r/bitnami/testlink/tags/
+ ##
+-image: bitnami/testlink:1.9.16-r11
+-
+-## Specify a imagePullPolicy
+-## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-# imagePullPolicy:
++image:
++  registry: docker.io
++  repository: bitnami/testlink
++  tag: 1.9.16
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
+ 
+ ## Admin username
+ ## ref: https://github.com/bitnami/bitnami-docker-testlink#environment-variables

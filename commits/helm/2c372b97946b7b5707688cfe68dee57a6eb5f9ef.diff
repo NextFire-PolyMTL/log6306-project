@@ -1,0 +1,847 @@
+commit 2c372b97946b7b5707688cfe68dee57a6eb5f9ef
+Author: Hidde Beydals <hiddeco@users.noreply.github.com>
+Date:   Tue Apr 10 17:36:10 2018 +0200
+
+    [incubator/patroni] PostgreSQL 10 and best practices (#3957)
+    
+    * Removed obsolete admin password option
+    
+    There is no Spilo release available based upon Postgresql 9.6 with
+    a working admin configuration option
+    (https://github.com/zalando/spilo/pull/189).
+    
+    Remove the option to not confuse any chart users.
+    
+    * Follow Chart best practices value naming conventions
+    
+    * Fixed imagePullPolicy option
+    
+    * Added recommended 'app' label
+    
+    https://github.com/kubernetes/helm/blob/master/docs/chart_best_practices/labels.md
+    
+    * Improved README
+    
+    * Upgrade Spilo image to PostgreSQL 10
+    
+    * Re-implement admin password
+    
+    * Do not depend on default but inherit from values
+    
+    * Be consistent with spacing
+    
+    * Update lock
+    
+    * Fixed fullname
+    
+    * Update helper functions and finetune labels
+    
+    * Removed component label and refactored values
+    
+    * Mount admin password as env variable
+    
+    * Improve README
+    
+    * Update todo
+    
+    * Document (full)name overrides
+    
+    * Bump Spilo version to 1.4-p6
+    
+    * Use lowercase value names in all if statements
+    
+    * Bump Spilo version to 1.4-p7
+    
+    * Pre-define anti-affinity rules
+    
+    * Use full 2-dot notation and improve README
+    
+    * Allow complex affinity rules
+    
+    * Fixed whitelines if/else statements
+    
+    * Update README
+    
+    * Merged affinity and antiAffinity values functionalities
+    
+    * Fix
+    
+    * podAntiAffinity
+
+diff --git a/incubator/patroni/Chart.yaml b/incubator/patroni/Chart.yaml
+index 52478ff9d..0d304063c 100644
+--- a/incubator/patroni/Chart.yaml
++++ b/incubator/patroni/Chart.yaml
+@@ -1,7 +1,7 @@
+ name: patroni
+ description: 'Highly available elephant herd: HA PostgreSQL cluster.'
+-version: 0.6.3
+-appVersion: 1.3-p4
++version: 0.7.0
++appVersion: 1.4-p7
+ home: https://github.com/zalando/patroni
+ sources:
+ - https://github.com/zalando/patroni
+diff --git a/incubator/patroni/README.md b/incubator/patroni/README.md
+index f2264e2e5..b5af02cd8 100644
+--- a/incubator/patroni/README.md
++++ b/incubator/patroni/README.md
+@@ -1,24 +1,25 @@
+ # Patroni Helm Chart
+ 
+-This directory contains a Kubernetes chart to deploy a five node patroni cluster using a statefulset.
++This directory contains a Kubernetes chart to deploy a five node [Patroni](https://github.com/zalando/patroni/) cluster using a [Spilo](https://github.com/zalando/spilo) and a StatefulSet.
+ 
+ ## Prerequisites Details
+-* Kubernetes 1.5
++* Kubernetes 1.5+
+ * PV support on the underlying infrastructure
+ 
+-## Statefulset Details
++## StatefulSet Details
+ * https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/
+ 
+-## Statefulset Caveats
++## StatefulSet Caveats
+ * https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#limitations
+ 
+ ## Todo
+ * Make namespace configurable
++* K8S native DCS
+ 
+ ## Chart Details
+ This chart will do the following:
+ 
+-* Implement a HA scalable PostgreSQL cluster using Kubernetes PetSets
++* Implement a HA scalable PostgreSQL 10 cluster using a Kubernetes StatefulSet.
+ 
+ ## Installing the Chart
+ 
+@@ -30,18 +31,24 @@ $ helm dependency update
+ $ helm install --name my-release incubator/patroni
+ ```
+ 
+-## Connecting to Postgres
++To install the chart with randomly generated passwords:
++
++```console
++$ helm install --name my-release incubator/patroni \
++  --set credentials.superuser="$(< /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c32)",credentials.admin="$(< /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c32)",credentials.standby="$(< /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c32)"
++```
++
++## Connecting to PostgreSQL
+ 
+ Your access point is a cluster IP. In order to access it spin up another pod:
+ 
+ ```console
+-$ kubectl run -i --tty ubuntu --image=ubuntu:16.04 --restart=Never -- bash -il
++$ kubectl run -i --tty --rm psql --image=postgres --restart=Never -- bash -il
+ ```
+ 
+-Then, from inside the pod, connect to postgres:
++Then, from inside the pod, connect to PostgreSQL:
+ 
+ ```console
+-$ apt-get update && apt-get install postgresql-client -y
+ $ psql -U admin -h my-release-patroni.default.svc.cluster.local postgres
+ <admin password from values.yaml>
+ postgres=>
+@@ -51,43 +58,45 @@ postgres=>
+ 
+ The following table lists the configurable parameters of the patroni chart and their default values.
+ 
+-|       Parameter         |           Description               |                         Default                     |
+-|-------------------------|-------------------------------------|-----------------------------------------------------|
+-| `Name`                  | Service name                        | `patroni`                                           |
+-| `Spilo.Image`           | Container image name                | `registry.opensource.zalan.do/acid/spilo-9.5`       |
+-| `Spilo.Version`         | Container image tag                 | `1.0-p5`                                            |
+-| `ImagePullPolicy`       | Container pull policy               | `IfNotPresent`                                      |
+-| `Replicas`              | k8s statefulset replicas            | `5`                                                 |
+-| `NodeSelector`          | nodeSelector map                    | Empty                                               |
+-| `Component`             | k8s selector key                    | `patroni`                                           |
+-| `Resources.Cpu`         | container requested cpu             | `100m`                                              |
+-| `Resources.Memory`      | container requested memory          | `512Mi`                                             |
+-| `Credentials.Superuser` | password for the superuser          | `tea`                                               |
+-| `Credentials.Standby`   | password for the replication user   | `pinacolada`                                        |
+-| `Etcd.Enable`           | using etcd as DCS                   | `true`                                              |
+-| `Etcd.DeployChart`      | deploy etcd chart                   | `true`                                              |
+-| `Etcd.Host`             | host name of etcd cluster           | not used (Etcd.Discovery is used instead)           |
+-| `Etcd.Discovery`        | domain name of etcd cluster         | `<release-name>-etcd.<namespace>.svc.cluster.local` |
+-| `Zookeeper.Enable`      | using zookeeper as DCS              | `false`                                             |
+-| `Zookeeper.DeployChart` | deploy zookeeper chart              | `false`                                             |
+-| `Zookeeper.Hosts`       | list of zookeeper cluster members   | 'host1:port1','host2:port2','etc...'                |
+-| `WalE.Enable`           | use of wal-e tool for base backup/restore | `false` |
+-| `WalE.Schedule_Cron_Job` | schedule of wal-e backups          | `00 01 * * *` |
+-| `WalE.Retain_Backups`   | number of backups to retain         | `2` |
+-| `WalE.S3_Bucket:`       | Amazon S3 bucket used for wal-e backups | `` |
+-| `WalE.GCS_Bucket`       | Google cloud plataform storage used for wal-e backups | `` |
+-| `WalE.Kubernetes_Secret` | kubernetes secret for provider bucket | `` |
+-| `WalE.Backup_Threshold_Megabytes` | maximum size of the WAL segments accumulated after the base backup to consider WAL-E restore instead of pg_basebackup | `1024` |
+-| `WalE.Backup_Threshold_Percentage` | maximum ratio (in percents) of the accumulated WAL files to the base backup to consider WAL-E restore instead of pg_basebackup | `30` |
+-| `persistentVolume.accessModes` | Persistent Volume access modes | `[ReadWriteOnce]` |
+-| `persistentVolume.annotations` | Annotations for Persistent Volume Claim` | `{}` |
+-| `persistentVolume.mountPath` | Persistent Volume mount root path | `/home/postgres/pgdata` |
+-| `persistentVolume.size` | Persistent Volume size | `2Gi` |
+-| `persistentVolume.storageClass` | Persistent Volume Storage Class | `volume.alpha.kubernetes.io/storage-class: default` |
+-| `persistentVolume.subPath` | Subdirectory of Persistent Volume to mount | `""` |
+-| `rbac.create` | create required role and rolebindings | `true` |
+-| `serviceAccount.create` | If true, create a new service account	| `true`
+-| `serviceAccount.name` | Service account to be used. If not set and serviceAccount.create is `true`, a name is generated using the fullname template | ``  
++|       Parameter                   |           Description                       |                         Default                     |
++|-----------------------------------|---------------------------------------------|-----------------------------------------------------|
++| `nameOverride`                    | Override the name of the chart              | `nil`                                               |
++| `fullnameOverride`                | Override the fullname of the chart          | `nil`                                               |
++| `replicaCount`                    | Amount of pods to spawn                     | `5`                                                 |
++| `image.repository`                | The container to pull                       | `registry.opensource.zalan.do/acid/spilo-10`        |
++| `image.tag`                       | The version of the container to pull        | `1.4-p6`                                            |
++| `image.pullPolicy`                | The pull policy                             | `IfNotPresent`                                      |
++| `credentials.superuser`           | Password of the superuser                   | `tea`                                               |
++| `credentials.admin`               | Password of the admin                       | `cola`                                              |
++| `credentials.standby`             | Password fo the replication user            | `pinacolada`                                        |
++| `etcd.enable`                     | Using etcd as DCS                           | `true`                                              |
++| `etcd.deployChart`                | Deploy etcd chart                           | `true`                                              |
++| `etcd.host`                       | Host name of etcd cluster                   | `nil`                                               |
++| `etcd.discovery`                  | Domain name of etcd cluster                 | `nil`                                               |
++| `zookeeper.enable`                | Using ZooKeeper as DCS                      | `false`                                             |
++| `zookeeper.deployChart`           | Deploy ZooKeeper chart                      | `false`                                             |
++| `zookeeper.hosts`                 | List of ZooKeeper cluster members           | `host1:port1,host2:port,etc...`                     |
++| `walE.enable`                     | Use of Wal-E tool for base backup/restore   | `false`                                             |
++| `walE.scheduleCronJob`            | Schedule of Wal-E backups                   | `00 01 * * *`                                       |
++| `walE.retainBackups`              | Number of base backups to retain            | `2`                                                 |
++| `walE.s3Bucket:`                  | Amazon S3 bucket used for wal-e backups     | `nil`                                               |
++| `walE.gcsBucket`                  | GCS storage used for Wal-E backups          | `nil`                                               |
++| `walE.kubernetesSecret`           | K8s secret name for provider bucket         | `nil`                                               |
++| `walE.backupThresholdMegabytes`   | Maximum size of the WAL segments accumulated after the base backup to consider WAL-E restore instead of pg_basebackup | `1024` |
++| `walE.backupThresholdPercentage`  | Maximum ratio (in percents) of the accumulated WAL files to the base backup to consider WAL-E restore instead of pg_basebackup | `30` |
++| `resources`                       | Any resources you wish to assign to the pod | `{}`                                                |
++| `nodeSelector`                    | Node label to use for scheduling            | `{}`                                                |
++| `tolerations`                     | List of node taints to tolerate             | `[]`                                                |
++| `affinity`                        | Affinity settings                           | Preferred on hostname                               |
++| `persistentVolume.accessModes`    | Persistent Volume access modes              | `[ReadWriteOnce]`                                   |
++| `persistentVolume.annotations`    | Annotations for Persistent Volume Claim`    | `{}`                                                |
++| `persistentVolume.mountPath`      | Persistent Volume mount root path           | `/home/postgres/pgdata`                             |
++| `persistentVolume.size`           | Persistent Volume size                      | `2Gi`                                               |
++| `persistentVolume.storageClass`   | Persistent Volume Storage Class             | `volume.alpha.kubernetes.io/storage-class: default` |
++| `persistentVolume.subPath`        | Subdirectory of Persistent Volume to mount  | `""`                                                |
++| `rbac.create`                     | Create required role and rolebindings       | `true`                                              |
++| `serviceAccount.create`           | If true, create a new service account	      | `true`                                              |
++| `serviceAccount.name`             | Service account to be used. If not set and `serviceAccount.create` is `true`, a name is generated using the fullname template | `nil` |
+ 
+ Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`.
+ 
+@@ -101,23 +110,24 @@ $ helm install --name my-release -f values.yaml incubator/patroni
+ 
+ ## Cleanup
+ 
+-In order to remove everything you created a simple `helm delete <release-name>` isn't enough (as of now), but you can do the following:
++To remove the spawned pods you can run a simple `helm delete <release-name>`.
++
++Helm will however preserve created persistent volume claims,
++to also remove them execute the commands below.
+ 
+ ```console
+ $ release=<release-name>
+ $ helm delete $release
+-$ grace=$(kubectl get po $release-patroni-0 --template '{{.spec.terminationGracePeriodSeconds}}')
+-$ kubectl delete statefulset,po -l release=$release
+-$ sleep $grace
+ $ kubectl delete pvc -l release=$release
+ ```
+ 
+ ## Internals
+ 
+-Patroni is responsible for electing a Postgres master pod by leveraging etcd.
+-It then exports this master via a Kubernetes service and a label query that filters for `spilo-role=master`.
+-This label is dynamically set on the pod that acts as the master and removed from all other pods.
+-Consequently, the service endpoint will point to the current master.
++Patroni is responsible for electing a PostgreSQL master pod by leveraging the
++DCS of your choice. After election it adds a `spilo-role=master` label to the
++elected master and set the label to `spilo-role=replica` for all replicas.
++Simultaneously it will update the `<release-name>-patroni` endpoint to let the
++service route traffic to the elected master.
+ 
+ ```console
+ $ kubectl get pods -l spilo-role -L spilo-role
+diff --git a/incubator/patroni/requirements.lock b/incubator/patroni/requirements.lock
+index 1e198ba02..30733ad2a 100644
+--- a/incubator/patroni/requirements.lock
++++ b/incubator/patroni/requirements.lock
+@@ -5,5 +5,5 @@ dependencies:
+ - name: zookeeper
+   repository: https://kubernetes-charts-incubator.storage.googleapis.com/
+   version: 0.2.2
+-digest: sha256:af5cb9f406a215c54c5b34cfa19091f80ef73a453ee53017767eab5c319e9f51
+-generated: 2018-01-22T14:04:57.901835+01:00
++digest: sha256:98d02dbb31dcf900058227cc7042ecd72444482c5a3130f69f6499443076be27
++generated: 2018-03-02T12:26:35.441060324+01:00
+diff --git a/incubator/patroni/requirements.yaml b/incubator/patroni/requirements.yaml
+index 74c663b5b..b91e0d9a1 100644
+--- a/incubator/patroni/requirements.yaml
++++ b/incubator/patroni/requirements.yaml
+@@ -2,8 +2,8 @@ dependencies:
+ - name: etcd
+   version: 0.3.6
+   repository: https://kubernetes-charts-incubator.storage.googleapis.com/
+-  condition: Etcd.DeployChart
++  condition: etcd.deployChart
+ - name: zookeeper
+   version: 0.2.2
+   repository: https://kubernetes-charts-incubator.storage.googleapis.com/
+-  condition: Zookeeper.DeployChart
++  condition: zooKeeper.deployChart
+diff --git a/incubator/patroni/templates/NOTES.txt b/incubator/patroni/templates/NOTES.txt
+index 81c2973c7..22a4f2d2f 100644
+--- a/incubator/patroni/templates/NOTES.txt
++++ b/incubator/patroni/templates/NOTES.txt
+@@ -6,6 +6,9 @@ To get your password for superuser run:
+     # superuser password
+     PGPASSWORD_SUPERUSER=$(kubectl get secret --namespace {{ .Release.Namespace }} {{ template "patroni.fullname" . }} -o jsonpath="{.data.password-superuser}" | base64 --decode)
+ 
++    # admin password
++    PGPASSWORD_ADMIN=$(kubectl get secret --namespace {{ .Release.Namespace }} {{ template "patroni.fullname" . }} -o jsonpath="{.data.password-admin}" | base64 --decode)
++
+ To connect to your database:
+ 
+ 1. Run a postgres pod and connect using the psql cli:
+@@ -14,3 +17,9 @@ To connect to your database:
+       --env "PGPASSWORD=$PGPASSWORD_SUPERUSER" \
+       --command -- psql -U postgres \
+       -h {{ template "patroni.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local postgres
++
++    # login as admin
++    kubectl run -i -tty --rm psql --image=postgres \
++      --env "PGPASSWORD=$PGPASSWORD_ADMIN" \
++      --command -- psql -U admin \
++      -h {{ template "patroni.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local postgres
+diff --git a/incubator/patroni/templates/_helpers.tpl b/incubator/patroni/templates/_helpers.tpl
+index 5dc18ed65..2b1b6d452 100644
+--- a/incubator/patroni/templates/_helpers.tpl
++++ b/incubator/patroni/templates/_helpers.tpl
+@@ -1,11 +1,34 @@
+-
+ {{/* vim: set filetype=mustache: */}}
++{{/*
++Expand the name of the chart.
++*/}}
++{{- define "patroni.name" -}}
++{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
+ {{/*
+ Create a default fully qualified app name.
+ We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
++If release name contains chart name it will be used as a full name.
+ */}}
+ {{- define "patroni.fullname" -}}
+-{{- printf "%s-%s" .Release.Name .Values.Name | trunc 63 -}}
++{{- if .Values.fullnameOverride -}}
++{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Create chart name and version as used by the chart label.
++*/}}
++{{- define "patroni.chart" -}}
++{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
+ 
+ {{/*
+diff --git a/incubator/patroni/templates/ep-patroni.yaml b/incubator/patroni/templates/ep-patroni.yaml
+index 05b1c227e..9581596c8 100644
+--- a/incubator/patroni/templates/ep-patroni.yaml
++++ b/incubator/patroni/templates/ep-patroni.yaml
+@@ -3,8 +3,8 @@ kind: Endpoints
+ metadata:
+   name: {{ template "patroni.fullname" . }}
+   labels:
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
++    app: {{ template "patroni.name" . }}
++    chart: {{ template "patroni.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
+ subsets: []
+diff --git a/incubator/patroni/templates/role-patroni.yaml b/incubator/patroni/templates/role-patroni.yaml
+index 9786146d2..2a289bf18 100644
+--- a/incubator/patroni/templates/role-patroni.yaml
++++ b/incubator/patroni/templates/role-patroni.yaml
+@@ -4,10 +4,10 @@ kind: Role
+ metadata:
+   name: {{ template "patroni.fullname" . }}
+   labels:
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
++    app: {{ template "patroni.name" . }}
++    chart: {{ template "patroni.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
+ rules:
+   - apiGroups: [""]
+     resources: ["endpoints", "pods"]
+diff --git a/incubator/patroni/templates/rolebinding-patroni.yaml b/incubator/patroni/templates/rolebinding-patroni.yaml
+index 5c8dcc6ab..d0965702f 100644
+--- a/incubator/patroni/templates/rolebinding-patroni.yaml
++++ b/incubator/patroni/templates/rolebinding-patroni.yaml
+@@ -4,10 +4,10 @@ kind: RoleBinding
+ metadata:
+   name: {{ template "patroni.fullname" . }}
+   labels:
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
++    app: {{ template "patroni.name" . }}
++    chart: {{ template "patroni.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
+ subjects:
+   - kind: ServiceAccount
+     name: {{ template "patroni.serviceAccountName" . }}
+diff --git a/incubator/patroni/templates/sec-patroni.yaml b/incubator/patroni/templates/sec-patroni.yaml
+index ce7f61b2d..d62faae88 100644
+--- a/incubator/patroni/templates/sec-patroni.yaml
++++ b/incubator/patroni/templates/sec-patroni.yaml
+@@ -3,11 +3,12 @@ kind: Secret
+ metadata:
+   name: {{ template "patroni.fullname" . }}
+   labels:
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
++    app: {{ template "patroni.name" . }}
++    chart: {{ template "patroni.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
+ type: Opaque
+ data:
+-  password-superuser: {{ .Values.Credentials.Superuser | b64enc }}
+-  password-standby: {{ .Values.Credentials.Standby | b64enc }}
++  password-superuser: {{ .Values.credentials.superuser | b64enc }}
++  password-admin: {{ .Values.credentials.admin | b64enc }}
++  password-standby: {{ .Values.credentials.standby | b64enc }}
+diff --git a/incubator/patroni/templates/serviceaccount-patroni.yaml b/incubator/patroni/templates/serviceaccount-patroni.yaml
+index ff9e062c9..eed6ab8a8 100644
+--- a/incubator/patroni/templates/serviceaccount-patroni.yaml
++++ b/incubator/patroni/templates/serviceaccount-patroni.yaml
+@@ -4,8 +4,8 @@ kind: ServiceAccount
+ metadata:
+   name: {{ template "patroni.serviceAccountName" . }}
+   labels:
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{.Release.Name}}-{{.Values.Component}}"
++    app: {{ template "patroni.name" . }}
++    chart: {{ template "patroni.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
+ {{- end }}
+diff --git a/incubator/patroni/templates/statefulset-patroni.yaml b/incubator/patroni/templates/statefulset-patroni.yaml
+index be725dd3c..8647621ef 100644
+--- a/incubator/patroni/templates/statefulset-patroni.yaml
++++ b/incubator/patroni/templates/statefulset-patroni.yaml
+@@ -3,96 +3,98 @@ kind: StatefulSet
+ metadata:
+   name: {{ template "patroni.fullname" . }}
+   labels:
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{.Release.Name}}-{{.Values.Component}}"
++    app: {{ template "patroni.name" . }}
++    chart: {{ template "patroni.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
+ spec:
+   serviceName: {{ template "patroni.fullname" . }}
+-  replicas: {{default 5 .Values.Replicas }}
++  replicas: {{ .Values.replicaCount }}
++  selector:
++    matchLabels:
++      app: {{ template "patroni.name" . }}
++      release: {{ .Release.Name }}
+   template:
+     metadata:
+       name: {{ template "patroni.fullname" . }}
+       labels:
+-        heritage: {{.Release.Service | quote }}
+-        release: {{.Release.Name | quote }}
+-        chart: "{{.Chart.Name}}-{{.Chart.Version}}"
+-        component: "{{.Release.Name}}-{{.Values.Component}}"
++        app: {{ template "patroni.name" . }}
++        release: {{ .Release.Name }}
+     spec:
+-      {{ if .Values.NodeSelector }}
+-      nodeSelector:
+-        {{ range $key, $value := .Values.NodeSelector }}
+-          {{ $key }}: {{ $value | quote }}
+-        {{ end }}
+-      {{ end }}
+       serviceAccountName: {{ template "patroni.serviceAccountName" . }}
+       containers:
+-      - name: spilo
+-        image: "{{ .Values.Spilo.Image }}:{{ .Values.Spilo.Version }}"
++      - name: {{ .Chart.Name }}
++        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy }}
+         env:
+         - name: PGPASSWORD_SUPERUSER
+           valueFrom:
+             secretKeyRef:
+               name: {{ template "patroni.fullname" . }}
+               key: password-superuser
++        - name: PGPASSWORD_ADMIN
++          valueFrom:
++            secretKeyRef:
++              name: {{ template "patroni.fullname" . }}
++              key: password-admin
+         - name: PGPASSWORD_STANDBY
+           valueFrom:
+             secretKeyRef:
+               name: {{ template "patroni.fullname" . }}
+               key: password-standby
+-        {{if .Values.Etcd.Enable }}
+-        {{if .Values.Etcd.DeployChart }}
++        {{- if .Values.etcd.enable }}
++        {{- if .Values.etcd.deployChart }}
+         - name: ETCD_DISCOVERY_DOMAIN
+-          value: {{default (printf "%s-etcd" .Release.Name | trunc 63) .Values.Etcd.Discovery }}
+-        {{else}}
++          value: {{default (printf "%s-etcd" .Release.Name | trunc 63) .Values.etcd.discovery }}
++        {{- else }}
+         - name: ETCD_HOST
+-          value: {{ .Values.Etcd.Host | quote }}
+-        {{end}}
+-        {{else if .Values.Zookeeper.Enable }}
+-        {{if .Values.Zookeeper.DeployChart }}
++          value: {{ .Values.etcd.host | quote }}
++        {{- end }}
++        {{- else if .Values.zooKeeper.enable }}
++        {{- if .Values.zooKeeper.deployChart }}
+         - name: ZOOKEEPER_HOSTS
+           value: {{(printf "'hs-zk-%s:2181'" .Release.Name | trunc 63)}}
+-        {{else}}
++        {{- else }}
+         - name: ZOOKEEPER_HOSTS
+-          value: {{ .Values.Zookeeper.Hosts | quote }}
+-        {{end}}
+-        {{end}}
++          value: {{ .Values.zooKeeper.hosts | quote }}
++        {{- end }}
++        {{- end }}
+         - name: SCOPE
+           value: {{ template "patroni.fullname" . }}
+-        {{if .Values.WalE.Enable }}
++        {{- if .Values.walE.enable }}
+         - name: USE_WALE
+-          value: {{ .Values.WalE.Enable | quote }}
+-        {{if .Values.WalE.Schedule_Cron_Job }}
++          value: {{ .Values.walE.enable | quote }}
++        {{- if .Values.walE.scheduleCronJob }}
+         - name: BACKUP_SCHEDULE
+-          value: {{ .Values.WalE.Schedule_Cron_Job | quote}}
+-        {{end}}
+-        {{if .Values.WalE.Retain_Backups }}
++          value: {{ .Values.walE.scheduleCronJob | quote}}
++        {{- end }}
++        {{- if .Values.walE.retainBackups }}
+         - name: BACKUP_NUM_TO_RETAIN
+-          value: {{ .Values.WalE.Retain_Backups | quote}}
+-        {{end}}
+-        {{if .Values.WalE.S3_Bucket }}
++          value: {{ .Values.walE.retainBackups | quote}}
++        {{- end }}
++        {{- if .Values.walE.s3Bucket }}
+         - name: WAL_S3_BUCKET
+-          value: {{ .Values.WalE.S3_Bucket | quote }}
+-        {{else if .Values.WalE.GCS_Bucket }}
++          value: {{ .Values.walE.s3Bucket | quote }}
++        {{else if .Values.walE.gcsBucket }}
+         - name: WAL_GCS_BUCKET
+-          value: {{ .Values.WalE.GCS_Bucket | quote }}
+-        {{if .Values.WalE.Kubernetes_Secret }}
++          value: {{ .Values.walE.gcsBucket | quote }}
++        {{- if .Values.walE.kubernetesSecret }}
+         - name: GOOGLE_APPLICATION_CREDENTIALS
+-          value: "/etc/credentials/{{.Values.WalE.Kubernetes_Secret}}.json"
+-        {{end}}
+-        {{end}}
+-        {{if .Values.WalE.Backup_Threshold_Megabytes }}
++          value: "/etc/credentials/{{.Values.walE.kubernetesSecret}}.json"
++        {{- end }}
++        {{- end }}
++        {{- if .Values.walE.backupThresholdMegabytes }}
+         - name: WALE_BACKUP_THRESHOLD_MEGABYTES
+-          value: {{ .Values.WalE.Backup_Threshold_Megabytes | quote }}
+-        {{end}}
+-        {{if .Values.WalE.Backup_Threshold_Percentage }}
++          value: {{ .Values.walE.backupThresholdMegabytes | quote }}
++        {{- end }}
++        {{- if .Values.walE.backupThresholdPercentage }}
+         - name: WALE_BACKUP_THRESHOLD_PERCENTAGE
+-          value: {{ .Values.WalE.Backup_Threshold_Percentage | quote }}
+-        {{end}}
+-        {{else}}
++          value: {{ .Values.walE.backupThresholdPercentage | quote }}
++        {{- end }}
++        {{- else }}
+         - name: USE_WALE
+           value: ""
+-        {{end}}
++        {{- end }}
+         - name: PGROOT
+           value: "{{ .Values.persistentVolume.mountPath }}/pgroot"
+         - name: POD_NAMESPACE
+@@ -103,10 +105,6 @@ spec:
+         ports:
+         - containerPort: 8008
+         - containerPort: 5432
+-        resources:
+-          requests:
+-            cpu: "{{.Values.Resources.Cpu}}"
+-            memory: "{{.Values.Resources.Memory}}"
+         volumeMounts:
+         - name: storage-volume
+           mountPath: "{{ .Values.persistentVolume.mountPath }}"
+@@ -114,24 +112,36 @@ spec:
+         - mountPath: /etc/patroni
+           name: patroni-config
+           readOnly: true
+-        {{if .Values.WalE.Enable }}
+-        {{if .Values.WalE.Kubernetes_Secret }}
+-        - name: {{ .Values.WalE.Kubernetes_Secret }}
++        {{- if .Values.walE.enable }}
++        {{- if .Values.walE.kubernetesSecret }}
++        - name: {{ .Values.walE.kubernetesSecret }}
+           mountPath: /etc/credentials
+           readOnly: true
+-        {{end}}
+-        {{end}}
++        {{- end }}
++        {{- end }}
++        resources:
++{{ toYaml .Values.resources | indent 10 }}
++    {{- with .Values.nodeSelector }}
++      nodeSelector:
++{{ toYaml . | indent 8 }}
++    {{- end }}
++    {{- with .Values.tolerations }}
++      tolerations:
++{{ toYaml . | indent 8 }}
++    {{- end }}
++      affinity:
++{{ tpl .Values.affinity . | indent 8 }}
+       volumes:
+       - name: patroni-config
+         secret:
+           secretName: {{ template "patroni.fullname" . }}
+-      {{if .Values.WalE.Enable }}
+-      {{if .Values.WalE.Kubernetes_Secret }}
+-      - name: {{ .Values.WalE.Kubernetes_Secret }}
++      {{- if .Values.walE.enable }}
++      {{- if .Values.walE.kubernetesSecret }}
++      - name: {{ .Values.walE.kubernetesSecret }}
+         secret:
+-          secretName: {{ .Values.WalE.Kubernetes_Secret }}
+-      {{end}}
+-      {{end}}
++          secretName: {{ .Values.walE.kubernetesSecret }}
++      {{- end }}
++      {{- end }}
+   volumeClaimTemplates:
+     - metadata:
+         name: storage-volume
+@@ -145,10 +155,10 @@ spec:
+ {{ toYaml .Values.persistentVolume.annotations | indent 8 }}
+         {{- end }}
+         labels:
+-          heritage: {{.Release.Service | quote }}
+-          release: {{.Release.Name | quote }}
+-          chart: "{{.Chart.Name}}-{{.Chart.Version}}"
+-          component: "{{ .Release.Name }}-{{ .Values.Component }}"
++          app: {{ template "patroni.name" . }}
++          chart: {{ template "patroni.chart" . }}
++          release: {{ .Release.Name }}
++          heritage: {{ .Release.Service }}
+       spec:
+         accessModes:
+ {{ toYaml .Values.persistentVolume.accessModes | indent 8 }}
+diff --git a/incubator/patroni/templates/svc-patroni.yaml b/incubator/patroni/templates/svc-patroni.yaml
+index 699a6045c..8cf5a00fa 100644
+--- a/incubator/patroni/templates/svc-patroni.yaml
++++ b/incubator/patroni/templates/svc-patroni.yaml
+@@ -3,13 +3,14 @@ kind: Service
+ metadata:
+   name: {{ template "patroni.fullname" . }}
+   labels:
+-    heritage: {{ .Release.Service | quote }}
+-    release: {{ .Release.Name | quote }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Release.Name }}-{{ .Values.Component }}"
++    app: {{ template "patroni.name" . }}
++    chart: {{ template "patroni.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
+ spec:
+   type: ClusterIP
+   ports:
+   - name: postgresql
+     port: 5432
+-    targetPort: 5432
++    targetPort: postgresql
++    protocol: TCP
+diff --git a/incubator/patroni/values.yaml b/incubator/patroni/values.yaml
+index f14a1a4b3..96745d902 100644
+--- a/incubator/patroni/values.yaml
++++ b/incubator/patroni/values.yaml
+@@ -1,55 +1,55 @@
+-Name: patroni
++replicaCount: 5
+ 
+-Component: patroni
+-ImagePullPolicy: IfNotPresent
+-
+-# The image to use. Spilo is the dockerized Patroni
+-Spilo:
+-  # this image was built from https://github.com/zalando/spilo/tree/master/postgres-appliance
+-  Image: registry.opensource.zalan.do/acid/spilo-9.6
+-  Version: 1.3-p4
+-
+-# How many postgres containers to spawn
+-Replicas: 5
+-
+-# Resource limits per replica
+-Resources:
+-  Cpu: 100m
+-  Memory: 512Mi
+-
+-# Node selector for Patroni pods
+-# NodeSelector:
+-#  cloud.google.com/gke-nodepool: highmem-pool
++image:
++  # Image was built from
++  # https://github.com/zalando/spilo/tree/master/postgres-appliance
++  repository: registry.opensource.zalan.do/acid/spilo-10
++  tag: 1.4-p7
++  pullPolicy: IfNotPresent
+ 
+ # Credentials used by Patroni
+-# * more information: https://github.com/zalando/patroni/blob/master/docs/SETTINGS.rst#postgresql
+-Credentials:
+-  Superuser: tea
+-  Standby: pinacolada
++# https://github.com/zalando/patroni/blob/master/docs/SETTINGS.rst#postgresql
++# https://github.com/zalando/spilo/blob/master/ENVIRONMENT.rst
++credentials:
++  superuser: tea
++  admin: cola
++  standby: pinacolada
+ 
+-## Distribution Configuration stores. Please note that only one of the following stores should be selected.
+-Etcd:
+-  Enable: true
+-  DeployChart: true
+-  # if not deploying etcd chart, fill-in value for etcd host (etcd.default.svc.cluster.local)
+-  Host:
+-  # leave blank to use vendored etcd chart
+-  Discovery:
+-Zookeeper:
+-  Enable: false
+-  DeployChart: false
+-  # if not deploying etcd chart, fill-in list of ZooKeeper cluster members in format: 'host1:port1','host2:port2','etc...'
+-  Hosts:
++# Distribution Configuration stores
++# Please note that only one of the following stores should be enabled.
++etcd:
++  enable: true
++  deployChart: true
++  # If not deploying etcd chart, fill-in value for etcd service
++  # <service>.<namespace>.svc.cluster.local
++  host:
++  # Leave blank to use vendored etcd chart
++  discovery:
++zooKeeper:
++  enable: false
++  deployChart: false
++  # If not deploying etcd chart, fill-in list of ZooKeeper members in format:
++  # 'host1:port1','host2:port2','etc...'
++  hosts:
+ 
+-WalE:
+-  Enable: false
+-  Schedule_Cron_Job: 00 01 * * *
+-  Retain_Backups: 2
+-  S3_Bucket:
+-  GCS_Bucket:
+-  Kubernetes_Secret:
+-  Backup_Threshold_Megabytes: 1024
+-  Backup_Threshold_Percentage: 30
++walE:
++  # Specifies whether Wal-E should be enabled
++  enable: false
++  # Cron schedule for doing base backups
++  scheduleCronJob: 00 01 * * *
++  # Amount of base backups to retain
++  retainBackups: 2
++  # Path to the S3 or GCS bucket used for WAL-E base backups
++  s3Bucket:
++  gcsBucket:
++  # Name of the secret that holds the credentials to the bucket
++  kubernetesSecret:
++  # Maximum size of the WAL segments accumulated after the base backup to
++  # consider WAL-E restore instead of pg_basebackup
++  backupThresholdMegabytes: 1024
++  # Maximum ratio (in percents) of the accumulated WAL files to the base backup
++  # to consider WAL-E restore instead of pg_basebackup
++  backupThresholdPercentage: 30
+ 
+ persistentVolume:
+   size: 1G
+@@ -60,6 +60,34 @@ persistentVolume:
+   accessModes:
+     - ReadWriteOnce
+ 
++resources: {}
++  # If you do want to specify resources, uncomment the following
++  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
++  # limits:
++  #   cpu: 100m
++  #   memory: 128Mi
++  # requests:
++  #   cpu: 100m
++  #   memory: 128Mi
++
++# https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
++nodeSelector: {}
++
++# https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
++tolerations: []
++
++# https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
++affinity: |
++  podAntiAffinity:
++    preferredDuringSchedulingIgnoredDuringExecution:
++    - weight: 100
++      podAffinityTerm:
++        topologyKey: "kubernetes.io/hostname"
++        labelSelector:
++          matchLabels:
++            app:  {{ template "patroni.name" . }}
++            release: {{ .Release.Name | quote }}
++
+ rbac:
+   # Specifies whether RBAC resources should be created
+   create: true

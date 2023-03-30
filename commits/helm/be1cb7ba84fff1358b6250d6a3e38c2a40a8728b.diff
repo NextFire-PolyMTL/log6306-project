@@ -1,0 +1,258 @@
+commit be1cb7ba84fff1358b6250d6a3e38c2a40a8728b
+Author: Dan Isla <dan.isla@gmail.com>
+Date:   Tue Oct 3 14:16:11 2017 -0400
+
+    [stable/zeppelin] New Chart for Zeppelin Notebook (#1774)
+    
+    * import of zeppelin chart
+    
+    * version bumps
+    
+    * add standard labels
+    
+    * update to readme
+    
+    * refactor of template filenames, update to labels
+
+diff --git a/stable/zeppelin/.helmignore b/stable/zeppelin/.helmignore
+new file mode 100644
+index 000000000..f0c131944
+--- /dev/null
++++ b/stable/zeppelin/.helmignore
+@@ -0,0 +1,21 @@
++# Patterns to ignore when building packages.
++# This supports shell glob matching, relative path matching, and
++# negation (prefixed with !). Only one pattern per line.
++.DS_Store
++# Common VCS dirs
++.git/
++.gitignore
++.bzr/
++.bzrignore
++.hg/
++.hgignore
++.svn/
++# Common backup files
++*.swp
++*.bak
++*.tmp
++*~
++# Various IDEs
++.project
++.idea/
++*.tmproj
+diff --git a/stable/zeppelin/Chart.yaml b/stable/zeppelin/Chart.yaml
+new file mode 100644
+index 000000000..2b7a0750b
+--- /dev/null
++++ b/stable/zeppelin/Chart.yaml
+@@ -0,0 +1,12 @@
++apiVersion: v1
++description: Web-based notebook that enables data-driven, interactive data analytics and collaborative documents with SQL, Scala and more.
++name: zeppelin
++version: 1.0.0
++appVersion: 0.7.2
++home: https://zeppelin.apache.org/
++sources:
++- https://github.com/apache/zeppelin
++icon: https://zeppelin.apache.org/assets/themes/zeppelin/img/zeppelin_classic_logo.png
++maintainers:
++- name: danisla
++  email: disla@google.com
+diff --git a/stable/zeppelin/README.md b/stable/zeppelin/README.md
+new file mode 100644
+index 000000000..568f10baa
+--- /dev/null
++++ b/stable/zeppelin/README.md
+@@ -0,0 +1,39 @@
++# Zeppelin Chart
++
++[Zeppelin](https://zeppelin.apache.org/) is a web based notebook for interactive data analytics with Spark, SQL and Scala.
++
++## Chart Details
++
++## Installing the Chart
++
++To install the chart:
++
++```
++$ helm install stable/zeppelin
++```
++
++## Configuration
++
++The following tables lists the configurable parameters of the Zeppelin chart and their default values.
++
++| Parameter                            | Description                                                       | Default                                                    |
++| ------------------------------------ | ----------------------------------------------------------------- | ---------------------------------------------------------- |
++| `zeppelin.image`                     | Zeppelin image                                                    | `dylanmei/zeppelin:{VERSION}`                              |
++| `zeppelin.resources`                 | Resource limits and requests                                      | `limits.memory=4096Mi, limits.cpu=2000m`                   |
++| `spark.driverMemory`                 | Memory used by [Spark driver](https://spark.apache.org/docs/latest/configuration.html#application-properties) (Java notation)  | `1g` |
++| `spark.executorMemory`               | Memory used by [Spark executors](https://spark.apache.org/docs/latest/running-on-yarn.html) (Java notation)                    | `1g` |
++| `spark.numExecutors`                 | Number of [Spark executors](https://spark.apache.org/docs/latest/running-on-yarn.html)                                         | `2`  |
++| `hadoop.useConfigMap`                | Use external Hadoop configuration for Spark executors             | `false`                                                    |
++| `hadoop.configMapName`               | Name of the hadoop config map to use (must be in same namespace)  | `hadoop-config`                                            |
++| `hadoop.configPath`                  | Path in the Zeppelin image where the Hadoop config is mounted     | `/usr/hadoop-2.7.3/etc/hadoop`                             |
++
++## Related charts
++
++The [Hadoop](https://github.com/kubernetes/charts/tree/master/stable/hadoop) chart can be used to create a YARN cluster where Spark jobs are executed:
++
++```
++helm install -n hadoop stable/hadoop
++helm install --set hadoop.useConfigMap=true,hadoop.configMapName=hadoop-hadoop stable/zeppelin
++```
++
++> Note that you may also want to set the `spark.numExecutors` value to match the number of yarn NodeManager replicas and the `executorMemory` value to half of the NodeManager memory limit.
+\ No newline at end of file
+diff --git a/stable/zeppelin/templates/NOTES.txt b/stable/zeppelin/templates/NOTES.txt
+new file mode 100644
+index 000000000..9541664f8
+--- /dev/null
++++ b/stable/zeppelin/templates/NOTES.txt
+@@ -0,0 +1,6 @@
++1. Create a port-forward to the zeppelin pod:
++   kubectl port-forward -n {{ .Release.Namespace }} $(kubectl get pod -n {{ .Release.Namespace }} --selector=app={{ template "zeppelin.name" . }} -o jsonpath='{.items...metadata.name}') 8080:8080
++
++   Open browser to UI:
++
++   open http://localhost:8080
+\ No newline at end of file
+diff --git a/stable/zeppelin/templates/_helpers.yaml b/stable/zeppelin/templates/_helpers.yaml
+new file mode 100644
+index 000000000..195443d6e
+--- /dev/null
++++ b/stable/zeppelin/templates/_helpers.yaml
+@@ -0,0 +1,16 @@
++{{/* vim: set filetype=mustache: */}}
++{{/*
++Expand the name of the chart.
++*/}}
++{{- define "zeppelin.name" -}}
++{{- default .Chart.Name .Values.nameOverride | trunc 24 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*
++Create a default fully qualified app name.
++We truncate at 24 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
++*/}}
++{{- define "zeppelin.fullname" -}}
++{{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- printf "%s-%s" .Release.Name $name | trunc 24 | trimSuffix "-" -}}
++{{- end -}}
+\ No newline at end of file
+diff --git a/stable/zeppelin/templates/deployment.yaml b/stable/zeppelin/templates/deployment.yaml
+new file mode 100644
+index 000000000..61c83076e
+--- /dev/null
++++ b/stable/zeppelin/templates/deployment.yaml
+@@ -0,0 +1,61 @@
++apiVersion: extensions/v1beta1
++kind: Deployment
++metadata:
++  name: {{ .Release.Name }}-zeppelin
++  labels:
++    app: {{ template "zeppelin.name" . }}
++    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++spec:
++  strategy:
++    rollingUpdate:
++      maxUnavailable: 0
++  replicas: 1
++  template:
++    metadata:
++      labels:
++        app: {{ template "zeppelin.name" . }}
++        release: {{ .Release.Name }}
++    spec:
++      terminationGracePeriodSeconds: 0
++      containers:
++        - name: zeppelin
++          image: {{ .Values.zeppelin.image }}
++          ports:
++            - containerPort: 8080
++              name: web
++          env:
++            - name: ZEPPELIN_PORT
++              value: "8080"
++            - name: ZEPPELIN_JAVA_OPTS
++              value: >-
++                -Dspark.driver.memory={{ .Values.spark.driverMemory }}
++                -Dspark.executor.memory={{ .Values.spark.executorMemory }}
++{{- if .Values.hadoop.useConfigMap }}
++            - name: MASTER
++              value: "yarn"
++            - name: SPARK_SUBMIT_OPTIONS
++              value: >-
++                --deploy-mode client
++                --num-executors {{ .Values.spark.numExecutors }}
++{{- end }}
++          volumeMounts:
++{{- if .Values.hadoop.useConfigMap }}
++            - mountPath: {{ .Values.hadoop.configPath }}
++              name: hadoop-config
++{{- end }}
++          resources:
++{{ toYaml .Values.zeppelin.resources | indent 12 }} 
++          readinessProbe:
++            httpGet:
++              path: /
++              port: 8080
++            initialDelaySeconds: 20
++            timeoutSeconds: 1
++{{- if .Values.hadoop.useConfigMap }}
++      volumes:
++        - name: hadoop-config
++          configMap:
++            name: {{ .Values.hadoop.configMapName }}
++{{- end }}
+\ No newline at end of file
+diff --git a/stable/zeppelin/templates/svc.yaml b/stable/zeppelin/templates/svc.yaml
+new file mode 100644
+index 000000000..807429bb5
+--- /dev/null
++++ b/stable/zeppelin/templates/svc.yaml
+@@ -0,0 +1,17 @@
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ .Release.Name }}-zeppelin
++  labels:
++    app: {{ template "zeppelin.name" . }}
++    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++spec:
++  type: ClusterIP
++  ports:
++  - port: 8080
++    name: web
++  selector:
++    app: {{ template "zeppelin.name" . }}
++    release: {{ .Release.Name }}
+\ No newline at end of file
+diff --git a/stable/zeppelin/values.yaml b/stable/zeppelin/values.yaml
+new file mode 100644
+index 000000000..8c0f51f3d
+--- /dev/null
++++ b/stable/zeppelin/values.yaml
+@@ -0,0 +1,16 @@
++zeppelin:
++  image: dylanmei/zeppelin:0.7.2
++  resources:
++    limits:
++      memory: "4096Mi"
++      cpu: "2000m"
++
++hadoop:
++  useConfigMap: false
++  configMapName: hadoop-hadoop
++  configPath: /usr/hadoop-2.7.3/etc/hadoop
++
++spark:
++  driverMemory: 1g
++  executorMemory: 1g
++  numExecutors: 2
+\ No newline at end of file

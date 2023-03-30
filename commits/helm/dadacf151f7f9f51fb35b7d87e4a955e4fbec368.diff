@@ -1,0 +1,164 @@
+commit dadacf151f7f9f51fb35b7d87e4a955e4fbec368
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Apr 4 13:54:18 2018 +0200
+
+    [stable/suitecrm] Refactor image property in values.yaml (#4659)
+    
+    * [stable/suitecrm] Refactor image properties in values.yaml
+    
+    * Use rolling tag and refactor pullSecrets
+    
+    * Fix lint issue
+    
+    * Update Chart.yaml
+
+diff --git a/stable/suitecrm/Chart.yaml b/stable/suitecrm/Chart.yaml
+index cabf5dbe7..66897cbd2 100644
+--- a/stable/suitecrm/Chart.yaml
++++ b/stable/suitecrm/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: suitecrm
+-version: 0.4.4
++version: 1.0.0
+ appVersion: 7.10.2
+ description: SuiteCRM is a completely open source enterprise-grade Customer Relationship Management (CRM) application. SuiteCRM is a software fork of the popular customer relationship management (CRM) system SugarCRM.
+ keywords:
+diff --git a/stable/suitecrm/README.md b/stable/suitecrm/README.md
+index 70b556cee..fd656fa5f 100644
+--- a/stable/suitecrm/README.md
++++ b/stable/suitecrm/README.md
+@@ -45,41 +45,44 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following table lists the configurable parameters of the SuiteCRM chart and their default values.
+ 
+-|              Parameter              |                Description                |                   Default                   |
+-|-------------------------------------|-------------------------------------------|---------------------------------------------|
+-| `imageTag`                          | `bitnami/suitecrm` image tag.             | SuiteCRM image version                      |
+-| `imagePullPolicy`                   | Image pull policy.                        | `IfNotPresent`                              |
+-| `suitecrmHost`                      | SuiteCRM host to create application URLs  | `nil`                                       |
+-| `suitecrmLoadBalancerIP`            | `loadBalancerIP` for the SuiteCRM Service | `nil`                                       |
+-| `suitecrmUsername`                  | User of the application                   | `user`                                      |
+-| `suitecrmPassword`                  | Application password                      | _random 10 character alphanumeric string_   |
+-| `suitecrmEmail`                     | Admin email                               | `user@example.com`                          |
+-| `suitecrmLastName`                  | Last name                                 | `Last`                                      |
+-| `suitecrmSmtpHost`                  | SMTP host                                 | `nil`                                       |
+-| `suitecrmSmtpPort`                  | SMTP port                                 | `nil`                                       |
+-| `suitecrmSmtpUser`                  | SMTP user                                 | `nil`                                       |
+-| `suitecrmSmtpPassword`              | SMTP password                             | `nil`                                       |
+-| `suitecrmSmtpProtocol`              | SMTP protocol [`ssl`, `tls`]              | `nil`                                       |
+-| `allowEmptyPassword`                | Allow DB blank passwords                  | `yes`                                       |
+-| `externalDatabase.host`             | Host of the external database             | `nil`                                       |
+-| `externalDatabase.port`             | Port of the external database             | `3306`                                      |
+-| `externalDatabase.user`             | Existing username in the external db      | `bn_suitecrm`                               |
+-| `externalDatabase.password`         | Password for the above username           | `nil`                                       |
+-| `externalDatabase.database`         | Name of the existing database              | `bitnami_suitecrm`                          |
+-| `mariadb.enabled`                   | Whether to use or not the mariadb chart    | `true`                                      |
+-| `mariadb.mariadbDatabase`           | Database name to create                   | `bitnami_suitecrm`                          |
+-| `mariadb.mariadbUser`               | Database user to create                   | `bn_suitecrm`                               |
+-| `mariadb.mariadbPassword`           | Password for the database                 | `nil`                                       |
+-| `mariadb.mariadbRootPassword`       | MariaDB admin password                    | `nil`                                       |
+-| `serviceType`                       | Kubernetes Service type                   | `LoadBalancer`                              |
+-| `persistence.enabled`               | Enable persistence using PVC              | `true`                                      |
+-| `persistence.apache.storageClass`   | PVC Storage Class for apache volume       | `nil` (uses alpha storage class annotation) |
+-| `persistence.apache.accessMode`     | PVC Access Mode for apache volume         | `ReadWriteOnce`                             |
+-| `persistence.apache.size`           | PVC Storage Request for apache volume     | `1Gi`                                       |
+-| `persistence.suitecrm.storageClass` | PVC Storage Class for SuiteCRM volume     | `nil` (uses alpha storage class annotation) |
+-| `persistence.suitecrm.accessMode`   | PVC Access Mode for SuiteCRM volume       | `ReadWriteOnce`                             |
+-| `persistence.suitecrm.size`         | PVC Storage Request for SuiteCRM volume   | `8Gi`                                       |
+-| `resources`                         | CPU/Memory resource requests/limits       | Memory: `512Mi`, CPU: `300m`                |
++|              Parameter              |                Description                |                          Default                        |
++|-------------------------------------|-------------------------------------------|-------------------------------------------------------- |
++| `image.registry`                    | SuiteCRM image registry                   | `docker.io`                                             |
++| `image.repository`                  | SuiteCRM image name                       | `bitnami/suitecrm`                                      |
++| `image.tag`                         | SuiteCRM image tag                        | `{VERSION}`                                             |
++| `image.pullPolicy`                  | Image pull policy                         | `Always` if `imageTag` is `latest`, else `IfNotPresent` |
++| `image.pullSecrets`                 | Specify image pull secrets                | `nil`                                                   |
++| `suitecrmHost`                      | SuiteCRM host to create application URLs  | `nil`                                                   |
++| `suitecrmLoadBalancerIP`            | `loadBalancerIP` for the SuiteCRM Service | `nil`                                                   |
++| `suitecrmUsername`                  | User of the application                   | `user`                                                  |
++| `suitecrmPassword`                  | Application password                      | _random 10 character alphanumeric string_               |
++| `suitecrmEmail`                     | Admin email                               | `user@example.com`                                      |
++| `suitecrmLastName`                  | Last name                                 | `Last`                                                  |
++| `suitecrmSmtpHost`                  | SMTP host                                 | `nil`                                                   |
++| `suitecrmSmtpPort`                  | SMTP port                                 | `nil`                                                   |
++| `suitecrmSmtpUser`                  | SMTP user                                 | `nil`                                                   |
++| `suitecrmSmtpPassword`              | SMTP password                             | `nil`                                                   |
++| `suitecrmSmtpProtocol`              | SMTP protocol [`ssl`, `tls`]              | `nil`                                                   |
++| `allowEmptyPassword`                | Allow DB blank passwords                  | `yes`                                                   |
++| `externalDatabase.host`             | Host of the external database             | `nil`                                                   |
++| `externalDatabase.port`             | Port of the external database             | `3306`                                                  |
++| `externalDatabase.user`             | Existing username in the external db      | `bn_suitecrm`                                           |
++| `externalDatabase.password`         | Password for the above username           | `nil`                                                   |
++| `externalDatabase.database`         | Name of the existing database             | `bitnami_suitecrm`                                      |
++| `mariadb.enabled`                   | Whether to use or not the mariadb chart   | `true`                                                  |
++| `mariadb.mariadbDatabase`           | Database name to create                   | `bitnami_suitecrm`                                      |
++| `mariadb.mariadbUser`               | Database user to create                   | `bn_suitecrm`                                           |
++| `mariadb.mariadbPassword`           | Password for the database                 | `nil`                                                   |
++| `mariadb.mariadbRootPassword`       | MariaDB admin password                    | `nil`                                                   |
++| `serviceType`                       | Kubernetes Service type                   | `LoadBalancer`                                          |
++| `persistence.enabled`               | Enable persistence using PVC              | `true`                                                  |
++| `persistence.apache.storageClass`   | PVC Storage Class for apache volume       | `nil` (uses alpha storage class annotation)             |
++| `persistence.apache.accessMode`     | PVC Access Mode for apache volume         | `ReadWriteOnce`                                         |
++| `persistence.apache.size`           | PVC Storage Request for apache volume     | `1Gi`                                                   |
++| `persistence.suitecrm.storageClass` | PVC Storage Class for SuiteCRM volume     | `nil` (uses alpha storage class annotation)             |
++| `persistence.suitecrm.accessMode`   | PVC Access Mode for SuiteCRM volume       | `ReadWriteOnce`                                         |
++| `persistence.suitecrm.size`         | PVC Storage Request for SuiteCRM volume   | `8Gi`                                                   |
++| `resources`                         | CPU/Memory resource requests/limits       | Memory: `512Mi`, CPU: `300m`                            |
+ 
+ The above parameters map to the env variables defined in [bitnami/suitecrm](http://github.com/bitnami/bitnami-docker-suitecrm). For more information please refer to the [bitnami/suitecrm](http://github.com/bitnami/bitnami-docker-suitecrm) image documentation.
+ 
+diff --git a/stable/suitecrm/templates/deployment.yaml b/stable/suitecrm/templates/deployment.yaml
+index d7e057177..4cbf36339 100644
+--- a/stable/suitecrm/templates/deployment.yaml
++++ b/stable/suitecrm/templates/deployment.yaml
+@@ -15,10 +15,16 @@ spec:
+         app: {{ template "name" . }}
+         release: "{{ .Release.Name }}"
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: ALLOW_EMPTY_PASSWORD
+           value: {{ .Values.allowEmptyPassword | quote }}
+diff --git a/stable/suitecrm/values.yaml b/stable/suitecrm/values.yaml
+index 1f30ae5c8..809a6f567 100644
+--- a/stable/suitecrm/values.yaml
++++ b/stable/suitecrm/values.yaml
+@@ -1,12 +1,21 @@
+ ## Bitnami SuiteCRM image version
+ ## ref: https://hub.docker.com/r/bitnami/suitecrm/tags/
+ ##
+-image: bitnami/suitecrm:7.10.2-r2
+-
+-## Specify a imagePullPolicy
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-imagePullPolicy: IfNotPresent
++image:
++  registry: docker.io
++  repository: bitnami/suitecrm
++  tag: 7.10.2
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
+ 
+ ## SuiteCRM host to create application URLs
+ ## ref: https://github.com/bitnami/bitnami-docker-suitecrm#configuration

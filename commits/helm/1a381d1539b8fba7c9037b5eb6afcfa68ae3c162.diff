@@ -1,0 +1,125 @@
+commit 1a381d1539b8fba7c9037b5eb6afcfa68ae3c162
+Author: Christoph Hösler <christoph.hoesler@gmail.com>
+Date:   Tue Mar 13 13:35:09 2018 +0100
+
+    [stable/mariadb] use credentials in exec probes (#3811)
+    
+    * use credentials for health check
+    
+    * refactor app label to meet best practices
+    
+    * exec probes within bash to access valueFrom env vars
+
+diff --git a/stable/mariadb/Chart.yaml b/stable/mariadb/Chart.yaml
+index ca415b38c..dd6502e0d 100644
+--- a/stable/mariadb/Chart.yaml
++++ b/stable/mariadb/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: mariadb
+-version: 2.1.8
++version: 2.1.9
+ appVersion: 10.1.31
+ description: Fast, reliable, scalable, and easy to use open-source relational database system. MariaDB Server is intended for mission-critical, heavy-load production systems as well as for embedding into mass-deployed software.
+ keywords:
+diff --git a/stable/mariadb/templates/configmap.yaml b/stable/mariadb/templates/configmap.yaml
+index 00a6c8cd5..e374ef2b5 100644
+--- a/stable/mariadb/templates/configmap.yaml
++++ b/stable/mariadb/templates/configmap.yaml
+@@ -3,7 +3,7 @@ kind: ConfigMap
+ metadata:
+   name: {{ template "mariadb.fullname" . }}
+   labels:
+-    app: {{ template "mariadb.fullname" . }}
++    app: {{ template "mariadb.name" . }}
+     chart: {{ template "mariadb.chart" . }}
+     release: "{{ .Release.Name }}"
+     heritage: "{{ .Release.Service }}"
+diff --git a/stable/mariadb/templates/deployment.yaml b/stable/mariadb/templates/deployment.yaml
+index 6d9bcaf24..342ac1645 100644
+--- a/stable/mariadb/templates/deployment.yaml
++++ b/stable/mariadb/templates/deployment.yaml
+@@ -3,7 +3,7 @@ kind: Deployment
+ metadata:
+   name: {{ template "mariadb.fullname" . }}
+   labels:
+-    app: {{ template "mariadb.fullname" . }}
++    app: {{ template "mariadb.name" . }}
+     chart: {{ template "mariadb.chart" . }}
+     release: "{{ .Release.Name }}"
+     heritage: "{{ .Release.Service }}"
+@@ -11,7 +11,7 @@ spec:
+   template:
+     metadata:
+       labels:
+-        app: {{ template "mariadb.fullname" . }}
++        app: {{ template "mariadb.name" . }}
+     spec:
+       securityContext:
+         runAsUser: 1001
+@@ -58,15 +58,17 @@ spec:
+         livenessProbe:
+           exec:
+             command:
+-            - mysqladmin
+-            - ping
++            - bash
++            - -c
++            - mysqladmin ping{{ if .Values.usePassword }} -uroot -p$MARIADB_ROOT_PASSWORD{{ end }}
+           initialDelaySeconds: 30
+           timeoutSeconds: 5
+         readinessProbe:
+           exec:
+             command:
+-            - mysqladmin
+-            - ping
++            - bash
++            - -c
++            - mysqladmin ping{{ if .Values.usePassword }} -uroot -p$MARIADB_ROOT_PASSWORD{{ end }}
+           initialDelaySeconds: 5
+           timeoutSeconds: 1
+         resources:
+diff --git a/stable/mariadb/templates/pvc.yaml b/stable/mariadb/templates/pvc.yaml
+index 68ca5fcf6..d46717f96 100644
+--- a/stable/mariadb/templates/pvc.yaml
++++ b/stable/mariadb/templates/pvc.yaml
+@@ -4,7 +4,7 @@ apiVersion: v1
+ metadata:
+   name: {{ template "mariadb.fullname" . }}
+   labels:
+-    app: {{ template "mariadb.fullname" . }}
++    app: {{ template "mariadb.name" . }}
+     chart: {{ template "mariadb.chart" . }}
+     release: "{{ .Release.Name }}"
+     heritage: "{{ .Release.Service }}"
+diff --git a/stable/mariadb/templates/secrets.yaml b/stable/mariadb/templates/secrets.yaml
+index bf8938676..ecb5b715b 100644
+--- a/stable/mariadb/templates/secrets.yaml
++++ b/stable/mariadb/templates/secrets.yaml
+@@ -4,7 +4,7 @@ kind: Secret
+ metadata:
+   name: {{ template "mariadb.fullname" . }}
+   labels:
+-    app: {{ template "mariadb.fullname" . }}
++    app: {{ template "mariadb.name" . }}
+     chart: {{ template "mariadb.chart" . }}
+     release: "{{ .Release.Name }}"
+     heritage: "{{ .Release.Service }}"
+diff --git a/stable/mariadb/templates/svc.yaml b/stable/mariadb/templates/svc.yaml
+index 9cb7196f4..111608c10 100644
+--- a/stable/mariadb/templates/svc.yaml
++++ b/stable/mariadb/templates/svc.yaml
+@@ -3,7 +3,7 @@ kind: Service
+ metadata:
+   name: {{ template "mariadb.fullname" . }}
+   labels:
+-    app: {{ template "mariadb.fullname" . }}
++    app: {{ template "mariadb.name" . }}
+     chart: {{ template "mariadb.chart" . }}
+     release: "{{ .Release.Name }}"
+     heritage: "{{ .Release.Service }}"
+@@ -29,4 +29,4 @@ spec:
+     targetPort: metrics
+ {{- end }}
+   selector:
+-    app: {{ template "mariadb.fullname" . }}
++    app: {{ template "mariadb.name" . }}

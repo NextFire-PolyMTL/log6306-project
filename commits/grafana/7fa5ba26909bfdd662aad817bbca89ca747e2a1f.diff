@@ -1,0 +1,37 @@
+commit 7fa5ba26909bfdd662aad817bbca89ca747e2a1f
+Author: zanac1986 <zanhsieh@protonmail.com>
+Date:   Sun Nov 20 01:14:28 2022 +0800
+
+    [grafana] refactor hotfix #1996
+    
+    See:
+    
+    https://github.com/grafana/helm-charts/issues/1996
+    
+    Signed-off-by: zanac1986 <zanhsieh@protonmail.com>
+
+diff --git a/charts/grafana/Chart.yaml b/charts/grafana/Chart.yaml
+index a965cb71..4fbbd117 100644
+--- a/charts/grafana/Chart.yaml
++++ b/charts/grafana/Chart.yaml
+@@ -1,6 +1,6 @@
+ apiVersion: v2
+ name: grafana
+-version: 6.44.5
++version: 6.44.6
+ appVersion: 9.2.5
+ kubeVersion: "^1.8.0-0"
+ description: The leading tool for querying and visualizing time series and metrics.
+diff --git a/charts/grafana/templates/ingress.yaml b/charts/grafana/templates/ingress.yaml
+index 3afef8a9..063cdfaa 100644
+--- a/charts/grafana/templates/ingress.yaml
++++ b/charts/grafana/templates/ingress.yaml
+@@ -38,7 +38,7 @@ spec:
+       http:
+         paths:
+           {{- with $extraPaths }}
+-          {{- toYaml . | indent 10 }}
++          {{- toYaml . | nindent 10 }}
+           {{- end }}
+           - path: {{ $ingressPath }}
+             {{- if $ingressSupportsPathType }}

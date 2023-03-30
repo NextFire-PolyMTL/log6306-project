@@ -1,0 +1,45 @@
+commit 4bd1b180c578b50e44c18da35817ae591dd25b50
+Author: Daniel Mühlbachler-Pietrzykowski <daniel.services+tech@muehlbachler.io>
+Date:   Fri Apr 9 22:07:23 2021 +0200
+
+    refactor(kube-prometheus-stack): set cert-manager generated certificate duration to include minutes and seconds complying to cert-manager representation on updates (#750)
+    
+    Signed-off-by: Daniel Muehlbachler-Pietrzykowski <daniel@muehlbachler.io>
+    
+    Co-authored-by: Bismarck Paliz <bismarck.paliz@jet.com>
+
+diff --git a/charts/kube-prometheus-stack/Chart.yaml b/charts/kube-prometheus-stack/Chart.yaml
+index d8352886..04939c40 100644
+--- a/charts/kube-prometheus-stack/Chart.yaml
++++ b/charts/kube-prometheus-stack/Chart.yaml
+@@ -18,7 +18,7 @@ name: kube-prometheus-stack
+ sources:
+   - https://github.com/prometheus-community/helm-charts
+   - https://github.com/prometheus-operator/kube-prometheus
+-version: 14.6.0
++version: 14.6.1
+ appVersion: 0.46.0
+ kubeVersion: ">=1.16.0-0"
+ home: https://github.com/prometheus-operator/kube-prometheus
+diff --git a/charts/kube-prometheus-stack/templates/prometheus-operator/certmanager.yaml b/charts/kube-prometheus-stack/templates/prometheus-operator/certmanager.yaml
+index 090e6a5b..cfd51655 100644
+--- a/charts/kube-prometheus-stack/templates/prometheus-operator/certmanager.yaml
++++ b/charts/kube-prometheus-stack/templates/prometheus-operator/certmanager.yaml
+@@ -18,7 +18,7 @@ metadata:
+   namespace: {{ template "kube-prometheus-stack.namespace" . }}
+ spec:
+   secretName: {{ template "kube-prometheus-stack.fullname" . }}-root-cert
+-  duration: 43800h # 5y
++  duration: 43800h0m0s # 5y
+   issuerRef:
+     name: {{ template "kube-prometheus-stack.fullname" . }}-self-signed-issuer
+   commonName: "ca.webhook.kube-prometheus-stack"
+@@ -43,7 +43,7 @@ metadata:
+   namespace: {{ template "kube-prometheus-stack.namespace" . }}
+ spec:
+   secretName: {{ template "kube-prometheus-stack.fullname" . }}-admission
+-  duration: 8760h # 1y
++  duration: 8760h0m0s # 1y
+   issuerRef:
+     {{- if .Values.prometheusOperator.admissionWebhooks.certManager.issuerRef }}
+     {{- toYaml .Values.prometheusOperator.admissionWebhooks.certManager.issuerRef | nindent 4 }}

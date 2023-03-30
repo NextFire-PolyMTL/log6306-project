@@ -1,0 +1,254 @@
+commit a8a67065b088a38f1d68a85aaf07468f24b30628
+Author: j_r0dd <285797+jr0dd@users.noreply.github.com>
+Date:   Sun Sep 12 17:58:34 2021 -0400
+
+    [home-assistant] metrics refactor (#1176)
+    
+    * [home-assistant] metrics refactor
+    
+    * fix version
+    
+    Co-authored-by: ᗪєνιη ᗷυнʟ <onedr0p@users.noreply.github.com>
+
+diff --git a/charts/stable/home-assistant/Chart.yaml b/charts/stable/home-assistant/Chart.yaml
+index 6b2ccff7..18ed9331 100644
+--- a/charts/stable/home-assistant/Chart.yaml
++++ b/charts/stable/home-assistant/Chart.yaml
+@@ -2,7 +2,7 @@ apiVersion: v2
+ appVersion: 2021.6.3
+ description: Home Assistant
+ name: home-assistant
+-version: 10.1.1
++version: 11.0.0
+ kubeVersion: ">=1.16.0-0"
+ keywords:
+ - home-assistant
+diff --git a/charts/stable/home-assistant/README.md b/charts/stable/home-assistant/README.md
+index 393399cf..a07a0683 100644
+--- a/charts/stable/home-assistant/README.md
++++ b/charts/stable/home-assistant/README.md
+@@ -1,6 +1,6 @@
+ # home-assistant
+ 
+-![Version: 10.1.1](https://img.shields.io/badge/Version-10.1.1-informational?style=flat-square) ![AppVersion: 2021.6.3](https://img.shields.io/badge/AppVersion-2021.6.3-informational?style=flat-square)
++![Version: 11.0.0](https://img.shields.io/badge/Version-11.0.0-informational?style=flat-square) ![AppVersion: 2021.6.3](https://img.shields.io/badge/AppVersion-2021.6.3-informational?style=flat-square)
+ 
+ Home Assistant
+ 
+@@ -150,10 +150,15 @@ The value derived is the name of the kubernetes service object for home-assistan
+ | influxdb | object | See values.yaml | Enable and configure influxdb database subchart under this key.    For more options see [influxdb chart documentation](https://github.com/bitnami/charts/tree/master/bitnami/influxdb) |
+ | ingress.main | object | See values.yaml | Enable and configure ingress settings for the chart under this key. |
+ | mariadb | object | See values.yaml | Enable and configure mariadb database subchart under this key.    For more options see [mariadb chart documentation](https://github.com/bitnami/charts/tree/master/bitnami/mariadb) |
++| metrics.enabled | bool | See values.yaml | Enable and configure a Prometheus serviceMonitor for the chart under this key. |
++| metrics.prometheusRule | object | See values.yaml | Enable and configure Prometheus Rules for the chart under this key. |
++| metrics.prometheusRule.rules | list | See prometheusrules.yaml | Configure additionial rules for the chart under this key. |
++| metrics.serviceMonitor.interval | string | `"1m"` |  |
++| metrics.serviceMonitor.labels | object | `{}` |  |
++| metrics.serviceMonitor.scrapeTimeout | string | `"30s"` |  |
+ | persistence | object | See values.yaml | Configure persistence settings for the chart under this key. |
+ | persistence.usb | object | See values.yaml | Configure a hostPathMount to mount a USB device in the container. |
+ | postgresql | object | See values.yaml | Enable and configure postgresql database subchart under this key.    For more options see [postgresql chart documentation](https://github.com/bitnami/charts/tree/master/bitnami/postgresql) |
+-| prometheus.serviceMonitor | object | See values.yaml | Enable and configure a Prometheus serviceMonitor for the chart under this key. |
+ | securityContext | object | `{"privileged":null}` | Enable devices to be discoverable hostNetwork: true -- When hostNetwork is true set dnsPolicy to ClusterFirstWithHostNet dnsPolicy: ClusterFirstWithHostNet |
+ | securityContext.privileged | bool | `nil` | Privileged securityContext may be required if USB devics are accessed directly through the host machine |
+ | service | object | See values.yaml | Configures service settings for the chart. Normally this does not need to be modified. |
+@@ -165,6 +170,12 @@ All notable changes to this project will be documented in this file.
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++### [11.0.0]
++
++#### Changed
++
++- **BREAKING**: Refactored Prometheus metrics section to add rules. Enabling metrics automatically enables the serviceMonitor.
++
+ ### [10.0.0]
+ 
+ #### Changed
+@@ -256,6 +267,7 @@ Any pre-existing StatefulSet will have to be removed before upgrading due to a n
+ 
+ This is the last version before starting this changelog. All sorts of cool stuff was changed, but only `git log` remembers what that was :slightly_frowning_face:
+ 
++[11.0.0]: #1100
+ [10.0.0]: #1000
+ [9.0.1]: #901
+ [9.0.0]: #900
+diff --git a/charts/stable/home-assistant/README_CHANGELOG.md.gotmpl b/charts/stable/home-assistant/README_CHANGELOG.md.gotmpl
+index 5e801c6b..fca8d951 100644
+--- a/charts/stable/home-assistant/README_CHANGELOG.md.gotmpl
++++ b/charts/stable/home-assistant/README_CHANGELOG.md.gotmpl
+@@ -10,6 +10,12 @@ All notable changes to this project will be documented in this file.
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++### [11.0.0]
++
++#### Changed
++
++- **BREAKING**: Refactored Prometheus metrics section to add rules. Enabling metrics automatically enables the serviceMonitor.
++
+ ### [10.0.0]
+ 
+ #### Changed
+@@ -101,6 +107,7 @@ Any pre-existing StatefulSet will have to be removed before upgrading due to a n
+ 
+ This is the last version before starting this changelog. All sorts of cool stuff was changed, but only `git log` remembers what that was :slightly_frowning_face:
+ 
++[11.0.0]: #1100
+ [10.0.0]: #1000
+ [9.0.1]: #901
+ [9.0.0]: #900
+diff --git a/charts/stable/home-assistant/templates/prometheusrules.yaml b/charts/stable/home-assistant/templates/prometheusrules.yaml
+new file mode 100644
+index 00000000..bb3d75ee
+--- /dev/null
++++ b/charts/stable/home-assistant/templates/prometheusrules.yaml
+@@ -0,0 +1,27 @@
++{{- if and .Values.metrics.enabled .Values.metrics.prometheusRule.enabled }}
++apiVersion: monitoring.coreos.com/v1
++kind: PrometheusRule
++metadata:
++  name: {{ include "common.names.fullname" . }}
++  labels:
++    {{- include "common.labels" . | nindent 4 }}
++    {{- with .Values.metrics.prometheusRule.labels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++spec:
++  groups:
++    - name: home-assistant
++      rules:
++        - alert: HomeAssistantAbsent
++          annotations:
++            description: Home Assistant has disappeared from Prometheus service discovery.
++            summary: Home Assistant is down.
++          expr: |
++            absent(up{job=~".*home-assistant.*"} == 1)
++          for: 5m
++          labels:
++            severity: critical
++        {{- with .Values.metrics.prometheusRule.rules }}
++        {{- toYaml . | nindent 8 }}
++        {{- end }}
++{{- end }}
+diff --git a/charts/stable/home-assistant/templates/servicemonitor.yaml b/charts/stable/home-assistant/templates/servicemonitor.yaml
+index 32a17f71..47c197c6 100644
+--- a/charts/stable/home-assistant/templates/servicemonitor.yaml
++++ b/charts/stable/home-assistant/templates/servicemonitor.yaml
+@@ -1,11 +1,11 @@
+-{{- if .Values.prometheus.serviceMonitor.enabled }}
++{{- if .Values.metrics.enabled }}
+ apiVersion: monitoring.coreos.com/v1
+ kind: ServiceMonitor
+ metadata:
+-  name: {{ template "common.names.fullname" . }}
++  name: {{ include "common.names.fullname" . }}
+   labels:
+     {{- include "common.labels" . | nindent 4 }}
+-    {{- with .Values.prometheus.serviceMonitor.additionalLabels }}
++    {{- with .Values.metrics.serviceMonitor.labels }}
+     {{- toYaml . | nindent 4 }}
+     {{- end }}
+ spec:
+@@ -13,20 +13,23 @@ spec:
+     matchLabels:
+       {{- include "common.labels.selectorLabels" . | nindent 6 }}
+   endpoints:
+-  - port: {{ .Values.prometheus.serviceMonitor.portName }}
+-    {{- with .Values.prometheus.serviceMonitor.interval }}
+-    interval: {{ . }}
+-    {{- end }}
+-    {{- with .Values.prometheus.serviceMonitor.bearerTokenFile }}
+-    bearerTokenFile: {{ . }}
+-    {{- end }}
+-    {{- with .Values.prometheus.serviceMonitor.bearerTokenSecret }}
+-    bearerTokenSecret:
+-      name: {{ .name }}
+-      key: {{ .key }}
+-      {{- with .optional }}
+-      optional: {{ . }}
++    - port: http
++      {{- with .Values.metrics.serviceMonitor.interval }}
++      interval: {{ . }}
++      {{- end }}
++      {{- with .Values.metrics.serviceMonitor.scrapeTimeout }}
++      scrapeTimeout: {{ . }}
++      {{- end }}
++      path: /api/prometheus
++      {{- with .Values.metrics.serviceMonitor.bearerTokenFile }}
++      bearerTokenFile: {{ . }}
++      {{- end }}
++      {{- with .Values.metrics.serviceMonitor.bearerTokenSecret }}
++      bearerTokenSecret:
++        name: {{ .name }}
++        key: {{ .key }}
++        {{- with .optional }}
++        optional: {{ . }}
++        {{- end }}
+       {{- end }}
+-    {{- end }}
+-    path: /api/prometheus
+ {{- end }}
+diff --git a/charts/stable/home-assistant/values.yaml b/charts/stable/home-assistant/values.yaml
+index c3cba20c..2d0b4973 100644
+--- a/charts/stable/home-assistant/values.yaml
++++ b/charts/stable/home-assistant/values.yaml
+@@ -43,21 +43,6 @@ securityContext:
+   # -- (bool) Privileged securityContext may be required if USB devics are accessed directly through the host machine
+   privileged:  # true
+ 
+-prometheus:
+-  # -- Enable and configure a Prometheus serviceMonitor for the chart under this key.
+-  # @default -- See values.yaml
+-  serviceMonitor:
+-    enabled: false
+-    portName: http
+-    ## See https://www.home-assistant.io/docs/authentication/ for where to find
+-    ## long lived access token creation under your account profile, which is
+-    ## needed to monitor Home Assistant
+-    # bearerTokenSecret:
+-    #   name: ""
+-    #   key: ""
+-    # interval: 1m
+-    # additionalLabels: {}
+-
+ # -- Configure persistence settings for the chart under this key.
+ # @default -- See values.yaml
+ persistence:
+@@ -110,3 +95,36 @@ influxdb:
+     enabled: false
+     # storageClass: ""
+     # size: 8Gi
++
++metrics:
++  # -- Enable and configure a Prometheus serviceMonitor for the chart under this key.
++  # @default -- See values.yaml
++  enabled: false
++  serviceMonitor:
++    interval: 1m
++    scrapeTimeout: 30s
++    labels: {}
++    ## See https://www.home-assistant.io/docs/authentication/ for where to find
++    ## long lived access token creation under your account profile, which is
++    ## needed to monitor Home Assistant
++    # bearerTokenSecret:
++    #   name: ""
++    #   key: ""
++
++  # -- Enable and configure Prometheus Rules for the chart under this key.
++  # @default -- See values.yaml
++  prometheusRule:
++    enabled: false
++    labels: {}
++    # -- Configure additionial rules for the chart under this key.
++    # @default -- See prometheusrules.yaml
++    rules: []
++      # - alert: HomeAssistantAbsent
++      #   annotations:
++      #     description: Home Assistant has disappeared from Prometheus service discovery.
++      #     summary: Home Assistant is down.
++      #   expr: |
++      #     absent(up{job=~".*home-assistant.*"} == 1)
++      #   for: 5m
++      #   labels:
++      #     severity: critical

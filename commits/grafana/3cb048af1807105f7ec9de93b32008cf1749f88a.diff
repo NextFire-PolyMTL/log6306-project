@@ -1,0 +1,52 @@
+commit 3cb048af1807105f7ec9de93b32008cf1749f88a
+Author: Steven Sheehy <ssheehy@firescope.com>
+Date:   Wed Apr 10 10:42:45 2019 -0500
+
+    Fix missing volume after refactor
+    
+    Signed-off-by: Steven Sheehy <ssheehy@firescope.com>
+
+diff --git a/charts/loki-stack/Chart.yaml b/charts/loki-stack/Chart.yaml
+index 0c9c3790..14761a85 100644
+--- a/charts/loki-stack/Chart.yaml
++++ b/charts/loki-stack/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: loki-stack
+-version: 0.6.0
++version: 0.6.1
+ appVersion: 0.0.1
+ kubeVersion: "^1.10.0-0"
+ description: "Loki: like Prometheus, but for logs."
+diff --git a/charts/promtail/Chart.yaml b/charts/promtail/Chart.yaml
+index 94f7963e..1554c7e4 100644
+--- a/charts/promtail/Chart.yaml
++++ b/charts/promtail/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: promtail
+-version: 0.6.0
++version: 0.6.1
+ appVersion: 0.0.1
+ kubeVersion: "^1.10.0-0"
+ description: "Responsible for gathering logs and sending them to Loki"
+diff --git a/charts/promtail/values.yaml b/charts/promtail/values.yaml
+index 8d82183d..e9f1539b 100644
+--- a/charts/promtail/values.yaml
++++ b/charts/promtail/values.yaml
+@@ -82,11 +82,17 @@ tolerations:
+ 
+ # Extra volumes to scrape logs from
+ volumes:
++- name: docker
++  hostPath:
++    path: /var/lib/docker/containers
+ - name: pods
+   hostPath:
+     path: /var/log/pods
+ 
+ volumeMounts:
++- name: docker
++  mountPath: /var/lib/docker/containers
++  readOnly: true
+ - name: pods
+   mountPath: /var/log/pods
+   readOnly: true

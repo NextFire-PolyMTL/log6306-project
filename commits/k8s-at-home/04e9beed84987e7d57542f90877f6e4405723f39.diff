@@ -1,0 +1,353 @@
+commit 04e9beed84987e7d57542f90877f6e4405723f39
+Author: j_r0dd <285797+jr0dd@users.noreply.github.com>
+Date:   Sun Sep 12 17:33:13 2021 -0400
+
+    [lidarr] metrics refactor (#1184)
+    
+    * [lidarr] metrics refactor
+    
+    * port protocol
+    
+    * revert scraping intevals after testing
+    
+    * update docs
+
+diff --git a/charts/stable/lidarr/Chart.yaml b/charts/stable/lidarr/Chart.yaml
+index 8bfdc621..bc14e0b2 100644
+--- a/charts/stable/lidarr/Chart.yaml
++++ b/charts/stable/lidarr/Chart.yaml
+@@ -2,7 +2,7 @@ apiVersion: v2
+ appVersion: v1.0.0.2255
+ description: Looks and smells like Sonarr but made for music
+ name: lidarr
+-version: 12.0.1
++version: 13.0.0
+ kubeVersion: ">=1.16.0-0"
+ keywords:
+ - lidarr
+diff --git a/charts/stable/lidarr/README.md b/charts/stable/lidarr/README.md
+index c3fa5a4c..d3b8d9ca 100644
+--- a/charts/stable/lidarr/README.md
++++ b/charts/stable/lidarr/README.md
+@@ -1,6 +1,6 @@
+ # lidarr
+ 
+-![Version: 12.0.1](https://img.shields.io/badge/Version-12.0.1-informational?style=flat-square) ![AppVersion: v1.0.0.2255](https://img.shields.io/badge/AppVersion-v1.0.0.2255-informational?style=flat-square)
++![Version: 13.0.0](https://img.shields.io/badge/Version-13.0.0-informational?style=flat-square) ![AppVersion: v1.0.0.2255](https://img.shields.io/badge/AppVersion-v1.0.0.2255-informational?style=flat-square)
+ 
+ Looks and smells like Sonarr but made for music
+ 
+@@ -78,20 +78,22 @@ N/A
+ |-----|------|---------|-------------|
+ | env | object | See below | environment variables. |
+ | env.TZ | string | `"UTC"` | Set the container timezone |
+-| exporter.enabled | bool | See values.yaml | Enable and configure Exportarr sidecar and Prometheus podMonitor. |
+-| exporter.env.additionalMetrics | bool | `false` | Set to true to enable gathering of additional metrics (slow) |
+-| exporter.env.port | int | `32123` | metrics port |
+-| exporter.env.unknownQueueItems | bool | `false` | Set to true to enable gathering unknown queue items |
+-| exporter.image.pullPolicy | string | `"IfNotPresent"` | image pull policy |
+-| exporter.image.repository | string | `"ghcr.io/onedr0p/exportarr"` | image repository |
+-| exporter.image.tag | string | `"v0.6.1"` | image tag |
+-| exporter.podMonitor.interval | string | `"3m"` |  |
+-| exporter.podMonitor.labels | object | `{}` |  |
+-| exporter.podMonitor.scrapeTimeout | string | `"1m"` |  |
+ | image.pullPolicy | string | `"IfNotPresent"` | image pull policy |
+ | image.repository | string | `"ghcr.io/k8s-at-home/lidarr"` | image repository |
+ | image.tag | string | `"v1.0.0.2255"` | image tag |
+ | ingress.main | object | See values.yaml | Enable and configure ingress settings for the chart under this key. |
++| metrics.enabled | bool | See values.yaml | Enable and configure Exportarr sidecar and Prometheus podMonitor. |
++| metrics.exporter.env.additionalMetrics | bool | `false` | Set to true to enable gathering of additional metrics (slow) |
++| metrics.exporter.env.port | int | `9792` | metrics port |
++| metrics.exporter.env.unknownQueueItems | bool | `false` | Set to true to enable gathering unknown queue items |
++| metrics.exporter.image.pullPolicy | string | `"IfNotPresent"` | image pull policy |
++| metrics.exporter.image.repository | string | `"ghcr.io/onedr0p/exportarr"` | image repository |
++| metrics.exporter.image.tag | string | `"v0.6.1"` | image tag |
++| metrics.prometheusRule | object | See values.yaml | Enable and configure Prometheus Rules for the chart under this key. |
++| metrics.prometheusRule.rules | list | See prometheusrules.yaml | Configure additionial rules for the chart under this key. |
++| metrics.serviceMonitor.interval | string | `"30s"` |  |
++| metrics.serviceMonitor.labels | object | `{}` |  |
++| metrics.serviceMonitor.scrapeTimeout | string | `"10s"` |  |
+ | persistence | object | See values.yaml | Configure persistence settings for the chart under this key. |
+ | probes | object | See values.yaml | Configures the probes for the main Pod. |
+ | service | object | See values.yaml | Configures service settings for the chart. |
+@@ -102,6 +104,12 @@ All notable changes to this application Helm chart will be documented in this fi
+ 
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++### [13.0.0]
++
++#### Changed
++
++- **BREAKING**: Refactored Prometheus metrics section to add rules. Enabling metrics automatically enables the serviceMonitor.
++
+ ### [12.0.0]
+ 
+ #### Changed
+@@ -134,6 +142,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ 
+ - Initial version
+ 
++[13.0.0]: #1300
+ [12.0.0]: #1200
+ [11.0.0]: #1100
+ [10.0.0]: #1000
+diff --git a/charts/stable/lidarr/README_CHANGELOG.md.gotmpl b/charts/stable/lidarr/README_CHANGELOG.md.gotmpl
+index cb576b20..05b0de45 100644
+--- a/charts/stable/lidarr/README_CHANGELOG.md.gotmpl
++++ b/charts/stable/lidarr/README_CHANGELOG.md.gotmpl
+@@ -9,6 +9,12 @@ All notable changes to this application Helm chart will be documented in this fi
+ 
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++### [13.0.0]
++
++#### Changed
++
++- **BREAKING**: Refactored Prometheus metrics section to add rules. Enabling metrics automatically enables the serviceMonitor and exporter sidecar.
++
+ ### [12.0.0]
+ 
+ #### Changed
+@@ -41,6 +47,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ 
+ - Initial version
+ 
++[13.0.0]: #1300
+ [12.0.0]: #1200
+ [11.0.0]: #1100
+ [10.0.0]: #1000
+diff --git a/charts/stable/lidarr/templates/common.yaml b/charts/stable/lidarr/templates/common.yaml
+index 8f5e5295..b1697fa5 100644
+--- a/charts/stable/lidarr/templates/common.yaml
++++ b/charts/stable/lidarr/templates/common.yaml
+@@ -3,12 +3,12 @@
+ 
+ {{/* Append the hardcoded settings */}}
+ {{- define "lidarr.harcodedValues" -}}
+-{{ if .Values.exporter.enabled }}
++{{ if .Values.metrics.enabled }}
+ additionalContainers:
+   exporter:
+     name: exporter
+-    image: "{{ .Values.exporter.image.repository }}:{{ .Values.exporter.image.tag }}"
+-    imagePullPolicy: {{ .Values.exporter.image.pullPolicy }}
++    image: "{{ .Values.metrics.exporter.image.repository }}:{{ .Values.metrics.exporter.image.tag }}"
++    imagePullPolicy: {{ .Values.metrics.exporter.image.pullPolicy }}
+     args: ["exportarr", "lidarr"]
+     env:
+       - name: URL
+@@ -16,20 +16,29 @@ additionalContainers:
+       - name: CONFIG
+         value: "/config/config.xml"
+       - name: PORT
+-        value: "{{ .Values.exporter.env.port }}"
++        value: "{{ .Values.metrics.exporter.env.port }}"
+       - name: ENABLE_ADDITIONAL_METRICS
+-        value: "{{ .Values.exporter.env.additionalMetrics }}"
++        value: "{{ .Values.metrics.exporter.env.additionalMetrics }}"
+       - name: ENABLE_UNKNOWN_QUEUE_ITEMS
+-        value: "{{ .Values.exporter.env.unknownQueueItems }}"
++        value: "{{ .Values.metrics.exporter.env.unknownQueueItems }}"
+     ports:
+       - name: metrics
+-        containerPort: {{ .Values.exporter.env.port }}
++        containerPort: {{ .Values.metrics.exporter.env.port }}
+     volumeMounts:
+       {{ if .Values.persistence.config.enabled }}
+       - name: config
+         mountPath: /config
+         readOnly: true
+       {{ end }}
++
++service:
++  metrics:
++    enabled: true
++    ports:
++      metrics:
++        enabled: true
++        protocol: TCP
++        port: {{ .Values.metrics.exporter.env.port }}
+ {{ end }}
+ {{- end -}}
+ {{- $_ := mergeOverwrite .Values (include "lidarr.harcodedValues" . | fromYaml) -}}
+diff --git a/charts/stable/lidarr/templates/podmonitor.yaml b/charts/stable/lidarr/templates/podmonitor.yaml
+deleted file mode 100644
+index 8a1a7cde..00000000
+--- a/charts/stable/lidarr/templates/podmonitor.yaml
++++ /dev/null
+@@ -1,29 +0,0 @@
+-{{- if .Values.exporter.enabled }}
+-apiVersion: monitoring.coreos.com/v1
+-kind: PodMonitor
+-metadata:
+-  name: {{ template "common.names.fullname" . }}
+-  labels:
+-    {{- include "common.labels" . | nindent 4 }}
+-    {{- with .Values.exporter.podMonitor.labels }}
+-    {{- toYaml . | nindent 4 }}
+-    {{- end }}
+-spec:
+-  selector:
+-    matchLabels:
+-      {{- include "common.labels.selectorLabels" . | nindent 6 }}
+-  podMetricsEndpoints:
+-    - port: metrics
+-      {{- with .Values.exporter.podMonitor.interval }}
+-      interval: {{ . }}
+-      {{- end }}
+-      {{- with .Values.exporter.podMonitor.scrapeTimeout }}
+-      scrapeTimeout: {{ . }}
+-      {{- end }}
+-      path: /metrics
+-      relabelings:
+-        - sourceLabels: ['namespace', 'job']
+-          regex: ".+/(.*)"
+-          targetLabel: "job"
+-          replacement: "$1"
+-{{- end }}
+diff --git a/charts/stable/lidarr/templates/prometheusrules.yaml b/charts/stable/lidarr/templates/prometheusrules.yaml
+new file mode 100644
+index 00000000..f6a67020
+--- /dev/null
++++ b/charts/stable/lidarr/templates/prometheusrules.yaml
+@@ -0,0 +1,37 @@
++{{- if and .Values.metrics.enabled .Values.metrics.prometheusRule.enabled }}
++apiVersion: monitoring.coreos.com/v1
++kind: PrometheusRule
++metadata:
++  name: {{ include "common.names.fullname" . }}
++  labels:
++    {{- include "common.labels" . | nindent 4 }}
++    {{- with .Values.metrics.prometheusRule.labels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++spec:
++  groups:
++    - name: lidarr
++      rules:
++        - alert: ExportarrAbsent
++          annotations:
++            description: Lidarr Exportarr has disappeared from Prometheus
++              service discovery.
++            summary: Exportarr is down.
++          expr: |
++            absent(up{job=~".*lidarr.*"} == 1)
++          for: 5m
++          labels:
++            severity: critical
++        - alert: LidarrDown
++          annotations:
++            description: Lidarr service is down.
++            summary: Lidarr is down.
++          expr: |
++            lidarr_system_status == 0
++          for: 5m
++          labels:
++            severity: critical
++        {{- with .Values.metrics.prometheusRule.rules }}
++        {{- toYaml . | nindent 8 }}
++        {{- end }}
++{{- end }}
+diff --git a/charts/stable/lidarr/templates/servicemonitor.yaml b/charts/stable/lidarr/templates/servicemonitor.yaml
+new file mode 100644
+index 00000000..b4245480
+--- /dev/null
++++ b/charts/stable/lidarr/templates/servicemonitor.yaml
+@@ -0,0 +1,24 @@
++{{- if .Values.metrics.enabled }}
++apiVersion: monitoring.coreos.com/v1
++kind: ServiceMonitor
++metadata:
++  name: {{ include "common.names.fullname" . }}
++  labels:
++    {{- include "common.labels" . | nindent 4 }}
++    {{- with .Values.metrics.serviceMonitor.labels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++spec:
++  selector:
++    matchLabels:
++      {{- include "common.labels.selectorLabels" . | nindent 6 }}
++  endpoints:
++    - port: metrics
++      {{- with .Values.metrics.serviceMonitor.interval }}
++      interval: {{ . }}
++      {{- end }}
++      {{- with .Values.metrics.serviceMonitor.scrapeTimeout }}
++      scrapeTimeout: {{ . }}
++      {{- end }}
++      path: /metrics
++{{- end }}
+diff --git a/charts/stable/lidarr/values.yaml b/charts/stable/lidarr/values.yaml
+index 2f5fda4c..b292c7e5 100644
+--- a/charts/stable/lidarr/values.yaml
++++ b/charts/stable/lidarr/values.yaml
+@@ -57,6 +57,7 @@ probes:
+       timeoutSeconds: 10
+ 
+ # -- Configure persistence settings for the chart under this key.
++## Config persistence is required for the Prometheus exporter sidecar.
+ # @default -- See values.yaml
+ persistence:
+   config:
+@@ -66,25 +67,43 @@ persistence:
+     enabled: false
+     mountPath: /media
+ 
+-exporter:
+-  # -- Enable and configure Exportarr sidecar and Prometheus podMonitor.
++metrics:
++  # -- Enable and configure Exportarr sidecar and Prometheus serviceMonitor.
+   # @default -- See values.yaml
+   enabled: false
+-  podMonitor:
++  serviceMonitor:
+     interval: 3m
+     scrapeTimeout: 1m
+     labels: {}
+-  image:
+-    # -- image repository
+-    repository: ghcr.io/onedr0p/exportarr
+-    # -- image tag
+-    tag: v0.6.1
+-    # -- image pull policy
+-    pullPolicy: IfNotPresent
+-  env:
+-    # -- metrics port
+-    port: 32123
+-    # -- Set to true to enable gathering of additional metrics (slow)
+-    additionalMetrics: false
+-    # -- Set to true to enable gathering unknown queue items
+-    unknownQueueItems: false
++  # -- Enable and configure Prometheus Rules for the chart under this key.
++  # @default -- See values.yaml
++  prometheusRule:
++    enabled: false
++    labels: {}
++    # -- Configure additionial rules for the chart under this key.
++    # @default -- See prometheusrules.yaml
++    rules: []
++      # - alert: LidarrDown
++      #   annotations:
++      #     description: Lidarr service is down.
++      #     summary: Lidarr is down.
++      #   expr: |
++      #     lidarr_system_status == 0
++      #   for: 5m
++      #   labels:
++      #     severity: critical
++  exporter:
++    image:
++      # -- image repository
++      repository: ghcr.io/onedr0p/exportarr
++      # -- image tag
++      tag: v0.6.1
++      # -- image pull policy
++      pullPolicy: IfNotPresent
++    env:
++      # -- metrics port
++      port: 9792
++      # -- Set to true to enable gathering of additional metrics (slow)
++      additionalMetrics: false
++      # -- Set to true to enable gathering unknown queue items
++      unknownQueueItems: false

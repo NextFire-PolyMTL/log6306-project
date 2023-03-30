@@ -1,0 +1,2993 @@
+commit 263bc80322056455c7120b51f1992a40667ec686
+Author: Rui Yang <ryang@pivotal.io>
+Date:   Fri Sep 28 15:40:23 2018 -0400
+
+    [stable/concourse] Upgrade to Concourse 4.2.1 and rekey values to enable automated synchronization between helm values and env vars (#7804)
+    
+    * [stable/concourse] Refactor values.yml to map concourse binary commands
+    
+    * support concourse version 4.1
+    
+    * update auth
+    
+    * refactor credentialsManager and metrics sections in values.yml
+    
+    * allow config concourse parameters through env insteand of args for
+    flexibility
+    
+    Signed-off-by: Rui Yang <ryang@pivotal.io>
+    
+    * [stable/concourse] add postgresql secrets for its sslmod
+    
+    *remove check guard for required secrets
+    
+    *typo fixes
+    
+    Signed-off-by: Rui Yang <ryang@pivotal.io>
+    
+    * [stable/concourse] fix prometheus port reference
+    
+    Signed-off-by: Rui Yang <ryang@pivotal.io>
+    
+    * [stable/concourse] quotes env vars that take a list of values
+    
+    Signed-off-by: Rui Yang <ryang@pivotal.io>
+    
+    * [stable/concourse] bump concourse version to 4.2.1
+    
+    Signed-off-by: Rui Yang <ryang@pivotal.io>
+    
+    * [stable/concourse] quote int variables
+    
+    Signed-off-by: Rui Yang <ryang@pivotal.io>
+
+diff --git a/stable/concourse/Chart.yaml b/stable/concourse/Chart.yaml
+index b97fc20d4..51001c6a1 100644
+--- a/stable/concourse/Chart.yaml
++++ b/stable/concourse/Chart.yaml
+@@ -1,6 +1,6 @@
+ name: concourse
+-version: 1.16.1
+-appVersion: 3.14.1
++version: 2.0.0
++appVersion: 4.2.1
+ description: Concourse is a simple and scalable CI system.
+ icon: https://avatars1.githubusercontent.com/u/7809479
+ keywords:
+diff --git a/stable/concourse/README.md b/stable/concourse/README.md
+index 9cd4c162b..3f64ff1cc 100644
+--- a/stable/concourse/README.md
++++ b/stable/concourse/README.md
+@@ -68,41 +68,8 @@ The following table lists the configurable parameters of the Concourse chart and
+ | Parameter               | Description                           | Default                                                    |
+ | ----------------------- | ----------------------------------    | ---------------------------------------------------------- |
+ | `image` | Concourse image | `concourse/concourse` |
+-| `imageTag` | Concourse image version | `3.10.0` |
++| `imageTag` | Concourse image version | `4.2.1` |
+ | `imagePullPolicy` | Concourse image pull policy | `IfNotPresent` |
+-| `concourse.externalURL` | URL used to reach any ATC from the outside world | `nil` |
+-| `concourse.atcPort` | Concourse ATC listen port | `8080` |
+-| `concourse.tsaPort` | Concourse TSA listen port | `2222` |
+-| `concourse.allowSelfSignedCertificates` | Allow self signed certificates | `false` |
+-| `concourse.authDuration` | Length of time for which tokens are valid | `24h` |
+-| `concourse.resourceCheckingInterval` | Interval on which to check for new versions of resources | `1m` |
+-| `concourse.oldResourceGracePeriod` | How long to cache the result of a get step after a newer version of the resource is found | `5m` |
+-| `concourse.resourceCacheCleanupInterval` | The interval on which to check for and release old caches of resource versions | `30s` |
+-| `concourse.baggageclaimDriver` | The filesystem driver used by baggageclaim | `naive` |
+-| `concourse.containerPlacementStrategy` | The selection strategy for placing containers onto workers | `random` |
+-| `concourse.dockerRegistry` | A URL pointing to the Docker registry to use to fetch Docker images | `nil` |
+-| `concourse.insecureDockerRegistry` | Docker registry(ies) (comma separated) to allow connecting to even if not secure | `nil` |
+-| `concourse.encryption.enabled` | Enable encryption of pipeline configuration | `false` |
+-| `concourse.basicAuth.enabled` | Enable basic auth for the "main" Concourse team| `true` |
+-| `concourse.githubAuth.enabled` | Enable Github auth for the "main" Concourse team| `false` |
+-| `concourse.githubAuth.organization` | GitHub organizations (comma separated) whose members will have access | `nil` |
+-| `concourse.githubAuth.team` | GitHub teams (comma separated) whose members will have access | `nil` |
+-| `concourse.githubAuth.user` | GitHub users (comma separated) to permit access | `nil` |
+-| `concourse.githubAuth.authUrl` | Override default endpoint AuthURL for Github Enterprise | `nil` |
+-| `concourse.githubAuth.tokenUrl` | Override default endpoint TokenURL for Github Enterprise | `nil` |
+-| `concourse.githubAuth.apiUrl` | Override default API endpoint URL for Github Enterprise | `nil` |
+-| `concourse.gitlabAuth.enabled` | Enable Gitlab auth for the "main" Concourse team| `false` |
+-| `concourse.gitlabAuth.group` | GitLab groups (comma separated) whose members will have access | `nil` |
+-| `concourse.gitlabAuth.authUrl` | Endpoint AuthURL for GitLab server | `nil` |
+-| `concourse.gitlabAuth.tokenUrl` | Endpoint TokenURL for GitLab server | `nil` |
+-| `concourse.gitlabAuth.apiUrl` | API endpoint URL for GitLab server | `nil` |
+-| `concourse.genericOauth.enabled` | Enable generic OAuth for the "main" Concourse team| `false` |
+-| `concourse.genericOauth.displayName` | Name for this auth method on the web UI | `nil` |
+-| `concourse.genericOauth.authUrl` | Generic OAuth provider AuthURL endpoint | `nil` |
+-| `concourse.genericOauth.authUrlParam` | Parameters (comma separated) to pass to the authentication server AuthURL | `nil` |
+-| `concourse.genericOauth.scope` | Optional scope required to authorize user | `nil` |
+-| `concourse.genericOauth.tokenUrl` | Generic OAuth provider TokenURL endpoint | `nil` |
+-| `concourse.workingDirectory` | The working directory for concourse | `/concourse-work-dir` |
+ | `web.nameOverride` | Override the Concourse Web components name | `nil` |
+ | `web.replicas` | Number of Concourse Web replicas | `1` |
+ | `web.resources` | Concourse Web resource requests and limits | `{requests: {cpu: "100m", memory: "128Mi"}}` |
+@@ -121,18 +88,6 @@ The following table lists the configurable parameters of the Concourse chart and
+ | `web.ingress.annotations` | Concourse Web Ingress annotations | `{}` |
+ | `web.ingress.hosts` | Concourse Web Ingress Hostnames | `[]` |
+ | `web.ingress.tls` | Concourse Web Ingress TLS configuration | `[]` |
+-| `web.metrics.prometheus.enabled` | Enable Prometheus metrics exporter | `false` |
+-| `web.metrics.prometheus.port` | Port for exporting Prometheus metrics | `9391` |
+-| `web.metrics.datadog.enabled` | Enable datadog metrics exporter | `false` |
+-| `web.metrics.datadog.agentHost` | Host to export Datadog metrics to | `127.0.0.1` |
+-| `web.metrics.datadog.agentHostUseHostIP` | Use node's IP as host to export Datadog metrics to. Overrides `web.metrics.datadog.agentHost` | `127.0.0.1` |
+-| `web.metrics.datadog.agentPort` | Port to export Datadog metrics to | `8125` |
+-| `web.metrics.datadog.prefix` | prefix for all Datadog metrics to easily find them in Datadog | `nil` |
+-| `web.metrics.influxdb.enabled` | Enable influxdb metrics exporter | `false` |
+-| `web.metrics.influxdb.url` | Url for exporting influxdb metrics | `http://127.0.0.1:8086` |
+-| `web.metrics.influxdb.database` | Influxdb database name | `concourse` |
+-| `web.metrics.influxdb.insecure_skip_verify` | Skip TLS verify when connecting to influxdb | `false` |
+-| `web.metrics.influxdb.username` | Username used to authenticate with influxdb | `nil` |
+ | `worker.nameOverride` | Override the Concourse Worker components name | `nil` |
+ | `worker.replicas` | Number of Concourse Worker replicas | `2` |
+ | `worker.minAvailable` | Minimum number of workers available after an eviction | `1` |
+@@ -157,54 +112,49 @@ The following table lists the configurable parameters of the Concourse chart and
+ | `postgresql.postgresPassword` | PostgreSQL Password for the new user | `concourse` |
+ | `postgresql.postgresDatabase` | PostgreSQL Database to create | `concourse` |
+ | `postgresql.persistence.enabled` | Enable PostgreSQL persistence using Persistent Volume Claims | `true` |
+-| `credentialManager.kubernetes.enabled` | Enable Kubernetes Secrets Credential Manager | `true` |
+-| `credentialManager.kubernetes.namespacePrefix` | Prefix for namespaces to look for secrets in | `.Release.Name-` |
+-| `credentialManager.kubernetes.teams` | Teams to create namespaces for to hold secrets | `["main"]` |
+-| `credentialManager.kubernetes.keepNamespaces` | Don't delete namespaces when the release is deleted | `true` |
+-| `credentialManager.ssm.enabled` | Use AWS SSM as a Credential Manager | `false` |
+-| `credentialManager.ssm.region` | AWS Region to use for SSM | `nil` |
+-| `credentialManager.ssm.pipelineSecretsTemplate` | Pipeline secrets template | `nil` |
+-| `credentialManager.ssm.teamSecretsTemplate` | Team secrets template | `nil` |
+-| `credentialManager.awsSecretsManager.enabled` | Use AWS Secrets Manager as a Credential Manager | `false` |
+-| `credentialManager.awsSecretsManager.region` | AWS Region to use for Secrets Manager | `nil` |
+-| `credentialManager.awsSecretsManager.pipelineSecretsTemplate` | Pipeline secrets template | `nil` |
+-| `credentialManager.awsSecretsManager.teamSecretsTemplate` | Team secrets template | `nil` |
+-| `credentialManager.vault.enabled` | Use Hashicorp Vault as a Credential Manager | `false` |
+-| `credentialManager.vault.url` | Vault Server URL | `nil` |
+-| `credentialManager.vault.pathPrefix` | Vault path to namespace secrets | `/concourse` |
+-| `credentialManager.vault.useCaCert` | CA public certificate when using self-signed TLS with Vault | `nil` |
+-| `credentialManager.vault.authBackend` | Vault Authentication Backend to use, leave blank when using clientToken | `nil` |
+ | `rbac.create` | Enables creation of RBAC resources | `true` |
+ | `rbac.apiVersion` | RBAC version | `v1beta1` |
+ | `rbac.webServiceAccountName` | Name of the service account to use for web pods if `rbac.create` is `false` | `default` |
+ | `rbac.workerServiceAccountName` | Name of the service account to use for workers if `rbac.create` is `false` | `default` |
++| `secrets.localUsers` | Create concourse local users. Default username and password are test:test *See [values.yaml](values.yaml)* |
+ | `secrets.create` | Create the secret resource from the following values. *See [Secrets](#secrets)* | `true` |
+ | `secrets.hostKey` | Concourse Host Private Key | *See [values.yaml](values.yaml)* |
+ | `secrets.hostKeyPub` | Concourse Host Public Key | *See [values.yaml](values.yaml)* |
+ | `secrets.sessionSigningKey` | Concourse Session Signing Private Key | *See [values.yaml](values.yaml)* |
+ | `secrets.workerKey` | Concourse Worker Private Key | *See [values.yaml](values.yaml)* |
+ | `secrets.workerKeyPub` | Concourse Worker Public Key | *See [values.yaml](values.yaml)* |
++| `secrets.postgresqlUser` | PostgreSQL User Name | `nil` |
++| `secrets.postgresqlPassword` | PostgreSQL User Password | `nil` |
++| `secrets.postgresqlCaCert` | PostgreSQL CA certificate | `nil` |
++| `secrets.postgresqlClientCert` | PostgreSQL Client certificate | `nil` |
++| `secrets.postgresqlClientKey` | PostgreSQL Client key | `nil` |
+ | `secrets.encryptionKey` | current encryption key | `nil` |
+ | `secrets.oldEncryptionKey` | old encryption key, used for key rotation | `nil` |
+ | `secrets.awsSsmAccessKey` | AWS Access Key ID for SSM access | `nil` |
+ | `secrets.awsSsmSecretKey` | AWS Secret Access Key ID for SSM access | `nil` |
+ | `secrets.awsSsmSessionToken` | AWS Session Token for SSM access | `nil` |
+-| `secrets.basicAuthUsername` | Concourse Basic Authentication Username | `concourse` |
+-| `secrets.basicAuthPassword` | Concourse Basic Authentication Password | `concourse` |
+-| `secrets.githubAuthClientId` | Application client ID for GitHub OAuth | `nil` |
+-| `secrets.githubAuthClientSecret` | Application client secret for GitHub OAuth | `nil` |
+-| `secrets.gitlabAuthClientId` | Application client ID for GitLab OAuth | `nil` |
+-| `secrets.gitlabAuthClientSecret` | Application client secret for GitLab OAuth | `nil` |
+-| `secrets.genericOauthClientId` | Application client ID for Generic OAuth | `nil` |
+-| `secrets.genericOauthClientSecret` | Application client secret for Generic OAuth | `nil` |
+-| `secrets.postgresqlUri` | PostgreSQL connection URI when `postgresql.enabled` is `false` | `nil` |
+-| `secrets.vaultCaCert` | CA certificate   use to verify the vault server SSL cert. | `nil` |
+-| `secrets.vaultClientToken` | Vault periodic client token | `nil` |
+-| `secrets.vaultAppRoleId` | Vault AppRole RoleID | `nil` |
+-| `secrets.vaultAppRoleSecretId` | Vault AppRole SecretID | `nil` |
++| `secrets.cfClientId` | Client ID for cf auth provider | `nil` |
++| `secrets.cfClientSecret` | Client secret for cf auth provider | `nil` |
++| `secrets.cfCaCert` | CA certificate for cf auth provider | `nil` |
++| `secrets.githubClientId` | Application client ID for GitHub OAuth | `nil` |
++| `secrets.githubClientSecret` | Application client secret for GitHub OAuth | `nil` |
++| `secrets.githubCaCert` | CA certificate for Enterprise Github OAuth | `nil` |
++| `secrets.gitlabClientId` | Application client ID for GitLab OAuth | `nil` |
++| `secrets.gitlabClientSecret` | Application client secret for GitLab OAuth | `nil` |
++| `secrets.oauthClientId` | Application client ID for Generic OAuth | `nil` |
++| `secrets.oauthClientSecret` | Application client secret for Generic OAuth | `nil` |
++| `secrets.oauthCaCert` | CA certificate for Generic OAuth | `nil` |
++| `secrets.oidcClientId` | Application client ID for OIDI OAuth | `nil` |
++| `secrets.oidcClientSecret` | Application client secret for OIDC OAuth | `nil` |
++| `secrets.oidcCaCert` | CA certificate for OIDC Oauth | `nil` |
++| `secrets.vaultCaCert` | CA certificate use to verify the vault server SSL cert | `nil` |
+ | `secrets.vaultClientCert` | Vault Client Certificate | `nil` |
+ | `secrets.vaultClientKey` | Vault Client Key | `nil` |
++| `secrets.vaultClientToken` | Vault periodic client token | `nil` |
+ | `secrets.influxdbPassword` | Password used to authenticate with influxdb | `nil` |
++| `secrets.syslogCaCert` | SSL certificate to verify Syslog server | `nil` |
++
++For configurable concourse parameters, refer to [values.yaml](values.yaml) `concourse` section. All parameters under this section are strictly mapped from concourse binary commands. For example if one needs to configure the concourse external URL, the param `concourse` -> `web` -> `externalUrl` should be set, which is equivalent to running concourse binary as `concourse web --external-url`. For those sub-sections have `enabled`, one will need to set `enabled` to be `true` to use the following params within the section.
+ 
+ Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`.
+ 
+diff --git a/stable/concourse/templates/NOTES.txt b/stable/concourse/templates/NOTES.txt
+index b536b5046..db7653266 100644
+--- a/stable/concourse/templates/NOTES.txt
++++ b/stable/concourse/templates/NOTES.txt
+@@ -33,19 +33,8 @@
+     kubectl port-forward --namespace {{ .Release.Namespace }} $POD_NAME 8080:{{ .Values.concourse.atcPort }}
+     {{- end }}
+   {{- end }}
+-{{- if .Values.concourse.basicAuth.enabled }}
+-
+-* Login with the following credentials
+-  {{ if .Values.secrets.create }}
+-  Username: {{ .Values.secrets.basicAuthUsername }}
+-  Password: {{ .Values.secrets.basicAuthPassword }}
+-  {{ else }}
+-  Username: see basic-auth-username in secret {{ template "concourse.concourse.fullname" . }}
+-  Password: see basic-auth-password in secret {{ template "concourse.concourse.fullname" . }}
+-  {{ end }}
+-{{- end }}
+ * If this is your first time using Concourse, follow the tutorial at https://concourse-ci.org/hello-world.html
+-{{- if contains "naive" .Values.concourse.baggageclaimDriver }}
++{{- if contains "naive" .Values.concourse.worker.baggageclaim.driver }}
+ 
+ *******************
+ ******WARNING******
+diff --git a/stable/concourse/templates/_helpers.tpl b/stable/concourse/templates/_helpers.tpl
+index 7255851ec..5e4cdc5ac 100644
+--- a/stable/concourse/templates/_helpers.tpl
++++ b/stable/concourse/templates/_helpers.tpl
+@@ -43,5 +43,5 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this
+ {{- end -}}
+ 
+ {{- define "concourse.namespacePrefix" -}}
+-{{- default (printf "%s-" .Release.Name ) .Values.credentialManager.kubernetes.namespacePrefix -}}
+-{{- end -}}
+\ No newline at end of file
++{{- default (printf "%s-" .Release.Name ) .Values.concourse.web.kubernetes.namespacePrefix -}}
++{{- end -}}
+diff --git a/stable/concourse/templates/namespace.yaml b/stable/concourse/templates/namespace.yaml
+index 32aa18520..032e00a9f 100644
+--- a/stable/concourse/templates/namespace.yaml
++++ b/stable/concourse/templates/namespace.yaml
+@@ -1,10 +1,10 @@
+-{{- if .Values.credentialManager.kubernetes.enabled -}}
+-{{- range .Values.credentialManager.kubernetes.teams }}
++{{- if .Values.concourse.web.kubernetes.enabled -}}
++{{- range .Values.concourse.web.kubernetes.teams }}
+ ---
+ apiVersion: v1
+ kind: Namespace
+ metadata:
+-{{- if $.Values.credentialManager.kubernetes.keepNamespaces }}
++{{- if $.Values.concourse.web.kubernetes.keepNamespaces }}
+   annotations:
+     "helm.sh/resource-policy": keep
+ {{- end }}
+@@ -15,4 +15,4 @@ metadata:
+     release: "{{ $.Release.Name }}"
+     heritage: "{{ $.Release.Service }}"
+ {{- end }}
+-{{- end -}}
+\ No newline at end of file
++{{- end -}}
+diff --git a/stable/concourse/templates/secrets.yaml b/stable/concourse/templates/secrets.yaml
+index 02151d9b0..fefc17407 100644
+--- a/stable/concourse/templates/secrets.yaml
++++ b/stable/concourse/templates/secrets.yaml
+@@ -16,51 +16,70 @@ data:
+   worker-key: {{ .Values.secrets.workerKey | b64enc | quote }}
+   worker-key-pub: {{ .Values.secrets.workerKeyPub | b64enc | quote }}
+   {{- if not .Values.postgresql.enabled }}
+-  postgresql-uri: {{ template "concourse.secret.required" dict "key" "postgresqlUri" "isnt" "postgresql.enabled" "root" . }}
++  postgresql-user: {{ template "concourse.secret.required" dict "key" "postgresUser" "isnt" "postgresql.enabled" "root" . }}
++  postgresql-password: {{ template "concourse.secret.required" dict "key" "postgresPassword" "isnt" "postgresql.enabled" "root" . }}
++  postgresql-ca-cert: {{ default "" .Values.secrets.postgresCaCert | b64enc | quote }}
++  postgresql-client-cert: {{ default "" .Values.secrets.postgresClientCert | b64enc | quote }}
++  postgresql-client-key: {{ default "" .Values.secrets.postgresClientKey | b64enc | quote }}
+   {{- end }}
+-  {{- if .Values.concourse.encryption.enabled }}
++  {{- if .Values.concourse.web.encryption.enabled }}
+   encryption-key: {{ template "concourse.secret.required" dict "key" "encryptionKey" "is" "concourse.encryption.enabled" "root" . }}
+   old-encryption-key: {{ default "" .Values.secrets.oldEncryptionKey | b64enc | quote }}
+   {{- end }}
+-  {{- if .Values.concourse.basicAuth.enabled }}
+-  basic-auth-username: {{ template "concourse.secret.required" dict "key" "basicAuthUsername" "is" "concourse.basicAuth.enabled" "root" . }}
+-  basic-auth-password: {{ template "concourse.secret.required" dict "key" "basicAuthPassword" "is" "concourse.basicAuth.enabled" "root" . }}
++  {{- if .Values.concourse.web.localAuth.enabled }}
++  local-users: {{ .Values.secrets.localUsers | b64enc | quote }}
+   {{- end }}
+-  {{- if .Values.concourse.githubAuth.enabled }}
+-  github-auth-client-id: {{ template "concourse.secret.required" dict "key" "githubAuthClientId" "is" "concourse.githubAuth.enabled" "root" . }}
+-  github-auth-client-secret: {{ template "concourse.secret.required" dict "key" "githubAuthClientSecret" "is" "concourse.githubAuth.enabled" "root" . }}
++  {{- if .Values.concourse.web.auth.cf.enabled }}
++  cf-client-id: {{ template "concourse.secret.required" dict "key" "cfClientId" "is" "concourse.web.auth.cf.enabled" "root" . }}
++  cf-client-secret: {{ template "concourse.secret.required" dict "key" "cfClientSecret" "is" "concourse.web.auth.cf.enabled" "root" . }}
++  cf-ca-cert: {{ default "" .Values.secrets.cfCaCert | b64enc | quote }}
+   {{- end }}
+-  {{- if .Values.concourse.gitlabAuth.enabled }}
+-  gitlab-auth-client-id: {{ template "concourse.secret.required" dict "key" "gitlabAuthClientId" "is" "concourse.gitlabAuth.enabled" "root" . }}
+-  gitlab-auth-client-secret: {{ template "concourse.secret.required" dict "key" "gitlabAuthClientSecret" "is" "concourse.gitlabAuth.enabled" "root" . }}
++  {{- if .Values.concourse.web.auth.github.enabled }}
++  github-client-id: {{ template "concourse.secret.required" dict "key" "githubClientId" "is" "concourse.web.auth.github.enabled" "root" . }}
++  github-client-secret: {{ template "concourse.secret.required" dict "key" "githubClientSecret" "is" "concourse.web.auth.github.enabled" "root" . }}
++  github-ca-cert: {{ default "" .Values.secrets.githubCaCert | b64enc | quote }}
+   {{- end }}
+-  {{- if .Values.concourse.genericOauth.enabled }}
+-  generic-oauth-client-id: {{ template "concourse.secret.required" dict "key" "genericOauthClientId" "is" "concourse.genericOauth.enabled" "root" . }}
+-  generic-oauth-client-secret: {{ template "concourse.secret.required" dict "key" "genericOauthClientSecret" "is" "concourse.genericOauth.enabled" "root" . }}
++  {{- if .Values.concourse.web.auth.gitlab.enabled }}
++  gitlab-client-id: {{ template "concourse.secret.required" dict "key" "gitlabClientId" "is" "concourse.web.auth.gitlab.enabled" "root" . }}
++  gitlab-client-secret: {{ template "concourse.secret.required" dict "key" "gitlabClientSecret" "is" "concourse.web.auth.gitlab.enabled" "root" . }}
+   {{- end }}
+-  {{- if .Values.credentialManager.vault.enabled }}
++  {{- if .Values.concourse.web.auth.ldap.enabled }}
++  ldap-ca-cert: {{ default "" .Values.secrets.ldapCaCert | b64enc | quote }}
++  {{- end }}
++  {{- if .Values.concourse.web.auth.oauth.enabled }}
++  oauth-client-id: {{ template "concourse.secret.required" dict "key" "oauthClientId" "is" "concourse.web.auth.oauth.enabled" "root" . }}
++  oauth-client-secret: {{ template "concourse.secret.required" dict "key" "oauthClientSecret" "is" "concourse.web.auth.oauth.enabled" "root" . }}
++  oauth-ca-cert: {{ default "" .Values.secrets.oauthCaCert | b64enc | quote }}
++  {{- end }}
++  {{- if .Values.concourse.web.auth.oidc.enabled }}
++  oidc-client-id: {{ template "concourse.secret.required" dict "key" "oidcClientId" "is" "concourse.web.auth.oidc.enabled" "root" . }}
++  oidc-client-secret: {{ template "concourse.secret.required" dict "key" "oidcClientSecret" "is" "concourse.web.auth.oidc.enabled" "root" . }}
++  oidc-ca-cert: {{ default "" .Values.secrets.oidcCaCert | b64enc | quote }}
++  {{- end }}
++  {{- if .Values.concourse.web.vault.enabled }}
+   vault-ca-cert: {{ default "" .Values.secrets.vaultCaCert | b64enc | quote }}
+   vault-client-token: {{ default "" .Values.secrets.vaultClientToken | b64enc | quote }}
+-  vault-approle-id: {{ default "" .Values.secrets.vaultAppRoleId | b64enc | quote }}
+-  vault-approle-secret-id: {{ default "" .Values.secrets.vaultAppRoleSecretId | b64enc | quote }}
+   vault-client-cert: {{ default "" .Values.secrets.vaultClientCert | b64enc | quote }}
+   vault-client-key: {{ default "" .Values.secrets.vaultClientKey | b64enc | quote }}
+   {{- end }}
+-  {{- if .Values.credentialManager.ssm.enabled }}
++  {{- if .Values.concourse.web.awsSsm.enabled }}
+   aws-ssm-access-key: {{ default "" .Values.secrets.awsSsmAccessKey | b64enc | quote }}
+   aws-ssm-secret-key: {{ default "" .Values.secrets.awsSsmSecretKey | b64enc | quote }}
+   {{- if .Values.secrets.awsSsmSessionToken }}
+   aws-ssm-session-token: {{ .Values.secrets.awsSsmSessionToken | b64enc | quote }}
+   {{- end }}
+   {{- end }}
+-  {{- if .Values.credentialManager.awsSecretsManager.enabled }}
++  {{- if .Values.concourse.web.awsSecretsManager.enabled }}
+   aws-secretsmanager-access-key: {{ default "" .Values.secrets.awsSecretsmanagerAccessKey | b64enc | quote }}
+   aws-secretsmanager-secret-key: {{ default "" .Values.secrets.awsSecretsmanagerSecretKey | b64enc | quote }}
+   {{- if .Values.secrets.awsSecretsmanagerSessionToken }}
+   aws-secretsmanager-session-token: {{ .Values.secrets.awsSecretsmanagerSessionToken | b64enc | quote }}
+   {{- end }}
+   {{- end }}
+-  {{- if .Values.web.metrics.influxdb.enabled }}
++  {{- if .Values.concourse.web.influxdb.enabled }}
+   influxdb-password: {{ default "" .Values.secrets.influxdbPassword | b64enc | quote }}
+   {{- end }}
++  {{- if .Values.concourse.web.syslog.enabled }}
++  syslog-ca-cert: {{ default "" .Values.secrets.syslogCaCert | b64enc | quote }}
++  {{- end }}
+ {{- end }}
+diff --git a/stable/concourse/templates/web-deployment.yaml b/stable/concourse/templates/web-deployment.yaml
+index 2ae204454..81dd77bfd 100644
+--- a/stable/concourse/templates/web-deployment.yaml
++++ b/stable/concourse/templates/web-deployment.yaml
+@@ -30,62 +30,51 @@ spec:
+           imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
+           args:
+             - "web"
+-            {{- if eq (default "" .Values.credentialManager.vault.authBackend) "approle" }}
+-            - "--vault-auth-param"
+-            - "role_id=$(CONCOURSE_VAULT_APPROLE_ID)"
+-            - "--vault-auth-param"
+-            - "secret_id=$(CONCOURSE_VAULT_APPROLE_SECRET_ID)"
++          env:
++            {{- if .Values.concourse.web.logLevel }}
++            - name: CONCOURSE_LOG_LEVEL
++              value: {{ .Values.concourse.web.logLevel | quote }}
+             {{- end }}
+-            {{- if .Values.credentialManager.kubernetes.enabled }}
+-            - "--kubernetes-in-cluster"
++            {{- if .Values.concourse.web.bindPort }}
++            - name: CONCOURSE_BIND_PORT
++              value: {{ .Values.concourse.web.bindPort | quote }}
+             {{- end }}
+-            {{- if .Values.credentialManager.ssm.enabled }}
+-            - "--aws-ssm-region"
+-            - "$(CONCOURSE_AWS_SSM_REGION)"
++            {{- if .Values.concourse.web.bindIp }}
++            - name: CONCOURSE_BIND_IP
++              value: {{ .Values.concourse.web.bindIp | quote }}
+             {{- end }}
+-            {{- if .Values.credentialManager.awsSecretsManager.enabled }}
+-            - "--aws-secretsmanager-region"
+-            - "$(CONCOURSE_AWS_SECRETSMANAGER_REGION)"
++            {{- if .Values.concourse.web.localAuth.enabled }}
++            - name: CONCOURSE_ADD_LOCAL_USER
++              value: {{ .Values.secrets.localUsers }}
+             {{- end }}
+-            {{- if .Values.web.metrics.datadog.enabled }}
+-            - "--datadog-agent-host"
+-            - "$(CONCOURSE_DATADOG_AGENT_HOST)"
+-            - "--datadog-agent-port"
+-            - "$(CONCOURSE_DATADOG_AGENT_PORT)"
+-            {{- if .Values.web.metrics.datadog.prefix }}
+-            - "--datadog-prefix"
+-            - {{ .Values.web.metrics.datadog.prefix }}
++            {{- if .Values.concourse.web.tlsBindPort }}
++            - name: CONCOURSE_TLS_BIND_PORT
++              value: {{ .Values.concourse.web.tlsBindPort | quote }}
+             {{- end }}
++            {{- if .Values.concourse.web.tlsCert }}
++            - name: CONCOURSE_TLS_CERT
++              value: {{ .Values.concourse.web.tlsCert }}
+             {{- end }}
+-          env:
+-            - name: CONCOURSE_TSA_HOST_KEY
+-              value: "/concourse-keys/host_key"
+-            - name: CONCOURSE_SESSION_SIGNING_KEY
+-              value: "/concourse-keys/session_signing_key"
+-            - name: CONCOURSE_TSA_AUTHORIZED_KEYS
+-              value: "/concourse-keys/worker_key.pub"
+-            {{- if .Values.postgresql.enabled }}
+-            - name: POSTGRES_HOST
+-              value: {{ template "concourse.postgresql.fullname" . }}
+-            - name: POSTGRES_USER
+-              value: {{ .Values.postgresql.postgresUser }}
+-            - name: POSTGRES_PASSWORD
+-              valueFrom:
+-                secretKeyRef:
+-                  name: {{ template "concourse.postgresql.fullname" . }}
+-                  key: postgres-password
+-            - name: POSTGRES_DATABASE
+-              value: {{ .Values.postgresql.postgresDatabase | quote }}
+-            - name: CONCOURSE_POSTGRES_DATA_SOURCE
+-              value: postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST)/$(POSTGRES_DATABASE)?sslmode=disable
++            {{- if .Values.concourse.web.tlsKey }}
++            - name: CONCOURSE_TLS_KEY
++              value: {{ .Values.concourse.web.tlsKey }}
++            {{- end }}
++            {{- if .Values.concourse.web.externalUrl }}
++            - name: CONCOURSE_EXTERNAL_URL
++              value: {{ .Values.concourse.web.externalUrl | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.peerUrl }}
++            - name: CONCOURSE_PEER_URL
++              value: {{ .Values.concourse.web.peerUrl }}
+             {{- else }}
+-            - name: CONCOURSE_POSTGRES_DATA_SOURCE
++            - name: POD_IP
+               valueFrom:
+-                secretKeyRef:
+-                  name: {{ template "concourse.concourse.fullname" . }}
+-                  key: postgresql-uri
++                fieldRef:
++                  fieldPath: status.podIP
++            - name: CONCOURSE_PEER_URL
++              value: "http://$(POD_IP):$(CONCOURSE_BIND_PORT)"
+             {{- end }}
+-            {{- if .Values.concourse.encryption.enabled }}
++            {{- if .Values.concourse.web.encryption.enabled }}
+             - name: CONCOURSE_ENCRYPTION_KEY
+               valueFrom:
+                 secretKeyRef:
+@@ -97,255 +86,791 @@ spec:
+                   name: {{ template "concourse.concourse.fullname" . }}
+                   key: old-encryption-key
+             {{- end }}
+-            {{- if .Values.concourse.externalURL }}
+-            - name: CONCOURSE_EXTERNAL_URL
+-              value: {{ .Values.concourse.externalURL | quote }}
++            {{- if .Values.concourse.web.debugBindIp }}
++            - name: CONCOURSE_DEBUG_BIND_IP
++              value: {{ .Values.concourse.web.debugBindIp | quote }}
+             {{- end }}
+-            - name: POD_IP
+-              valueFrom:
+-                fieldRef:
+-                  fieldPath: status.podIP
+-            - name: CONCOURSE_BIND_PORT
+-              value: {{ .Values.concourse.atcPort | quote }}
+-            - name: CONCOURSE_PEER_URL
+-              value: "http://$(POD_IP):$(CONCOURSE_BIND_PORT)"
+-            - name: CONCOURSE_TSA_BIND_PORT
+-              value: {{ .Values.concourse.tsaPort | quote }}
+-            - name: CONCOURSE_ALLOW_SELF_SIGNED_CERTIFICATES
+-              value: {{ .Values.concourse.allowSelfSignedCertificates | quote }}
+-            - name: CONCOURSE_AUTH_DURATION
+-              value: {{ .Values.concourse.authDuration | quote }}
++            {{- if .Values.concourse.web.debugBindPort }}
++            - name: CONCOURSE_DEBUG_BIND_PORT
++              value: {{ .Values.concourse.web.debugBindPort | quote }}
++            {{- end }}
++            {{- if .Values.web.interceptIdleTimeout }}
++            - name: CONCOURSE_INTERCEPT_IDLE_TIMEOUT
++              value: {{ .Values.web.interceptIdleTimeout | quote }}
++            {{- end }}
++            {{- if .Values.web.globalResourceCheckTimeout }}
++            - name: CONCOURSE_GLOBAL_RESOURCE_CHECK_TIMEOUT
++              value: {{ .Values.web.globalResourceCheckTimeout | quote }}
++            {{- end }}
++            {{- if .Values.web.resourceCheckingInterval }}
+             - name: CONCOURSE_RESOURCE_CHECKING_INTERVAL
+               value: {{ .Values.concourse.resourceCheckingInterval | quote }}
+-            - name: CONCOURSE_OLD_RESOURCE_GRACE_PERIOD
+-              value: {{ .Values.concourse.oldResourceGracePeriod | quote }}
+-            - name: CONCOURSE_RESOURCE_CACHE_CLEANUP_INTERVAL
+-              value: {{ .Values.concourse.resourceCacheCleanupInterval | quote }}
++            {{- end }}
++            {{- if .Values.web.resourceTypeCheckingInterval }}
++            - name: CONCOURSE_RESOURCE_TYPE_CHECKING_INTERVAL
++              value: {{ .Values.web.resourceTypeCheckingInterval }}
++            {{- end }}
++            {{- if .Values.concourse.web.containerPlacementStrategy }}
+             - name: CONCOURSE_CONTAINER_PLACEMENT_STRATEGY
+-              value: {{ .Values.concourse.containerPlacementStrategy | quote }}
+-            {{- if .Values.concourse.basicAuth.enabled }}
+-            - name: CONCOURSE_BASIC_AUTH_USERNAME
++              value: {{ .Values.concourse.web.containerPlacementStrategy | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.baggageclaimResponseHeaderTimeout }}
++            - name: CONCOURSE_BAGGAGECLAIM_RESPONSE_HEADER_TIMEOUT
++              value: {{ .Values.concourse.web.baggageclaimResponseHeaderTimeout | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.cliArtifactsDir }}
++            - name: CONCOURSE_CLI_ARTIFACTS_DIR
++              value: {{ .Values.web.cliArtifactsDir }}
++            {{- end }}
++            {{- if .Values.concourse.web.logDbQueries }}
++            - name: CONCOURSE_LOG_DB_QUERIES
++              value: {{ .Values.concourse.web.logDbQueries }}
++            {{- end }}
++            {{- if .Values.concourse.web.buildTrackerInterval }}
++            - name: CONCOURSE_BUILD_TRACKER_INTERVAL
++              value: {{ .Values.concourse.web.buildTrackerInterval | quote  }}
++            {{- end }}
++            {{- if .Values.concourse.web.defaultBuildLogsToRetain }}
++            - name: CONCOURSE_DEFAULT_BUILD_LOGS_TO_RETAIN
++              value: {{ .Values.concourse.web.defaultBuildLogsToRetain | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.maxBuildLogsToRetain }}
++            - name: CONCOURSE_MAX_BUILD_LOGS_TO_RETAIN
++              value: {{ .Values.concourse.web.maxBuildLogsToRetain | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.defaultTaskCpuLimit }}
++            - name: CONCOURSE_DEFAULT_TASK_CPU_LIMIT
++              value: {{ .Values.concourse.web.defaultTaskCpuLimit | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.defaultTaskMemoryLimit }}
++            - name: CONCOURSE_DEFAULT_TASK_MEMORY_LIMIT
++              value: {{ .Values.concourse.web.defaultTaskMemoryLimit }}
++            {{- end }}
++
++            {{- if .Values.postgresql.enabled }}
++            - name: CONCOURSE_POSTGRES_HOST
++              value: {{ template "concourse.postgresql.fullname" . }}
++            - name: CONCOURSE_POSTGRES_USER
++              value: {{ .Values.postgresql.postgresUser }}
++            - name: CONCOURSE_POSTGRES_PASSWORD
++              valueFrom:
++                secretKeyRef:
++                  name: {{ template "concourse.postgresql.fullname" . }}
++                  key: postgres-password
++            - name: CONCOURSE_POSTGRES_DATABASE
++              value: {{ .Values.postgresql.postgresDatabase | quote }}
++            {{- else }}
++            {{- if .Values.concourse.web.postgres.host }}
++            - name: CONCOURSE_POSTGRES_HOST
++              value: {{ .Values.concourse.web.postgres.host }}
++            {{- end }}
++            {{- if .Values.concourse.web.postgres.port }}
++            - name: CONCOURSE_POSTGRES_PORT
++              value: {{ .Values.concourse.web.postgres.port | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.postgres.socket }}
++            - name: CONCOURSE_POSTGRES_SOCKET
++              value: {{ .Values.concourse.web.postgres.socket }}
++            {{- end }}
++            - name: CONCOURSE_POSTGRES_USER
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ template "concourse.concourse.fullname" . }}
+-                  key: basic-auth-username
+-            - name: CONCOURSE_BASIC_AUTH_PASSWORD
++                  key: postgresql-user
++            - name: CONCOURSE_POSTGRES_PASSWORD
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ template "concourse.concourse.fullname" . }}
+-                  key: basic-auth-password
++                  key: postgresql-password
++            {{- if .Values.concourse.web.postgres.sslmode }}
++            - name: CONCOURSE_POSTGRES_SSLMODE
++              value: {{ .Values.concourse.web.postgres.sslmode }}
++            {{- end }}
++            {{- if not (eq (default "disable" .Values.concourse.web.postgres.sslmode) "disable") }}
++            - name: CONCOURSE_VAULT_CA_CERT
++              value: "/concourse-postgresql/ca.cert"
++            - name: CONCOURSE_POSTGRES_CLIENT_CERT
++              value: "/concourse-postgresql/client.cert"
++            - name: CONCOURSE_POSTGRES_CLIENT_KEY
++              value: "/concourse-postgresql/client.key"
++            {{- end }}
++            {{- if .Values.concourse.web.postgres.connectTimeout }}
++            - name: CONCOURSE_POSTGRES_CONNECT_TIMEOUT
++              value: {{ .Values.concourse.web.postgres.connectTimeout }}
++            {{- end }}
++            {{- if .Values.concourse.web.postgres.database }}
++            - name: CONCOURSE_POSTGRES_DATABASE
++              value: {{ .Values.concourse.web.postgres.database }}
++            {{- end }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.kubernetes.enabled }}
++            - name: CONCOURSE_KUBERNETES_IN_CLUSTER
++              value: "true"
++            - name: CONCOURSE_KUBERNETES_NAMESPACE_PREFIX
++              value: {{ template "concourse.namespacePrefix" . }}
++            {{- else}}
++            {{- if .Values.concourse.web.kubernetes.configPath }}
++            - name: CONCOURSE_KUBERNETES_CONFIG_PATH
++              value: {{ .Values.concourse.web.kubernetes.configPath }}
++            {{- end }}
++            {{- if .Values.concourse.web.kubernetes.namespacePrefix }}
++            - name: CONCOURSE_KUBERNETES_NAMESPACE_PREFIX
++              value: {{ .Values.concourse.web.kubernetes.namespacePrefix }}
++            {{- end }}
+             {{- end }}
+-            {{- if .Values.concourse.githubAuth.enabled }}
+-            - name: CONCOURSE_GITHUB_AUTH_CLIENT_ID
++
++            {{- if .Values.concourse.web.awsSecretsManager.enabled }}
++            - name: CONCOURSE_AWS_SECRETSMANAGER_ACCESS_KEY
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ template "concourse.concourse.fullname" . }}
+-                  key: github-auth-client-id
+-            - name: CONCOURSE_GITHUB_AUTH_CLIENT_SECRET
++                  key: aws-secretsmanager-access-key
++            - name: CONCOURSE_AWS_SECRETSMANAGER_SECRET_KEY
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ template "concourse.concourse.fullname" . }}
+-                  key: github-auth-client-secret
+-            - name: CONCOURSE_GITHUB_AUTH_ORGANIZATION
+-              value: {{ .Values.concourse.githubAuth.organization | quote }}
+-            - name: CONCOURSE_GITHUB_AUTH_TEAM
+-              value: {{ .Values.concourse.githubAuth.team | quote }}
+-            - name: CONCOURSE_GITHUB_AUTH_USER
+-              value: {{ .Values.concourse.githubAuth.user | quote }}
+-            - name: CONCOURSE_GITHUB_AUTH_AUTH_URL
+-              value: {{ .Values.concourse.githubAuth.authUrl | quote }}
+-            - name: CONCOURSE_GITHUB_AUTH_TOKEN_URL
+-              value: {{ .Values.concourse.githubAuth.tokenUrl | quote }}
+-            - name: CONCOURSE_GITHUB_AUTH_API_URL
+-              value: {{ .Values.concourse.githubAuth.apiUrl | quote }}
+-            {{- end }}
+-            {{- if .Values.concourse.gitlabAuth.enabled }}
+-            - name: CONCOURSE_GITLAB_AUTH_CLIENT_ID
++                  key: aws-secretsmanager-secret-key
++            {{- if .Values.secrets.awsSsmSessionToken }}
++            - name: CONCOURSE_AWS_SECRETSMANAGER_SESSION_TOKEN
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ template "concourse.concourse.fullname" . }}
+-                  key: gitlab-auth-client-id
+-            - name: CONCOURSE_GITLAB_AUTH_CLIENT_SECRET
++                  key: aws-secretsmanager-session-token
++            {{- end }}
++            {{- if .Values.concoures.web.awsSecretsManager.region }}
++            - name: AWS_REGION
++              value: {{ .Values.concoures.web.awsSecretsManager.region }}
++            {{- end }}
++            {{- if .Values.concoures.web.awsSecretsManager.pipelineSecretTemplate }}
++            - name: CONCOURSE_AWS_SECRETSMANAGER_PIPELINE_SECRET_TEMPLATE
++              value: {{ .Values.concoures.web.awsSecretsManager.pipelineSecretTemplate | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.awsSecretsManager.teamSecretTemplate }}
++            - name: CONCOURSE_AWS_SECRETSMANAGER_TEAM_SECRET_TEMPLATE
++              value: {{ .Values.concourse.web.awsSecretsManager.teamSecretTemplate | quote }}
++            {{- end }}
++            {{- end }}
++
++
++            {{- if .Values.concourse.web.awsSsm.enabled }}
++            - name: CONCOURSE_AWS_SSM_ACCESS_KEY
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ template "concourse.concourse.fullname" . }}
+-                  key: gitlab-auth-client-secret
+-            - name: CONCOURSE_GITLAB_AUTH_GROUP
+-              value: {{ .Values.concourse.gitlabAuth.group | quote }}
+-            - name: CONCOURSE_GITLAB_AUTH_AUTH_URL
+-              value: {{ .Values.concourse.gitlabAuth.authUrl | quote }}
+-            - name: CONCOURSE_GITLAB_AUTH_TOKEN_URL
+-              value: {{ .Values.concourse.gitlabAuth.tokenUrl | quote }}
+-            - name: CONCOURSE_GITLAB_AUTH_API_URL
+-              value: {{ .Values.concourse.gitlabAuth.apiUrl | quote }}
+-            {{- end }}
+-            {{- if .Values.concourse.genericOauth.enabled }}
+-            - name: CONCOURSE_GENERIC_OAUTH_CLIENT_ID
++                  key: aws-ssm-access-key
++            - name: CONCOURSE_AWS_SSM_SECRET_KEY
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ template "concourse.concourse.fullname" . }}
+-                  key: generic-oauth-client-id
+-            - name: CONCOURSE_GENERIC_OAUTH_CLIENT_SECRET
++                  key: aws-ssm-secret-key
++            {{- if .Values.secrets.awsSsmSessionToken }}
++            - name: CONCOURSE_AWS_SSM_SESSION_TOKEN
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ template "concourse.concourse.fullname" . }}
+-                  key: generic-oauth-client-secret
+-            - name: CONCOURSE_GENERIC_OAUTH_DISPLAY_NAME
+-              value: {{ .Values.concourse.genericOauth.displayName | quote }}
+-            - name: CONCOURSE_GENERIC_OAUTH_AUTH_URL
+-              value: {{ .Values.concourse.genericOauth.authUrl | quote }}
+-            - name: CONCOURSE_GENERIC_OAUTH_AUTH_URL_PARAM
+-              value: {{ .Values.concourse.genericOauth.authUrlParam | quote }}
+-            - name: CONCOURSE_GENERIC_OAUTH_SCOPE
+-              value: {{ .Values.concourse.genericOauth.scope | quote }}
+-            - name: CONCOURSE_GENERIC_OAUTH_TOKEN_URL
+-              value: {{ .Values.concourse.genericOauth.tokenUrl | quote }}
+-            {{- end }}
+-            {{- if .Values.credentialManager.kubernetes.enabled }}
+-            - name: CONCOURSE_KUBERNETES_NAMESPACE_PREFIX
+-              value: {{ template "concourse.namespacePrefix" . }}
++                  key: aws-ssm-session-token
++            {{- end }}
++            {{- if .Values.concoures.web.awsSsm.region }}
++            - name: AWS_REGION
++              value: {{ .Values.concoures.web.awsSsm.region }}
++            {{- end }}
++            {{- if .Values.credentialManager.awsSsm.pipelineSecretTemplate }}
++            - name: CONCOURSE_AWS_SSM_PIPELINE_SECRET_TEMPLATE
++              value: {{ .Values.credentialManager.awsSsm.pipelineSecretTemplate | quote }}
+             {{- end }}
+-            {{- if .Values.credentialManager.vault.enabled }}
++            {{- if .Values.credentialManager.awsSsm.teamSecretTemplate }}
++            - name: CONCOURSE_AWS_SSM_TEAM_SECRET_TEMPLATE
++              value: {{ .Values.credentialManager.awsSsm.teamSecretTemplate | quote }}
++            {{- end }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.vault.enabled }}
+             - name: CONCOURSE_VAULT_URL
+-              value: {{ .Values.credentialManager.vault.url | quote }}
++              value: {{ .Values.concourse.web.vault.url | quote }}
+             - name: CONCOURSE_VAULT_PATH_PREFIX
+-              value: {{ .Values.credentialManager.vault.pathPrefix | quote }}
++              value: {{ .Values.concourse.web.vault.pathPrefix | quote }}
+             - name: CONCOURSE_VAULT_AUTH_BACKEND
+-              value: {{ .Values.credentialManager.vault.authBackend | quote }}
++              value: {{ .Values.concourse.web.vault.authBackend | quote }}
+             - name: CONCOURSE_VAULT_CLIENT_TOKEN
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ template "concourse.concourse.fullname" . }}
+                   key: vault-client-token
+-            {{- if .Values.credentialManager.vault.useCaCert }}
++            {{- if .Values.concourse.web.vault.useCaCert }}
+             - name: CONCOURSE_VAULT_CA_CERT
+               value: "/concourse-vault/ca.cert"
+             {{- end }}
+-            {{- if eq (default "" .Values.credentialManager.vault.authBackend) "cert" }}
++            {{- if eq (default "" .Values.concourse.web.vault.authBackend) "cert" }}
+             - name: CONCOURSE_VAULT_CLIENT_CERT
+               value: "/concourse-vault/client.cert"
+             - name: CONCOURSE_VAULT_CLIENT_KEY
+               value: "/concourse-vault/client.key"
+             {{- end }}
+-            {{- if eq (default "" .Values.credentialManager.vault.authBackend) "approle" }}
+-            - name: CONCOURSE_VAULT_APPROLE_ID
++            {{- if .Values.concourse.web.vault.authBackendMaxTtl }}
++            - name: CONCOURSE_VAULT_AUTH_BACKEND_MAX_TTL
++              value: {{ .Values.concourse.web.vault.authBackendMaxTtl }}
++            {{- end }}
++            {{- if .Values.concourse.web.vault.authParam }}
++            - name: CONCOURSE_VAULT_AUTH_PARAM
++              value: {{ .Values.concourse.web.vault.authParam | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.vault.cache }}
++            - name: CONCOURSE_VAULT_CACHE
++              value: {{ .Values.concourse.web.vault.cache }}
++            {{- end }}
++            {{- if .Values.concourse.web.vault.caPath }}
++            - name: CONCOURSE_VAULT_CA_PATH
++              value: {{ .Values.concourse.web.vault.caPath }}
++            {{- end }}
++            {{- if .Values.concourse.web.vault.insecureSkipVerify }}
++            - name: CONCOURSE_VAULT_INSECURE_SKIP_VERIFY
++              value: {{ .Values.concourse.web.vault.insecureSkipVerify }}
++            {{- end }}
++            {{- if .Values.concourse.web.vault.maxLease }}
++            - name: CONCOURSE_VAULT_MAX_LEASE
++              value: {{ .Values.concourse.web.vault.maxLease }}
++            {{- end }}
++            {{- if .Values.concourse.web.vault.retryInitial }}
++            - name: CONCOURSE_VAULT_RETRY_INITIAL
++              value: {{ .Values.concourse.web.vault.retryInitial }}
++            {{- end }}
++            {{- if .Values.concourse.web.vault.retryMax }}
++            - name: CONCOURSE_VAULT_RETRY_MAX
++              value: {{ .Values.concourse.web.vault.retryMax }}
++            {{- end }}
++            {{- if .Values.concourse.web.vault.serverName }}
++            - name: CONCOURSE_VAULT_SERVER_NAME
++              value: {{ .Values.concourse.web.vault.serverName }}
++            {{- end }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.noop }}
++            - name: CONCOURSE_NOOP
++              value: {{ .Values.concourse.web.noop }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.staticWorker.enabled }}
++            {{- if .Values.concourse.web.staticWorker.gardenUrl }}
++            - name: CONCOURSE_WORKER_GARDEN_URL
++              value: {{ .Values.concourse.web.staticWorker.gardenUrl }}
++            {{- end }}
++            {{- if .Values.concourse.web.staticWorker.baggageclaimUrl }}
++            - name: CONCOURSE_WORKER_BAGGAGECLAIM_URL
++              value: {{ .Values.concourse.web.staticWorker.baggageclaimUrl }}
++            {{- end }}
++            {{- if .Values.concourse.web.staticWorker.resource }}
++            - name: CONCOURSE_WORKER_RESOURCE
++              value: {{ .Values.concourse.web.staticWorker.resource | quote }}
++            {{- end }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.metrics.hostName }}
++            - name: CONCOURSE_METRICS_HOST_NAME
++              value: {{ .Values.concourse.web.metrics.hostName }}
++            {{- end }}
++            {{- if .Values.concourse.web.metrics.attribute }}
++            - name: CONCOURSE_METRICS_ATTRIBUTE
++              value: {{ .Values.concourse.web.metrics.attribute | quote }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.datadog.enabled }}
++            - name: CONCOURSE_DATADOG_AGENT_HOST
++            {{- if .Values.concourse.web.datadog.agentHostUseHostIP }}
++              valueFrom:
++                fieldRef:
++                  fieldPath: status.hostIP
++            {{- else }}
++              value: {{ .Values.concourse.web.datadog.agentHost | quote }}
++            {{- end }}
++            - name: CONCOURSE_DATADOG_AGENT_PORT
++              value: {{ .Values.concourse.web.datadog.agentPort | quote }}
++            {{- if .Values.concourse.web.datadog.prefix }}
++            - name: CONCOURSE_DATADOG_PREFIX
++              value: {{ .Values.concourse.web.datadog.prefix }}
++            {{- end }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.influxdb.enabled }}
++            - name: CONCOURSE_INFLUXDB_URL
++              value: {{ .Values.concourse.web.influxdb.url | quote }}
++            - name: CONCOURSE_INFLUXDB_DATABASE
++              value: {{ .Values.concourse.web.influxdb.database | quote }}
++            - name: CONCOURSE_INFLUXDB_USERNAME
++              value: {{ .Values.concourse.web.influxdb.username | quote }}
++            - name: CONCOURSE_INFLUXDB_PASSWORD
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ template "concourse.concourse.fullname" . }}
+-                  key: vault-approle-id
+-            - name: CONCOURSE_VAULT_APPROLE_SECRET_ID
++                  key: influxdb-password
++            - name: CONCOURSE_INFLUXDB_INSECURE_SKIP_VERIFY
++              value: {{ .Values.concourse.web.influxdb.insecureSkipVerify | quote}}
++            {{- end }}
++
++            {{- if .Values.concourse.web.emitToLogs }}
++            - name: CONCOURSE_EMIT_TO_LOGS
++              value: {{ .Values.concourse.web.emitToLogs }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.newrelic.enabled }}
++            {{- if .Values.concourse.web.newrelic.accountId }}
++            - name: CONCOURSE_NEWRELIC_ACCOUNT_ID
++              value: {{ .Values.concourse.web.newrelic.accountId }}
++            {{- end }}
++            {{- if .Values.concourse.web.newrelic.apiKey }}
++            - name: CONCOURSE_NEWRELIC_API_KEY
++              value: {{ .Values.concourse.web.newrelic.apiKey }}
++            {{- end }}
++            {{- if .Values.concourse.web.newrelic.servicePrefix }}
++            - name: CONCOURSE_NEWRELIC_SERVICE_PREFIX
++              value: {{ .Values.concourse.web.newrelic.servicePrefix }}
++            {{- end }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.prometheus.enabled }}
++            - name: CONCOURSE_PROMETHEUS_BIND_IP
++              value: {{ .Values.concourse.web.prometheus.bindIp | quote }}
++            - name: CONCOURSE_PROMETHEUS_BIND_PORT
++              value: {{ .Values.concourse.web.prometheus.bindPort | quote }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.riemann.enabled }}
++            {{- if .Values.concourse.web.riemann.host }}
++            - name: CONCOURSE_RIEMANN_HOST
++              value: {{ .Values.concourse.web.riemann.host }}
++            {{- end }}
++            {{- if .Values.concourse.web.riemann.port }}
++            - name: CONCOURSE_RIEMANN_PORT
++              value: {{ .Values.concourse.web.riemann.port | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.riemann.servicePrefix }}
++            - name: CONCOURSE_RIEMANN_SERVICE_PREFIX
++              value: {{ .Values.concourse.web.riemann.servicePrefix }}
++            {{- end }}
++            {{- if .Values.concourse.web.riemann.tag }}
++            - name: CONCOURSE_RIEMANN_TAG
++              value: {{ .Values.concourse.web.riemann.tag }}
++            {{- end }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.xFrameOptions }}
++            - name: CONCOURSE_X_FRAME_OPTIONS
++              value: {{ .Values.concourse.web.xFrameOptions }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.gc.overrideDefaults }}
++            {{- if .Values.concourse.web.gc.interval }}
++            - name: CONCOURSE_GC_INTERVAL
++              value: {{ .Values.concourse.web.gc.interval }}
++            {{- end }}
++            {{- if .Values.concourse.web.gc.oneOffGracePeriod }}
++            - name: CONCOURSE_GC_ONE_OFF_GRACE_PERIOD
++              value: {{ .Values.concourse.web.gc.oneOffGracePeriod }}
++            {{- end }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.syslog.enabled }}
++            {{- if .Values.concourse.web.syslog.hostname }}
++            - name: CONCOURSE_SYSLOG_HOSTNAME
++              value: {{ .Values.concourse.web.syslog.hostname }}
++            {{- end }}
++            {{- if .Values.concourse.web.syslog.address }}
++            - name: CONCOURSE_SYSLOG_ADDRESS
++              value: {{ .Values.concourse.web.syslog.address }}
++            {{- end }}
++            {{- if .Values.concourse.web.syslog.transport }}
++            - name: CONCOURSE_SYSLOG_TRANSPORT
++              value: {{ .Values.concourse.web.syslog.transport }}
++            {{- end }}
++            {{- if .Values.concourse.web.syslog.drainInterval }}
++            - name: CONCOURSE_SYSLOG_DRAIN_INTERVAL
++              value: {{ .Values.concourse.web.syslog.drainInterval }}
++            {{- end }}
++            {{- if .Values.concourse.web.syslog.useCaCert }}
++            - name: CONCOURSE_SYSLOG_CA_CERT
++              value: "/concourse-syslog/ca.cert"
++            {{- end }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.auth.cookieSecure }}
++            - name: CONCOURSE_COOKIE_SECURE
++              value: {{ .Values.concourse.web.auth.cookieSecure }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.duration }}
++            - name: CONCOURSE_AUTH_DURATION
++              value: {{ .Values.concourse.web.auth.duration | quote }}
++            {{- end }}
++            - name: CONCOURSE_SESSION_SIGNING_KEY
++              value: "/concourse-keys/session_signing_key"
++
++            {{- if .Values.concourse.web.auth.mainTeam.localUser }}
++            - name: CONCOURSE_MAIN_TEAM_LOCAL_USER
++              value: {{ .Values.concourse.web.auth.mainTeam.localUser | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.mainTeam.allowAllUsers }}
++            - name: CONCOURSE_MAIN_TEAM_ALLOW_ALL_USERS
++              value: {{ .Values.concourse.web.auth.mainTeam.allowAllUsers }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.auth.mainTeam.cf.org }}
++            - name: CONCOURSE_MAIN_TEAM_CF_ORG
++              value: {{ .Values.concourse.web.auth.mainTeam.cf.org | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.mainTeam.cf.space }}
++            - name: CONCOURSE_MAIN_TEAM_CF_SPACE
++              value: {{ .Values.concourse.web.auth.mainTeam.cf.space | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.mainTeam.cf.spaceGuid }}
++            - name: CONCOURSE_MAIN_TEAM_CF_SPACE_GUID
++              value: {{ .Values.concourse.web.auth.mainTeam.cf.spaceGuid | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.mainTeam.cf.user }}
++            - name: CONCOURSE_MAIN_TEAM_CF_USER
++              value: {{ .Values.concourse.web.auth.mainTeam.cf.user | quote }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.auth.mainTeam.github.user }}
++            - name: CONCOURSE_MAIN_TEAM_GITHUB_USER
++              value: {{ .Values.concourse.web.auth.mainTeam.github.user | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.mainTeam.github.org }}
++            - name: CONCOURSE_MAIN_TEAM_GITHUB_ORG
++              value: {{ .Values.concourse.web.auth.mainTeam.github.org | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.mainTeam.github.team }}
++            - name: CONCOURSE_MAIN_TEAM_GITHUB_TEAM
++              value: {{ .Values.concourse.web.auth.mainTeam.github.team | quote }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.auth.mainTeam.gitlab.user }}
++            - name: CONCOURSE_MAIN_TEAM_GITLAB_USER
++              value: {{ .Values.concourse.web.auth.mainTeam.gitlab.user | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.mainTeam.gitlab.group }}
++            - name: CONCOURSE_MAIN_TEAM_GITLAB_GROUP
++              value: {{ .Values.concourse.web.auth.mainTeam.gitlab.group | quote }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.auth.mainTeam.ldap.user }}
++            - name: CONCOURSE_MAIN_TEAM_LDAP_USER
++              value: {{ .Values.concourse.web.auth.mainTeam.ldap.user | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.mainTeam.ldap.group }}
++            - name: CONCOURSE_MAIN_TEAM_LDAP_GROUP
++              value: {{ .Values.concourse.web.auth.mainTeam.ldap.group | quote }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.auth.mainTeam.oauth.user }}
++            - name: CONCOURSE_MAIN_TEAM_OAUTH_USER
++              value: {{ .Values.concourse.web.auth.mainTeam.oauth.user | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.mainTeam.oauth.group }}
++            - name: CONCOURSE_MAIN_TEAM_OAUTH_GROUP
++              value: {{ .Values.concourse.web.auth.mainTeam.oauth.group | quote }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.auth.mainTeam.oidc.group }}
++            - name: CONCOURSE_MAIN_TEAM_OIDC_GROUP
++              value: {{ .Values.concourse.web.auth.mainTeam.oidc.group | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.mainTeam.oidc.user }}
++            - name: CONCOURSE_MAIN_TEAM_OIDC_USER
++              value: {{ .Values.concourse.web.auth.mainTeam.oidc.user | quote }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.auth.cf.enabled }}
++            - name: CONCOURSE_CF_CLIENT_ID
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ template "concourse.concourse.fullname" . }}
+-                  key: vault-approle-secret-id
++                  key: cf-client-id
++            - name: CONCOURSE_CF_CLIENT_SECRET
++              valueFrom:
++                secretKeyRef:
++                  name: {{ template "concourse.concourse.fullname" . }}
++                  key: cf-client-secret
++            {{- if .Values.concourse.web.auth.cf.apiUrl }}
++            - name: CONCOURSE_CF_API_URL
++              value: {{ .Values.concourse.web.auth.cf.apiUrl }}
+             {{- end }}
++            {{- if .Values.concourse.web.auth.cf.useCaCert }}
++            - name: CONCOURSE_CF_CA_CERT
++              value: "/concourse-auth/cf_ca.cert"
+             {{- end }}
+-            {{- if .Values.credentialManager.ssm.enabled }}
+-            - name: CONCOURSE_AWS_SSM_ACCESS_KEY
++            {{- if .Values.concourse.web.auth.cf.skipSslValidation }}
++            - name: CONCOURSE_CF_SKIP_SSL_VALIDATION
++              value: {{ .Values.concourse.web.auth.cf.skipSslValidation }}
++            {{- end }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.auth.github.enabled }}
++            - name: CONCOURSE_GITHUB_CLIENT_ID
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ template "concourse.concourse.fullname" . }}
+-                  key: aws-ssm-access-key
+-            - name: CONCOURSE_AWS_SSM_SECRET_KEY
++                  key: github-client-id
++            - name: CONCOURSE_GITHUB_CLIENT_SECRET
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ template "concourse.concourse.fullname" . }}
+-                  key: aws-ssm-secret-key
+-            {{- if .Values.secrets.awsSsmSessionToken }}
+-            - name: CONCOURSE_AWS_SSM_SESSION_TOKEN
++                  key: github-client-secret
++            {{- if .Values.concourse.web.auth.github.host }}
++            - name: CONCOURSE_GITHUB_HOST
++              value: {{ .Values.concourse.web.auth.github.host }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.github.useCaCert }}
++            - name: CONCOURSE_GITHUB_CA_CERT
++              value: "/concourse-auth/github_ca.cert"
++            {{- end }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.auth.gitlab.enabled }}
++            - name: CONCOURSE_GITLAB_CLIENT_ID
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ template "concourse.concourse.fullname" . }}
+-                  key: aws-ssm-session-token
++                  key: gitlab-client-id
++            - name: CONCOURSE_GITLAB_CLIENT_SECRET
++              valueFrom:
++                secretKeyRef:
++                  name: {{ template "concourse.concourse.fullname" . }}
++                  key: gitlab-client-secret
++            {{- if .Values.concourse.web.auth.gitlab.host }}
++            - name: CONCOURSE_GITLAB_HOST
++              value: {{ .Values.concourse.web.auth.gitlab.host }}
+             {{- end }}
+-            {{- if .Values.credentialManager.ssm.region }}
+-            - name: CONCOURSE_AWS_SSM_REGION
+-              value: {{ .Values.credentialManager.ssm.region | quote }}
+             {{- end }}
+-            {{- if .Values.credentialManager.ssm.pipelineSecretTemplate }}
+-            - name: CONCOURSE_AWS_SSM_PIPELINE_SECRET_TEMPLATE
+-              value: {{ .Values.credentialManager.ssm.pipelineSecretTemplate | quote }}
++
++            {{- if .Values.concourse.web.auth.ldap.enabled }}
++            {{- if .Values.web.BindDn }}
++            - name: CONCOURSE_LDAP_BIND_DN
++              value: {{ .Values.concourse.web.auth.ldap.bindDn }}
+             {{- end }}
+-            {{- if .Values.credentialManager.ssm.teamSecretTemplate }}
+-            - name: CONCOURSE_AWS_SSM_TEAM_SECRET_TEMPLATE
+-              value: {{ .Values.credentialManager.ssm.teamSecretTemplate | quote }}
++            {{- if .Values.concourse.web.auth.ldap.bindPw }}
++            - name: CONCOURSE_LDAP_BIND_PW
++              value: {{ .Values.concourse.web.auth.ldap.bindPw }}
+             {{- end }}
++            {{- if .Values.concourse.web.auth.ldap.useCaCert }}
++            - name: CONCOURSE_LDAP_CA_CERT
++              value: "/concourse-auth/ldap_ca.cert"
+             {{- end }}
+-            {{- if .Values.credentialManager.awsSecretsManager.enabled }}
+-            - name: CONCOURSE_AWS_SECRETSMANAGER_ACCESS_KEY
+-              valueFrom:
+-                secretKeyRef:
+-                  name: {{ template "concourse.concourse.fullname" . }}
+-                  key: aws-secretsmanager-access-key
+-            - name: CONCOURSE_AWS_SECRETSMANAGER_SECRET_KEY
++            {{- if .Values.concourse.web.auth.ldap.displayName }}
++            - name: CONCOURSE_LDAP_DISPLAY_NAME
++              value: {{ .Values.concourse.web.auth.ldap.displayName }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.ldap.groupSearchBaseDn }}
++            - name: CONCOURSE_LDAP_GROUP_SEARCH_BASE_DN
++              value: {{ .Values.concourse.web.auth.ldap.groupSearchBaseDn }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.ldap.groupSearchFilter }}
++            - name: CONCOURSE_LDAP_GROUP_SEARCH_FILTER
++              value: {{ .Values.concourse.web.auth.ldap.groupSearchFilter }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.ldap.groupSearchGroupAttr }}
++            - name: CONCOURSE_LDAP_GROUP_SEARCH_GROUP_ATTR
++              value: {{ .Values.concourse.web.auth.ldap.groupSearchGroupAttr }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.ldap.groupSearchNameAttr }}
++            - name: CONCOURSE_LDAP_GROUP_SEARCH_NAME_ATTR
++              value: {{ .Values.concourse.web.auth.ldap.groupSearchNameAttr }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.ldap.groupSearchScope }}
++            - name: CONCOURSE_LDAP_GROUP_SEARCH_SCOPE
++              value: {{ .Values.concourse.web.auth.ldap.groupSearchScope }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.ldap.groupSearchUserAttr }}
++            - name: CONCOURSE_LDAP_GROUP_SEARCH_USER_ATTR
++              value: {{ .Values.concourse.web.auth.ldap.groupSearchUserAttr }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.ldap.host }}
++            - name: CONCOURSE_LDAP_HOST
++              value: {{ .Values.concourse.web.auth.ldap.host }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.ldap.insecureNoSsl }}
++            - name: CONCOURSE_LDAP_INSECURE_NO_SSL
++              value: {{ .Values.concourse.web.auth.ldap.insecureNoSsl }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.ldap.insecureSkipVerify }}
++            - name: CONCOURSE_LDAP_INSECURE_SKIP_VERIFY
++              value: {{ .Values.concourse.web.auth.ldap.insecureSkipVerify }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.ldap.startTls }}
++            - name: CONCOURSE_LDAP_START_TLS
++              value: {{ .Values.concourse.web.auth.ldap.startTls }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.ldap.userSearchBaseDn }}
++            - name: CONCOURSE_LDAP_USER_SEARCH_BASE_DN
++              value: {{ .Values.concourse.web.auth.ldap.userSearchBaseDn }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.ldap.userSearchEmailAttr }}
++            - name: CONCOURSE_LDAP_USER_SEARCH_EMAIL_ATTR
++              value: {{ .Values.concourse.web.auth.ldap.userSearchEmailAttr }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.ldap.userSearchFilter }}
++            - name: CONCOURSE_LDAP_USER_SEARCH_FILTER
++              value: {{ .Values.concourse.web.auth.ldap.userSearchFilter }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.ldap.userSearchIdAttr }}
++            - name: CONCOURSE_LDAP_USER_SEARCH_ID_ATTR
++              value: {{ .Values.concourse.web.auth.ldap.userSearchIdAttr }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.ldap.userSearchNameAttr }}
++            - name: CONCOURSE_LDAP_USER_SEARCH_NAME_ATTR
++              value: {{ .Values.concourse.web.auth.ldap.userSearchNameAttr }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.ldap.userSearchScope }}
++            - name: CONCOURSE_LDAP_USER_SEARCH_SCOPE
++              value: {{ .Values.concourse.web.auth.ldap.userSearchScope }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.ldap.userSearchUsername }}
++            - name: CONCOURSE_LDAP_USER_SEARCH_USERNAME
++              value: {{ .Values.concourse.web.auth.ldap.userSearchUsername }}
++            {{- end }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.auth.oauth.enabled }}
++            {{- if .Values.concourse.web.auth.oauth.displayName }}
++            - name: CONCOURSE_OAUTH_DISPLAY_NAME
++              value: {{ .Values.concourse.web.auth.oauth.displayName }}
++            {{- end }}
++            - name: CONCOURSE_OAUTH_CLIENT_ID
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ template "concourse.concourse.fullname" . }}
+-                  key: aws-secretsmanager-secret-key
+-            {{- if .Values.secrets.awsSsmSessionToken }}
+-            - name: CONCOURSE_AWS_SECRETSMANAGER_SESSION_TOKEN
++                  key: oauth-client-id
++            - name: CONCOURSE_OAUTH_CLIENT_SECRET
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ template "concourse.concourse.fullname" . }}
+-                  key: aws-secretsmanager-session-token
++                  key: oauth-client-secret
++            {{- if .Values.concourse.web.auth.oauth.authUrl }}
++            - name: CONCOURSE_OAUTH_AUTH_URL
++              value: {{ .Values.concourse.web.auth.oauth.authUrl }}
+             {{- end }}
+-            {{- if .Values.credentialManager.awsSecretsManager.region }}
+-            - name: CONCOURSE_AWS_SECRETSMANAGER_REGION
+-              value: {{ .Values.credentialManager.awsSecretsManager.region | quote }}
++            {{- if .Values.concourse.web.auth.oauth.tokenUrl }}
++            - name: CONCOURSE_OAUTH_TOKEN_URL
++              value: {{ .Values.concourse.web.auth.oauth.tokenUrl }}
+             {{- end }}
+-            {{- if .Values.credentialManager.awsSecretsManager.pipelineSecretTemplate }}
+-            - name: CONCOURSE_AWS_SECRETSMANAGER_PIPELINE_SECRET_TEMPLATE
+-              value: {{ .Values.credentialManager.awsSecretsManager.pipelineSecretTemplate | quote }}
++            {{- if .Values.concourse.web.auth.oauth.userinfoUrl }}
++            - name: CONCOURSE_OAUTH_USERINFO_URL
++              value: {{ .Values.concourse.web.auth.oauth.userinfoUrl }}
+             {{- end }}
+-            {{- if .Values.credentialManager.awsSecretsManager.teamSecretTemplate }}
+-            - name: CONCOURSE_AWS_SECRETSMANAGER_TEAM_SECRET_TEMPLATE
+-              value: {{ .Values.credentialManager.awsSecretsManager.teamSecretTemplate | quote }}
++            {{- if .Values.concourse.web.auth.oauth.scope }}
++            - name: CONCOURSE_OAUTH_SCOPE
++              value: {{ .Values.concourse.web.auth.oauth.scope }}
+             {{- end }}
++            {{- if .Values.concourse.web.auth.oauth.groupsKey }}
++            - name: CONCOURSE_OAUTH_GROUPS_KEY
++              value: {{ .Values.concourse.web.auth.oauth.groupsKey }}
+             {{- end }}
+-            {{- if .Values.web.metrics.prometheus.enabled }}
+-            - name: CONCOURSE_PROMETHEUS_BIND_IP
+-              value: "0.0.0.0"
+-            - name: CONCOURSE_PROMETHEUS_BIND_PORT
+-              value: {{ .Values.web.metrics.prometheus.port | quote }}
++            {{- if .Values.concourse.web.auth.oauth.useCaCert }}
++            - name: CONCOURSE_OAUTH_CA_CERT
++              value: "/concourse-auth/oauth_ca.cert"
+             {{- end }}
+-            {{- if .Values.web.metrics.datadog.enabled }}
+-            - name: CONCOURSE_DATADOG_AGENT_HOST
+-            {{- if .Values.web.metrics.datadog.agentHostUseHostIP }}
+-              valueFrom:
+-                fieldRef:
+-                  fieldPath: status.hostIP
+-            {{- else }}
+-              value: {{ .Values.web.metrics.datadog.agentHost | quote }}
++            {{- if .Values.concourse.web.auth.oauth.skipSslValidation }}
++            - name: CONCOURSE_OAUTH_SKIP_SSL_VALIDATION
++              value: {{ .Values.concourse.web.auth.oauth.skipSslValidation }}
+             {{- end }}
+-            - name: CONCOURSE_DATADOG_AGENT_PORT
+-              value: {{ .Values.web.metrics.datadog.agentPort | quote }}
+             {{- end }}
+-            {{- if .Values.web.metrics.influxdb.enabled }}
+-            - name: CONCOURSE_INFLUXDB_URL
+-              value: {{ .Values.web.metrics.influxdb.url | quote }}
+-            - name: CONCOURSE_INFLUXDB_DATABASE
+-              value: {{ .Values.web.metrics.influxdb.database | quote }}
+-            - name: CONCOURSE_INFLUXDB_USERNAME
+-              value: {{ .Values.web.metrics.influxdb.username | quote }}
+-            - name: CONCOURSE_INFLUXDB_PASSWORD
++
++            {{- if .Values.concourse.web.auth.oidc.enabled }}
++            {{- if .Values.concourse.web.auth.oidc.displayName }}
++            - name: CONCOURSE_OIDC_DISPLAY_NAME
++              value: {{ .Values.concourse.web.auth.oidc.displayName }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.oidc.issuer }}
++            - name: CONCOURSE_OIDC_ISSUER
++              value: {{ .Values.concourse.web.auth.oidc.issuer }}
++            {{- end }}
++            - name: CONCOURSE_OIDC_CLIENT_ID
+               valueFrom:
+                 secretKeyRef:
+                   name: {{ template "concourse.concourse.fullname" . }}
+-                  key: influxdb-password
+-            - name: CONCOURSE_INFLUXDB_INSECURE_SKIP_VERIFY
+-              value: {{ .Values.web.metrics.influxdb.insecureSkipVerify | quote}}
++                  key: oidc-client-id
++            - name: CONCOURSE_OIDC_CLIENT_SECRET
++              valueFrom:
++                secretKeyRef:
++                  name: {{ template "concourse.concourse.fullname" . }}
++                  key: oidc-client-secret
++            {{- if .Values.concourse.web.auth.oidc.scope }}
++            - name: CONCOURSE_OIDC_SCOPE
++              value: {{ .Values.concourse.web.auth.oidc.scope }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.oidc.groupsKey }}
++            - name: CONCOURSE_OIDC_GROUPS_KEY
++              value: {{ .Values.concourse.web.auth.oidc.groupsKey }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.oidc.hostedDomains }}
++            - name: CONCOURSE_OIDC_HOSTED_DOMAINS
++              value: {{ .Values.concourse.web.auth.oidc.hostedDomains | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.auth.oidc.useCaCert }}
++            - name: CONCOURSE_OIDC_CA_CERT
++              value: "/concourse-auth/oidc_ca.cert"
++            {{- end }}
++            {{- if .Values.concourse.web.auth.oidc.skipSslValidation }}
++            - name: CONCOURSE_OIDC_SKIP_SSL_VALIDATION
++              value: {{ .Values.concourse.web.auth.oidc.skipSslValidation }}
++            {{- end }}
++            {{- end }}
++
++            {{- if .Values.concourse.web.tsa.logLevel }}
++            - name: CONCOURSE_TSA_LOG_LEVEL
++              value: {{ .Values.concourse.web.tsa.logLevel }}
++            {{- end }}
++            {{- if .Values.concourse.web.tsa.bindIp }}
++            - name: CONCOURSE_TSA_BIND_IP
++              value: {{ .Values.concourse.web.tsa.bindIp }}
++            {{- end }}
++            - name: CONCOURSE_TSA_BIND_PORT
++              value: {{ .Values.concourse.web.tsa.bindPort | quote }}
++            {{- if .Values.concourse.web.tsa.bindDebugPort }}
++            - name: CONCOURSE_TSA_BIND_DEBUG_PORT
++              value: {{ .Values.concourse.web.tsa.bindDebugPort | quote }}
++            {{- end }}
++            {{- if .Values.concourse.web.tsa.peerIp }}
++            - name: CONCOURSE_TSA_PEER_IP
++              value: {{ .Values.concourse.web.tsa.peerIp }}
++            {{- end }}
++            - name: CONCOURSE_TSA_HOST_KEY
++              value: "/concourse-keys/host_key"
++            - name: CONCOURSE_TSA_AUTHORIZED_KEYS
++              value: "/concourse-keys/worker_key.pub"
++            {{- if .Values.concourse.web.tsa.teamAuthorizedKeys }}
++            - name: CONCOURSE_TSA_TEAM_AUTHORIZED_KEYS
++              value: {{ .Values.concourse.web.tsa.teamAuthorizedKeys }}
++            {{- end }}
++            {{- if .Values.concourse.web.tsa.atcUrl }}
++            - name: CONCOURSE_TSA_ATC_URL
++              value: {{ .Values.concourse.web.tsa.atcUrl }}
++            {{- end }}
++            {{- if .Values.concourse.web.tsa.sessionSigningKey }}
++            - name: CONCOURSE_TSA_SESSION_SIGNING_KEY
++              value: {{ .Values.concourse.web.tsa.sessionSigningKey }}
++            {{- end }}
++            {{- if .Values.concourse.web.tsa.heartbeatInterval }}
++            - name: CONCOURSE_TSA_HEARTBEAT_INTERVAL
++              value: {{ .Values.concourse.web.tsa.heartbeatInterval }}
+             {{- end }}
+ {{- if .Values.web.env }}
+ {{ toYaml .Values.web.env | indent 12 }}
+ {{- end }}
+           ports:
+             - name: atc
+-              containerPort: {{ .Values.concourse.atcPort }}
++              containerPort: {{ .Values.concourse.web.bindPort }}
+             - name: tsa
+-              containerPort: {{ .Values.concourse.tsaPort }}
+-            {{- if .Values.web.metrics.prometheus.enabled }}
++              containerPort: {{ .Values.concourse.web.tsa.bindPort }}
++            {{- if .Values.concourse.web.debugBindPort }}
++            - name: atc-debug
++              containerPort: {{ .Values.concourse.web.debugBindPort }}
++            {{- end }}
++            {{- if .Values.concourse.web.tsa.bindDebugPort }}
++            - name: tsa-debug
++              containerPort: {{ .Values.concourse.web.tsa.bindDebugPort }}
++            {{- end }}
++            {{- if .Values.concourse.web.prometheus.enabled }}
+             - name: prometheus
+-              containerPort: {{ .Values.web.metrics.prometheus.port }}
++              containerPort: {{ .Values.concourse.web.prometheus.bindPort }}
+             {{- end }}
+           livenessProbe:
+             httpGet:
+@@ -365,11 +890,24 @@ spec:
+             - name: concourse-keys
+               mountPath: /concourse-keys
+               readOnly: true
+-            {{- if .Values.credentialManager.vault.enabled }}
++            {{- if .Values.concourse.web.vault.enabled }}
+             - name: vault-keys
+               mountPath: /concourse-vault
+               readOnly: true
+             {{- end }}
++            {{- if not (eq (default "disable" .Values.concourse.web.postgres.sslmode) "disable") }}
++            - name: postgresql-keys
++              mountPath: /concourse-postgresql
++              readOnly: true
++            {{- end }}
++            {{- if .Values.concourse.web.syslog.enabled }}
++            - name: syslog-keys
++              mountPath: /concourse-syslog
++              readOnly: true
++            {{- end }}
++            - name: auth-keys
++              mountPath: /concourse-auth
++              readOnly: true
+       affinity:
+ {{- if .Values.web.additionalAffinities }}
+ {{ toYaml .Values.web.additionalAffinities | indent 8 }}
+@@ -386,20 +924,67 @@ spec:
+                 path: session_signing_key
+               - key: worker-key-pub
+                 path: worker_key.pub
+-        {{- if .Values.credentialManager.vault.enabled }}
++        {{- if .Values.concourse.web.vault.enabled }}
+         - name: vault-keys
+           secret:
+             secretName: {{ template "concourse.concourse.fullname" . }}
+             defaultMode: 0400
+             items:
+-            {{- if .Values.credentialManager.vault.useCaCert }}
++            {{- if .Values.concourse.web.vault.useCaCert }}
+               - key: vault-ca-cert
+                 path: ca.cert
+             {{- end }}
+-            {{- if eq (default "" .Values.credentialManager.vault.authBackend) "cert" }}
++            {{- if eq (default "" .Values.concourse.web.vault.authBackend) "cert" }}
+               - key: vault-client-cert
+                 path: client.cert
+               - key: vault-client-key
+                 path: client.key
+             {{- end }}
+         {{- end }}
++        {{- if not (eq (default "disable" .Values.concourse.web.postgres.sslmode) "disable") }}
++        - name: postgresql-keys
++          secret:
++            secretName: {{ template "concourse.concourse.fullname" . }}
++            defaultMode: 0400
++            items:
++              - key: postgresql-ca-cert
++                path: ca.cert
++              - key: postgresql-client-cert
++                path: client.cert
++              - key: postgresql-client-key
++                path: client.key
++        {{- end }}
++        {{- if .Values.concourse.web.syslog.enabled }}
++        - name: syslog-keys
++          secret:
++            secretName: {{ template "concourse.concourse.fullname" . }}
++            defaultMode: 0400
++            items:
++              - key: syslog-ca-cert
++                path: ca.cert
++        {{- end }}
++        - name: auth-keys
++          secret:
++            secretName: {{ template "concourse.concourse.fullname" . }}
++            defaultMode: 0400
++            items:
++              {{- if .Values.concourse.web.auth.cf.useCaCert }}
++              - key: cf-ca-cert
++                path: cf_ca.cert
++              {{- end }}
++              {{- if .Values.concourse.web.auth.github.useCaCert }}
++              - key: github-ca-cert
++                path: github_ca.cert
++              {{- end }}
++              {{- if .Values.concourse.web.auth.ldap.useCaCert }}
++              - key: ldap-ca-cert
++                path: ldap_ca.cert
++              {{- end }}
++              {{- if .Values.concourse.web.auth.oauth.useCaCert }}
++              - key: oauth-ca-cert
++                path: oauth_ca.cert
++              {{- end }}
++              {{- if .Values.concourse.web.auth.oidc.useCaCert }}
++              - key: oidc-ca-cert
++                path: oidc_ca.cert
++              {{- end }}
+diff --git a/stable/concourse/templates/web-ingress.yaml b/stable/concourse/templates/web-ingress.yaml
+index e5fdc789d..d77afaf51 100644
+--- a/stable/concourse/templates/web-ingress.yaml
++++ b/stable/concourse/templates/web-ingress.yaml
+@@ -1,7 +1,7 @@
+ {{- if .Values.web.ingress.enabled -}}
+ {{- $releaseName := .Release.Name -}}
+ {{- $serviceName := default "web" .Values.web.nameOverride -}}
+-{{- $servicePort := .Values.concourse.atcPort -}}
++{{- $servicePort := .Values.concourse.web.bindPort -}}
+ apiVersion: extensions/v1beta1
+ kind: Ingress
+ metadata:
+diff --git a/stable/concourse/templates/web-role.yaml b/stable/concourse/templates/web-role.yaml
+index cef062293..b518d1d9f 100644
+--- a/stable/concourse/templates/web-role.yaml
++++ b/stable/concourse/templates/web-role.yaml
+@@ -1,5 +1,5 @@
+ {{- if .Values.rbac.create -}}
+-{{- if .Values.credentialManager.kubernetes.enabled -}}
++{{- if .Values.concourse.web.kubernetes.enabled -}}
+ apiVersion: rbac.authorization.k8s.io/{{ .Values.rbac.apiVersion }}
+ kind: ClusterRole
+ metadata:
+diff --git a/stable/concourse/templates/web-rolebinding.yaml b/stable/concourse/templates/web-rolebinding.yaml
+index b65fd9d7a..c178519e7 100644
+--- a/stable/concourse/templates/web-rolebinding.yaml
++++ b/stable/concourse/templates/web-rolebinding.yaml
+@@ -1,6 +1,6 @@
+ {{- if .Values.rbac.create -}}
+-{{- if .Values.credentialManager.kubernetes.enabled -}}
+-{{- range .Values.credentialManager.kubernetes.teams }}
++{{- if .Values.concourse.web.kubernetes.enabled -}}
++{{- range .Values.concourse.web.kubernetes.teams }}
+ ---
+ apiVersion: rbac.authorization.k8s.io/{{ $.Values.rbac.apiVersion }}
+ kind: RoleBinding
+diff --git a/stable/concourse/templates/web-svc.yaml b/stable/concourse/templates/web-svc.yaml
+index 6f676f6c6..cb0866ba1 100644
+--- a/stable/concourse/templates/web-svc.yaml
++++ b/stable/concourse/templates/web-svc.yaml
+@@ -11,9 +11,9 @@ metadata:
+     {{- range $key, $value := .Values.web.service.annotations }}
+     {{ $key }}: {{ $value | quote }}
+     {{- end }}
+-    {{- if .Values.web.metrics.prometheus.enabled }}
++    {{- if .Values.concourse.web.prometheus.enabled }}
+     prometheus.io/scrape: "true"
+-    prometheus.io/port: {{ .Values.web.metrics.prometheus.port | quote }}
++    prometheus.io/port: {{ .Values.concourse.web.prometheus.bindPort | quote }}
+     {{- end }}
+ spec:
+   type: {{ .Values.web.service.type }}
+@@ -28,20 +28,20 @@ spec:
+   {{ end }}
+   ports:
+     - name: atc
+-      port: {{ .Values.concourse.atcPort }}
++      port: {{ .Values.concourse.web.bindPort }}
+       targetPort: atc
+       {{ if and (eq "NodePort" .Values.web.service.type) .Values.web.service.atcNodePort }}
+       nodePort: {{ .Values.web.service.atcNodePort}}
+       {{ end }}
+     - name: tsa
+-      port: {{ .Values.concourse.tsaPort }}
++      port: {{ .Values.concourse.web.tsa.bindPort }}
+       targetPort: tsa
+       {{ if and (eq "NodePort" .Values.web.service.type) .Values.web.service.tsaNodePort }}
+       nodePort: {{ .Values.web.service.tsaNodePort}}
+       {{ end }}
+-    {{- if .Values.web.metrics.prometheus.enabled }}
++    {{- if .Values.concourse.web.prometheus.enabled }}
+     - name: prometheus
+-      port: {{ .Values.web.metrics.prometheus.port }}
++      port: {{ .Values.concourse.web.prometheus.bindPort }}
+       targetPort: prometheus
+     {{- end }}
+   selector:
+diff --git a/stable/concourse/templates/worker-statefulset.yaml b/stable/concourse/templates/worker-statefulset.yaml
+index ea26bfb4a..bd2a6427a 100644
+--- a/stable/concourse/templates/worker-statefulset.yaml
++++ b/stable/concourse/templates/worker-statefulset.yaml
+@@ -77,28 +77,367 @@ spec:
+                       sleep 5
+                     done
+           env:
++            {{- if .Values.concourse.worker.name }}
++            - name: CONCOURSE_NAME
++              value: {{ .Values.concourse.worker.name }}
++            {{- end }}
++            {{- if .Values.concourse.worker.tag }}
++            - name: CONCOURSE_TAG
++              value: {{ .Values.concourse.worker.tag }}
++            {{- end }}
++            {{- if .Values.concourse.worker.team }}
++            - name: CONCOURSE_TEAM
++              value: {{ .Values.concourse.worker.team }}
++            {{- end }}
++            {{- if .Values.concourse.worker.http_proxy }}
++            - name: http_proxy
++              value: {{ .Values.concourse.worker.http_proxy }}
++            {{- end }}
++            {{- if .Values.concourse.worker.https_proxy }}
++            - name: https_proxy
++              value: {{ .Values.concourse.worker.https_proxy }}
++            {{- end }}
++            {{- if .Values.concourse.worker.no_proxy }}
++            - name: no_proxy
++              value: {{ .Values.concourse.worker.no_proxy }}
++            {{- end }}
++            {{- if .Values.concourse.worker.ephemeral }}
++            - name: CONCOURSE_EPHEMERAL
++              value: {{ .Values.concourse.worker.ephemeral }}
++            {{- end }}
++            {{- if .Values.concourse.worker.bindDebugPort }}
++            - name: CONCOURSE_BIND_DEBUG_PORT
++              value: {{ .Values.concourse.worker.bindDebugPort | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.certsDir }}
++            - name: CONCOURSE_CERTS_DIR
++              value: {{ .Values.concourse.worker.certsDir | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.workDir }}
++            - name: CONCOURSE_WORK_DIR
++              value: {{ .Values.concourse.worker.workDir | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.bindIp }}
++            - name: CONCOURSE_BIND_IP
++              value: {{ .Values.concourse.worker.bindIp | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.bindPort }}
++            - name: CONCOURSE_BIND_PORT
++              value: {{ .Values.concourse.worker.bindPort | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.peerIp }}
++            - name: CONCOURSE_PEER_IP
++              value: {{ .Values.concourse.worker.peerIp }}
++            {{- end }}
++            {{- if .Values.concourse.worker.logLevel }}
++            - name: CONCOURSE_LOG_LEVEL
++              value: {{ .Values.concourse.worker.logLevel | quote }}
++            {{- end }}
++
+             - name: CONCOURSE_TSA_HOST
+-          {{- if semverCompare "^3.10.x" .Values.imageTag }}
+-              value: "{{ template "concourse.web.fullname" . }}:{{ .Values.concourse.tsaPort}}"
+-          {{- else }}
+-              value: {{ template "concourse.web.fullname" . }}
+-            - name: CONCOURSE_TSA_PORT
+-              value: {{ .Values.concourse.tsaPort | quote }}
+-          {{- end }}
+-            - name: CONCOURSE_GARDEN_DOCKER_REGISTRY
+-              value: {{ .Values.concourse.dockerRegistry | quote }}
+-            - name: CONCOURSE_GARDEN_INSECURE_DOCKER_REGISTRY
+-              value: {{ .Values.concourse.insecureDockerRegistry | quote }}
++              value: "{{ template "concourse.web.fullname" . }}:{{ .Values.concourse.web.tsa.bindPort}}"
+             - name: CONCOURSE_TSA_PUBLIC_KEY
+               value: "/concourse-keys/host_key.pub"
+             - name: CONCOURSE_TSA_WORKER_PRIVATE_KEY
+               value: "/concourse-keys/worker_key"
+-            - name: CONCOURSE_WORK_DIR
+-              value: {{ .Values.concourse.workingDirectory | quote }}
++
++            {{- if .Values.concourse.worker.garden.logLevel }}
++            - name: CONCOURSE_GARDEN_LOG_LEVEL
++              value: {{ .Values.concourse.worker.garden.logLevel }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.timeFormat }}
++            - name: CONCOURSE_GARDEN_TIME_FORMAT
++              value: {{ .Values.concourse.worker.garden.timeFormat }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.bindIp }}
++            - name: CONCOURSE_GARDEN_BIND_IP
++              value: {{ .Values.concourse.worker.garden.bindIp }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.bindPort }}
++            - name: CONCOURSE_GARDEN_BIND_PORT
++              value: {{ .Values.concourse.worker.garden.bindPort | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.bindSocket }}
++            - name: CONCOURSE_GARDEN_BIND_SOCKET
++              value: {{ .Values.concourse.worker.garden.bindSocket }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.debugBindIp }}
++            - name: CONCOURSE_GARDEN_DEBUG_BIND_IP
++              value: {{ .Values.concourse.worker.garden.debugBindIp }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.debugBindPort }}
++            - name: CONCOURSE_GARDEN_DEBUG_BIND_PORT
++              value: {{ .Values.concourse.worker.garden.debugBindPort | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.skipSetup }}
++            - name: CONCOURSE_GARDEN_SKIP_SETUP
++              value: {{ .Values.concourse.worker.garden.skipSetup }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.depot }}
++            - name: CONCOURSE_GARDEN_DEPOT
++              value: {{ .Values.concourse.worker.garden.depot }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.propertiesPath }}
++            - name: CONCOURSE_GARDEN_PROPERTIES_PATH
++              value: {{ .Values.concourse.worker.garden.propertiesPath }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.consoleSocketsPath }}
++            - name: CONCOURSE_GARDEN_CONSOLE_SOCKETS_PATH
++              value: {{ .Values.concourse.worker.garden.consoleSocketsPath }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.cleanupProcessDirsOnWait }}
++            - name: CONCOURSE_GARDEN_CLEANUP_PROCESS_DIRS_ON_WAIT
++              value: {{ .Values.concourse.worker.garden.cleanupProcessDirsOnWait }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.disablePrivilegedContainers }}
++            - name: CONCOURSE_GARDEN_DISABLE_PRIVILEGED_CONTAINERS
++              value: {{ .Values.concourse.worker.garden.disablePrivilegedContainers }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.uidMapStart }}
++            - name: CONCOURSE_GARDEN_UID_MAP_START
++              value: {{ .Values.concourse.worker.garden.uidMapStart | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.uidMapLength }}
++            - name: CONCOURSE_GARDEN_UID_MAP_LENGTH
++              value: {{ .Values.concourse.worker.garden.uidMapLength | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.gidMapStart }}
++            - name: CONCOURSE_GARDEN_GID_MAP_START
++              value: {{ .Values.concourse.worker.garden.gidMapStart | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.gidMapLength }}
++            - name: CONCOURSE_GARDEN_GID_MAP_LENGTH
++              value: {{ .Values.concourse.worker.garden.gidMapLength | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.defaultRootfs }}
++            - name: CONCOURSE_GARDEN_DEFAULT_ROOTFS
++              value: {{ .Values.concourse.worker.garden.defaultRootfs }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.defaultGraceTime }}
++            - name: CONCOURSE_GARDEN_DEFAULT_GRACE_TIME
++              value: {{ .Values.concourse.worker.garden.defaultGraceTime }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.destroyContainersOnStartup }}
++            - name: CONCOURSE_GARDEN_DESTROY_CONTAINERS_ON_STARTUP
++              value: {{ .Values.concourse.worker.garden.destroyContainersOnStartup }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.apparmor }}
++            - name: CONCOURSE_GARDEN_APPARMOR
++              value: {{ .Values.concourse.worker.garden.apparmor }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.assetsDir }}
++            - name: CONCOURSE_GARDEN_ASSETS_DIR
++              value: {{ .Values.concourse.worker.garden.assetsDir }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.dadooBin }}
++            - name: CONCOURSE_GARDEN_DADOO_BIN
++              value: {{ .Values.concourse.worker.garden.dadooBin }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.nstarBin }}
++            - name: CONCOURSE_GARDEN_NSTAR_BIN
++              value: {{ .Values.concourse.worker.garden.nstarBin }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.tarBin }}
++            - name: CONCOURSE_GARDEN_TAR_BIN
++              value: {{ .Values.concourse.worker.garden.tarBin }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.iptablesBin }}
++            - name: CONCOURSE_GARDEN_IPTABLES_BIN
++              value: {{ .Values.concourse.worker.garden.iptablesBin }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.iptablesRestoreBin }}
++            - name: CONCOURSE_GARDEN_IPTABLES_RESTORE_BIN
++              value: {{ .Values.concourse.worker.garden.iptablesRestoreBin }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.initBin }}
++            - name: CONCOURSE_GARDEN_INIT_BIN
++              value: {{ .Values.concourse.worker.garden.initBin }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.runtimePlugin }}
++            - name: CONCOURSE_GARDEN_RUNTIME_PLUGIN
++              value: {{ .Values.concourse.worker.garden.runtimePlugin }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.runtimePluginExtraArg }}
++            - name: CONCOURSE_GARDEN_RUNTIME_PLUGIN_EXTRA_ARG
++              value: {{ .Values.concourse.worker.garden.runtimePluginExtraArg }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.graph }}
++            - name: CONCOURSE_GARDEN_GRAPH
++              value: {{ .Values.concourse.worker.garden.graph }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.graphCleanupThresholdInMegabytes }}
++            - name: CONCOURSE_GARDEN_GRAPH_CLEANUP_THRESHOLD_IN_MEGABYTES
++              value: {{ .Values.concourse.worker.garden.graphCleanupThresholdInMegabytes | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.persistentImage }}
++            - name: CONCOURSE_GARDEN_PERSISTENT_IMAGE
++              value: {{ .Values.concourse.worker.garden.persistentImage }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.imagePlugin }}
++            - name: CONCOURSE_GARDEN_IMAGE_PLUGIN
++              value: {{ .Values.concourse.worker.garden.imagePlugin }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.imagePluginExtraArg }}
++            - name: CONCOURSE_GARDEN_IMAGE_PLUGIN_EXTRA_ARG
++              value: {{ .Values.concourse.worker.garden.imagePluginExtraArg }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.privilegedImagePlugin }}
++            - name: CONCOURSE_GARDEN_PRIVILEGED_IMAGE_PLUGIN
++              value: {{ .Values.concourse.worker.garden.privilegedImagePlugin }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.privilegedImagePluginExtraArg }}
++            - name: CONCOURSE_GARDEN_PRIVILEGED_IMAGE_PLUGIN_EXTRA_ARG
++              value: {{ .Values.concourse.worker.garden.privilegedImagePluginExtraArg }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.dockerRegistry }}
++            - name: CONCOURSE_GARDEN_DOCKER_REGISTRY
++              value: {{ .Values.concourse.worker.garden.dockerRegistry }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.insecureDockerRegistry }}
++            - name: CONCOURSE_GARDEN_INSECURE_DOCKER_REGISTRY
++              value: {{ .Values.concourse.worker.garden.insecureDockerRegistry }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.networkPool }}
++            - name: CONCOURSE_GARDEN_NETWORK_POOL
++              value: {{ .Values.concourse.worker.garden.networkPool }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.allowHostAccess }}
++            - name: CONCOURSE_GARDEN_ALLOW_HOST_ACCESS
++              value: {{ .Values.concourse.worker.garden.allowHostAccess | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.denyNetwork }}
++            - name: CONCOURSE_GARDEN_DENY_NETWORK
++              value: {{ .Values.concourse.worker.garden.denyNetwork }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.dnsServer }}
++            - name: CONCOURSE_GARDEN_DNS_SERVER
++              value: {{ .Values.concourse.worker.garden.dnsServer }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.additionalDnsServer }}
++            - name: CONCOURSE_GARDEN_ADDITIONAL_DNS_SERVER
++              value: {{ .Values.concourse.worker.garden.additionalDnsServer }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.additionalHostEntry }}
++            - name: CONCOURSE_GARDEN_ADDITIONAL_HOST_ENTRY
++              value: {{ .Values.concourse.worker.garden.additionalHostEntry }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.externalIp }}
++            - name: CONCOURSE_GARDEN_EXTERNAL_IP
++              value: {{ .Values.concourse.worker.garden.externalIp }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.portPoolStart }}
++            - name: CONCOURSE_GARDEN_PORT_POOL_START
++              value: {{ .Values.concourse.worker.garden.portPoolStart | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.portPoolSize }}
++            - name: CONCOURSE_GARDEN_PORT_POOL_SIZE
++              value: {{ .Values.concourse.worker.garden.portPoolSize | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.portPoolPropertiesPath }}
++            - name: CONCOURSE_GARDEN_PORT_POOL_PROPERTIES_PATH
++              value: {{ .Values.concourse.worker.garden.portPoolPropertiesPath }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.mtu }}
++            - name: CONCOURSE_GARDEN_MTU
++              value: {{ .Values.concourse.worker.garden.mtu }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.networkPlugin }}
++            - name: CONCOURSE_GARDEN_NETWORK_PLUGIN
++              value: {{ .Values.concourse.worker.garden.networkPlugin }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.networkPluginExtraArg }}
++            - name: CONCOURSE_GARDEN_NETWORK_PLUGIN_EXTRA_ARG
++              value: {{ .Values.concourse.worker.garden.networkPluginExtraArg }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.cpuQuotaPerShare }}
++            - name: CONCOURSE_GARDEN_CPU_QUOTA_PER_SHARE
++              value: {{ .Values.concourse.worker.garden.cpuQuotaPerShare | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.tcpMemoryLimit }}
++            - name: CONCOURSE_GARDEN_TCP_MEMORY_LIMIT
++              value: {{ .Values.concourse.worker.garden.tcpMemoryLimit | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.defaultContainerBlockioWeight }}
++            - name: CONCOURSE_GARDEN_DEFAULT_CONTAINER_BLOCKIO_WEIGHT
++              value: {{ .Values.concourse.worker.garden.defaultContainerBlockioWeight | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.maxContainers }}
++            - name: CONCOURSE_GARDEN_MAX_CONTAINERS
++              value: {{ .Values.concourse.worker.garden.maxContainers | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.disableSwapLimit }}
++            - name: CONCOURSE_GARDEN_DISABLE_SWAP_LIMIT
++              value: {{ .Values.concourse.worker.garden.disableSwapLimit }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.metricsEmissionInterval }}
++            - name: CONCOURSE_GARDEN_METRICS_EMISSION_INTERVAL
++              value: {{ .Values.concourse.worker.garden.metricsEmissionInterval }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.dropsondeOrigin }}
++            - name: CONCOURSE_GARDEN_DROPSONDE_ORIGIN
++              value: {{ .Values.concourse.worker.garden.dropsondeOrigin }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.dropsondeDestination }}
++            - name: CONCOURSE_GARDEN_DROPSONDE_DESTINATION
++              value: {{ .Values.concourse.worker.garden.dropsondeDestination }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.containerdSocket }}
++            - name: CONCOURSE_GARDEN_CONTAINERD_SOCKET
++              value: {{ .Values.concourse.worker.garden.containerdSocket }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.useContainerdForProcesses }}
++            - name: CONCOURSE_GARDEN_USE_CONTAINERD_FOR_PROCESSES
++              value: {{ .Values.concourse.worker.garden.useContainerdForProcesses }}
++            {{- end }}
++            {{- if .Values.concourse.worker.garden.dnsProxyEnable }}
++            - name: CONCOURSE_GARDEN_DNS_PROXY_ENABLE
++              value: {{ .Values.concourse.worker.garden.dnsProxyEnable }}
++            {{- end }}
++
++            {{- if .Values.concourse.worker.baggageclaim.logLevel }}
++            - name: CONCOURSE_BAGGAGECLAIM_LOG_LEVEL
++              value: {{ .Values.concourse.worker.baggageclaim.logLevel }}
++            {{- end }}
++            {{- if .Values.concourse.worker.baggageclaim.bindIp }}
++            - name: CONCOURSE_BAGGAGECLAIM_BIND_IP
++              value: {{ .Values.concourse.worker.baggageclaim.bindIp }}
++            {{- end }}
++            {{- if .Values.concourse.worker.baggageclaim.bindPort }}
++            - name: CONCOURSE_BAGGAGECLAIM_BIND_PORT
++              value: {{ .Values.concourse.worker.baggageclaim.bindPort | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.baggageclaim.bindDebugPort }}
++            - name: CONCOURSE_BAGGAGECLAIM_BIND_DEBUG_PORT
++              value: {{ .Values.concourse.worker.baggageclaim.bindDebugPort | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.baggageclaim.volumes }}
++            - name: CONCOURSE_BAGGAGECLAIM_VOLUMES
++              value: {{ .Values.concourse.worker.baggageclaim.volumes }}
++            {{- end }}
++            {{- if .Values.concourse.worker.baggageclaim.driver }}
+             - name: CONCOURSE_BAGGAGECLAIM_DRIVER
+-              value: {{ .Values.concourse.baggageclaimDriver | quote }}
++              value: {{ .Values.concourse.worker.baggageclaim.driver | quote }}
++            {{- end }}
++            {{- if .Values.concourse.worker.baggageclaim.btrfsBin }}
++            - name: CONCOURSE_BAGGAGECLAIM_BTRFS_BIN
++              value: {{ .Values.concourse.worker.baggageclaim.btrfsBin }}
++            {{- end }}
++            {{- if .Values.concourse.worker.baggageclaim.mkfsBin }}
++            - name: CONCOURSE_BAGGAGECLAIM_MKFS_BIN
++              value: {{ .Values.concourse.worker.baggageclaim.mkfsBin }}
++            {{- end }}
++            {{- if .Values.concourse.worker.baggageclaim.overlaysDir }}
++            - name: CONCOURSE_BAGGAGECLAIM_OVERLAYS_DIR
++              value: {{ .Values.concourse.worker.baggageclaim.overlaysDir }}
++            {{- end }}
++            {{- if .Values.concourse.worker.baggageclaim.reapInterval }}
++            - name: CONCOURSE_BAGGAGECLAIM_REAP_INTERVAL
++              value: {{ .Values.concourse.worker.baggageclaim.reapInterval }}
++            {{- end }}
++
+             - name: LIVENESS_PROBE_FATAL_ERRORS
+               value: {{ .Values.worker.fatalErrors | quote }}
++
+ {{- if .Values.worker.env }}
+ {{ toYaml .Values.worker.env | indent 12 }}
+ {{- end }}
+diff --git a/stable/concourse/values.yaml b/stable/concourse/values.yaml
+index 1999883df..e2c63abd5 100644
+--- a/stable/concourse/values.yaml
++++ b/stable/concourse/values.yaml
+@@ -13,7 +13,7 @@ image: concourse/concourse
+ ## Concourse image version.
+ ## ref: https://hub.docker.com/r/concourse/concourse/tags/
+ ##
+-imageTag: "3.14.1"
++imageTag: "4.2.1"
+ 
+ ## Specify a imagePullPolicy: 'Always' if imageTag is 'latest', else set to 'IfNotPresent'.
+ ## ref: https://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+@@ -24,160 +24,614 @@ imagePullPolicy: IfNotPresent
+ ## ref: https://concourse-ci.org/setting-up.html
+ ##
+ concourse:
++  web:
++    ## Minimum level of logs to see.
++    # logLevel: info
++    ## IP address on which to listen for web traffic.
++    # bindIp: 0.0.0.0
++    ## Port on which to listen for HTTP traffic.
++    bindPort: 8080
++    ## Port on which to listen for HTTPS traffic.
++    # tlsBindPort:
++    ## File containing an SSL certificate.
++    # tlsCert:
++    ## File containing an RSA private key, used to encrypt HTTPS traffic.
++    # tlsKey:
++    ## URL used to reach any ATC from the outside world.
++    # externalUrl: http://127.0.0.1:8080
++    ## URL used to reach this ATC from other ATCs in the cluster.
++    # peerUrl: http://127.0.0.1:8080
++    ## Enable encryption of pipeline configuration. Encryption keys can be set via secrets.
++    ## See https://concourse-ci.org/encryption.html
++    ##
++    encryption:
++      enabled: false
++    localAuth:
++      enabled: true
++    ## IP address on which to listen for the pprof debugger endpoints.
++    # debugBindIp: 127.0.0.1
++    ## Port on which to listen for the pprof debugger endpoints.
++    # debugBindPort: 8079
++    ## Length of time for a intercepted session to be idle before terminating.
++    # interceptIdleTimeout: 0m
++    ## Interval on which to check for new versions of resources.
++    # resourceCheckingInterval: 1m
++    ## Interval on which to check for new versions of resource types.
++    # resourceTypeCheckingInterval: 1m
++    ## Method by which a worker is selected during container placement.
++    # containerPlacementStrategy: volume-locality
++    ## How long to wait for Baggageclaim to send the response header.
++    # baggageclaimResponseHeaderTimeout: 1m
++    ## Directory containing downloadable CLI binaries.
++    # cliArtifactsDir:
++    ## Log database queries.
++    # logDbQueries:
++    ## Interval on which to run build tracking.
++    # buildTrackerInterval: 10s
++    ## Default build logs to retain, 0 means all
++    # defaultBuildLogsToRetain:
++    ## Maximum build logs to retain, 0 means not specified. Will override values configured in jobs
++    # maxBuildLogsToRetain:
++    ## Default max number of cpu shares per task, 0 means unlimited
++    # defaultTaskCpuLimit:
++    ## Default maximum memory per task, 0 means unlimited
++    # defaultTaskMemoryLimit:
++    postgres:
++      ## The host to connect to.
++      host: 127.0.0.1
++      ## The port to connect to.
++      port: 5432
++      ## Path to a UNIX domain socket to connect to.
++      # socket:
++      ## Whether or not to use SSL.
++      sslmode: disable
++      ## Dialing timeout. (0 means wait indefinitely)
++      connectTimeout: 5m
++      ## The name of the database to use.
++      database: atc
++
++    kubernetes:
++
++      ## Enable the use of in-cluster Kubernetes Secrets.
++      ##
++      enabled: true
+ 
+-  ## ATC listen port.
+-  ## ref: https://concourse-ci.org/architecture.html
+-  ##
+-  atcPort: 8080
+-
+-  ## TSA listen port.
+-  ## ref: https://concourse-ci.org/architecture.html
+-  ##
+-  tsaPort: 2222
+-
+-  ## Allow self signed certificates.
+-  ##
+-  allowSelfSignedCertificates: false
+-
+-  ## Length of time for which tokens are valid. Afterwards, users will have to log back in.
+-  ## Use Go duration format (48h = 48 hours).
+-  ##
+-  authDuration: 24h
+-
+-  ## Interval on which to check for new versions of resources.
+-  ## Use Go duration format (1m = 1 minute).
+-  ##
+-  resourceCheckingInterval: 1m
+-
+-  ## How long to cache the result of a get step after a newer version of the resource is found.
+-  ## Use Go duration format (1m = 1 minute).
+-  ##
+-  oldResourceGracePeriod: 5m
+-
+-  ## The interval on which to check for and release old caches of resource versions.
+-  ## Use Go duration format (1m = 1 minute),
+-  ##
+-  resourceCacheCleanupInterval: 30s
+-
+-  ## URL used to reach any ATC from the outside world.
+-  ##
+-  # externalURL:
+-
+-  ## Working directory used by various concourse parts
+-  ##
+-  workingDirectory: /concourse-work-dir
+-
+-  ## The filesystem driver used by baggageclaim on workers, can be values
+-  ## "btrfs", "overlay", or "naive". As of 3.9 "btrfs" is recommended, while "naive" is most
+-  ## supported but least space efficient. For background see
+-  ## https://github.com/concourse/concourse/issues/1230 and
+-  ## https://github.com/concourse/concourse/issues/1966
+-  ##
+-  baggageclaimDriver: naive
+-
+-  ## The selection strategy for placing containers onto workers, as of Concourse 3.7 this can be
+-  ## "volume-locality" or "random". Random can better spread load across workers, see
+-  ## https://github.com/concourse/atc/pull/219 for background.
+-  ##
+-  containerPlacementStrategy: random
+-
+-  ## A URL pointing to the Docker registry to use to fetch Docker images.
+-  ## If unset, this will default to the Docker default
+-  ##
+-  # dockerRegistry:
+-
+-  ## Docker registry(ies) (comma separated) to allow connecting to even if not secure.
+-  ##
+-  # insecureDockerRegistry:
+-
+-  ## Enable encryption of pipeline configuration. Encryption keys can be set via secrets.
+-  ## See https://concourse-ci.org/encryption.html
+-  ##
+-  encryption:
+-    enabled: false
+-
+-  ## Enable basic auth for the "main" Concourse team.
+-  ## See https://concourse-ci.org/teams.html#basic-auth
+-  ##
+-  basicAuth:
+-    enabled: true
++      ## Prefix to use for Kubernetes namespaces under which secrets will be looked up. Defaults to
++      ## the Release name hyphen, e.g. "my-release-" produces namespace "my-release-main" for the
++      ## "main" Concourse team.
++      ##
++      ## namespacePrefix:
+ 
+-  ## Enable GitHub auth for the "main" Concourse team.
+-  ## See https://concourse-ci.org/teams.html#github-auth
+-  ##
+-  githubAuth:
+-    enabled: false
++      ## Teams to create namespaces for to hold secrets.
++      teams:
++        - main
+ 
+-    ## GitHub organizations (comma separated) whose members will have access.
+-    ##
+-    # organization:
++      ## When true, namespaces are not deleted when the release is deleted.
+ 
+-    ## GitHub teams (comma separated) whose members will have access.
+-    ##
+-    # team:
++      keepNamespaces: true
+ 
+-    ## GitHub users (comma separated) to permit access.
+-    ##
+-    # user:
++      ## Path to Kubernetes config when running ATC outside Kubernetes.
++      # configPath:
+ 
+-    ## Override default endpoint AuthURL for Github Enterprise.
+-    ##
+-    # authUrl:
++    awsSecretsManager:
++      ## Enable the use of AWS Secrets Manager.
++      ##
++      enabled: false
+ 
+-    ## Override default endpoint TokenURL for Github Enterprise.
+-    ##
+-    # tokenUrl:
++      ## AWS region to use when reading from Secrets Manager
++      ##
++      # region:
+ 
+-    ## Override default API endpoint URL for Github Enterprise.
+-    ##
+-    # apiUrl:
++      ## pipeline-specific template for Secrets Manager parameters, defaults to: /concourse/{team}/{pipeline}/{secret}
++      ##
++      # pipelineSecretTemplate:
+ 
+-  ## Enable Gitlab auth for the "main" Concourse team.
+-  ##
+-  gitlabAuth:
+-    enabled: false
++      ## team-specific template for Secrets Manager parameters, defaults to: /concourse/{team}/{secret}
++      ##
++      # teamSecretTemplate: ''
+ 
+-    ## GitLab Group (comma separated) whose members will have access.
+-    ##
+-    # group:
++    awsSsm:
++      ## Enable the use of AWS SSM.
++      ##
++      enabled: false
+ 
+-    ## Endpoint AuthURL for Gitlab server.
+-    ##
+-    # authUrl:
++      ## AWS region to use when reading from SSM
++      ##
++      # region:
+ 
+-    ## Endpoint TokenURL for Gitlab server.
+-    ##
+-    # tokenUrl:
++      ## pipeline-specific template for SSM parameters, defaults to: /concourse/{team}/{pipeline}/{secret}
++      ##
++      # pipelineSecretTemplate:
+ 
+-    ## API endpoint URL for Gitlab server.
+-    ##
+-    # apiUrl:
++      ## team-specific template for SSM parameters, defaults to: /concourse/{team}/{secret}
++      ##
++      # teamSecretTemplate: ''
+ 
+-  ## Enable generic OAuth for the "main" Concourse team.
+-  ## See https://concourse-ci.org/teams.html#generic-oauth
+-  ##
+-  genericOauth:
+-    enabled: false
+ 
+-    ## Name for this auth method on the web UI.
+-    ##
+-    # displayName:
++    vault:
++      enabled: false
+ 
+-    ## Generic OAuth provider AuthURL endpoint.
+-    ##
+-    # authUrl:
++      ## URL pointing to vault addr (i.e. http://vault:8200).
++      ##
++      # url:
+ 
+-    ## Parameters (comma separated) to pass to the authentication server AuthURL.
+-    ##
+-    # authUrlParam:
++      ## vault path under which to namespace credential lookup, defaults to /concourse.
++      ##
++      pathPrefix: /concourse
+ 
+-    ## Optional scope required to authorize user.
+-    ##
+-    # scope:
++      ## if the Vault server is using a self-signed certificate, set this to true,
++      ## and provide a value for the cert in secrets.
++      ##
++      # useCaCert:
+ 
+-    ## Generic OAuth provider TokenURL endpoint.
+-    ##
+-    # tokenUrl:
++      ## vault authentication backend, leave this blank if using an initial periodic token
++      ## currently supported backends: token, approle, cert.
++      ##
++      # authBackend:
++
++      ## Cache returned secrets for their lease duration in memory
++      # cache:
++      ## If the cache is enabled, and this is set, override secrets lease duration with a maximum value
++      # maxLease:
++      ## Path to a directory of PEMEncoded CA cert files to verify the vault server SSL cert.
++      # caPath:
++      ## If set, is used to set the SNI host when connecting via TLS.
++      # serverName:
++      ## Enable insecure SSL verification.
++      # insecureSkipVerify:
++        ## Client token for accessing secrets within the Vault server.
++        # clientToken:
++      ## Auth backend to use for logging in to Vault.
++      # authBackend:
++      ## Time after which to force a reLogin. If not set, the token will just be continuously renewed.
++      # authBackendMaxTtl:
++      ## The maximum time between retries when logging in or reAuthing a secret.
++      retryMax: 5m
++      ## The initial time between retries when logging in or reAuthing a secret.
++      retryInitial: 1s
++      ## Paramter to pass when logging in via the backend. Can be specified multiple times.
++      # authParam: id=foo,secret_id=bar
++    ## Don't actually do any automatic scheduling or checking.
++    # noop:
++    staticWorker:
++      enabled: false
++      ## A Garden API endpoint to register as a worker.
++      gardenUrl:
++      ## A Baggageclaim API endpoint to register with the worker.
++      baggageclaimUrl:
++      ## A resource type to advertise for the worker. Can be specified multiple times.
++      resource:
++    metrics:
++      ## Host string to attach to emitted metrics.
++      hostName:
++      ## A keyValue attribute to attach to emitted metrics. Can be specified multiple times.
++      attribute:
++    datadog:
++      enabled: false
++      ## Use IP of node the pod is scheduled on, overrides `agentHost`
++      agentHostUseHostIP: false
++      ## Datadog agent host to expose dogstatsd metrics
++      agentHost: 127.0.0.1
++      ## Datadog agent port to expose dogstatsd metrics
++      agentPort: 8125
++      ## Prefix for all metrics to easily find them in Datadog
++      # prefix: concoursedev
++    influxdb:
++      enabled: false
++      ## InfluxDB server address to emit points to.
++      url: http://127.0.0.1:8086
++      ## InfluxDB database to write points to.
++      database: concourse
++      ## InfluxDB server username.
++      # username:
++      ## Skip SSL verification when emitting to InfluxDB.
++      insecureSkipVerify: false
++    ## Emit metrics to logs.
++    # emitToLogs:
++    newrelic:
++      enabled: false
++      ## New Relic Account ID
++      # accountId:
++      ## New Relic Insights API Key
++      # apiKey:
++      ## An optional prefix for emitted New Relic events
++      # servicePrefix:
++    prometheus:
++      enabled: false
++      ## IP to listen on to expose Prometheus metrics.
++      bindIp: "0.0.0.0"
++      ## Port to listen on to expose Prometheus metrics.
++      bindPort: 9391
++    riemann:
++      enabled: false
++      ## Riemann server address to emit metrics to.
++      # host:
++      ## Port of the Riemann server to emit metrics to.
++      port: 5555
++      ## An optional prefix for emitted Riemann services
++      # servicePrefix:
++      ## Tag to attach to emitted metrics. Can be specified multiple times.
++      # tag:
++    ## The value to set for XFrame-Options. If omitted, the header is not set.
++    # xFrameOptions:
++    gc:
++      overrideDefaults: false
++      ## Interval on which to perform garbage collection.
++      interval: 30s
++      ## Grace period before reaping oneOff task containers
++      oneOffGracePeriod: 5m
++    syslog:
++      enabled: false
++      ## Client hostname with which the build logs will be sent to the syslog server.
++      hostName: atc-syslog-drainer
++      ## Remote syslog server address with port (Example: 0.0.0.0:514).
++      # address:
++      ## Transport protocol for syslog messages (Currently supporting tcp, udp & tls).
++      # transport:
++      ## Interval over which checking is done for new build logs to send to syslog server (duration measurement units are s/m/h; eg. 30s/30m/1h)
++      drainInterval: 30s
++      ## if the syslog server is using a self-signed certificate, set this to true,
++      ## and provide a value for the cert in secrets.
++      useCaCert: false
++    auth:
++      ## Force sending secure flag on http cookies
++      # cookieSecure:
++      ## Length of time for which tokens are valid. Afterwards, users will have to log back in.
++      # duration: 24h
++      mainTeam:
++        ## List of whitelisted local concourse users. These are the users you've added at atc startup with the addLocalUser setting.
++        localUser: "test"
++        ## Setting this flag will whitelist all logged in users in the system. ALL OF THEM. If, for example, you've configured GitHub, any user with a GitHub account will have access to your team.
++        # allowAllUsers:
++        ## Authentication (Main Team) (CloudFoundry)
++        cf:
++          ## List of whitelisted CloudFoundry users.
++          user:
++          ## List of whitelisted CloudFoundry orgs
++          org:
++          ## List of whitelisted CloudFoundry spaces
++          space:
++          ## (Deprecated) List of whitelisted CloudFoundry space guids
++          spaceGuid:
++        ## Authentication (Main Team) (GitHub)
++        github:
++          ## List of whitelisted GitHub users
++          user:
++          ## List of whitelisted GitHub orgs
++          org:
++          ## List of whitelisted GitHub teams
++          team:
++        ## Authentication (Main Team) (GitLab)
++        gitlab:
++          ## List of whitelisted GitLab users
++          user:
++          ## List of whitelisted GitLab groups
++          group:
++        ## Authentication (Main Team) (LDAP)
++        ldap:
++          ## List of whitelisted LDAP users
++          user:
++          ## List of whitelisted LDAP groups
++          group:
++        ## Authentication (Main Team) (OAuth2)
++        oauth:
++          ## List of whitelisted OAuth2 users
++          user:
++          ## List of whitelisted OAuth2 groups
++          group:
++        ## Authentication (Main Team) (OIDC)
++        oidc:
++          ## List of whitelisted OIDC users
++          user:
++          ## List of whitelisted OIDC groups
++          group:
++      ## Authentication (CloudFoundry)
++      cf:
++        enabled: false
++        ## (Required) The base API URL of your CF deployment. It will use this information to discover information about the authentication provider.
++        # apiUrl: https://api.run.pivotal.io
++        ## CA Certificate
++        # useCaCert:
++        ## Skip SSL validation
++        # skipSslValidation:
++      ## Authentication (GitHub)
++      github:
++        enabled: false
++        ## Hostname of GitHub Enterprise deployment (No scheme, No trailing slash)
++        # host:
++        ## CA certificate of GitHub Enterprise deployment
++        # useCaCert:
++      ## Authentication (GitLab)
++      gitlab:
++        enabled: false
++        ## Hostname of Gitlab Enterprise deployment (Include scheme, No trailing slash)
++        # host:
++      ## Authentication (LDAP)
++      ldap:
++        enabled: false
++        ## The auth provider name displayed to users on the login page
++        # displayName:
++        ## (Required) The host and optional port of the LDAP server. If port isn't supplied, it will be guessed based on the TLS configuration. 389 or 636.
++        # host:
++        ## (Required) Bind DN for searching LDAP users and groups. Typically this is a readOnly user.
++        # bindDn:
++        ## (Required) Bind Password for the user specified by 'bindDn'
++        # bindPw:
++        ## Required if LDAP host does not use TLS.
++        # insecureNoSsl:
++        ## Skip certificate verification
++        # insecureSkipVerify:
++        ## Start on insecure port, then negotiate TLS
++        # startTls:
++        ## CA certificate
++        # useCaCert:
++        ## BaseDN to start the search from. For example 'cn=users,dc=example,dc=com'
++        # userSearchBaseDn:
++        ## Optional filter to apply when searching the directory. For example '(objectClass=person)'
++        # userSearchFilter:
++        ## Attribute to match against the inputted username. This will be translated and combined with the other filter as '(<attr>=<username>)'.
++        # userSearchUsername:
++        ## Can either be: 'sub'  search the whole sub tree or 'one' - only search one level. Defaults to 'sub'.
++        # userSearchScope:
++        ## A mapping of attributes on the user entry to claims. Defaults to 'uid'.
++        # userSearchIdAttr:
++        ## A mapping of attributes on the user entry to claims. Defaults to 'mail'.
++        # userSearchEmailAttr:
++        ## A mapping of attributes on the user entry to claims.
++        # userSearchNameAttr:
++        ## BaseDN to start the search from. For example 'cn=groups,dc=example,dc=com'
++        # groupSearchBaseDn:
++        ## Optional filter to apply when searching the directory. For example '(objectClass=posixGroup)'
++        # groupSearchFilter:
++        ## Can either be: 'sub'  search the whole sub tree or 'one' - only search one level. Defaults to 'sub'.
++        # groupSearchScope:
++        ## Adds an additional requirement to the filter that an attribute in the group match the user's attribute value. The exact filter being added is: (<groupAttr>=<userAttr value>)
++        # groupSearchUserAttr:
++        ## Adds an additional requirement to the filter that an attribute in the group match the user's attribute value. The exact filter being added is: (<groupAttr>=<userAttr value>)
++        # groupSearchGroupAttr:
++        ## The attribute of the group that represents its name.
++        # groupSearchNameAttr:
++      ## Authentication (OAuth2)
++      oauth:
++        enabled: false
++        ## The auth provider name displayed to users on the login page
++        # displayName:
++        ## (Required) Authorization URL
++        # authUrl:
++        ## (Required) Token URL
++        # tokenUrl:
++        ## UserInfo URL
++        # userinfoUrl:
++        ## Any additional scopes that need to be requested during authorization
++        # scope:
++        ## The groups key indicates which claim to use to map external groups to Concourse teams.
++        # groupsKey:
++        ## CA Certificate
++        # useCaCert:
++        ## Skip SSL validation
++        # skipSslValidation:
++      ## Authentication (OIDC)
++      oidc:
++        enabled: false
++        ## The auth provider name displayed to users on the login page
++        # displayName:
++        ## (Required) An OIDC issuer URL that will be used to discover provider configuration using the .wellKnown/openid-configuration
++        # issuer:
++        ## Any additional scopes that need to be requested during authorization
++        # scope:
++        ## The groups key indicates which claim to use to map external groups to Concourse teams.
++        # groupsKey:
++        ## CA Certificate
++        # useCaCert:
++        ## Skip SSL validation
++        # skipSslValidation:
++    tsa:
++      ## Minimum level of logs to see.
++      # logLevel: info
++      ## IP address on which to listen for SSH.
++      # bindIp: 0.0.0.0
++      ## Port on which to listen for SSH.
++      bindPort: 2222
++      ## Port on which to listen for TSA pprof server.
++      # bindDebugPort: 8089
++      ## IP address of this TSA, reachable by the ATCs. Used for forwarded worker addresses.
++      # peerIp:
++      ## Path to private key to use for the SSH server.
++      # hostKey:
++      ## Path to file containing keys to authorize, in SSH authorized_keys format (one public key per line).
++      # authorizedKeys:
++      ## Path to file containing keys to authorize, in SSH authorized_keys format (one public key per line).
++      # teamAuthorizedKeys:
++      ## ATC API endpoints to which workers will be registered.
++      # atcUrl:
++      ## Path to private key to use when signing tokens in reqests to the ATC during registration.
++      # sessionSigningKey:
++      ## interval on which to heartbeat workers to the ATC
++      # heartbeatInterval: 30s
++  worker:
++    ## The name to set for the worker during registration. If not specified, the hostname will be used.
++    # name:
++    ## A tag to set during registration. Can be specified multiple times.
++    # tag:
++    ## The name of the team that this worker will be assigned to.
++    # team:
++    ## HTTP proxy endpoint to use for containers.
++    # http_proxy:
++    ## HTTPS proxy endpoint to use for containers.
++    # https_proxy:
++    ## Blacklist of addresses to skip the proxy when reaching.
++    # no_proxy:
++    ## If set, the worker will be immediately removed upon stalling.
++    # ephemeral:
++    ## Port on which to listen for beacon pprof server.
++    # bindDebugPort: 9099
++    ## Version of the worker. This is normally baked in to the binary, so this flag is hidden.
++    # version:
++    ## Directory in which to place container data.
++    workDir: /concourse-work-dir
++    ## IP address on which to listen for the Garden server.
++    # bindIp: 127.0.0.1
++    ## Port on which to listen for the Garden server.
++    # bindPort: 7777
++    ## IP used to reach this worker from the ATC nodes.
++    # peerIp:
++    ## Minimum level of logs to see.
++    # logLevel: info
++    tsa:
++      ## TSA host to forward the worker through. Can be specified multiple times.
++      host: 127.0.0.1:2222
++      ## File containing a public key to expect from the TSA.
++      # publicKey:
++      ## File containing the private key to use when authenticating to the TSA.
++      # workerPrivateKey:
++    garden:
++      ## Minimum level of logs to see.
++      # logLevel: info
++      ## format of log timestamps
++      # timeFormat: unix-epoch
++      ## Bind with TCP on the given IP.
++      # bindIp:
++      ## Bind with TCP on the given port.
++      bindPort: 7777
++      ## Bind with Unix on the given socket path.
++      # bindSocket: /tmp/garden.sock
++      ## Bind the debug server on the given IP.
++      # debugBindIp:
++      ## Bind the debug server to the given port.
++      # debugBindPort: 17013
++      ## Skip the preparation part of the host that requires root privileges
++      # skipSetup:
++      ## Directory in which to store container data.
++      # depot: /var/run/gdn/depot
++      ## Path in which to store properties.
++      # propertiesPath:
++      ## Path in which to store temporary sockets
++      # consoleSocketsPath:
++      ## Clean up proccess dirs on first invocation of wait
++      # cleanupProcessDirsOnWait:
++      ## Disable creation of privileged containers
++      # disablePrivilegedContainers:
++      ## The lowest numerical subordinate user ID the user is allowed to map
++      # uidMapStart: 1
++      ## The number of numerical subordinate user IDs the user is allowed to map
++      # uidMapLength:
++      ## The lowest numerical subordinate group ID the user is allowed to map
++      # gidMapStart: 1
++      ## The number of numerical subordinate group IDs the user is allowed to map
++      # gidMapLength:
++      ## Default rootfs to use when not specified on container creation.
++      # defaultRootfs:
++      ## Default time after which idle containers should expire.
++      # defaultGraceTime:
++      ## Clean up all the existing containers on startup.
++      # destroyContainersOnStartup:
++      ## Apparmor profile to use for unprivileged container processes
++      # apparmor:
++      ## Directory in which to extract packaged assets
++      # assetsDir: /var/gdn/assets
++      ## Path to the 'dadoo' binary.
++      # dadooBin:
++      ## Path to the 'nstar' binary.
++      # nstarBin:
++      ## Path to the 'tar' binary.
++      # tarBin:
++      ## path to the iptables binary
++      # iptablesBin: /sbin/iptables
++      ## path to the iptables-restore binary
++      # iptablesRestoreBin: /sbin/iptables-restore
++      ## Path execute as pid 1 inside each container.
++      # initBin:
++      ## Path to the runtime plugin binary.
++      # runtimePlugin: runc
++      ## Extra argument to pass to the runtime plugin. Can be specified multiple times.
++      # runtimePluginExtraArg:
++      ## Directory on which to store imported rootfs graph data.
++      # graph:
++      ## Disk usage of the graph dir at which cleanup should trigger, or -1 to disable graph cleanup.
++      # graphCleanupThresholdInMegabytes: -1
++      ## Image that should never be garbage collected. Can be specified multiple times.
++      # persistentImage:
++      ## Path to image plugin binary.
++      # imagePlugin:
++      ## Extra argument to pass to the image plugin to create unprivileged images. Can be specified multiple times.
++      # imagePluginExtraArg:
++      ## Path to privileged image plugin binary.
++      # privilegedImagePlugin:
++      ## Extra argument to pass to the image plugin to create privileged images. Can be specified multiple times.
++      # privilegedImagePluginExtraArg:
++      ## Docker registry API endpoint.
++      # dockerRegistry: registry-1.docker.io
++      ## Docker registry to allow connecting to even if not secure. Can be specified multiple times.
++      # insecureDockerRegistry:
++      ## Network range to use for dynamically allocated container subnets.
++      # networkPool: 10.254.0.0/22
++      ## Allow network access to the host machine.
++      # allowHostAccess:
++      ## Network ranges to which traffic from containers will be denied. Can be specified multiple times.
++      # denyNetwork:
++      ## DNS server IP address to use instead of automatically determined servers. Can be specified multiple times.
++      # dnsServer:
++      ## DNS server IP address to append to the automatically determined servers. Can be specified multiple times.
++      # additionalDnsServer:
++      ## Per line hosts entries. Can be specified multiple times and will be appended verbatim in order to /etc/hosts
++      # additionalHostEntry:
++      ## IP address to use to reach container's mapped ports. Autodetected if not specified.
++      # externalIp:
++      ## Start of the ephemeral port range used for mapped container ports.
++      # portPoolStart: 61001
++      ## Size of the port pool used for mapped container ports.
++      # portPoolSize: 4534
++      ## Path in which to store port pool properties.
++      # portPoolPropertiesPath:
++      ## MTU size for container network interfaces. Defaults to the MTU of the interface used for outbound access by the host. Max allowed value is 1500.
++      # mtu:
++      ## Path to network plugin binary.
++      # networkPlugin:
++      ## Extra argument to pass to the network plugin. Can be specified multiple times.
++      # networkPluginExtraArg:
++      ## Maximum number of microseconds each cpu share assigned to a container allows per quota period
++      # cpuQuotaPerShare: 0
++      ## Set hard limit for the tcp buf memory, value in bytes
++      # tcpMemoryLimit: 0
++      ## Default block IO weight assigned to a container
++      # defaultContainerBlockioWeight: 0
++      ## Maximum number of containers that can be created.
++      # maxContainers: 0
++      ## Disable swap memory limit
++      # disableSwapLimit:
++      ## Interval on which to emit metrics.
++      # metricsEmissionInterval: 1m
++      ## Origin identifier for Dropsonde-emitted metrics.
++      # dropsondeOrigin: garden-linux
++      ## Destination for Dropsonde-emitted metrics.
++      # dropsondeDestination: 127.0.0.1:3457
++      ## Path to a containerd socket.
++      # containerdSocket:
++      ## Use containerd to run processes in containers.
++      # useContainerdForProcesses:
++      ## Enable proxy DNS server.
++      # dnsProxyEnable:
++    baggageclaim:
++      ## Minimum level of logs to see.
++      # logLevel: info
++      ## IP address on which to listen for API traffic.
++      # bindIp: 127.0.0.1
++      ## Port on which to listen for API traffic.
++      # bindPort: 7788
++      ## Port on which to listen for baggageclaim pprof server.
++      # bindDebugPort: 8099
++      ## Directory in which to place volume data.
++      # volumes:
++      ## Driver to use for managing volumes.
++      driver: naive
++      ## Path to btrfs binary
++      # btrfsBin: btrfs
++      ## Path to mkfs.btrfs binary
++      # mkfsBin: mkfs.btrfs
++      ## Path to directory in which to store overlay data
++      # overlaysDir:
++      ## Interval on which to reap expired volumes.
++      # reapInterval: 10s
+ 
+ ## Configuration values for Concourse Web components.
+ ##
+@@ -302,53 +756,6 @@ web:
+     #
+     #
+ 
+-  ## Metric Configuration
+-  ## ref: https://concourse-ci.org/metrics.html
+-  ##
+-  metrics:
+-
+-    ## Enable the prometheus metrics?
+-    ## Port is per https://github.com/prometheus/prometheus/wiki/Default-port-allocations
+-    ##
+-    prometheus:
+-      enabled: false
+-      port: 9391
+-
+-    ## Enable the datadog metrics?
+-    ##
+-    datadog:
+-      enabled: false
+-
+-      ## Datadog agent host to expose metrics
+-      agentHost: 127.0.0.1
+-
+-      ## Use IP of node the pod is scheduled on, overrides `agentHost`
+-      agentHostUseHostIP: false
+-
+-      ## Datadog agent port to expose metrics
+-      agentPort: 8125
+-
+-      ## Optional prefix for all metrics to easily find them in Datadog
+-      # prefix: concoursedev
+-
+-    ## Enable the influxdb metrics?
+-    ##
+-    influxdb:
+-      enabled: false
+-
+-      ## Influxdb url to which metrics will be emitted
+-      url: http://127.0.0.1:8086
+-
+-      ## InfluxDB database to which metrics will be emitted
+-      database: concourse
+-
+-      ## Skip SSL verification when emitting to InfluxDB
+-      insecureSkipVerify: false
+-
+-      ## Optional username for authorizing access
+-      ##
+-      # username:
+-
+ ## Configuration values for Concourse Worker components.
+ ##
+ worker:
+@@ -386,6 +793,9 @@ worker:
+   #     value: "8.8.8.8"
+   #   - name: CONCOURSE_GARDEN_DNS_PROXY_ENABLE
+   #     value: "true"
++  #   - name: CONCOURSE_GARDEN_ALLOW_HOST_ACCESS
++  #     value: "true"
++
+ 
+   ## Configure additional volumeMounts for the
+   ## worker container(s)
+@@ -536,95 +946,6 @@ postgresql:
+     ## Persistent Volume Storage Size.
+     ##
+     size: 8Gi
+-## Configuration values for using a Credential Manager. Only one can be enabled.
+-## ref: https://concourse-ci.org/creds.html
+-##
+-credentialManager:
+-
+-  ## Configuration for Kubernetes Secrets as the Credential Manager. Supported in Concourse 3.7.0.
+-  ##
+-  kubernetes:
+-
+-    ## Enable the use of Kubernetes Secrets.
+-    ##
+-    enabled: true
+-
+-    ## Prefix to use for Kubernetes namespaces under which secrets will be looked up. Defaults to
+-    ## the Release name hyphen, e.g. "my-release-" produces namespace "my-release-main" for the
+-    ## "main" Concourse team.
+-    ##
+-    ## namespacePrefix:
+-
+-    ## Teams to create namespaces for to hold secrets.
+-    teams:
+-      - main
+-
+-    ## When true, namespaces are not deleted when the release is deleted.
+-
+-    keepNamespaces: true
+-
+-  ## Configuration for AWS SSM as the Credential Manager. Supported in Concourse 3.9.0.
+-  ##
+-  ssm:
+-
+-    ## Enable the use of AWS SSM.
+-    ##
+-    enabled: false
+-
+-    ## AWS region to use when reading from SSM
+-    ##
+-    # region:
+-
+-    ## pipeline-specific template for SSM parameters, defaults to: /concourse/{team}/{pipeline}/{secret}
+-    ##
+-    # pipelineSecretTemplate:
+-
+-    ## team-specific template for SSM parameters, defaults to: /concourse/{team}/{secret}
+-    ##
+-    # teamSecretTemplate: ''
+-
+-  ## Configuration for AWS Secrets Manager as the Credential Manager. Supported in Concourse 3.11.0.
+-  ##
+-  awsSecretsManager:
+-
+-    ## Enable the use of AWS Secrets Manager.
+-    ##
+-    enabled: false
+-
+-    ## AWS region to use when reading from Secrets Manager
+-    ##
+-    # region:
+-
+-    ## pipeline-specific template for Secrets Manager parameters, defaults to: /concourse/{team}/{pipeline}/{secret}
+-    ##
+-    # pipelineSecretTemplate:
+-
+-    ## team-specific template for Secrets Manager parameters, defaults to: /concourse/{team}/{secret}
+-    ##
+-    # teamSecretTemplate: ''
+-
+-  ## Configuration for Hashicorp Vault as the Credential Manager.
+-  ##
+-  vault:
+-    enabled: false
+-
+-    ## URL pointing to vault addr (i.e. http://vault:8200).
+-    ##
+-    # url:
+-
+-    ## vault path under which to namespace credential lookup, defaults to /concourse.
+-    ##
+-    pathPrefix: /concourse
+-
+-    ## if the Vault server is using a self-signed certificate, set this to true,
+-    ## and provide a value for the cert in secrets.
+-    ##
+-    # useCaCert:
+-
+-    ## vault authentication backend, leave this blank if using an initial periodic token
+-    ## currently supported backends: token, approle, cert.
+-    ##
+-    # authBackend:
+ 
+ ## For RBAC support:
+ rbac:
+@@ -646,6 +967,8 @@ rbac:
+ ##
+ secrets:
+ 
++  ## List of username:bcrypted_password combinations for all your local concourse users.
++  localUsers: "test:$2a$10$sDB6AsH2HheOWHILrnHVJOCZq/GYtUYE02ypJJTQBmWJNivYNhP3y"
+   ## Create the secret resource from the following values. Set this to
+   ## false to manage these secrets outside Helm.
+   ##
+@@ -753,6 +1076,13 @@ secrets:
+   workerKeyPub: |-
+     ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC496FSYFcBAKgDtMsBAJiF/6/NxlXKP5UZecyEsedYuTt1GOgJTwaA1qZ1LmHsbfLDE68oDdiM4uvxfI4wtLhz57w3u0jOUxZ2JeF7SVwEf1nVqLn4Gh/f8GUNQGSyIp1zUD5Bx9fq0PAyQ47mt7Ufi84rcf8LKl7nzAIHTcdg2BvTkQN9bUGPaq/Pb1W2bKPAQy4OzXTSIyrAJ89TH2jFeaZfyxQFGbD9jVHH/yl0oiMrDeaRYgccE5II+KY7WoLjsBry/9Qf2ERELKTK4UeIGIqWci9lab1ti+GxFPPiC3krNFjo4jShV4eUs4cNIrjwNrxVaKPXmU6o7Y3Hpayx Concourse
+ 
++  ## Secrets for DB access
++  # postgresUser:
++  # postgresPassword:
++  # postgresCaCert:
++  # postgresClientCert:
++  # postgresClientKey:
++
+   ## Secrets for DB encryption
+   ##
+   # encryptionKey:
+@@ -768,30 +1098,37 @@ secrets:
+   # awsSecretsmanagerSecretKey:
+   # awsSecretsmanagerSessionToken:
+ 
+-  ## Secrets for Concourse basic auth
+-  ##
+-  basicAuthUsername: concourse
+-  basicAuthPassword: concourse
++  ## Secrets for CF OAuth
++  # cfClientId:
++  # cfClientSecret:
++  # cfCaCert: |-
+ 
+   ## Secrets for GitHub OAuth.
+   ##
+-  # githubAuthClientId:
+-  # githubAuthClientSecret:
++  # githubClientId:
++  # githubClientSecret:
++  # githubCaCert: |-
+ 
+   ## Secrets for GitLab OAuth.
+   ##
+-  # gitlabAuthClientId:
+-  # gitlabAuthClientSecret:
++  # gitlabClientId:
++  # gitlabClientSecret:
++
++  ## Secrets for LDAP Auth.
++  ##
++  # ldapCaCert: |-
+ 
+   ## Secrets for generic OAuth.
+   ##
+-  # genericOauthClientId:
+-  # genericOauthClientSecret:
++  # oauthClientId:
++  # oauthClientSecret:
++  # oauthCaCert: |-
+ 
+-  ## If bringing your own PostgreSQL, set this to the full uri to use
+-  ## e.g. postgres://concourse:changeme@my-postgres.com:5432/concourse?sslmode=disable
++  ## Secrets for oidc OAuth.
+   ##
+-  # postgresqlUri:
++  # oidcClientId:
++  # oidcClientSecret:
++  # oidcCaCert: |-
+ 
+   ## Secrets for using Hashcorp Vault as a credential manager.
+   ##
+@@ -805,16 +1142,6 @@ secrets:
+   ##
+   # vaultClientToken:
+ 
+-  ## set role_id for [AppRole](https://www.vaultproject.io/docs/auth/approle.html) backend
+-  ## make sure to also set credentialManager.vault.authBackend to `approle`.
+-  ##
+-  # vaultAppRoleId:
+-
+-  ## set secret_id for [AppRole](https://www.vaultproject.io/docs/auth/approle.html) backend
+-  ## make sure to also set credentialManager.vault.authBackend to `approle`.
+-  ##
+-  # vaultAppRoleSecretId:
+-
+   ## provide the client certificate for authenticating with the [TLS](https://www.vaultproject.io/docs/auth/cert.html) backend
+   ## the value will be written to /concourse-vault/client.cert
+   ## make sure to also set credentialManager.vault.authBackend to `cert`
+@@ -831,3 +1158,6 @@ secrets:
+   ## provide a password here to authenticate with the influxdb server configured.
+   ##
+   # influxdbPassword:
++
++  ## SSL certificate used to verify the Syslog server for draining build logs.
++  # syslogCaCert: |-

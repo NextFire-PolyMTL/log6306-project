@@ -1,0 +1,69 @@
+commit 2c001b526674fff355b1f386c5e0cdcad9686043
+Author: Christopher Stelma <Stelminator@gmail.com>
+Date:   Thu Jun 21 13:21:43 2018 -0700
+
+    [incubator/zookeeper] fix persistence.enabled=false (#6189)
+    
+    * incubator/zookeeper: fix persistence.enabled=false
+    
+    * refactor to drop volumes to the bottom and account for the existing config-jmx-exporter definition
+    
+    * cleanup dupes
+
+diff --git a/incubator/zookeeper/Chart.yaml b/incubator/zookeeper/Chart.yaml
+index 208f22155..94cabdc88 100644
+--- a/incubator/zookeeper/Chart.yaml
++++ b/incubator/zookeeper/Chart.yaml
+@@ -1,6 +1,6 @@
+ name: zookeeper
+ home: https://zookeeper.apache.org/
+-version: 1.0.0
++version: 1.0.1
+ appVersion: 3.4.10
+ description: Centralized service for maintaining configuration information, naming,
+   providing distributed synchronization, and providing group services.
+diff --git a/incubator/zookeeper/templates/statefulset.yaml b/incubator/zookeeper/templates/statefulset.yaml
+index 057a45487..bc2d160cd 100644
+--- a/incubator/zookeeper/templates/statefulset.yaml
++++ b/incubator/zookeeper/templates/statefulset.yaml
+@@ -145,26 +145,19 @@ spec:
+       tolerations:
+ {{ toYaml . | indent 8 }}
+     {{- end }}
+-{{- if .Values.exporters.jmx.enabled }}
++      {{- if (or .Values.exporters.jmx.enabled (not .Values.persistence.enabled)) }}
+       volumes:
++        {{- if .Values.exporters.jmx.enabled }}
+         - name: config-jmx-exporter
+           configMap:
+             name: {{ .Release.Name }}-jmx-exporter
+-{{- end }}
+-
+-    {{- with .Values.nodeSelector }}
+-      nodeSelector:
+-{{ toYaml . | indent 8 }}
+-    {{- end }}
+-    {{- with .Values.affinity }}
+-      affinity:
+-{{ toYaml . | indent 8 }}
+-    {{- end }}
+-    {{- with .Values.tolerations }}
+-      tolerations:
+-{{ toYaml . | indent 8 }}
+-    {{- end }}
+-
++        {{- end }}
++        {{- if not .Values.persistence.enabled }}
++        - name: data
++          emptyDir: {}
++        {{- end }}
++      {{- end }}
++  {{- if .Values.persistence.enabled }}
+   volumeClaimTemplates:
+     - metadata:
+         name: data
+@@ -181,3 +174,4 @@ spec:
+         storageClassName: "{{ .Values.persistence.storageClass }}"
+         {{- end }}
+       {{- end }}
++  {{- end }}

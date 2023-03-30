@@ -1,0 +1,60 @@
+commit e7da7f91f041f3da3c51d5d3ee5c30e9e8c56aeb
+Author: Miguel Ángel Cabrera Miñagorri <mcabrera@vmware.com>
+Date:   Sat Dec 18 01:58:18 2021 +0100
+
+    [bitnami/ejbca] Major change. Adapt to image PR #12 (#8439)
+    
+    * [bitnami/ejbca] Adapt volumes to persistence refactorization
+    
+    Signed-off-by: Miguel A. Cabrera Minagorri <mcabrera@vmware.com>
+    
+    * Bump chart version
+    
+    Signed-off-by: Miguel A. Cabrera Minagorri <mcabrera@vmware.com>
+    
+    * Bump major version
+    
+    * [bitnami/ejbca] Update components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    Co-authored-by: Bitnami Containers <containers@bitnami.com>
+
+diff --git a/bitnami/ejbca/Chart.yaml b/bitnami/ejbca/Chart.yaml
+index 08f5d51475..b617206c21 100644
+--- a/bitnami/ejbca/Chart.yaml
++++ b/bitnami/ejbca/Chart.yaml
+@@ -30,4 +30,4 @@ name: ejbca
+ sources:
+   - https://github.com/bitnami/bitnami-docker-ejbca
+   - https://www.ejbca.org/
+-version: 3.1.3
++version: 4.0.0
+diff --git a/bitnami/ejbca/templates/deployment.yaml b/bitnami/ejbca/templates/deployment.yaml
+index 3ab3b12c5a..0235430ad1 100644
+--- a/bitnami/ejbca/templates/deployment.yaml
++++ b/bitnami/ejbca/templates/deployment.yaml
+@@ -160,8 +160,8 @@ spec:
+           {{- end }}
+           volumeMounts:
+             - name: ejbca-data
+-              mountPath: /bitnami/ejbca
+-              subPath: ejbca
++              mountPath: /bitnami/wildfly
++              subPath: wildfly
+             {{- if .Values.ejbcaKeystoreExistingSecret }}
+             - name: ejbca-keystore
+               mountPath: /opt/bitnami/ejbca/mounted-jks/keystore.jks
+diff --git a/bitnami/ejbca/values.yaml b/bitnami/ejbca/values.yaml
+index 2ccf69252b..50993d9632 100644
+--- a/bitnami/ejbca/values.yaml
++++ b/bitnami/ejbca/values.yaml
+@@ -66,7 +66,7 @@ diagnosticMode:
+ image:
+   registry: docker.io
+   repository: bitnami/ejbca
+-  tag: 7.4.3-2-debian-10-r68
++  tag: 7.4.3-2-debian-10-r69
+   ## Specify a imagePullPolicy
+   ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+   ## ref: https://kubernetes.io/docs/user-guide/images/#pre-pulling-images

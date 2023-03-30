@@ -1,0 +1,107 @@
+commit 86a99d96b727805d59d1fcc10057a0beee6bf0b5
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Apr 4 14:08:17 2018 +0200
+
+    [stable/phpbb] Refactor image property in values.yaml (#4655)
+    
+    * [stable/phpbb] Refactor image properties in values.yaml
+    
+    * Use rolling tag and refactor pullSecrets
+    
+    * Fix lint issue
+    
+    * Update Chart.yaml
+
+diff --git a/stable/phpbb/Chart.yaml b/stable/phpbb/Chart.yaml
+index 51b9b834c..cc40ea10b 100644
+--- a/stable/phpbb/Chart.yaml
++++ b/stable/phpbb/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: phpbb
+-version: 0.6.6
++version: 1.0.0
+ appVersion: 3.2.2
+ description: Community forum that supports the notion of users and groups, file attachments,
+   full-text search, notifications and more.
+diff --git a/stable/phpbb/README.md b/stable/phpbb/README.md
+index 666d539df..9c1afb5d7 100644
+--- a/stable/phpbb/README.md
++++ b/stable/phpbb/README.md
+@@ -47,8 +47,11 @@ The following table lists the configurable parameters of the phpBB chart and the
+ 
+ |             Parameter             |              Description              |                         Default                         |
+ |-----------------------------------|---------------------------------------|---------------------------------------------------------|
+-| `image`                           | phpBB image                           | `bitnami/phpbb:{VERSION}`                               |
+-| `imagePullPolicy`                 | Image pull policy                     | `IfNotPresent`                                          |
++| `image.registry`                  | phpBB image registry                  | `docker.io`                                             |
++| `image.repository`                | phpBB image name                      | `bitnami/phpbb`                                         |
++| `image.tag`                       | phpBB image tag                       | `{VERSION}`                                             |
++| `image.pullPolicy`                | Image pull policy                     | `Always` if `imageTag` is `latest`, else `IfNotPresent` |
++| `image.pullSecrets`               | Specify image pull secrets            | `nil`                                                   |
+ | `phpbbUser`                       | User of the application               | `user`                                                  |
+ | `phpbbPassword`                   | Application password                  | _random 10 character long alphanumeric string_          |
+ | `phpbbEmail`                      | Admin email                           | `user@example.com`                                      |
+@@ -60,7 +63,7 @@ The following table lists the configurable parameters of the phpBB chart and the
+ | `externalDatabase.host`           | Host of the external database         | `nil`                                                   |
+ | `externalDatabase.user`           | Existing username in the external db  | `bn_phpbb`                                              |
+ | `externalDatabase.password`       | Password for the above username       | `nil`                                                   |
+-| `externalDatabase.database`       | Name of the existing database          | `bitnami_phpbb`                                         |
++| `externalDatabase.database`       | Name of the existing database         | `bitnami_phpbb`                                         |
+ | `mariadb.enabled`                 | Use or not the mariadb chart          | `true`                                                  |
+ | `mariadb.mariadbRootPassword`     | MariaDB admin password                | `nil`                                                   |
+ | `mariadb.mariadbDatabase`         | Database name to create               | `bitnami_phpbb`                                         |
+diff --git a/stable/phpbb/templates/deployment.yaml b/stable/phpbb/templates/deployment.yaml
+index a957455b8..c6d6bf49d 100644
+--- a/stable/phpbb/templates/deployment.yaml
++++ b/stable/phpbb/templates/deployment.yaml
+@@ -15,10 +15,16 @@ spec:
+       labels:
+         app: {{ template "phpbb.fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "phpbb.fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: ALLOW_EMPTY_PASSWORD
+           value: {{ .Values.allowEmptyPassword | quote }}
+diff --git a/stable/phpbb/values.yaml b/stable/phpbb/values.yaml
+index f830911bd..92b1a2119 100644
+--- a/stable/phpbb/values.yaml
++++ b/stable/phpbb/values.yaml
+@@ -1,12 +1,21 @@
+ ## Bitnami phpBB image version
+ ## ref: https://hub.docker.com/r/bitnami/phpbb/tags/
+ ##
+-image: bitnami/phpbb:3.2.2-r2
+-
+-## Specify a imagePullPolicy
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-imagePullPolicy: IfNotPresent
++image:
++  registry: docker.io
++  repository: bitnami/phpbb
++  tag: 3.2.2
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
+ 
+ ## User of the application
+ ## ref: https://github.com/bitnami/bitnami-docker-phpbb#environment-variables

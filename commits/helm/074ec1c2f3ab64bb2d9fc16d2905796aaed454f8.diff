@@ -1,0 +1,2347 @@
+commit 074ec1c2f3ab64bb2d9fc16d2905796aaed454f8
+Author: Lachlan Evenson <lachie83@users.noreply.github.com>
+Date:   Tue Oct 3 23:24:18 2017 -0700
+
+    Istio release 0.2.6 (#2369)
+    
+    * istio release 0.2.6
+    
+    * removed uneeded files
+    
+    * removed hooks and made install two-step process to work out CRD creation in helm
+    
+    * update grafana service port
+    
+    * refactor directories
+    Add configmap checksum to roll deploy
+    Add initializer
+    Various bug fixes
+    
+    * remove default resource restrictions
+    
+    * update to create custom resources
+    
+    * update servicegraph image
+    
+    * correct service account name typo
+
+diff --git a/incubator/istio/Chart.yaml b/incubator/istio/Chart.yaml
+index 1b79a4905..859f5aeb7 100644
+--- a/incubator/istio/Chart.yaml
++++ b/incubator/istio/Chart.yaml
+@@ -3,8 +3,8 @@ description: Istio Helm chart for Kubernetes
+ name: istio
+ # To avoid confusion the helm chart version stays in sync with the istio version - DO NOT UNSYNC -- ldemailly@google.com
+ # https://github.com/kubernetes/charts/issues/1501
+-version: 0.1.6-chart6
+-appVersion: 0.1.6
++version: 0.2.6-chart1
++appVersion: 0.2.6
+ home: https://istio.io/
+ icon: https://raw.githubusercontent.com/istio/istio.github.io/master/favicons/mstile-150x150.png
+ sources:
+diff --git a/incubator/istio/templates/NOTES.txt b/incubator/istio/templates/NOTES.txt
+index 193f178d6..f3389e288 100644
+--- a/incubator/istio/templates/NOTES.txt
++++ b/incubator/istio/templates/NOTES.txt
+@@ -1,4 +1,21 @@
+-{{- $serviceName := include "istio.fullname" . -}}
++{{- $istioInstall := (and (not .Release.IsInstall) .Values.istio.install) -}}
++{{- $serviceName := include "istio.name" . -}}
++{{- if and .Release.IsInstall .Values.istio.install -}}
++Installing required CustomerResourceDefinitions before installing Istio services.
++
++To install Istio services run the following:
++helm upgrade {{ .Release.Name }} incubator/istio --reuse-values --set istio.install=true
++{{ end -}}
++
++{{- if and .Release.IsInstall (not .Values.istio.install) -}}
++Installing required CustomerResourceDefinitions before installing Istio services.
++
++To install Istio services run the following:
++helm upgrade {{ .Release.Name }} incubator/istio --reuse-values --set istio.install=true
++{{ end -}}
++
++{{- if $istioInstall -}}
++
+ Verify all Pods are running
+ 
+   kubectl get pods --namespace {{ .Release.Namespace }}
+@@ -48,3 +65,5 @@ Or deploy the BookInfo App!
+ Using Istioctl
+ 
+   istioctl [command]
++
++{{- end -}}
+diff --git a/incubator/istio/templates/addons-prometheus-configmap.yaml b/incubator/istio/templates/addons-prometheus-configmap.yaml
+deleted file mode 100644
+index c4fdc96ce..000000000
+--- a/incubator/istio/templates/addons-prometheus-configmap.yaml
++++ /dev/null
+@@ -1,22 +0,0 @@
+-{{ if .Values.addons.prometheus.enabled }}
+-{{- $serviceName := include "istio.fullname" . -}}
+-apiVersion: v1
+-kind: ConfigMap
+-metadata:
+-  name: {{ $serviceName }}-{{ .Values.addons.prometheus.deployment.name }}
+-  labels:
+-{{ include "istio.labels.standard" . | indent 4 }}
+-data:
+-  prometheus.yml: |-
+-    global:
+-      scrape_interval: 15s
+-    scrape_configs:
+-
+-    - job_name: 'mixer'
+-      # Override the global default and scrape targets from this job every 5 seconds.
+-      scrape_interval: 5s
+-      # metrics_path defaults to '/metrics'
+-      # scheme defaults to 'http'.
+-      static_configs:
+-      - targets: ['{{ template "istio.fullname" . }}-mixer:{{ .Values.mixer.service.externalPrometheusPort }}']
+-{{ end }}
+\ No newline at end of file
+diff --git a/incubator/istio/templates/addons/configmap/prometheus-config.yaml b/incubator/istio/templates/addons/configmap/prometheus-config.yaml
+new file mode 100644
+index 000000000..0e830e68e
+--- /dev/null
++++ b/incubator/istio/templates/addons/configmap/prometheus-config.yaml
+@@ -0,0 +1,40 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{ if .Values.addons.prometheus.enabled }}
++{{- $serviceName := include "istio.name" . -}}
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  name: {{ $serviceName }}-{{ .Values.addons.prometheus.deployment.name }}
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++data:
++  prometheus.yml: |-
++    global:
++      scrape_interval: 15s
++    scrape_configs:
++
++    - job_name: 'istio-mesh'
++      # Override the global default and scrape targets from this job every 5 seconds.
++      scrape_interval: 5s
++      # metrics_path defaults to '/metrics'
++      # scheme defaults to 'http'.
++      static_configs:
++      - targets: ['{{ $serviceName }}-{{ .Values.mixer.deployment.name }}.{{ .Release.Namespace }}:{{ .Values.mixer.service.externalPrometheusPort }}']
++
++    - job_name: 'envoy'
++      # Override the global default and scrape targets from this job every 5 seconds.
++      scrape_interval: 5s
++      # metrics_path defaults to '/metrics'
++      # scheme defaults to 'http'.
++      static_configs:
++      - targets: ['{{ $serviceName }}-{{ .Values.mixer.deployment.name }}.{{ .Release.Namespace }}:{{ .Values.mixer.service.externalStatsdPromPort }}']
++
++    - job_name: 'mixer'
++      # Override the global default and scrape targets from this job every 5 seconds.
++      scrape_interval: 5s
++      # metrics_path defaults to '/metrics'
++      # scheme defaults to 'http'.
++      static_configs:
++      - targets: ['{{ $serviceName }}-{{ .Values.mixer.deployment.name }}.{{ .Release.Namespace }}:{{ .Values.mixer.service.externalHttpHeathPort }}']
++{{ end }}
++{{- end -}}
+diff --git a/incubator/istio/templates/addons-grafana-deployment.yaml b/incubator/istio/templates/addons/deployment/grafana.yaml
+similarity index 91%
+rename from incubator/istio/templates/addons-grafana-deployment.yaml
+rename to incubator/istio/templates/addons/deployment/grafana.yaml
+index 184dfd1e2..6b083084a 100644
+--- a/incubator/istio/templates/addons-grafana-deployment.yaml
++++ b/incubator/istio/templates/addons/deployment/grafana.yaml
+@@ -1,5 +1,6 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
+ {{ if .Values.addons.grafana.enabled }}
+-{{- $serviceName := include "istio.fullname" . -}}
++{{- $serviceName := include "istio.name" . -}}
+ apiVersion: extensions/v1beta1
+ kind: Deployment
+ metadata:
+@@ -21,7 +22,7 @@ spec:
+     spec:
+       containers:
+       - name: {{ .Values.addons.grafana.deployment.name }}
+-        image:  "{{ .Values.addons.grafana.deployment.image }}:{{ .Values.istioRelease }}"
++        image:  "{{ .Values.addons.grafana.deployment.image }}:{{ .Values.istio.release }}"
+         imagePullPolicy: {{ .Values.addons.grafana.deployment.imagePullPolicy }}
+         ports:
+           - containerPort: {{ .Values.addons.grafana.service.externalPort }}
+@@ -43,3 +44,4 @@ spec:
+       - name: grafana-data
+         emptyDir: {}
+ {{ end }}
++{{- end -}}
+diff --git a/incubator/istio/templates/addons-prometheus-deployment.yaml b/incubator/istio/templates/addons/deployment/prometheus.yaml
+similarity index 81%
+rename from incubator/istio/templates/addons-prometheus-deployment.yaml
+rename to incubator/istio/templates/addons/deployment/prometheus.yaml
+index 621cbf833..b5a0e8578 100644
+--- a/incubator/istio/templates/addons-prometheus-deployment.yaml
++++ b/incubator/istio/templates/addons/deployment/prometheus.yaml
+@@ -1,5 +1,6 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
+ {{ if .Values.addons.prometheus.enabled }}
+-{{- $serviceName := include "istio.fullname" . -}}
++{{- $serviceName := include "istio.name" . -}}
+ apiVersion: extensions/v1beta1
+ kind: Deployment
+ metadata:
+@@ -16,9 +17,10 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        {{- range $key, $value := .Values.addons.prometheus.deployment.annotations }}
+-          {{ $key }}: {{ $value | quote }}
+-        {{- end }}
++        checksum/config: {{ include (print $.Template.BasePath "/addons/configmap/prometheus-config.yaml") . | sha256sum }}
++      {{- range $key, $value := .Values.addons.prometheus.deployment.annotations }}
++        {{ $key }}: {{ $value | quote }}
++      {{- end }}
+       name: {{ $serviceName }}-{{ .Values.addons.prometheus.deployment.name }}
+       labels:
+ {{ include "istio.labels.standard" . | indent 8 }}
+@@ -44,4 +46,5 @@ spec:
+       - name: config-volume
+         configMap:
+           name: {{ $serviceName }}-{{ .Values.addons.prometheus.deployment.name }}
+-{{ end }}
+\ No newline at end of file
++{{ end }}
++{{- end -}}
+diff --git a/incubator/istio/templates/addons-servicegraph-deployment.yaml b/incubator/istio/templates/addons/deployment/servicegraph.yaml
+similarity index 89%
+rename from incubator/istio/templates/addons-servicegraph-deployment.yaml
+rename to incubator/istio/templates/addons/deployment/servicegraph.yaml
+index 08cd79678..ea1166392 100644
+--- a/incubator/istio/templates/addons-servicegraph-deployment.yaml
++++ b/incubator/istio/templates/addons/deployment/servicegraph.yaml
+@@ -1,5 +1,6 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
+ {{ if .Values.addons.servicegraph.enabled }}
+-{{- $serviceName := include "istio.fullname" . -}}
++{{- $serviceName := include "istio.name" . -}}
+ apiVersion: extensions/v1beta1
+ kind: Deployment
+ metadata:
+@@ -21,7 +22,7 @@ spec:
+     spec:
+       containers:
+       - name: {{ .Values.addons.servicegraph.deployment.name }}
+-        image: "{{ .Values.addons.servicegraph.deployment.image }}:{{ .Values.addons.servicegraph.deployment.imageTag }}"
++        image: "{{ .Values.addons.servicegraph.deployment.image }}:{{ .Values.istio.release }}"
+         imagePullPolicy: {{ .Values.addons.servicegraph.deployment.imagePullPolicy }}
+         ports:
+           - containerPort:  {{ .Values.addons.servicegraph.service.externalPort }}
+@@ -30,4 +31,5 @@ spec:
+         - --prometheusAddr=http://{{ .Values.addons.prometheus.deployment.name }}:{{ .Values.addons.prometheus.service.externalPort }}
+         resources:
+ {{ toYaml .Values.addons.servicegraph.deployment.resources | indent 10 }}
+-{{ end }}
+\ No newline at end of file
++{{ end }}
++{{- end -}}
+diff --git a/incubator/istio/templates/addons-zipkin-deployment.yaml b/incubator/istio/templates/addons/deployment/zipkin.yaml
+similarity index 90%
+rename from incubator/istio/templates/addons-zipkin-deployment.yaml
+rename to incubator/istio/templates/addons/deployment/zipkin.yaml
+index b6837b569..4fa554046 100644
+--- a/incubator/istio/templates/addons-zipkin-deployment.yaml
++++ b/incubator/istio/templates/addons/deployment/zipkin.yaml
+@@ -1,5 +1,6 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
+ {{ if .Values.addons.zipkin.enabled }}
+-{{- $serviceName := include "istio.fullname" . -}}
++{{- $serviceName := include "istio.name" . -}}
+ apiVersion: extensions/v1beta1
+ kind: Deployment
+ metadata:
+@@ -31,4 +32,5 @@ spec:
+             fieldRef:
+               apiVersion: v1
+               fieldPath: metadata.namespace
+-{{ end }}
+\ No newline at end of file
++{{ end }}
++{{- end -}}
+diff --git a/incubator/istio/templates/addons-grafana-svc.yaml b/incubator/istio/templates/addons/service/grafana.yaml
+similarity index 81%
+rename from incubator/istio/templates/addons-grafana-svc.yaml
+rename to incubator/istio/templates/addons/service/grafana.yaml
+index 4eab77f61..ef506c984 100644
+--- a/incubator/istio/templates/addons-grafana-svc.yaml
++++ b/incubator/istio/templates/addons/service/grafana.yaml
+@@ -1,5 +1,6 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
+ {{ if .Values.addons.grafana.enabled }}
+-{{- $serviceName := include "istio.fullname" . -}}
++{{- $serviceName := include "istio.name" . -}}
+ apiVersion: v1
+ kind: Service
+ metadata:
+@@ -17,3 +18,4 @@ spec:
+     component: {{ $serviceName }}-{{ .Values.addons.grafana.deployment.name }}
+     release: {{ .Release.Name }}
+ {{ end }}
++{{- end -}}
+diff --git a/incubator/istio/templates/addons-prometheus-svc.yaml b/incubator/istio/templates/addons/service/prometheus.yaml
+similarity index 87%
+rename from incubator/istio/templates/addons-prometheus-svc.yaml
+rename to incubator/istio/templates/addons/service/prometheus.yaml
+index e52676bb0..c9981d0a1 100644
+--- a/incubator/istio/templates/addons-prometheus-svc.yaml
++++ b/incubator/istio/templates/addons/service/prometheus.yaml
+@@ -1,5 +1,6 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
+ {{ if .Values.addons.prometheus.enabled }}
+-{{- $serviceName := include "istio.fullname" . -}}
++{{- $serviceName := include "istio.name" . -}}
+ apiVersion: v1
+ kind: Service
+ metadata:
+@@ -23,3 +24,4 @@ spec:
+     component: {{ $serviceName }}-{{ .Values.addons.prometheus.deployment.name }}
+     release: {{ .Release.Name }}
+ {{ end }}
++{{- end -}}
+diff --git a/incubator/istio/templates/addons-servicegraph-svc.yaml b/incubator/istio/templates/addons/service/servicegraph.yaml
+similarity index 81%
+rename from incubator/istio/templates/addons-servicegraph-svc.yaml
+rename to incubator/istio/templates/addons/service/servicegraph.yaml
+index 56b4453ba..a9af49b5c 100644
+--- a/incubator/istio/templates/addons-servicegraph-svc.yaml
++++ b/incubator/istio/templates/addons/service/servicegraph.yaml
+@@ -1,5 +1,6 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
+ {{ if .Values.addons.servicegraph.enabled }}
+-{{- $serviceName := include "istio.fullname" . -}}
++{{- $serviceName := include "istio.name" . -}}
+ apiVersion: v1
+ kind: Service
+ metadata:
+@@ -16,3 +17,4 @@ spec:
+     component: {{ $serviceName }}-{{ .Values.addons.servicegraph.deployment.name }}
+     release: {{ .Release.Name }}
+ {{ end }}
++{{- end -}}
+diff --git a/incubator/istio/templates/addons-zipkin-svc.yaml b/incubator/istio/templates/addons/service/zipkin.yaml
+similarity index 68%
+rename from incubator/istio/templates/addons-zipkin-svc.yaml
+rename to incubator/istio/templates/addons/service/zipkin.yaml
+index 681c87175..d249215a4 100644
+--- a/incubator/istio/templates/addons-zipkin-svc.yaml
++++ b/incubator/istio/templates/addons/service/zipkin.yaml
+@@ -1,9 +1,10 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
+ {{ if .Values.addons.zipkin.enabled }}
+-{{- $serviceName := include "istio.fullname" . -}}
++{{- $serviceName := include "istio.name" . -}}
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: {{ $serviceName }}-zipkin
++  name: {{ $serviceName }}-{{ .Values.addons.zipkin.deployment.name }}
+   labels:
+ {{ include "istio.labels.standard" . | indent 4 }}
+ spec:
+@@ -15,4 +16,5 @@ spec:
+     app: {{ include "istio.name" . }}
+     component: {{ $serviceName }}-{{ .Values.addons.zipkin.deployment.name }}
+     release: {{ .Release.Name }}
+-{{ end }}
+\ No newline at end of file
++{{ end }}
++{{- end -}}
+diff --git a/incubator/istio/templates/ca-service-account.yaml b/incubator/istio/templates/ca-service-account.yaml
+deleted file mode 100644
+index 3cc4b4a10..000000000
+--- a/incubator/istio/templates/ca-service-account.yaml
++++ /dev/null
+@@ -1,10 +0,0 @@
+-{{ if .Values.auth.enabled }}
+-{{- $serviceName := include "istio.fullname" . -}}
+-apiVersion: v1
+-kind: ServiceAccount
+-metadata:
+-  name: {{ $serviceName }}-ca-service-account
+-  labels:
+-{{ include "istio.labels.standard" . | indent 4 }}
+-    istio: {{ $serviceName }}-ca
+-{{ end }}
+\ No newline at end of file
+diff --git a/incubator/istio/templates/configmap.yaml b/incubator/istio/templates/configmap.yaml
+deleted file mode 100644
+index d85384f45..000000000
+--- a/incubator/istio/templates/configmap.yaml
++++ /dev/null
+@@ -1,18 +0,0 @@
+-{{- if not .Values.pilot.customConfigMap }}
+-{{- $serviceName := include "istio.fullname" . -}}
+-apiVersion: v1
+-kind: ConfigMap
+-metadata:
+-  name: istio
+-  labels:
+-{{ include "istio.labels.standard" . | indent 4 }}
+-data:
+-  mesh: |-
+-{{ if .Values.auth.enabled }}
+-    authPolicy: MUTUAL_TLS
+-{{ end }}
+-    mixerAddress: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}:{{ .Values.mixer.service.externalTcpPort }}
+-    discoveryAddress: {{ .Values.pilot.name }}:{{ .Values.pilot.service.externalHttpDiscovery }}
+-    ingressService: istio-ingress
+-    zipkinAddress: {{ $serviceName }}-{{ .Values.addons.zipkin.deployment.name }}:{{ .Values.addons.zipkin.service.externalPort }}
+-{{- end -}}
+diff --git a/incubator/istio/templates/configmap/initializer-config.yaml b/incubator/istio/templates/configmap/initializer-config.yaml
+new file mode 100644
+index 000000000..dbd323493
+--- /dev/null
++++ b/incubator/istio/templates/configmap/initializer-config.yaml
+@@ -0,0 +1,21 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{- if not .Values.initializer.customConfigMap }}
++{{- $serviceName := include "istio.name" . -}}
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  name: {{ $serviceName }}-inject
++data:
++  config: |-
++    policy: "enabled"
++    namespaces: [""] # everything, aka v1.NamepsaceAll, aka cluster-wide
++    initializerName: "sidecar.initializer.istio.io"
++    params:
++      initImage: {{ .Values.initializer.deployment.initImage }}:{{ .Values.istio.release }}
++      proxyImage: {{ .Values.initializer.deployment.proxyImage }}:{{ .Values.istio.release }}
++      verbosity: 2
++      version: {{ .Values.istio.release }}
++      meshConfigMapName: {{ $serviceName }}
++      imagePullPolicy: {{ .Values.initializer.deployment.imagePullPolicy }}
++{{- end -}}
++{{- end -}}
+diff --git a/incubator/istio/templates/configmap/istio-config.yaml b/incubator/istio/templates/configmap/istio-config.yaml
+new file mode 100644
+index 000000000..ec8ef523b
+--- /dev/null
++++ b/incubator/istio/templates/configmap/istio-config.yaml
+@@ -0,0 +1,73 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{- if not .Values.pilot.customConfigMap }}
++{{- $serviceName := include "istio.name" . -}}
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  name: {{ $serviceName }}
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++data:
++  mesh: |-
++{{ if .Values.auth.enabled }}
++    authPolicy: MUTUAL_TLS
++{{ end }}
++    #
++    # Set the following variable to true to disable policy checks by the Mixer.
++    # Note that metrics will still be reported to the Mixer.
++    disablePolicyChecks: false
++    # Set enableTracing to false to disable request tracing.
++    enableTracing: true
++    #
++    # To disable the mixer completely (including metrics), comment out
++    # the following line
++    mixerAddress: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}.{{ .Release.Namespace }}:{{ .Values.mixer.service.externalTcpPort }}
++    # This is the ingress service name, update if you used a different name
++    ingressService: {{ $serviceName }}-{{ .Values.ingress.deployment.name }}
++    egressProxyAddress: {{ $serviceName }}-{{ .Values.egress.deployment.name }}.{{ .Release.Namespace }}:{{ .Values.egress.service.externalHttpPort }}
++    #
++    # Along with discoveryRefreshDelay, this setting determines how
++    # frequently should Envoy fetch and update its internal configuration
++    # from Istio Pilot. Lower refresh delay results in higher CPU
++    # utilization and potential performance loss in exchange for faster
++    # convergence. Tweak this value according to your setup.
++    rdsRefreshDelay: 1s
++    #
++    defaultConfig:
++      # See rdsRefreshDelay for explanation about this setting.
++      discoveryRefreshDelay: 1s
++      #
++      # TCP connection timeout between Envoy & the application, and between Envoys.
++      connectTimeout: 10s
++      #
++      ### ADVANCED SETTINGS #############
++      # Where should envoy's configuration be stored in the istio-proxy container
++      configPath: "/etc/istio/proxy"
++      binaryPath: "/usr/local/bin/envoy"
++      # The pseudo service name used for Envoy.
++      serviceCluster: istio-proxy
++      # These settings that determine how long an old Envoy
++      # process should be kept alive after an occasional reload.
++      drainDuration: 45s
++      parentShutdownDuration: 1m0s
++      #
++      # Port where Envoy listens (on local host) for admin commands
++      # You can exec into the istio-proxy container in a pod and
++      # curl the admin port (curl http://localhost:15000/) to obtain
++      # diagnostic information from Envoy. See
++      # https://lyft.github.io/envoy/docs/operations/admin.html
++      # for more details
++      proxyAdminPort: 15000
++      #
++      # Address where Istio Pilot service is running
++      discoveryAddress: {{ $serviceName }}-{{ .Values.pilot.name }}.{{ .Release.Namespace }}:{{ .Values.pilot.service.externalHttpDiscovery }}
++      #
++      # Zipkin trace collector
++      zipkinAddress: {{ $serviceName }}-{{ .Values.addons.zipkin.deployment.name }}.{{ .Release.Namespace }}:{{ .Values.addons.zipkin.service.externalPort }}
++      #
++      # Statsd metrics collector. Istio mixer exposes a UDP endpoint
++      # to collect and convert statsd metrics into Prometheus metrics.
++      statsdUdpAddress: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}.{{ .Release.Namespace }}:{{ .Values.mixer.service.externalStatsdUdpPort }}
++{{- end -}}
++{{- end -}}
++ 
+\ No newline at end of file
+diff --git a/incubator/istio/templates/configmap/mixer-config.yaml b/incubator/istio/templates/configmap/mixer-config.yaml
+new file mode 100644
+index 000000000..7d69174f0
+--- /dev/null
++++ b/incubator/istio/templates/configmap/mixer-config.yaml
+@@ -0,0 +1,13 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{- $serviceName := include "istio.name" . -}}
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  name: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    component: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
++    istio: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
++data:
++  mapping.conf: |-
++{{- end -}}
+diff --git a/incubator/istio/templates/custom-resources/custom-resources.yaml b/incubator/istio/templates/custom-resources/custom-resources.yaml
+new file mode 100644
+index 000000000..2ce12d831
+--- /dev/null
++++ b/incubator/istio/templates/custom-resources/custom-resources.yaml
+@@ -0,0 +1,327 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{- $serviceName := include "istio.name" . -}}
++apiVersion: "config.istio.io/v1alpha2"
++kind: attributemanifest
++metadata:
++  name: istioproxy
++spec:
++  attributes:
++    origin.ip:
++      valueType: IP_ADDRESS
++    origin.uid:
++      valueType: STRING
++    origin.user:
++      valueType: STRING
++    request.headers:
++      valueType: STRING_MAP
++    request.id:
++      valueType: STRING
++    request.host:
++      valueType: STRING
++    request.method:
++      valueType: STRING
++    request.path:
++      valueType: STRING
++    request.reason:
++      valueType: STRING
++    request.referer:
++      valueType: STRING
++    request.scheme:
++      valueType: STRING
++    request.size:
++      valueType: INT64
++    request.time:
++      valueType: TIMESTAMP
++    request.useragent:
++      valueType: STRING
++    response.code:
++      valueType: INT64
++    response.duration:
++      valueType: DURATION
++    response.headers:
++      valueType: STRING_MAP
++    response.size:
++      valueType: INT64
++    response.time:
++      valueType: TIMESTAMP
++    source.uid:
++      valueType: STRING
++    source.user:
++      valueType: STRING
++    destination.uid:
++      valueType: STRING
++    connection.id:
++      valueType: STRING
++    connection.received.bytes:
++      valueType: INT64
++    connection.received.bytes_total:
++      valueType: INT64
++    connection.sent.bytes:
++      valueType: INT64
++    connection.sent.bytes_total:
++      valueType: INT64
++    connection.duration:
++      valueType: DURATION
++    context.protocol:
++      valueType: STRING
++    context.timestamp:
++      valueType: TIMESTAMP
++    context.time:
++      valueType: TIMESTAMP
++
++---
++apiVersion: "config.istio.io/v1alpha2"
++kind: attributemanifest
++metadata:
++  name: kubernetes
++spec:
++  attributes:
++    source.ip:
++      valueType: IP_ADDRESS
++    source.labels:
++      valueType: STRING_MAP
++    source.name:
++      valueType: STRING
++    source.namespace:
++      valueType: STRING
++    source.service:
++      valueType: STRING
++    source.serviceAccount:
++      valueType: STRING
++    destination.ip:
++      valueType: IP_ADDRESS
++    destination.labels:
++      valueType: STRING_MAP
++    destination.name:
++      valueType: STRING
++    destination.namespace:
++      valueType: STRING
++    destination.service:
++      valueType: STRING
++    destination.serviceAccount:
++      valueType: STRING
++---
++apiVersion: "config.istio.io/v1alpha2"
++kind: stdio
++metadata:
++  name: handler
++spec:
++  outputAsJson: true
++---
++apiVersion: "config.istio.io/v1alpha2"
++kind: logentry
++metadata:
++  name: accesslog
++spec:
++  severity: '"Default"'
++  timestamp: request.time
++  variables:
++    sourceIp: source.ip | ip("0.0.0.0")
++    destinationIp: destination.ip | ip("0.0.0.0")
++    sourceUser: source.user | ""
++    method: request.method | ""
++    url: request.path | ""
++    protocol: request.scheme | "http"
++    responseCode: response.code | 0
++    responseSize: response.size | 0
++    requestSize: request.size | 0
++    latency: response.duration | "0ms"
++  monitored_resource_type: '"UNSPECIFIED"'
++---
++apiVersion: "config.istio.io/v1alpha2"
++kind: rule
++metadata:
++  name: stdio
++spec:
++  match: "true" # If omitted match is true.
++  actions:
++  - handler: handler.stdio
++    instances:
++    - accesslog.logentry
++---
++apiVersion: "config.istio.io/v1alpha2"
++kind: metric
++metadata:
++  name: requestcount
++spec:
++  value: "1"
++  dimensions:
++    source_service: source.service | "unknown"
++    source_version: source.labels["version"] | "unknown"
++    destination_service: destination.service | "unknown"
++    destination_version: destination.labels["version"] | "unknown"
++    response_code: response.code | 200
++  monitored_resource_type: '"UNSPECIFIED"'
++---
++apiVersion: "config.istio.io/v1alpha2"
++kind: metric
++metadata:
++  name: requestduration
++spec:
++  value: response.duration | "0ms"
++  dimensions:
++    source_service: source.service | "unknown"
++    source_version: source.labels["version"] | "unknown"
++    destination_service: destination.service | "unknown"
++    destination_version: destination.labels["version"] | "unknown"
++    response_code: response.code | 200
++  monitored_resource_type: '"UNSPECIFIED"'
++---
++apiVersion: "config.istio.io/v1alpha2"
++kind: metric
++metadata:
++  name: requestsize
++spec:
++  value: request.size | 0
++  dimensions:
++    source_service: source.service | "unknown"
++    source_version: source.labels["version"] | "unknown"
++    destination_service: destination.service | "unknown"
++    destination_version: destination.labels["version"] | "unknown"
++    response_code: response.code | 200
++  monitored_resource_type: '"UNSPECIFIED"'
++---
++apiVersion: "config.istio.io/v1alpha2"
++kind: metric
++metadata:
++  name: responsesize
++spec:
++  value: response.size | 0
++  dimensions:
++    source_service: source.service | "unknown"
++    source_version: source.labels["version"] | "unknown"
++    destination_service: destination.service | "unknown"
++    destination_version: destination.labels["version"] | "unknown"
++    response_code: response.code | 200
++  monitored_resource_type: '"UNSPECIFIED"'
++---
++apiVersion: "config.istio.io/v1alpha2"
++kind: metric
++metadata:
++  name: tcpbytesent
++  labels:
++    istio-protocol: tcp # needed so that mixer will only generate when context.protocol == tcp
++spec:
++  value: connection.sent.bytes | 0
++  dimensions:
++    source_service: source.service | "unknown"
++    source_version: source.labels["version"] | "unknown"
++    destination_service: destination.service | "unknown"
++    destination_version: destination.labels["version"] | "unknown"
++  monitored_resource_type: '"UNSPECIFIED"'
++---
++apiVersion: "config.istio.io/v1alpha2"
++kind: metric
++metadata:
++  name: tcpbytereceived
++  labels:
++    istio-protocol: tcp # needed so that mixer will only generate when context.protocol == tcp
++spec:
++  value: connection.received.bytes | 0
++  dimensions:
++    source_service: source.service | "unknown"
++    source_version: source.labels["version"] | "unknown"
++    destination_service: destination.service | "unknown"
++    destination_version: destination.labels["version"] | "unknown"
++  monitored_resource_type: '"UNSPECIFIED"'
++---
++apiVersion: "config.istio.io/v1alpha2"
++kind: prometheus
++metadata:
++  name: handler
++spec:
++  metrics:
++  - name: request_count
++    instance_name: requestcount.metric.istio-system
++    kind: COUNTER
++    label_names:
++    - source_service
++    - source_version
++    - destination_service
++    - destination_version
++    - response_code
++  - name: request_duration
++    instance_name: requestduration.metric.istio-system
++    kind: DISTRIBUTION
++    label_names:
++    - source_service
++    - source_version
++    - destination_service
++    - destination_version
++    - response_code
++    buckets:
++      explicit_buckets:
++        bounds: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
++  - name: request_size
++    instance_name: requestsize.metric.istio-system
++    kind: DISTRIBUTION
++    label_names:
++    - source_service
++    - source_version
++    - destination_service
++    - destination_version
++    - response_code
++    buckets:
++      exponentialBuckets:
++        numFiniteBuckets: 8
++        scale: 1
++        growthFactor: 10
++  - name: response_size
++    instance_name: responsesize.metric.istio-system
++    kind: DISTRIBUTION
++    label_names:
++    - source_service
++    - source_version
++    - destination_service
++    - destination_version
++    - response_code
++    buckets:
++      exponentialBuckets:
++        numFiniteBuckets: 8
++        scale: 1
++        growthFactor: 10
++  - name: tcp_bytes_sent
++    instance_name: tcpbytesent.metric.istio-system
++    kind: COUNTER
++    label_names:
++    - source_service
++    - source_version
++    - destination_service
++    - destination_version
++  - name: tcp_bytes_received
++    instance_name: tcpbytereceived.metric.istio-system
++    kind: COUNTER
++    label_names:
++    - source_service
++    - source_version
++    - destination_service
++    - destination_version
++---
++apiVersion: "config.istio.io/v1alpha2"
++kind: rule
++metadata:
++  name: promhttp
++  labels:
++    istio-protocol: http
++spec:
++  actions:
++  - handler: handler.prometheus
++    instances:
++    - requestcount.metric
++    - requestduration.metric
++    - requestsize.metric
++    - responsesize.metric
++---
++apiVersion: "config.istio.io/v1alpha2"
++kind: rule
++metadata:
++  name: promtcp
++  labels:
++    istio-protocol: tcp # needed so that mixer will only execute when context.protocol == TCP
++spec:
++  actions:
++  - handler: handler.prometheus
++    instances:
++    - tcpbytesent.metric
++    - tcpbytereceived.metric
++{{- end -}}
+diff --git a/incubator/istio/templates/custom-resources/mixer.yaml b/incubator/istio/templates/custom-resources/mixer.yaml
+new file mode 100644
+index 000000000..aa7cda844
+--- /dev/null
++++ b/incubator/istio/templates/custom-resources/mixer.yaml
+@@ -0,0 +1,289 @@
++{{- $serviceName := include "istio.name" . -}}
++kind: CustomResourceDefinition
++apiVersion: apiextensions.k8s.io/v1beta1
++metadata:
++  name: rules.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    package: istio.io.mixer
++    istio: core
++spec:
++  group: config.istio.io
++  names:
++    kind: rule
++    plural: rules
++    singular: rule
++  scope: Namespaced
++  version: v1alpha2
++---
++kind: CustomResourceDefinition
++apiVersion: apiextensions.k8s.io/v1beta1
++metadata:
++  name: attributemanifests.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    package: istio.io.mixer
++    istio: core
++spec:
++  group: config.istio.io
++  names:
++    kind: attributemanifest
++    plural: attributemanifests
++    singular: attributemanifest
++  scope: Namespaced
++  version: v1alpha2
++---
++kind: CustomResourceDefinition
++apiVersion: apiextensions.k8s.io/v1beta1
++metadata:
++  name: deniers.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    package: denier
++    istio: mixer-adapter
++spec:
++  group: config.istio.io
++  names:
++    kind: denier
++    plural: deniers
++    singular: denier
++  scope: Namespaced
++  version: v1alpha2
++---
++kind: CustomResourceDefinition
++apiVersion: apiextensions.k8s.io/v1beta1
++metadata:
++  name: listcheckers.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    package: listchecker
++    istio: mixer-adapter
++spec:
++  group: config.istio.io
++  names:
++    kind: listchecker
++    plural: listcheckers
++    singular: listchecker
++  scope: Namespaced
++  version: v1alpha2
++---
++kind: CustomResourceDefinition
++apiVersion: apiextensions.k8s.io/v1beta1
++metadata:
++  name: memquotas.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    package: memquota
++    istio: mixer-adapter
++spec:
++  group: config.istio.io
++  names:
++    kind: memquota
++    plural: memquotas
++    singular: memquota
++  scope: Namespaced
++  version: v1alpha2
++---
++kind: CustomResourceDefinition
++apiVersion: apiextensions.k8s.io/v1beta1
++metadata:
++  name: noops.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    package: noop
++    istio: mixer-adapter
++spec:
++  group: config.istio.io
++  names:
++    kind: noop
++    plural: noops
++    singular: noop
++  scope: Namespaced
++  version: v1alpha2
++---
++kind: CustomResourceDefinition
++apiVersion: apiextensions.k8s.io/v1beta1
++metadata:
++  name: prometheuses.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    package: prometheus
++    istio: mixer-adapter
++spec:
++  group: config.istio.io
++  names:
++    kind: prometheus
++    plural: prometheuses
++    singular: prometheus
++  scope: Namespaced
++  version: v1alpha2
++---
++kind: CustomResourceDefinition
++apiVersion: apiextensions.k8s.io/v1beta1
++metadata:
++  name: stackdrivers.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    package: stackdriver
++    istio: mixer-adapter
++spec:
++  group: config.istio.io
++  names:
++    kind: stackdriver
++    plural: stackdrivers
++    singular: stackdriver
++  scope: Namespaced
++  version: v1alpha2
++---
++kind: CustomResourceDefinition
++apiVersion: apiextensions.k8s.io/v1beta1
++metadata:
++  name: statsds.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    package: statsd
++    istio: mixer-adapter
++spec:
++  group: config.istio.io
++  names:
++    kind: statsd
++    plural: statsds
++    singular: statsd
++  scope: Namespaced
++  version: v1alpha2
++---
++kind: CustomResourceDefinition
++apiVersion: apiextensions.k8s.io/v1beta1
++metadata:
++  name: stdios.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    package: stdio
++    istio: mixer-adapter
++spec:
++  group: config.istio.io
++  names:
++    kind: stdio
++    plural: stdios
++    singular: stdio
++  scope: Namespaced
++  version: v1alpha2
++---
++kind: CustomResourceDefinition
++apiVersion: apiextensions.k8s.io/v1beta1
++metadata:
++  name: svcctrls.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    package: svcctrl
++    istio: mixer-adapter
++spec:
++  group: config.istio.io
++  names:
++    kind: svcctrl
++    plural: svcctrls
++    singular: svcctrl
++  scope: Namespaced
++  version: v1alpha2
++---
++kind: CustomResourceDefinition
++apiVersion: apiextensions.k8s.io/v1beta1
++metadata:
++  name: checknothings.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    package: checknothing
++    istio: mixer-instance
++spec:
++  group: config.istio.io
++  names:
++    kind: checknothing
++    plural: checknothings
++    singular: checknothing
++  scope: Namespaced
++  version: v1alpha2
++---
++kind: CustomResourceDefinition
++apiVersion: apiextensions.k8s.io/v1beta1
++metadata:
++  name: listentries.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    package: listentry
++    istio: mixer-instance
++spec:
++  group: config.istio.io
++  names:
++    kind: listentry
++    plural: listentries
++    singular: listentry
++  scope: Namespaced
++  version: v1alpha2
++---
++kind: CustomResourceDefinition
++apiVersion: apiextensions.k8s.io/v1beta1
++metadata:
++  name: logentries.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    package: logentry
++    istio: mixer-instance
++spec:
++  group: config.istio.io
++  names:
++    kind: logentry
++    plural: logentries
++    singular: logentry
++  scope: Namespaced
++  version: v1alpha2
++---
++kind: CustomResourceDefinition
++apiVersion: apiextensions.k8s.io/v1beta1
++metadata:
++  name: metrics.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    package: metric
++    istio: mixer-instance
++spec:
++  group: config.istio.io
++  names:
++    kind: metric
++    plural: metrics
++    singular: metric
++  scope: Namespaced
++  version: v1alpha2
++---
++kind: CustomResourceDefinition
++apiVersion: apiextensions.k8s.io/v1beta1
++metadata:
++  name: quotas.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    package: quota
++    istio: mixer-instance
++spec:
++  group: config.istio.io
++  names:
++    kind: quota
++    plural: quotas
++    singular: quota
++  scope: Namespaced
++  version: v1alpha2
++---
++kind: CustomResourceDefinition
++apiVersion: apiextensions.k8s.io/v1beta1
++metadata:
++  name: reportnothings.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    package: reportnothing
++    istio: mixer-instance
++spec:
++  group: config.istio.io
++  names:
++    kind: reportnothing
++    plural: reportnothings
++    singular: reportnothing
++  scope: Namespaced
++  version: v1alpha2
+diff --git a/incubator/istio/templates/custom-resources/pilot.yaml b/incubator/istio/templates/custom-resources/pilot.yaml
+new file mode 100644
+index 000000000..02c880c1e
+--- /dev/null
++++ b/incubator/istio/templates/custom-resources/pilot.yaml
+@@ -0,0 +1,48 @@
++{{- $serviceName := include "istio.name" . -}}
++apiVersion: apiextensions.k8s.io/v1beta1
++kind: CustomResourceDefinition
++metadata:
++  name: destinationpolicies.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++spec:
++  group: config.istio.io
++  names:
++    kind: DestinationPolicy
++    listKind: DestinationPolicyList
++    plural: destinationpolicies
++    singular: destinationpolicy
++  scope: Namespaced
++  version: v1alpha2
++---
++apiVersion: apiextensions.k8s.io/v1beta1
++kind: CustomResourceDefinition
++metadata:
++  name: egressrules.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++spec:
++  group: config.istio.io
++  names:
++    kind: EgressRule
++    listKind: EgressRuleList
++    plural: egressrules
++    singular: egressrule
++  scope: Namespaced
++  version: v1alpha2
++---
++apiVersion: apiextensions.k8s.io/v1beta1
++kind: CustomResourceDefinition
++metadata:
++  name: routerules.config.istio.io
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++spec:
++  group: config.istio.io
++  names:
++    kind: RouteRule
++    listKind: RouteRuleList
++    plural: routerules
++    singular: routerule
++  scope: Namespaced
++  version: v1alpha2
+diff --git a/incubator/istio/templates/ca-deployment.yaml b/incubator/istio/templates/deployment/ca.yaml
+similarity index 83%
+rename from incubator/istio/templates/ca-deployment.yaml
+rename to incubator/istio/templates/deployment/ca.yaml
+index 57326d550..1533863a4 100644
+--- a/incubator/istio/templates/ca-deployment.yaml
++++ b/incubator/istio/templates/deployment/ca.yaml
+@@ -1,5 +1,6 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
+ {{ if .Values.auth.enabled }}
+-{{- $serviceName := include "istio.fullname" . -}}
++{{- $serviceName := include "istio.name" . -}}
+ apiVersion: v1
+ kind: Deployment
+ apiVersion: extensions/v1beta1
+@@ -25,14 +26,9 @@ spec:
+       serviceAccountName: {{ $serviceName }}-ca-service-account
+       containers:
+       - name: {{ .Values.ca.deployment.name }}
+-        image: "{{ .Values.ca.deployment.image }}:{{ .Values.istioRelease }}"
++        image: "{{ .Values.ca.deployment.image }}:{{ .Values.istio.release }}"
+         imagePullPolicy: {{ .Values.ca.deployment.imagePullPolicy }}
+-        env:
+-        - name: NAMESPACE
+-          valueFrom:
+-            fieldRef:
+-              apiVersion: v1
+-              fieldPath: metadata.namespace
+         resources:
+ {{ toYaml .Values.ca.deployment.resources | indent 10 }}
+-{{ end }}
+\ No newline at end of file
++{{ end }}
++{{- end -}}
+diff --git a/incubator/istio/templates/egress-deployment.yaml b/incubator/istio/templates/deployment/egress.yaml
+similarity index 69%
+rename from incubator/istio/templates/egress-deployment.yaml
+rename to incubator/istio/templates/deployment/egress.yaml
+index aea67c213..c61599594 100644
+--- a/incubator/istio/templates/egress-deployment.yaml
++++ b/incubator/istio/templates/deployment/egress.yaml
+@@ -1,4 +1,5 @@
+-{{- $serviceName := include "istio.fullname" . -}}
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{- $serviceName := include "istio.name" . -}}
+ apiVersion: extensions/v1beta1
+ kind: Deployment
+ metadata:
+@@ -22,10 +23,21 @@ spec:
+     spec:
+       containers:
+       - name: proxy
+-        image: "{{ .Values.egress.deployment.image }}:{{ .Values.istioRelease }}"
++        image: "{{ .Values.egress.deployment.image }}:{{ .Values.istio.release }}"
+         imagePullPolicy: {{ .Values.egress.deployment.imagePullPolicy }}
+-        args: ["proxy", "egress", "-v", "2"]
++        args:
++        - proxy
++        - egress
++        - -v
++        - "2"
++        - --discoveryAddress
++        - {{ $serviceName }}-{{ .Values.pilot.name }}:{{ .Values.pilot.service.externalHttpDiscovery }}
+         env:
++        - name: POD_NAME
++          valueFrom:
++            fieldRef:
++              apiVersion: v1
++              fieldPath: metadata.name
+         - name: POD_NAMESPACE
+           valueFrom:
+             fieldRef:
+@@ -35,11 +47,13 @@ spec:
+ {{ toYaml .Values.egress.deployment.resources | indent 10 }}
+ {{ if .Values.auth.enabled }}
+         volumeMounts:
+-        - mountPath: /etc/certs
+-          name: istio-certs
++        - name: istio-certs
++          mountPath: /etc/certs
+           readOnly: true
+       volumes:
+       - name: istio-certs
+         secret:
+           secretName: istio.default
+-{{ end }}
+\ No newline at end of file
++          optional: true
++{{ end }}
++{{- end -}}
+diff --git a/incubator/istio/templates/ingress-deployment.yaml b/incubator/istio/templates/deployment/ingress.yaml
+similarity index 66%
+rename from incubator/istio/templates/ingress-deployment.yaml
+rename to incubator/istio/templates/deployment/ingress.yaml
+index 3a03d5907..0a622058e 100644
+--- a/incubator/istio/templates/ingress-deployment.yaml
++++ b/incubator/istio/templates/deployment/ingress.yaml
+@@ -1,4 +1,5 @@
+-{{- $serviceName := include "istio.fullname" . -}}
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{- $serviceName := include "istio.name" . -}}
+ apiVersion: extensions/v1beta1
+ kind: Deployment
+ metadata:
+@@ -23,13 +24,24 @@ spec:
+       serviceAccountName: {{ $serviceName }}-ingress-service-account
+       containers:
+       - name: istio-ingress
+-        image: "{{ .Values.ingress.deployment.image }}:{{ .Values.istioRelease }}"
+-        args: ["proxy", "ingress", "-v", "2"]
++        image: "{{ .Values.ingress.deployment.image }}:{{ .Values.istio.release }}"
++        args:
++        - proxy
++        - ingress
++        - -v
++        - "2"
++        - --discoveryAddress
++        - {{ $serviceName }}-{{ .Values.pilot.name }}:{{ .Values.pilot.service.externalHttpDiscovery }}
+         imagePullPolicy: {{ .Values.ingress.deployment.imagePullPolicy }}
+         ports:
+         - containerPort: {{ .Values.ingress.service.externalHttpPort }}
+         - containerPort: {{ .Values.ingress.service.externalHttpsPort }}
+         env:
++        - name: POD_NAME
++          valueFrom:
++            fieldRef:
++              apiVersion: v1
++              fieldPath: metadata.name
+         - name: POD_NAMESPACE
+           valueFrom:
+             fieldRef:
+@@ -39,11 +51,20 @@ spec:
+ {{ toYaml .Values.ingress.deployment.resources | indent 10 }}
+ {{ if .Values.auth.enabled }}
+         volumeMounts:
+-        - mountPath: /etc/certs
+-          name: istio-certs
++        - name: istio-certs
++          mountPath: /etc/certs
++          readOnly: true
++        - name: ingress-certs
++          mountPath: /etc/istio/ingress-certs
+           readOnly: true
+       volumes:
+       - name: istio-certs
+         secret:
+           secretName: istio.default
+-{{ end }}
+\ No newline at end of file
++          optional: true
++      - name: ingress-certs
++        secret:
++          secretName: istio-ingress-certs
++          optional: true
++{{ end }}
++{{- end -}}
+diff --git a/incubator/istio/templates/deployment/initializer.yaml b/incubator/istio/templates/deployment/initializer.yaml
+new file mode 100644
+index 000000000..d6d7ff565
+--- /dev/null
++++ b/incubator/istio/templates/deployment/initializer.yaml
+@@ -0,0 +1,52 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{ if .Values.initializer.enabled }}
++{{- $serviceName := include "istio.name" . -}}
++apiVersion: extensions/v1beta1
++kind: Deployment
++metadata:
++  name: {{ $serviceName }}-{{ .Values.initializer.deployment.name }}
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    component: {{ $serviceName }}-{{ .Values.initializer.deployment.name }}
++    istio: {{ $serviceName }}-{{ .Values.initializer.deployment.name }}
++  annotations:
++    {{- range $key, $value := .Values.initializer.annotations }}
++        {{ $key }}: {{ $value | quote }}
++    {{- end }}
++  initializers:
++    pending: []
++spec:
++  replicas: {{ .Values.initializer.deployment.replicas }}
++  template:
++    metadata:
++      annotations:
++        checksum/istio-config: {{ include (print $.Template.BasePath "/configmap/istio-config.yaml") . | sha256sum }}
++        checksum/initializer-config: {{ include (print $.Template.BasePath "/configmap/initializer-config.yaml") . | sha256sum }}
++        {{- range $key, $value := .Values.initializer.annotations }}
++          {{ $key }}: {{ $value | quote }}
++        {{- end }}
++      labels:
++{{ include "istio.labels.standard" . | indent 8 }}
++        component: {{ $serviceName }}-{{ .Values.initializer.deployment.name }}
++        istio: {{ $serviceName }}-{{ .Values.initializer.deployment.name }}
++    spec:
++      containers:
++      - name: {{ $serviceName }}-{{ .Values.initializer.deployment.name }}
++        image: "{{ .Values.initializer.deployment.image }}:{{ .Values.istio.release }}"
++        imagePullPolicy: {{ .Values.initializer.deployment.imagePullPolicy }}
++        args:
++          - --port=8083
++          - --namespace={{ .Release.Namespace }}
++          - -v=2
++        volumeMounts:
++        - name: config-volume
++          mountPath: /etc/istio/config
++        resources:
++{{ toYaml .Values.initializer.deployment.resources | indent 10 }}
++      volumes:
++      - name: config-volume
++        configMap:
++          name: {{ $serviceName }}
++{{ end }}
++{{- end -}}
++
+diff --git a/incubator/istio/templates/deployment/mixer.yaml b/incubator/istio/templates/deployment/mixer.yaml
+new file mode 100644
+index 000000000..b7a401b4d
+--- /dev/null
++++ b/incubator/istio/templates/deployment/mixer.yaml
+@@ -0,0 +1,59 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{- $serviceName := include "istio.name" . -}}
++apiVersion: extensions/v1beta1
++kind: Deployment
++metadata:
++  name: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    component: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
++    istio: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
++spec:
++  replicas: {{ .Values.mixer.deployment.replicas }}
++  template:
++    metadata:
++      annotations:
++        checksum/config: {{ include (print $.Template.BasePath "/configmap/mixer-config.yaml") . | sha256sum }}
++      {{- range $key, $value := .Values.mixer.deployment.annotations }}
++        {{ $key }}: {{ $value | quote }}
++      {{- end }}
++      labels:
++{{ include "istio.labels.standard" . | indent 8 }}
++        component: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
++        istio: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
++    spec:
++      containers:
++      - name: statsd-to-prometheus
++        image: prom/statsd-exporter
++        imagePullPolicy: IfNotPresent
++        ports:
++        - containerPort: {{ .Values.mixer.service.externalStatsdPromPort }}
++        - containerPort: {{ .Values.mixer.service.externalStatsdUdpPort }}
++          protocol: UDP
++        args:
++        - '-statsd.mapping-config=/etc/statsd/mapping.conf'
++        volumeMounts:
++        - name: config-volume
++          mountPath: /etc/statsd
++      - name: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
++        image: "{{ .Values.mixer.deployment.image }}:{{ .Values.istio.release }}"
++        imagePullPolicy: {{ .Values.mixer.deployment.imagePullPolicy }}
++        ports:
++        - containerPort: {{ .Values.mixer.service.externalTcpPort }}
++        - containerPort: {{ .Values.mixer.service.externalConfigApiPort }}
++        - containerPort: {{ .Values.mixer.service.externalPrometheusPort }}
++        args:
++          - --configStoreURL=fs:///etc/opt/mixer/configroot
++          - --configStore2URL=k8s://
++          - --configDefaultNamespace={{ .Release.Namespace }}
++          - --traceOutput=http://{{ $serviceName }}-{{ .Values.addons.zipkin.deployment.name }}.{{ .Release.Namespace }}:{{ .Values.addons.zipkin.service.externalPort }}/api/v1/spans
++          - --logtostderr
++          - -v
++          - "2"
++        resources:
++{{ toYaml .Values.mixer.deployment.resources | indent 10 }}
++      volumes:
++      - name: config-volume
++        configMap:
++          name: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
++{{- end -}}
+diff --git a/incubator/istio/templates/pilot-deployment.yaml b/incubator/istio/templates/deployment/pilot.yaml
+similarity index 61%
+rename from incubator/istio/templates/pilot-deployment.yaml
+rename to incubator/istio/templates/deployment/pilot.yaml
+index 5c56b5be9..169effa98 100644
+--- a/incubator/istio/templates/pilot-deployment.yaml
++++ b/incubator/istio/templates/deployment/pilot.yaml
+@@ -1,4 +1,5 @@
+-{{- $serviceName := include "istio.fullname" . -}}
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{- $serviceName := include "istio.name" . -}}
+ apiVersion: extensions/v1beta1
+ kind: Deployment
+ metadata:
+@@ -12,9 +13,10 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        {{- range $key, $value := .Values.pilot.deployment.annotations }}
+-          {{ $key }}: {{ $value | quote }}
+-        {{- end }}
++        checksum/config: {{ include (print $.Template.BasePath "/configmap/istio-config.yaml") . | sha256sum }}
++      {{- range $key, $value := .Values.pilot.deployment.annotations }}
++        {{ $key }}: {{ $value | quote }}
++      {{- end }}
+       labels:
+ {{ include "istio.labels.standard" . | indent 8 }}
+         component: {{ $serviceName }}-{{ .Values.pilot.name }}
+@@ -23,30 +25,30 @@ spec:
+       serviceAccountName: {{ $serviceName }}-pilot-service-account
+       containers:
+       - name: {{ .Values.pilot.deployment.discovery.name }}
+-        image: "{{ .Values.pilot.deployment.discovery.image }}:{{ .Values.istioRelease }}"
++        image: "{{ .Values.pilot.deployment.discovery.image }}:{{ .Values.istio.release }}"
+         imagePullPolicy: {{ .Values.pilot.deployment.discovery.imagePullPolicy }}
+-        args: ["discovery", "-v", "2"]
++        args: ["discovery", "-v", "2", "--admission-service", "istio-pilot-external"]
+         ports:
+         - containerPort: {{ .Values.pilot.service.externalHttpDiscovery }}
++        - containerPort: {{ .Values.pilot.service.externalAdmissionWebhookServer }}
+         env:
+-        - name: POD_NAMESPACE
++        - name: POD_NAME
+           valueFrom:
+             fieldRef:
+               apiVersion: v1
+-              fieldPath: metadata.namespace
+-        resources:
+-{{ toYaml .Values.pilot.deployment.discovery.resources | indent 10 }}
+-      - name: {{ .Values.pilot.deployment.apiserver.name }}
+-        image: "{{ .Values.pilot.deployment.apiserver.image }}:{{ .Values.istioRelease }}"
+-        imagePullPolicy: {{ .Values.pilot.deployment.apiserver.imagePullPolicy }}
+-        args: ["apiserver", "-v", "2"]
+-        ports:
+-        - containerPort: {{ .Values.pilot.service.externalHttpApiServer }}
+-        env:
++              fieldPath: metadata.name
+         - name: POD_NAMESPACE
+           valueFrom:
+             fieldRef:
+               apiVersion: v1
+               fieldPath: metadata.namespace
+         resources:
+-{{ toYaml .Values.pilot.deployment.apiserver.resources | indent 10 }}
+\ No newline at end of file
++{{ toYaml .Values.pilot.deployment.discovery.resources | indent 10 }}
++        volumeMounts:
++        - name: config-volume
++          mountPath: /etc/istio/config
++      volumes:
++      - name: config-volume
++        configMap:
++          name: {{ $serviceName }}
++{{- end -}}
+diff --git a/incubator/istio/templates/ingress-service-account.yaml b/incubator/istio/templates/ingress-service-account.yaml
+deleted file mode 100644
+index fce2e2d4a..000000000
+--- a/incubator/istio/templates/ingress-service-account.yaml
++++ /dev/null
+@@ -1,8 +0,0 @@
+-{{- $serviceName := include "istio.fullname" . -}}
+-apiVersion: v1
+-kind: ServiceAccount
+-metadata:
+-  name: {{ $serviceName }}-ingress-service-account
+-  labels:
+-{{ include "istio.labels.standard" . | indent 4 }}
+-    istio: {{ $serviceName }}-ingress
+\ No newline at end of file
+diff --git a/incubator/istio/templates/initializer/initializer.yaml b/incubator/istio/templates/initializer/initializer.yaml
+new file mode 100644
+index 000000000..f1cd3f48a
+--- /dev/null
++++ b/incubator/istio/templates/initializer/initializer.yaml
+@@ -0,0 +1,25 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{ if .Values.initializer.enabled }}
++{{- $serviceName := include "istio.name" . -}}
++apiVersion: admissionregistration.k8s.io/v1alpha1
++kind: InitializerConfiguration
++metadata:
++  name: {{ $serviceName }}-{{ .Values.initializer.deployment.name }}
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    component: {{ $serviceName }}-{{ .Values.initializer.deployment.name }}
++    istio: {{ $serviceName }}-{{ .Values.initializer.deployment.name }}
++initializers:
++  - name: sidecar.initializer.istio.io
++    rules:
++      - apiGroups:
++          - "*"
++        apiVersions:
++          - "*"
++        resources:
++          - deployments
++          - statefulsets
++          - jobs
++          - daemonsets
++{{ end }}
++{{- end -}}
+diff --git a/incubator/istio/templates/mixer-deployment.yaml b/incubator/istio/templates/mixer-deployment.yaml
+deleted file mode 100644
+index 8d0098413..000000000
+--- a/incubator/istio/templates/mixer-deployment.yaml
++++ /dev/null
+@@ -1,37 +0,0 @@
+-{{- $serviceName := include "istio.fullname" . -}}
+-apiVersion: extensions/v1beta1
+-kind: Deployment
+-metadata:
+-  name: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
+-  labels:
+-{{ include "istio.labels.standard" . | indent 4 }}
+-    component: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
+-    istio: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
+-spec:
+-  replicas: {{ .Values.mixer.deployment.replicas }}
+-  template:
+-    metadata:
+-      annotations:
+-        {{- range $key, $value := .Values.ingress.annotations }}
+-          {{ $key }}: {{ $value | quote }}
+-        {{- end }}
+-      labels:
+-{{ include "istio.labels.standard" . | indent 8 }}
+-        component: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
+-        istio: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
+-    spec:
+-      containers:
+-      - name: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
+-        image: "{{ .Values.mixer.deployment.image }}:{{ .Values.istioRelease }}"
+-        imagePullPolicy: {{ .Values.mixer.deployment.imagePullPolicy }}
+-        ports:
+-        - containerPort: {{ .Values.mixer.service.externalTcpPort }}
+-        - containerPort: {{ .Values.mixer.service.externalConfigApiPort }}
+-        - containerPort: {{ .Values.mixer.service.externalPrometheusPort }}
+-        args:
+-          - --configStoreURL=fs:///etc/opt/mixer/configroot
+-          - --logtostderr
+-          - -v
+-          - "3"
+-        resources:
+-{{ toYaml .Values.mixer.deployment.resources | indent 10 }}
+\ No newline at end of file
+diff --git a/incubator/istio/templates/pilot-service-account.yaml b/incubator/istio/templates/pilot-service-account.yaml
+deleted file mode 100644
+index 64480bb80..000000000
+--- a/incubator/istio/templates/pilot-service-account.yaml
++++ /dev/null
+@@ -1,8 +0,0 @@
+-{{- $serviceName := include "istio.fullname" . -}}
+-apiVersion: v1
+-kind: ServiceAccount
+-metadata:
+-  name: {{ $serviceName }}-pilot-service-account
+-  labels:
+-{{ include "istio.labels.standard" . | indent 4 }}
+-    istio: {{ $serviceName }}-pilot
+\ No newline at end of file
+diff --git a/incubator/istio/templates/rbac.yaml b/incubator/istio/templates/rbac/rbac.yaml
+similarity index 50%
+rename from incubator/istio/templates/rbac.yaml
+rename to incubator/istio/templates/rbac/rbac.yaml
+index e44400e63..e2bda8acb 100644
+--- a/incubator/istio/templates/rbac.yaml
++++ b/incubator/istio/templates/rbac/rbac.yaml
+@@ -1,10 +1,17 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
+ {{ if .Values.rbac.install }}
+-{{- $serviceName := include "istio.fullname" . -}}
++{{- $serviceName := include "istio.name" . -}}
+ kind: ClusterRole
+ apiVersion: rbac.authorization.k8s.io/{{ required "A valid .Values.rbac.apiVersion entry required!" .Values.rbac.apiVersion }}
+ metadata:
+   name: {{ $serviceName }}-pilot
+ rules:
++- apiGroups: ["config.istio.io"]
++  resources: ["*"]
++  verbs: ["*"]
++- apiGroups: ["apiextensions.k8s.io"]
++  resources: ["customresourcedefinitions"]
++  verbs: ["*"]
+ - apiGroups: ["istio.io"]
+   resources: ["istioconfigs", "istioconfigs.istio.io"]
+   verbs: ["*"]
+@@ -15,11 +22,41 @@ rules:
+   resources: ["configmaps", "endpoints", "pods", "services"]
+   verbs: ["*"]
+ - apiGroups: [""]
+-  resources: ["namespaces"]
+-  verbs: ["get", "list"]
++  resources: ["namespaces", "nodes", "secrets"]
++  verbs: ["get", "list", "watch"]
++- apiGroups: ["admissionregistration.k8s.io"]
++  resources: ["externaladmissionhookconfigurations"]
++  verbs: ["create", "update", "delete"]
++---
++kind: ClusterRole
++apiVersion: rbac.authorization.k8s.io/{{ required "A valid .Values.rbac.apiVersion entry required!" .Values.rbac.apiVersion }}
++metadata:
++  name: {{ $serviceName }}-initializer
++rules:
++- apiGroups: ["*"]
++  resources: ["deployments", "statefulsets", "jobs", "cronjobs", "daemonsets", "replicasets", "replicationcontrollers"]
++  verbs: ["initialize", "patch", "watch", "list"]
++- apiGroups: ["*"]
++  resources: ["configmaps"]
++  verbs: ["get", "list", "watch"]
++---
++# Mixer CRD needs to watch and list CRDs
++# It also uses discovery API to discover Kinds of config.istio.io
++# K8s adapter needs to list pods, services etc.
++kind: ClusterRole
++apiVersion: rbac.authorization.k8s.io/{{ required "A valid .Values.rbac.apiVersion entry required!" .Values.rbac.apiVersion }}
++metadata:
++  name: {{ $serviceName }}-mixer
++rules:
++- apiGroups: ["config.istio.io"] # Istio CRD watcher
++  resources: ["*"]
++  verbs: ["get", "list", "watch"]
++- apiGroups: ["apiextensions.k8s.io"]
++  resources: ["customresourcedefinitions"]
++  verbs: ["get", "list", "watch"]
+ - apiGroups: [""]
+-  resources: ["secrets"]
+-  verbs: ["get"]
++  resources: ["configmaps", "endpoints", "pods", "services", "namespaces", "secrets"]
++  verbs: ["get", "list", "watch"]
+ ---
+ kind: ClusterRole
+ apiVersion: rbac.authorization.k8s.io/{{ required "A valid .Values.rbac.apiVersion entry required!" .Values.rbac.apiVersion }}
+@@ -31,7 +68,7 @@ rules:
+   verbs: ["create", "get", "watch", "list", "update"]
+ - apiGroups: [""]
+   resources: ["serviceaccounts"]
+-  verbs: ["watch", "list"]
++  verbs: ["get", "watch", "list"]
+ ---
+ kind: ClusterRole
+ apiVersion: rbac.authorization.k8s.io/{{ required "A valid .Values.rbac.apiVersion entry required!" .Values.rbac.apiVersion }}
+@@ -61,6 +98,20 @@ roleRef:
+   name: {{ $serviceName }}-pilot
+   apiGroup: rbac.authorization.k8s.io
+ ---
++# Grant permissions to the Sidecar initializer
++kind: ClusterRoleBinding
++apiVersion: rbac.authorization.k8s.io/{{ required "A valid .Values.rbac.apiVersion entry required!" .Values.rbac.apiVersion }}
++metadata:
++  name: {{ $serviceName }}-initializer-admin-role-binding
++subjects:
++- kind: ServiceAccount
++  name: {{ $serviceName }}-initializer-service-account
++  namespace: {{ .Release.Namespace }}
++roleRef:
++  kind: ClusterRole
++  name: {{ $serviceName }}-initializer
++  apiGroup: rbac.authorization.k8s.io
++---
+ kind: ClusterRoleBinding
+ apiVersion: rbac.authorization.k8s.io/{{ required "A valid .Values.rbac.apiVersion entry required!" .Values.rbac.apiVersion }}
+ metadata:
+@@ -87,6 +138,20 @@ roleRef:
+   name: {{ $serviceName }}-pilot
+   apiGroup: rbac.authorization.k8s.io
+ ---
++# Grant permissions to the Egress controller.
++kind: ClusterRoleBinding
++apiVersion: rbac.authorization.k8s.io/v1beta1
++metadata:
++  name: {{ $serviceName }}-egress-admin-role-binding
++subjects:
++- kind: ServiceAccount
++  name: {{ $serviceName }}-egress-service-account
++  namespace: {{ .Release.Namespace }}
++roleRef:
++  kind: ClusterRole
++  name: {{ $serviceName }}-pilot
++  apiGroup: rbac.authorization.k8s.io
++---
+ kind: ClusterRoleBinding
+ apiVersion: rbac.authorization.k8s.io/{{ required "A valid .Values.rbac.apiVersion entry required!" .Values.rbac.apiVersion }}
+ metadata:
+@@ -99,4 +164,19 @@ roleRef:
+   kind: ClusterRole
+   name: {{ $serviceName }}-sidecar
+   apiGroup: rbac.authorization.k8s.io
+-{{ end }}
+\ No newline at end of file
++---
++# Grant permissions to Mixer.
++kind: ClusterRoleBinding
++apiVersion: rbac.authorization.k8s.io/{{ required "A valid .Values.rbac.apiVersion entry required!" .Values.rbac.apiVersion }}
++metadata:
++  name: {{ $serviceName }}-mixer-admin-role-binding
++subjects:
++- kind: ServiceAccount
++  name: {{ $serviceName }}-mixer-service-account
++  namespace: {{ .Release.Namespace }}
++roleRef:
++  kind: ClusterRole
++  name: {{ $serviceName }}-mixer
++  apiGroup: rbac.authorization.k8s.io
++{{ end }}
++{{- end -}}
+diff --git a/incubator/istio/templates/service-account/ca.yaml b/incubator/istio/templates/service-account/ca.yaml
+new file mode 100644
+index 000000000..0e8e203c9
+--- /dev/null
++++ b/incubator/istio/templates/service-account/ca.yaml
+@@ -0,0 +1,12 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{ if .Values.auth.enabled }}
++{{- $serviceName := include "istio.name" . -}}
++apiVersion: v1
++kind: ServiceAccount
++metadata:
++  name: {{ $serviceName }}-{{ .Values.ca.deployment.name }}-service-account
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    istio: {{ $serviceName }}-{{ .Values.ca.deployment.name }}
++{{ end }}
++{{- end -}}
+diff --git a/incubator/istio/templates/service-account/egress.yaml b/incubator/istio/templates/service-account/egress.yaml
+new file mode 100644
+index 000000000..88be11b02
+--- /dev/null
++++ b/incubator/istio/templates/service-account/egress.yaml
+@@ -0,0 +1,10 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{- $serviceName := include "istio.name" . -}}
++apiVersion: v1
++kind: ServiceAccount
++metadata:
++  name: {{ $serviceName }}-{{ .Values.egress.deployment.name }}-service-account
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    istio: {{ $serviceName }}-{{ .Values.egress.deployment.name }}
++{{- end -}}
+diff --git a/incubator/istio/templates/service-account/ingress.yaml b/incubator/istio/templates/service-account/ingress.yaml
+new file mode 100644
+index 000000000..945dd8684
+--- /dev/null
++++ b/incubator/istio/templates/service-account/ingress.yaml
+@@ -0,0 +1,10 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{- $serviceName := include "istio.name" . -}}
++apiVersion: v1
++kind: ServiceAccount
++metadata:
++  name: {{ $serviceName }}-{{ .Values.ingress.deployment.name }}-service-account
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    istio: {{ $serviceName }}-{{ .Values.ingress.deployment.name }}
++{{- end -}}
+diff --git a/incubator/istio/templates/service-account/initializer.yaml b/incubator/istio/templates/service-account/initializer.yaml
+new file mode 100644
+index 000000000..4fcf48f3a
+--- /dev/null
++++ b/incubator/istio/templates/service-account/initializer.yaml
+@@ -0,0 +1,12 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{ if .Values.initializer.enabled }}
++{{- $serviceName := include "istio.name" . -}}
++apiVersion: v1
++kind: ServiceAccount
++metadata:
++  name: {{ $serviceName }}-{{ .Values.initializer.deployment.name }}-service-account
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    istio: {{ $serviceName }}-{{ .Values.initializer.deployment.name }}
++{{ end }}
++{{- end -}}
+diff --git a/incubator/istio/templates/service-account/mixer.yaml b/incubator/istio/templates/service-account/mixer.yaml
+new file mode 100644
+index 000000000..7af147cd3
+--- /dev/null
++++ b/incubator/istio/templates/service-account/mixer.yaml
+@@ -0,0 +1,10 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{- $serviceName := include "istio.name" . -}}
++apiVersion: v1
++kind: ServiceAccount
++metadata:
++  name: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}-service-account
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    istio: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
++{{- end -}}
+diff --git a/incubator/istio/templates/service-account/pilot.yaml b/incubator/istio/templates/service-account/pilot.yaml
+new file mode 100644
+index 000000000..184b98910
+--- /dev/null
++++ b/incubator/istio/templates/service-account/pilot.yaml
+@@ -0,0 +1,10 @@
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{- $serviceName := include "istio.name" . -}}
++apiVersion: v1
++kind: ServiceAccount
++metadata:
++  name: {{ $serviceName }}-{{ .Values.pilot.name }}-service-account
++  labels:
++{{ include "istio.labels.standard" . | indent 4 }}
++    istio: {{ $serviceName }}-{{ .Values.pilot.name }}
++{{- end -}}
+diff --git a/incubator/istio/templates/egress-svc.yaml b/incubator/istio/templates/service/egress.yaml
+similarity index 62%
+rename from incubator/istio/templates/egress-svc.yaml
+rename to incubator/istio/templates/service/egress.yaml
+index bfbb8cfb3..0673fd315 100644
+--- a/incubator/istio/templates/egress-svc.yaml
++++ b/incubator/istio/templates/service/egress.yaml
+@@ -1,11 +1,12 @@
+-{{- $serviceName := include "istio.fullname" . -}}
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{- $serviceName := include "istio.name" . -}}
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: istio-egress
++  name: {{ $serviceName }}-{{ .Values.egress.deployment.name }}
+   labels:
+ {{ include "istio.labels.standard" . | indent 4 }}
+-    istio: {{ $serviceName }}-egress
++    istio: {{ $serviceName }}-{{ .Values.egress.deployment.name }}
+ spec:
+   type: {{ .Values.egress.service.type }}
+   ports:
+@@ -14,4 +15,5 @@ spec:
+     app: {{ include "istio.name" . }}
+     component: {{ $serviceName }}-{{ .Values.egress.deployment.name }}
+     release: {{ .Release.Name }}
+-    istio: {{ $serviceName }}-{{ .Values.egress.deployment.name }}
+\ No newline at end of file
++    istio: {{ $serviceName }}-{{ .Values.egress.deployment.name }}
++{{- end -}}
+diff --git a/incubator/istio/templates/ingress-svc.yaml b/incubator/istio/templates/service/ingress.yaml
+similarity index 75%
+rename from incubator/istio/templates/ingress-svc.yaml
+rename to incubator/istio/templates/service/ingress.yaml
+index ce593ac33..af10754f7 100644
+--- a/incubator/istio/templates/ingress-svc.yaml
++++ b/incubator/istio/templates/service/ingress.yaml
+@@ -1,8 +1,9 @@
+-{{- $serviceName := include "istio.fullname" . -}}
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{- $serviceName := include "istio.name" . -}}
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: istio-ingress
++  name: {{ $serviceName }}-{{ .Values.ingress.deployment.name }}
+   labels:
+ {{ include "istio.labels.standard" . | indent 4 }}
+     istio: {{ $serviceName }}-{{ .Values.ingress.deployment.name }}
+@@ -17,4 +18,5 @@ spec:
+     app: {{ include "istio.name" . }}
+     component: {{ $serviceName }}-{{ .Values.ingress.deployment.name }}
+     release: {{ .Release.Name }}
+-    istio: {{ $serviceName }}-{{ .Values.ingress.deployment.name }}
+\ No newline at end of file
++    istio: {{ $serviceName }}-{{ .Values.ingress.deployment.name }}
++{{- end -}}
+diff --git a/incubator/istio/templates/mixer-svc.yaml b/incubator/istio/templates/service/mixer.yaml
+similarity index 69%
+rename from incubator/istio/templates/mixer-svc.yaml
+rename to incubator/istio/templates/service/mixer.yaml
+index 02583cad7..c8fa40b46 100644
+--- a/incubator/istio/templates/mixer-svc.yaml
++++ b/incubator/istio/templates/service/mixer.yaml
+@@ -1,4 +1,5 @@
+-{{- $serviceName := include "istio.fullname" . -}}
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{- $serviceName := include "istio.name" . -}}
+ apiVersion: v1
+ kind: Service
+ metadata:
+@@ -15,12 +16,20 @@ spec:
+   ports:
+   - name: tcp
+     port: {{ .Values.mixer.service.externalTcpPort }}
++  - name: http-health
++    port: {{ .Values.mixer.service.externalHttpHeathPort }}
+   - name: configapi
+     port: {{ .Values.mixer.service.externalConfigApiPort }}
++  - name: statsd-prom
++    port: {{ .Values.mixer.service.externalStatsdPromPort }}
++  - name: statsd-udp
++    port: {{ .Values.mixer.service.externalStatsdUdpPort }}
++    protocol: UDP
+   - name: prometheus
+     port: {{ .Values.mixer.service.externalPrometheusPort }}
+   selector:
+     app: {{ include "istio.name" . }}
+     component: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
+     release: {{ .Release.Name }}
+-    istio: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
+\ No newline at end of file
++    istio: {{ $serviceName }}-{{ .Values.mixer.deployment.name }}
++{{- end -}}
+diff --git a/incubator/istio/templates/pilot-svc.yaml b/incubator/istio/templates/service/pilot.yaml
+similarity index 64%
+rename from incubator/istio/templates/pilot-svc.yaml
+rename to incubator/istio/templates/service/pilot.yaml
+index 0a4e21345..ee4b577fc 100644
+--- a/incubator/istio/templates/pilot-svc.yaml
++++ b/incubator/istio/templates/service/pilot.yaml
+@@ -1,8 +1,9 @@
+-{{- $serviceName := include "istio.fullname" . -}}
++{{- if and .Values.istio.install (not .Release.IsInstall) -}}
++{{- $serviceName := include "istio.name" . -}}
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: {{ .Values.pilot.name }}
++  name: {{ $serviceName }}-{{ .Values.pilot.name }}
+   labels:
+ {{ include "istio.labels.standard" . | indent 4 }}
+     istio: {{ $serviceName }}-{{ .Values.pilot.name }}
+@@ -11,10 +12,11 @@ spec:
+   ports:
+   - port: {{ .Values.pilot.service.externalHttpDiscovery }}
+     name: http-discovery
+-  - port: {{ .Values.pilot.service.externalHttpApiServer }}
+-    name: http-apiserver
++  - port: {{ .Values.pilot.service.externalAdmissionWebhookServer }}
++    name: http-admission-webhook
+   selector:
+     app: {{ include "istio.name" . }}
+     component: {{ $serviceName }}-{{ .Values.pilot.name }}
+     release: {{ .Release.Name }}
+     istio: {{ $serviceName }}-{{ .Values.pilot.name }}
++{{- end -}}
+diff --git a/incubator/istio/values.yaml b/incubator/istio/values.yaml
+index 4e8f3b1b5..fc3bb0345 100644
+--- a/incubator/istio/values.yaml
++++ b/incubator/istio/values.yaml
+@@ -3,13 +3,37 @@ rbac:
+   install: false
+   apiVersion: v1beta1
+ 
+-istioRelease: 0.1.6
++istio:
++  install: false
++  release: 0.2.6
+ 
+ ## Enable Istio auth feature 
+ ## This deploys a CA in the namespace and enables mTLS between the services
+ auth:
+   enabled: true
+ 
++## Initializer configuration
++initializer:
++  enabled: false
++
++  deployment:
++    name: initializer
++    image: docker.io/istio/sidecar_initializer
++    initImage: docker.io/istio/proxy_init
++    proxyImage: docker.io/istio/proxy
++    imagePullPolicy: IfNotPresent
++    replicas: 1
++    annotations:
++      sidecar.istio.io/inject: "false"
++    resources:
++      limits: {}
++      #limits:
++        #cpu: 100m
++        #memory: 128Mi
++      #requests:
++        #cpu: 100m
++        #memory: 128Mi
++
+ ## Mixer configuration
+ mixer:
+ 
+@@ -17,6 +41,9 @@ mixer:
+     type: ClusterIP
+     annotations: {}
+     externalTcpPort: 9091
++    externalHttpHeathPort: 9093
++    externalStatsdPromPort: 9102
++    externalStatsdUdpPort: 9125
+     externalConfigApiPort: 9094
+     externalPrometheusPort: 42422
+ 
+@@ -26,53 +53,41 @@ mixer:
+     imagePullPolicy: IfNotPresent
+     replicas: 1
+     annotations:
+-      alpha.istio.io/sidecar: ignore
+-    resources:
+-      limits:
+-        cpu: 100m
+-        memory: 128Mi
+-      requests:
+-        cpu: 100m
+-        memory: 128Mi
++      sidecar.istio.io/inject: "false"
++    resources: {}
++      #limits:
++        #cpu: 100m
++        #memory: 128Mi
++      #requests:
++        #cpu: 100m
++        #memory: 128Mi
+ 
+ ## Pilot configuration
+ pilot:
+-  name: istio-pilot
++  name: pilot
+   customConfigMap: false
+ 
+   service:
+     type: ClusterIP
+     externalHttpDiscovery: 8080
+-    externalHttpApiServer: 8081
++    externalAdmissionWebhookServer: 443
+ 
+   deployment:
+     replicas: 1
+     annotations:
+-      alpha.istio.io/sidecar: ignore
++      sidecar.istio.io/inject: "false"
+ 
+     discovery:
+       name: discovery
+       image: docker.io/istio/pilot
+       imagePullPolicy: IfNotPresent
+-      resources:
+-        limits:
+-          cpu: 100m
+-          memory: 128Mi
+-        requests:
+-          cpu: 100m
+-          memory: 128Mi
+-
+-    apiserver:
+-      name: apiserver
+-      image: docker.io/istio/pilot
+-      imagePullPolicy: IfNotPresent
+-      resources:
+-        limits:
+-          cpu: 100m
+-          memory: 128Mi
+-        requests:
+-          cpu: 100m
+-          memory: 128Mi
++      resources: {}
++      #limits:
++        #cpu: 100m
++        #memory: 128Mi
++      #requests:
++        #cpu: 100m
++        #memory: 128Mi
+ 
+ ## Ingress configuration
+ ingress:
+@@ -85,17 +100,18 @@ ingress:
+   deployment:
+     name: ingress
+     annotations:
+-      alpha.istio.io/sidecar: ignore
++      sidecar.istio.io/inject: "false"
+     image: docker.io/istio/proxy_debug
+     imagePullPolicy: IfNotPresent
+     replicas: 1
+     resources:
+-      limits:
+-        cpu: 100m
+-        memory: 128Mi
+-      requests:
+-        cpu: 100m
+-        memory: 128Mi
++      limits: {}
++      #limits:
++        #cpu: 100m
++        #memory: 128Mi
++      #requests:
++        #cpu: 100m
++        #memory: 128Mi
+ 
+ ## Engress configuration
+ egress:
+@@ -107,17 +123,18 @@ egress:
+   deployment:
+     name: egress
+     annotations:
+-      alpha.istio.io/sidecar: ignore
++      sidecar.istio.io/inject: "false"
+     image: docker.io/istio/proxy_debug
+     imagePullPolicy: IfNotPresent
+     replicas: 1
+     resources:
+-      limits:
+-        cpu: 100m
+-        memory: 128Mi
+-      requests:
+-        cpu: 100m
+-        memory: 128Mi
++      limits: {}
++      #limits:
++        #cpu: 100m
++        #memory: 128Mi
++      #requests:
++        #cpu: 100m
++        #memory: 128Mi
+ 
+ ## CA configuration
+ ## Only installed if auth.enabled
+@@ -126,17 +143,18 @@ ca:
+   deployment:
+     name: ca
+     annotations:
+-      # alpha.istio.io/sidecar: ignore
++      sidecar.istio.io/inject: "false"
+     image: docker.io/istio/istio-ca
+     imagePullPolicy: IfNotPresent
+     replicas: 1
+     resources:
+-      limits:
+-        cpu: 100m
+-        memory: 128Mi
+-      requests:
+-        cpu: 100m
+-        memory: 128Mi
++      limits: {}
++      #limits:
++        #cpu: 100m
++        #memory: 128Mi
++      #requests:
++        #cpu: 100m
++        #memory: 128Mi
+ 
+ 
+ ## Addons configuration
+@@ -154,18 +172,18 @@ addons:
+     deployment:
+       name: zipkin
+       annotations:
+-        alpha.istio.io/sidecar: ignore
++        sidecar.istio.io/inject: "false"
+       image: docker.io/openzipkin/zipkin
+       imageTag: latest
+       imagePullPolicy: IfNotPresent
+       replicas: 1
+-      resources:
+-        limits:
+-          cpu: 100m
+-          memory: 128Mi
+-        requests:
+-          cpu: 100m
+-          memory: 128Mi
++      resources: {}
++      #limits:
++        #cpu: 100m
++        #memory: 128Mi
++      #requests:
++        #cpu: 100m
++        #memory: 128Mi
+   
+   prometheus:
+     
+@@ -180,18 +198,18 @@ addons:
+     deployment:
+       name: prometheus
+       annotations:
+-        alpha.istio.io/sidecar: ignore
++        sidecar.istio.io/inject: "false"
+       image: quay.io/coreos/prometheus
+       imageTag: v1.1.1
+       imagePullPolicy: IfNotPresent
+       replicas: 1
+-      resources:
+-        limits:
+-          cpu: 100m
+-          memory: 128Mi
+-        requests:
+-          cpu: 100m
+-          memory: 128Mi
++      resources: {}
++      #limits:
++        #cpu: 100m
++        #memory: 128Mi
++      #requests:
++        #cpu: 100m
++        #memory: 128Mi
+   
+   grafana:
+     
+@@ -204,17 +222,17 @@ addons:
+     deployment:
+       name: grafana
+       annotations:
+-        alpha.istio.io/sidecar: ignore
++        sidecar.istio.io/inject: "false"
+       image: docker.io/istio/grafana
+       imagePullPolicy: IfNotPresent
+       replicas: 1
+-      resources:
+-        limits:
+-          cpu: 100m
+-          memory: 128Mi
+-        requests:
+-          cpu: 100m
+-          memory: 128Mi
++      resources: {}
++      #limits:
++        #cpu: 100m
++        #memory: 128Mi
++      #requests:
++        #cpu: 100m
++        #memory: 128Mi
+ 
+   servicegraph:
+     
+@@ -227,15 +245,14 @@ addons:
+     deployment:
+       name: servicegraph
+       annotations:
+-        alpha.istio.io/sidecar: ignore
+-      image: gcr.io/istio-testing/servicegraph
+-      imageTag: latest
++        sidecar.istio.io/inject: "false"
++      image: docker.io/istio/servicegraph
+       imagePullPolicy: IfNotPresent
+       replicas: 1
+-      resources:
+-        limits:
+-          cpu: 100m
+-          memory: 128Mi
+-        requests:
+-          cpu: 100m
+-          memory: 128Mi
++      resources: {}
++      #limits:
++        #cpu: 100m
++        #memory: 128Mi
++      #requests:
++        #cpu: 100m
++        #memory: 128Mi

@@ -1,0 +1,312 @@
+commit 1f3eac2c8c82cdaf8a94522965b1fa4c530c61fc
+Author: Manuel Alejandro de Brito Fontes <aledbf@gmail.com>
+Date:   Mon Apr 6 19:01:52 2020 -0400
+
+    Remove duplicated annotations definition and refactor hostPort configuration
+
+diff --git a/charts/ingress-nginx/README.md b/charts/ingress-nginx/README.md
+index f4dada56c..b75301a70 100644
+--- a/charts/ingress-nginx/README.md
++++ b/charts/ingress-nginx/README.md
+@@ -76,15 +76,15 @@ Parameter | Description | Default
+ `controller.scope.namespace` | namespace to watch for ingress | `""` (use the release namespace)
+ `controller.extraArgs` | Additional controller container arguments | `{}`
+ `controller.kind` | install as Deployment, DaemonSet or Both | `Deployment`
+-`controller.deploymentAnnotations` | annotations to be added to deployment | `{}`
++`controller.annotations` | annotations to be added to the Deployment or Daemonset | `{}`
+ `controller.autoscaling.enabled` | If true, creates Horizontal Pod Autoscaler | false
+ `controller.autoscaling.minReplicas` | If autoscaling enabled, this field sets minimum replica count | `2`
+ `controller.autoscaling.maxReplicas` | If autoscaling enabled, this field sets maximum replica count | `11`
+ `controller.autoscaling.targetCPUUtilizationPercentage` | Target CPU utilization percentage to scale | `"50"`
+ `controller.autoscaling.targetMemoryUtilizationPercentage` | Target memory utilization percentage to scale | `"50"`
+-`controller.useHostPort` | If `controller.kind` is `DaemonSet`, this will enable `hostPort` for TCP/80 and TCP/443 | false
+-`controller.hostPorts.http` | If `controller.useHostPort` is `true` and this is non-empty, it sets the hostPort | `"80"`
+-`controller.hostPorts.https` | If `controller.useHostPort` is `true` and this is non-empty, it sets the hostPort | `"443"`
++`controller.hostPort.enabled` | This enable `hostPort` for ports defined in TCP/80 and TCP/443 | false
++`controller.hostPort.ports.http` | If `controller.hostPort.enabled` is `true` and this is non-empty, it sets the hostPort | `"80"`
++`controller.hostPort.ports.https` | If `controller.hostPort.enabled` is `true` and this is non-empty, it sets the hostPort | `"443"`
+ `controller.tolerations` | node taints to tolerate (requires Kubernetes >=1.6) | `[]`
+ `controller.affinity` | node/pod affinities (requires Kubernetes >=1.6) | `{}`
+ `controller.terminationGracePeriodSeconds` | how many seconds to wait before terminating a pod | `60`
+@@ -102,7 +102,7 @@ Parameter | Description | Default
+ `controller.service.labels` | labels for controller service | `{}`
+ `controller.publishService.enabled` | if true, the controller will set the endpoint records on the ingress objects to reflect those on the service | `false`
+ `controller.publishService.pathOverride` | override of the default publish-service name | `""`
+-`controller.service.enabled` | if disabled no service will be created. This is especially useful when `controller.kind` is set to `DaemonSet` and `controller.useHostPorts` is `true` | true
++`controller.service.enabled` | if disabled no service will be created. This is especially useful when `controller.kind` is set to `DaemonSet` and `controller.hostPorts.enabled` is `true` | true
+ `controller.service.clusterIP` | internal controller cluster service IP (set to `"-"` to pass an empty value) | `nil`
+ `controller.service.omitClusterIP` | (Deprecated) To omit the `clusterIP` from the controller service | `false`
+ `controller.service.externalIPs` | controller service external IP addresses. Do not set this when `controller.hostNetwork` is set to `true` and `kube-proxy` is used as there will be a port-conflict for port `80` | `[]`
+diff --git a/charts/ingress-nginx/templates/_helpers.tpl b/charts/ingress-nginx/templates/_helpers.tpl
+index 3d9621aba..c354a9c3a 100644
+--- a/charts/ingress-nginx/templates/_helpers.tpl
++++ b/charts/ingress-nginx/templates/_helpers.tpl
+@@ -103,28 +103,6 @@ Create the name of the backend service account to use - only used when podsecuri
+ {{- end -}}
+ {{- end -}}
+ 
+-{{/*
+-Return the appropriate apiVersion for deployment.
+-*/}}
+-{{- define "deployment.apiVersion" -}}
+-{{- if semverCompare ">=1.9-0" .Capabilities.KubeVersion.GitVersion -}}
+-{{- print "apps/v1" -}}
+-{{- else -}}
+-{{- print "extensions/v1beta1" -}}
+-{{- end -}}
+-{{- end -}}
+-
+-{{/*
+-Return the appropriate apiVersion for daemonset.
+-*/}}
+-{{- define "daemonset.apiVersion" -}}
+-{{- if semverCompare ">=1.9-0" .Capabilities.KubeVersion.GitVersion -}}
+-{{- print "apps/v1" -}}
+-{{- else -}}
+-{{- print "v1/beta2" -}}
+-{{- end -}}
+-{{- end -}}
+-
+ {{/*
+ Return the appropriate apiGroup for PodSecurityPolicy.
+ */}}
+diff --git a/charts/ingress-nginx/templates/controller-daemonset.yaml b/charts/ingress-nginx/templates/controller-daemonset.yaml
+index e9498c530..e0f4800a4 100644
+--- a/charts/ingress-nginx/templates/controller-daemonset.yaml
++++ b/charts/ingress-nginx/templates/controller-daemonset.yaml
+@@ -1,24 +1,24 @@
+ {{- if or (eq .Values.controller.kind "DaemonSet") (eq .Values.controller.kind "Both") -}}
+ {{- include  "isControllerTagValid" . -}}
+-apiVersion: {{ template "daemonset.apiVersion" . }}
++apiVersion: apps/v1
+ kind: DaemonSet
+ metadata:
+   labels:
+     {{- include "ingress-nginx.labels" . | nindent 4 }}
+     app.kubernetes.io/component: controller
+   name: {{ include "ingress-nginx.controller.fullname" . }}
+-{{- if .Values.controller.daemonsetAnnotations }}
+-  annotations: {{ toYaml .Values.controller.daemonsetAnnotations | nindent 4 }}
+-{{- end }}
++  {{- if .Values.controller.annotations }}
++  annotations: {{ toYaml .Values.controller.annotations | nindent 4 }}
++  {{- end }}
+ spec:
+   selector:
+     matchLabels:
+       {{- include "ingress-nginx.selectorLabels" . | nindent 6 }}
+       app.kubernetes.io/component: controller
+   revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+-{{- if .Values.controller.updateStrategy }}
++  {{- if .Values.controller.updateStrategy }}
+   updateStrategy: {{ toYaml .Values.controller.updateStrategy | nindent 4 }}
+-{{- end }}
++  {{- end }}
+   minReadySeconds: {{ .Values.controller.minReadySeconds }}
+   template:
+     metadata:
+@@ -142,8 +142,8 @@ spec:
+             - name: {{ $key }}
+               containerPort: {{ $value }}
+               protocol: TCP
+-              {{- if $.Values.controller.useHostPort }}
+-              hostPort: {{ index $.Values.controller.hostPorts $key | default $value }}
++              {{- if $.Values.controller.hostPort.enabled }}
++              hostPort: {{ index $.Values.controller.hostPort.ports $key | default $value }}
+               {{- end }}
+           {{- end }}
+           {{- if .Values.controller.metrics.enabled }}
+@@ -160,7 +160,7 @@ spec:
+             - name: {{ $key }}-tcp
+               containerPort: {{ $key }}
+               protocol: TCP
+-              {{- if $.Values.controller.useHostPort }}
++              {{- if $.Values.controller.hostPort.enabled }}
+               hostPort: {{ $key }}
+               {{- end }}
+           {{- end }}
+@@ -168,7 +168,7 @@ spec:
+             - name: {{ $key }}-udp
+               containerPort: {{ $key }}
+               protocol: UDP
+-              {{- if $.Values.controller.useHostPort }}
++              {{- if $.Values.controller.hostPort.enabled }}
+               hostPort: {{ $key }}
+               {{- end }}
+           {{- end }}
+diff --git a/charts/ingress-nginx/templates/controller-deployment.yaml b/charts/ingress-nginx/templates/controller-deployment.yaml
+index fd10da73e..60eccd54d 100644
+--- a/charts/ingress-nginx/templates/controller-deployment.yaml
++++ b/charts/ingress-nginx/templates/controller-deployment.yaml
+@@ -1,27 +1,27 @@
+ {{- if or (eq .Values.controller.kind "Deployment") (eq .Values.controller.kind "Both") -}}
+ {{- include  "isControllerTagValid" . -}}
+-apiVersion: {{ template "deployment.apiVersion" . }}
++apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+   labels:
+     {{- include "ingress-nginx.labels" . | nindent 4 }}
+     app.kubernetes.io/component: controller
+   name: {{ include "ingress-nginx.controller.fullname" . }}
+-{{- if .Values.controller.deploymentAnnotations }}
+-  annotations: {{ toYaml .Values.controller.deploymentAnnotations | nindent 4 }}
+-{{- end }}
++  {{- if .Values.controller.annotations }}
++  annotations: {{ toYaml .Values.controller.annotations | nindent 4 }}
++  {{- end }}
+ spec:
+   selector:
+     matchLabels:
+       {{- include "ingress-nginx.selectorLabels" . | nindent 6 }}
+       app.kubernetes.io/component: controller
+-{{- if not .Values.controller.autoscaling.enabled }}
++  {{- if not .Values.controller.autoscaling.enabled }}
+   replicas: {{ .Values.controller.replicaCount }}
+-{{- end }}
++  {{- end }}
+   revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+-{{- if .Values.controller.updateStrategy }}
+-  strategy: {{ toYaml .Values.controller.updateStrategy | nindent 4 }}
+-{{- end }}
++  {{- if .Values.controller.updateStrategy }}
++  updateStrategy: {{ toYaml .Values.controller.updateStrategy | nindent 4 }}
++  {{- end }}
+   minReadySeconds: {{ .Values.controller.minReadySeconds }}
+   template:
+     metadata:
+@@ -145,8 +145,8 @@ spec:
+             - name: {{ $key }}
+               containerPort: {{ $value }}
+               protocol: TCP
+-              {{- if $.Values.controller.useHostPort }}
+-              hostPort: {{ index $.Values.controller.hostPorts $key | default $value }}
++              {{- if $.Values.controller.hostPort.enabled }}
++              hostPort: {{ index $.Values.controller.hostPort.ports $key | default $value }}
+               {{- end }}
+           {{- end }}
+           {{- if .Values.controller.metrics.enabled }}
+@@ -163,11 +163,17 @@ spec:
+             - name: {{ $key }}-tcp
+               containerPort: {{ $key }}
+               protocol: TCP
++              {{- if $.Values.controller.hostPort.enabled }}
++              hostPort: {{ $key }}
++              {{- end }}
+           {{- end }}
+           {{- range $key, $value := .Values.udp }}
+             - name: {{ $key }}-udp
+               containerPort: {{ $key }}
+               protocol: UDP
++              {{- if $.Values.controller.hostPort.enabled }}
++              hostPort: {{ $key }}
++              {{- end }}
+           {{- end }}
+         {{- if (or .Values.controller.customTemplate.configMapName .Values.controller.extraVolumeMounts .Values.controller.admissionWebhooks.enabled) }}
+           volumeMounts:
+diff --git a/charts/ingress-nginx/templates/controller-hpa.yaml b/charts/ingress-nginx/templates/controller-hpa.yaml
+index 4fd2ce744..dbcf008eb 100644
+--- a/charts/ingress-nginx/templates/controller-hpa.yaml
++++ b/charts/ingress-nginx/templates/controller-hpa.yaml
+@@ -8,7 +8,7 @@ metadata:
+   name: {{ include "ingress-nginx.controller.fullname" . }}
+ spec:
+   scaleTargetRef:
+-    apiVersion: {{ template "deployment.apiVersion" . }}
++    apiVersion: apps/v1
+     kind: Deployment
+     name: {{ include "ingress-nginx.controller.fullname" . }}
+   minReplicas: {{ .Values.controller.autoscaling.minReplicas }}
+diff --git a/charts/ingress-nginx/templates/controller-psp.yaml b/charts/ingress-nginx/templates/controller-psp.yaml
+index 9929587db..bf64ab4c8 100644
+--- a/charts/ingress-nginx/templates/controller-psp.yaml
++++ b/charts/ingress-nginx/templates/controller-psp.yaml
+@@ -21,7 +21,7 @@ spec:
+ {{- if .Values.controller.hostNetwork }}
+   hostNetwork: {{ .Values.controller.hostNetwork }}
+ {{- end }}
+-{{- if or .Values.controller.hostNetwork .Values.controller.daemonset.useHostPort }}
++{{- if or .Values.controller.hostNetwork .Values.controller.hostPort.enabled }}
+   hostPorts:
+ {{- if .Values.controller.hostNetwork }}
+ {{- range $key, $value := .Values.controller.containerPort }}
+@@ -29,8 +29,8 @@ spec:
+   - min: {{ $value }}
+     max: {{ $value }}
+ {{- end }}
+-{{- else if .Values.controller.daemonset.useHostPort }}
+-{{- range $key, $value := .Values.controller.daemonset.hostPorts }}
++{{- else if .Values.controller.hostPort.enabled }}
++{{- range $key, $value := .Values.controller.hostPort.ports }}
+   # {{ $key }}
+   - min: {{ $value }}
+     max: {{ $value }}
+diff --git a/charts/ingress-nginx/templates/default-backend-deployment.yaml b/charts/ingress-nginx/templates/default-backend-deployment.yaml
+index 3ff0a2c5c..339494a15 100644
+--- a/charts/ingress-nginx/templates/default-backend-deployment.yaml
++++ b/charts/ingress-nginx/templates/default-backend-deployment.yaml
+@@ -1,5 +1,5 @@
+ {{- if .Values.defaultBackend.enabled -}}
+-apiVersion: {{ template "deployment.apiVersion" . }}
++apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+   labels:
+diff --git a/charts/ingress-nginx/values.yaml b/charts/ingress-nginx/values.yaml
+index a41b0ea93..3e1941030 100644
+--- a/charts/ingress-nginx/values.yaml
++++ b/charts/ingress-nginx/values.yaml
+@@ -28,11 +28,6 @@ controller:
+   # Will add custom headers before sending response traffic to the client according to: https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/configmap/#add-headers
+   addHeaders: {}
+ 
+-  # Required for use with CNI based kubernetes installations (such as ones set up by kubeadm),
+-  # since CNI and hostport don't mix yet. Can be deprecated once https://github.com/kubernetes/kubernetes/issues/23920
+-  # is merged
+-  hostNetwork: false
+-
+   # Optionally customize the pod dnsConfig.
+   dnsConfig: {}
+ 
+@@ -45,13 +40,19 @@ controller:
+   # Ingress status was blank because there is no Service exposing the NGINX Ingress controller in a configuration using the host network, the default --publish-service flag used in standard cloud setups does not apply
+   reportNodeInternalIp: false
+ 
+-  ## Use host ports 80 and 443
+-  daemonset:
+-    useHostPort: false
++  # Required for use with CNI based kubernetes installations (such as ones set up by kubeadm),
++  # since CNI and hostport don't mix yet. Can be deprecated once https://github.com/kubernetes/kubernetes/issues/23920
++  # is merged
++  hostNetwork: false
+ 
+-  hostPorts:
+-    http: 80
+-    https: 443
++  ## Use host ports 80 and 443
++  ## Disabled by default
++  ##
++  hostPort:
++    enabled: false
++    ports:
++      http: 80
++      https: 443
+ 
+   ## Required only if defaultBackend.enabled = false
+   ## Must be <namespace>/<service_name>
+@@ -130,13 +131,9 @@ controller:
+   ##
+   kind: Deployment
+ 
+-  ## Annotations to be added to the controller deployment
+-  ##
+-  deploymentAnnotations: {}
+-
+-  ## Annotations to be added to the controller daemonset
++  ## Annotations to be added to the controller Deployment or DaemonSet
+   ##
+-  daemonsetAnnotations: {}
++  annotations: {}
+ 
+   # The update strategy to apply to the Deployment or DaemonSet
+   ##

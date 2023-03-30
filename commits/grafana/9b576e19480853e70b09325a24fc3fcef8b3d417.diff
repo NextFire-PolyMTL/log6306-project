@@ -1,0 +1,2139 @@
+commit 9b576e19480853e70b09325a24fc3fcef8b3d417
+Author: Reinhard Nägele <unguiculus@gmail.com>
+Date:   Sat Jan 9 16:52:12 2021 +0100
+
+    [promtail] Refactor chart
+    
+    This refactors the Promtail chart for better configurability and aligns
+    it to current best practices.
+    
+    Notable changes:
+    
+    * Helm 3 is required
+    * Labels are updated to follow the official Kubernetes
+      [label recommendations](https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
+    * The config file must be specified as string which can be templated
+    * The default scrape configs have been updated to take new and old labels
+      into consideration
+    * The config file is now stored in a Secret and no longer in a ConfigMap
+      because it may contain sensitive data, such as basic auth credentials
+    * The readme is now generated using helm-docs
+    
+    This PR contains breaking changes and, thus, bumps the major version of
+    the chart. Directions on how to upgrade are in the readme.
+    
+    Signed-off-by: Reinhard Nägele <unguiculus@gmail.com>
+
+diff --git a/.helmdocsignore b/.helmdocsignore
+index 7a1287ca..a6d7dc17 100644
+--- a/.helmdocsignore
++++ b/.helmdocsignore
+@@ -2,4 +2,3 @@ charts/fluent-bit
+ charts/grafana
+ charts/loki
+ charts/loki-stack
+-charts/promtail
+diff --git a/charts/promtail/Chart.yaml b/charts/promtail/Chart.yaml
+index 6dab4703..527bbfa0 100644
+--- a/charts/promtail/Chart.yaml
++++ b/charts/promtail/Chart.yaml
+@@ -1,14 +1,16 @@
+-apiVersion: "v1"
++apiVersion: v2
+ name: promtail
+-version: 2.2.0
+-appVersion: v2.1.0
+-kubeVersion: "^1.10.0-0"
+-description: "Responsible for gathering logs and sending them to Loki"
++description: Promtail is an agent which ships the contents of local logs to a Loki instance
++type: application
++appVersion: 2.1.0
++version: 3.0.0
+ home: https://grafana.com/loki
+-icon: https://raw.githubusercontent.com/grafana/loki/master/docs/sources/logo.png
+ sources:
+-- https://github.com/grafana/loki
++  - https://github.com/grafana/loki
++  - https://grafana.com/oss/loki/
++  - https://grafana.com/docs/loki/latest/
++icon: https://raw.githubusercontent.com/grafana/loki/master/docs/sources/logo.png
+ maintainers:
+-- name: Loki Maintainers
+-  email: lokiproject@googlegroups.com
+-engine: gotpl
++  - name: Loki Maintainers
++    email: lokiproject@googlegroups.com
++  - name: unguiculus
+diff --git a/charts/promtail/README.md b/charts/promtail/README.md
+index ed977ace..320b2b7d 100644
+--- a/charts/promtail/README.md
++++ b/charts/promtail/README.md
+@@ -1,80 +1,209 @@
+-# Promtail Helm Chart
++# promtail
+ 
+-## Get Repo Info
++![Version: 3.0.0](https://img.shields.io/badge/Version-3.0.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 2.1.0](https://img.shields.io/badge/AppVersion-2.1.0-informational?style=flat-square)
+ 
+-```console
+-helm repo add grafana https://grafana.github.io/helm-charts
+-helm repo update
+-```
+-
+-_See [helm repo](https://helm.sh/docs/helm/helm_repo/) for command documentation._
+-
+-## Deploy Promtail only
++Promtail is an agent which ships the contents of local logs to a Loki instance
+ 
+-```bash
+-helm upgrade --install promtail grafana/promtail --set "loki.serviceName=loki"
+-```
++## Source Code
+ 
+-## Run Loki behind https ingress
++* <https://github.com/grafana/loki>
++* <https://grafana.com/oss/loki/>
++* <https://grafana.com/docs/loki/latest/>
+ 
+-If Loki and Promtail are deployed on different clusters you can add an Ingress in front of Loki.
+-By adding a certificate you create an https endpoint. For extra security enable basic authentication on the Ingress.
++## Chart Repo
+ 
+-In Promtail set the following values to communicate with https and basic auth
++Add the following repo to use the chart:
+ 
+-```yaml
+-loki:
+-  serviceScheme: https
+-  user: user
+-  password: pass
++```console
++helm repo add grafana https://grafana.github.io/helm-charts
+ ```
+ 
+-## Run promtail with syslog support
+-
+-In order to receive and process syslog message into promtail, the following changes will be necessary:
+-
+-* Review the [promtail syslog-receiver configuration documentation](/docs/clients/promtail/scraping.md#syslog-receiver)
+-
+-* Configure the promtail helm chart with the syslog configuration added to the `extraScrapeConfigs` section and associated service definition to listen for syslog messages. For example:
++## Upgrading
++
++A major chart version change indicates that there is an incompatible breaking change needing manual actions.
++
++### From Chart Versions < 3.0.0
++
++#### Notable Changes
++
++* Helm 3 is required
++* Labels have been updated to follow the official Kubernetes [label recommendations](https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
++* The default scrape configs have been updated to take new and old labels into consideration
++* The config file must be specified as string which can be templated.
++  See below for details
++* The config file is now stored in a Secret and no longer in a ConfigMap because it may contain sensitive data, such as basic auth credentials
++
++Due to the label changes, an existing installation cannot be upgraded without manual interaction.
++There are basically two options:
++
++##### Option 1
++
++Uninstall the old release and re-install the new one.
++There will be no data loss.
++Promtail will cleanly shut down and write the `positions.yaml`.
++The new release which will pick up again from the existing `positions.yaml`.
++
++##### Option 2
++
++* Add new selector labels to the existing pods:
++
++  ```
++  kubectl label pods -n <namespace> -l app=promtail,release=<release> app.kubernetes.io/name=promtail app.kubernetes.io/instance=<release>
++  ```
++
++* Perform a non-cascading deletion of the DaemonSet which will keep the pods running:
++
++  ```
++  kubectl delete daemonset -n <namespace> -l app=promtail,release=<release> --cascade=false
++  ```
++
++* Perform a regular Helm upgrade on the existing release.
++  The new DaemonSet will pick up the existing pods and perform a rolling upgrade.
++
++## Values
++
++| Key | Type | Default | Description |
++|-----|------|---------|-------------|
++| affinity | object | `{}` | Affinity configuration for pods |
++| annotations | object | `{}` | Annotations for the SaemonSet |
++| config | object | See `values.yaml` | Section for crafting Promtails config file. The only directly relevant value is `config.file` which is a templated string that references the other values and snippets below this key. |
++| config.file | string | See `values.yaml` | Config file contents for Promtail. Must be configured as string. It is templated so it can be assembled from reusable snippets in order to avoid redundancy. |
++| config.lokiAddress | string | `"http://loki-gateway/loki/api/v1/push"` | The Loki address to post logs to. Must be reference in `config.file` to configure `client.url`. See default config in `values.yaml` |
++| config.serverPort | int | `3101` | The port of the Promtail server Must be reference in `config.file` to configure `server.http_listen_port` See default config in `values.yaml` |
++| config.snippets | object | See `values.yaml` | A section of reusable snippets that can be reference in `config.file`. Custom snippets may be added in order to reduce redundancy. This is especially helpful when multiple `kubernetes_sd_configs` are use which usually have large parts in common. |
++| containerSecurityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true}` | The security context for containers |
++| defaultVolumeMounts | list | See `values.yaml` | Default volume mounts. Corresponds to `volumes`. |
++| defaultVolumes | list | See `values.yaml` | Default volumes that are mounted into pods. In most cases, these should not be changed. Use `extraVolumes`/`extraVolumeMounts` for additional custom volumes. |
++| extraArgs | list | `[]` |  |
++| extraEnv | list | `[]` | Extra environment variables |
++| extraEnvFrom | list | `[]` | Extra environment variables from secrets or configmaps |
++| extraPorts | object | `{}` | Configure additional ports and services. For each configured port, a corresponding service is created. See values.yaml for details |
++| extraVolumeMounts | list | `[]` |  |
++| extraVolumes | list | `[]` |  |
++| fullnameOverride | string | `nil` | Overrides the chart's computed fullname |
++| image.pullPolicy | string | `"IfNotPresent"` | Docker image pull policy |
++| image.registry | string | `"docker.io"` | The Docker registry |
++| image.repository | string | `"grafana/promtail"` | Docker image repository |
++| image.tag | string | `nil` | Overrides the image tag whose default is the chart's appVersion |
++| imagePullSecrets | list | `[]` | Image pull secrets for Docker images |
++| initContainer.enabled | bool | `true` | Specifies whether the init container for setting inotify max user instances is to be enabled |
++| initContainer.fsInotifyMaxUserInstances | int | `128` | The inotify max user instances to configure |
++| initContainer.image.pullPolicy | string | `"IfNotPresent"` | Docker image pull policy for the init container image |
++| initContainer.image.registry | string | `"docker.io"` | The Docker registry for the init container |
++| initContainer.image.repository | string | `"busybox"` | Docker image repository for the init container |
++| initContainer.image.tag | float | `1.33` | Docker tag for the init container |
++| livenessProbe | object | `{}` | Liveness probe |
++| nameOverride | string | `nil` | Overrides the chart's name |
++| nodeSelector | object | `{}` | Node selector for pods |
++| podAnnotations | object | `{}` | Pod annotations |
++| podLabels | object | `{}` | Pod labels |
++| podSecurityContext | object | `{"runAsGroup":0,"runAsUser":0}` | The security context for pods |
++| podSecurityPolicy | object | See `values.yaml` | PodSecurityPolicy configuration. |
++| priorityClassName | string | `nil` | The name of the PriorityClass |
++| rbac.create | bool | `true` | Specifies whether RBAC resources are to be created |
++| rbac.pspEnabled | bool | `false` | Specifies whether a PodSecurityPolicy is to be created |
++| readinessProbe | object | See `values.yaml` | Readiness probe |
++| resources | object | `{}` | Resource requests and limits |
++| serviceAccount.annotations | object | `{}` | Annotations for the service account |
++| serviceAccount.create | bool | `true` | Specifies whether a ServiceAccount should be created |
++| serviceAccount.imagePullSecrets | list | `[]` | Image pull secrets for the service account |
++| serviceAccount.name | string | `nil` | The name of the ServiceAccount to use. If not set and `create` is true, a name is generated using the fullname template |
++| serviceMonitor.annotations | object | `{}` | ServiceMonitor annotations |
++| serviceMonitor.enabled | bool | `false` | If enabled, ServiceMonitor resources for Prometheus Operator are created |
++| serviceMonitor.interval | string | `nil` | ServiceMonitor scrape interval |
++| serviceMonitor.labels | object | `{}` | Additional ServiceMonitor labels |
++| serviceMonitor.namespace | string | `nil` | Alternative namespace for ServiceMonitor resources |
++| serviceMonitor.namespaceSelector | object | `{}` | Namespace selector for ServiceMonitor resources |
++| serviceMonitor.scrapeTimeout | string | `nil` | ServiceMonitor scrape timeout in Go duration format (e.g. 15s) |
++| tolerations | list | `[{"effect":"NoSchedule","key":"node-role.kubernetes.io/master","operator":"Exists"}]` | Tolerations for pods. By default, pods will be scheduled on master nodes. |
++| updateStrategy | object | `{}` | The update strategy for the DaemonSet |
++
++## Configuration
++
++The config file for Promtail must be configured as string.
++This is necessary because the contents are passed through the `tpl` function.
++With this, the file can be templated and assembled from reusable YAML snippets.
++It is common to have multiple `kubernetes_sd_configs` that, in turn, usually need the same `pipeline_stages`.
++Thus, extracting reusable snippets helps reduce redundancy and avoid copy/paste errors.
++See `values.yaml´ for details.
++Also, the following examples make use of this feature.
++
++For additional reference, please refer to Promtail's docs:
++
++https://grafana.com/docs/loki/latest/clients/promtail/configuration/
++
++### Syslog Support
+ 
+ ```yaml
+-extraScrapeConfigs:
+-  - job_name: syslog
+-    syslog:
+-      listen_address: 0.0.0.0:1514
+-      labels:
+-        job: "syslog"
+-  relabel_configs:
+-    - source_labels: ['__syslog_message_hostname']
+-      target_label: 'host'
+-syslogService:
+-  enabled: true
+-  type: LoadBalancer
+-  port: 1514
++extraPorts:
++  syslog:
++    name: tcp-syslog
++    containerPort: 1514
++    service:
++      port: 80
++      type: LoadBalancer
++      externalTrafficPolicy: Local
++      loadBalancerIP: 123.234.123.234
++
++config:
++  file: |
++    server:
++      http_listen_port: {{ .Values.config.serverPort }}
++
++    client:
++      url: {{ .Values.config.lokiAddress }}
++
++    positions:
++      filename: /run/promtail/positions.yaml
++
++    scrape_configs:
++      # This reuses the existing default scrape configs
++      {{- tpl .Values.config.snippets.scrapeConfigs . | nindent 2 }}
++
++      # Add an additional scrape config for syslog
++      - job_name: syslog
++        syslog:
++          listen_address: 0.0.0.0:{{ .Values.extraPorts.syslog.containerPort }}
++          labels:
++            job: syslog
++        relabel_configs:
++          - source_labels:
++              - __syslog_message_hostname
++            target_label: host
+ ```
+ 
+-## Run promtail with systemd-journal support
+-
+-In order to receive and process syslog message into promtail, the following changes will be necessary:
+-
+-* Review the [promtail systemd-journal configuration documentation](/docs/clients/promtail/scraping.md#journal-scraping-linux-only)
+-
+-* Configure the promtail helm chart with the systemd-journal configuration added to the `extraScrapeConfigs` section and volume mounts for the promtail pods to access the log files. For example:
++### Journald Support
+ 
+ ```yaml
+-# Add additional scrape config
+-extraScrapeConfigs:
+-  - job_name: journal
+-    journal:
+-      path: /var/log/journal
+-      max_age: 12h
+-      labels:
+-        job: systemd-journal
+-    relabel_configs:
+-      - source_labels: ['__journal__systemd_unit']
+-        target_label: 'unit'
+-      - source_labels: ['__journal__hostname']
+-        target_label: 'hostname'
++config:
++  file: |
++    server:
++      http_listen_port: {{ .Values.config.serverPort }}
++
++    client:
++      url: {{ .Values.config.lokiAddress }}
++
++    positions:
++      filename: /run/promtail/positions.yaml
++
++    scrape_configs:
++      # This reuses the existing default scrape configs
++      {{- tpl .Values.config.snippets.scrapeConfigs . | nindent 2 }}
++
++      # Add an additional scrape config for syslog
++      - job_name: journal
++        journal:
++          path: /var/log/journal
++          max_age: 12h
++          labels:
++            job: systemd-journal
++        relabel_configs:
++          - source_labels:
++              - '__journal__systemd_unit'
++            target_label: 'unit'
++          - source_labels:
++              - '__journal__hostname'
++            target_label: 'hostname'
+ 
+ # Mount journal directory into promtail pods
+ extraVolumes:
+@@ -88,3 +217,36 @@ extraVolumeMounts:
+     readOnly: true
+ ```
+ 
++### Push API Support
++
++```
++extraPorts:
++  httpPush:
++    name: http-push
++    containerPort: 3500
++  grpcPush:
++    name: grpc-push
++    containerPort: 3600
++
++config:
++  file: |
++    server:
++      http_listen_port: {{ .Values.config.serverPort }}
++
++    client:
++      url: {{ .Values.config.lokiAddress }}
++
++    positions:
++      filename: /run/promtail/positions.yaml
++
++    scrape_configs:
++      {{- tpl .Values.config.snippets.scrapeConfigs . | nindent 2 }}
++
++      - job_name: push1
++        loki_push_api:
++          server:
++            http_listen_port: {{ .Values.extraPorts.httpPush.containerPort }}
++            grpc_listen_port: {{ .Values.extraPorts.grpcPush.containerPort }}
++          labels:
++            pushserver: push1
++```
+diff --git a/charts/promtail/README.md.gotmpl b/charts/promtail/README.md.gotmpl
+new file mode 100644
+index 00000000..035e6e9d
+--- /dev/null
++++ b/charts/promtail/README.md.gotmpl
+@@ -0,0 +1,194 @@
++{{ template "chart.header" . }}
++
++{{ template "chart.versionBadge" . }}{{ template "chart.typeBadge" . }}{{ template "chart.appVersionBadge" . }}
++
++{{ template "chart.description" . }}
++
++{{ template "chart.sourcesSection" . }}
++
++{{ template "chart.requirementsSection" . }}
++
++## Chart Repo
++
++Add the following repo to use the chart:
++
++```console
++helm repo add grafana https://grafana.github.io/helm-charts
++```
++
++## Upgrading
++
++A major chart version change indicates that there is an incompatible breaking change needing manual actions.
++
++### From Chart Versions < 3.0.0
++
++#### Notable Changes
++
++* Helm 3 is required
++* Labels have been updated to follow the official Kubernetes [label recommendations](https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
++* The default scrape configs have been updated to take new and old labels into consideration
++* The config file must be specified as string which can be templated.
++  See below for details
++* The config file is now stored in a Secret and no longer in a ConfigMap because it may contain sensitive data, such as basic auth credentials
++
++Due to the label changes, an existing installation cannot be upgraded without manual interaction.
++There are basically two options:
++
++##### Option 1
++
++Uninstall the old release and re-install the new one.
++There will be no data loss.
++Promtail will cleanly shut down and write the `positions.yaml`.
++The new release which will pick up again from the existing `positions.yaml`.
++
++##### Option 2
++
++* Add new selector labels to the existing pods:
++
++  ```
++  kubectl label pods -n <namespace> -l app=promtail,release=<release> app.kubernetes.io/name=promtail app.kubernetes.io/instance=<release>
++  ```
++
++* Perform a non-cascading deletion of the DaemonSet which will keep the pods running:
++
++  ```
++  kubectl delete daemonset -n <namespace> -l app=promtail,release=<release> --cascade=false
++  ```
++
++* Perform a regular Helm upgrade on the existing release.
++  The new DaemonSet will pick up the existing pods and perform a rolling upgrade.
++
++{{ template "chart.valuesSection" . }}
++
++## Configuration
++
++The config file for Promtail must be configured as string.
++This is necessary because the contents are passed through the `tpl` function.
++With this, the file can be templated and assembled from reusable YAML snippets.
++It is common to have multiple `kubernetes_sd_configs` that, in turn, usually need the same `pipeline_stages`.
++Thus, extracting reusable snippets helps reduce redundancy and avoid copy/paste errors.
++See `values.yaml´ for details.
++Also, the following examples make use of this feature.
++
++For additional reference, please refer to Promtail's docs:
++
++https://grafana.com/docs/loki/latest/clients/promtail/configuration/
++
++### Syslog Support
++
++```yaml
++extraPorts:
++  syslog:
++    name: tcp-syslog
++    containerPort: 1514
++    service:
++      port: 80
++      type: LoadBalancer
++      externalTrafficPolicy: Local
++      loadBalancerIP: 123.234.123.234
++
++config:
++  file: |
++    server:
++      http_listen_port: {{"{{"}} .Values.config.serverPort {{"}}"}}
++
++    client:
++      url: {{"{{"}} .Values.config.lokiAddress {{"}}"}}
++
++    positions:
++      filename: /run/promtail/positions.yaml
++
++    scrape_configs:
++      # This reuses the existing default scrape configs
++      {{"{{"}}- tpl .Values.config.snippets.scrapeConfigs . | nindent 2 {{"}}"}}
++
++      # Add an additional scrape config for syslog
++      - job_name: syslog
++        syslog:
++          listen_address: 0.0.0.0:{{"{{"}} .Values.extraPorts.syslog.containerPort {{"}}"}}
++          labels:
++            job: syslog
++        relabel_configs:
++          - source_labels:
++              - __syslog_message_hostname
++            target_label: host
++```
++
++### Journald Support
++
++```yaml
++config:
++  file: |
++    server:
++      http_listen_port: {{"{{"}} .Values.config.serverPort {{"}}"}}
++
++    client:
++      url: {{"{{"}} .Values.config.lokiAddress {{"}}"}}
++
++    positions:
++      filename: /run/promtail/positions.yaml
++
++    scrape_configs:
++      # This reuses the existing default scrape configs
++      {{"{{"}}- tpl .Values.config.snippets.scrapeConfigs . | nindent 2 {{"}}"}}
++
++      # Add an additional scrape config for syslog
++      - job_name: journal
++        journal:
++          path: /var/log/journal
++          max_age: 12h
++          labels:
++            job: systemd-journal
++        relabel_configs:
++          - source_labels:
++              - '__journal__systemd_unit'
++            target_label: 'unit'
++          - source_labels:
++              - '__journal__hostname'
++            target_label: 'hostname'
++
++# Mount journal directory into promtail pods
++extraVolumes:
++  - name: journal
++    hostPath:
++      path: /var/log/journal
++
++extraVolumeMounts:
++  - name: journal
++    mountPath: /var/log/journal
++    readOnly: true
++```
++
++### Push API Support
++
++```
++extraPorts:
++  httpPush:
++    name: http-push
++    containerPort: 3500
++  grpcPush:
++    name: grpc-push
++    containerPort: 3600
++
++config:
++  file: |
++    server:
++      http_listen_port: {{"{{"}} .Values.config.serverPort {{"}}"}}
++
++    client:
++      url: {{"{{"}} .Values.config.lokiAddress {{"}}"}}
++
++    positions:
++      filename: /run/promtail/positions.yaml
++
++    scrape_configs:
++      {{"{{"}}- tpl .Values.config.snippets.scrapeConfigs . | nindent 2 {{"}}"}}
++
++      - job_name: push1
++        loki_push_api:
++          server:
++            http_listen_port: {{"{{"}} .Values.extraPorts.httpPush.containerPort {{"}}"}}
++            grpc_listen_port: {{"{{"}} .Values.extraPorts.grpcPush.containerPort {{"}}"}}
++          labels:
++            pushserver: push1
++```
+diff --git a/charts/promtail/ci/default-values.yaml b/charts/promtail/ci/default-values.yaml
+new file mode 100644
+index 00000000..e69de29b
+diff --git a/charts/promtail/ci/service-values.yaml b/charts/promtail/ci/service-values.yaml
+new file mode 100644
+index 00000000..5b8db29f
+--- /dev/null
++++ b/charts/promtail/ci/service-values.yaml
+@@ -0,0 +1,45 @@
++extraPorts:
++  syslog:
++    name: tcp-syslog
++    containerPort: 1514
++    service:
++      port: 1234
++      type: NodePort
++  httpPush:
++    name: http-push
++    containerPort: 3500
++  grpcPush:
++    name: grpc-push
++    containerPort: 3600
++
++config:
++  file: |
++    server:
++      http_listen_port: {{ .Values.config.serverPort }}
++
++    client:
++      url: {{ .Values.config.lokiAddress }}
++
++    positions:
++      filename: /run/promtail/positions.yaml
++
++    scrape_configs:
++      {{- tpl .Values.config.snippets.scrapeConfigs . | nindent 2 }}
++
++      - job_name: syslog
++        syslog:
++          listen_address: 0.0.0.0:{{ .Values.extraPorts.syslog.containerPort }}
++          labels:
++            job: syslog
++        relabel_configs:
++          - source_labels:
++              - __syslog_message_hostname
++            target_label: host
++
++      - job_name: push1
++        loki_push_api:
++          server:
++            http_listen_port: {{ .Values.extraPorts.httpPush.containerPort }}
++            grpc_listen_port: {{ .Values.extraPorts.grpcPush.containerPort }}
++          labels:
++            pushserver: push1
+diff --git a/charts/promtail/templates/NOTES.txt b/charts/promtail/templates/NOTES.txt
+index 4d8a1a50..df740448 100644
+--- a/charts/promtail/templates/NOTES.txt
++++ b/charts/promtail/templates/NOTES.txt
+@@ -1,3 +1,10 @@
++***********************************************************************
++ Welcome to Grafana Promtail
++ Chart version: {{ .Chart.Version }}
++ Promtail version: {{ .Values.image.tag | default .Chart.AppVersion }}
++***********************************************************************
++
+ Verify the application is working by running these commands:
+-  kubectl --namespace {{ .Release.Namespace }} port-forward daemonset/{{ include "promtail.fullname" . }} {{ .Values.config.server.http_listen_port }}
+-  curl http://127.0.0.1:{{ .Values.config.server.http_listen_port }}/metrics
++
++* kubectl --namespace {{ .Release.Namespace }} port-forward daemonset/{{ include "promtail.fullname" . }} {{ .Values.config.serverPort }}
++* curl http://127.0.0.1:{{ .Values.config.serverPort }}/metrics
+diff --git a/charts/promtail/templates/_helpers.tpl b/charts/promtail/templates/_helpers.tpl
+index 9298bcbc..36b2c566 100644
+--- a/charts/promtail/templates/_helpers.tpl
++++ b/charts/promtail/templates/_helpers.tpl
+@@ -1,4 +1,3 @@
+-{{/* vim: set filetype=mustache: */}}
+ {{/*
+ Expand the name of the chart.
+ */}}
+@@ -31,6 +30,26 @@ Create chart name and version as used by the chart label.
+ {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
+ 
++{{/*
++Common labels
++*/}}
++{{- define "promtail.labels" -}}
++helm.sh/chart: {{ include "promtail.chart" . }}
++{{ include "promtail.selectorLabels" . }}
++{{- if .Chart.AppVersion }}
++app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
++{{- end }}
++app.kubernetes.io/managed-by: {{ .Release.Service }}
++{{- end }}
++
++{{/*
++Selector labels
++*/}}
++{{- define "promtail.selectorLabels" -}}
++app.kubernetes.io/name: {{ include "promtail.name" . }}
++app.kubernetes.io/instance: {{ .Release.Name }}
++{{- end }}
++
+ {{/*
+ Create the name of the service account
+ */}}
+diff --git a/charts/promtail/templates/clusterrole.yaml b/charts/promtail/templates/clusterrole.yaml
+index b872041b..4702e60d 100644
+--- a/charts/promtail/templates/clusterrole.yaml
++++ b/charts/promtail/templates/clusterrole.yaml
+@@ -2,19 +2,20 @@
+ kind: ClusterRole
+ apiVersion: rbac.authorization.k8s.io/v1
+ metadata:
++  name: {{ include "promtail.fullname" . }}
+   labels:
+-    app: {{ template "promtail.name" . }}
+-    chart: {{ template "promtail.chart" . }}
+-    release: {{ .Release.Name }}
+-    heritage: {{ .Release.Service }}
+-  name: {{ template "promtail.fullname" . }}-clusterrole
++    {{- include "promtail.labels" . | nindent 4 }}
+ rules:
+-- apiGroups: [""] # "" indicates the core API group
+-  resources:
+-  - nodes
+-  - nodes/proxy
+-  - services
+-  - endpoints
+-  - pods
+-  verbs: ["get", "watch", "list"]
++  - apiGroups:
++      - ""
++    resources:
++      - nodes
++      - nodes/proxy
++      - services
++      - endpoints
++      - pods
++    verbs:
++      - get
++      - watch
++      - list
+ {{- end }}
+diff --git a/charts/promtail/templates/clusterrolebinding.yaml b/charts/promtail/templates/clusterrolebinding.yaml
+index 2b739457..06054e3a 100644
+--- a/charts/promtail/templates/clusterrolebinding.yaml
++++ b/charts/promtail/templates/clusterrolebinding.yaml
+@@ -2,18 +2,15 @@
+ kind: ClusterRoleBinding
+ apiVersion: rbac.authorization.k8s.io/v1
+ metadata:
+-  name: {{ template "promtail.fullname" . }}-clusterrolebinding
++  name: {{ include "promtail.fullname" . }}
+   labels:
+-    app: {{ template "promtail.name" . }}
+-    chart: {{ template "promtail.chart" . }}
+-    release: {{ .Release.Name }}
+-    heritage: {{ .Release.Service }}
++    {{- include "promtail.labels" . | nindent 4 }}
+ subjects:
+   - kind: ServiceAccount
+-    name: {{ template "promtail.serviceAccountName" . }}
++    name: {{ include "promtail.serviceAccountName" . }}
+     namespace: {{ .Release.Namespace }}
+ roleRef:
+   kind: ClusterRole
+-  name: {{ template "promtail.fullname" . }}-clusterrole
++  name: {{ include "promtail.fullname" . }}
+   apiGroup: rbac.authorization.k8s.io
+ {{- end }}
+diff --git a/charts/promtail/templates/configmap.yaml b/charts/promtail/templates/configmap.yaml
+deleted file mode 100644
+index 58eb9bd4..00000000
+--- a/charts/promtail/templates/configmap.yaml
++++ /dev/null
+@@ -1,267 +0,0 @@
+-apiVersion: v1
+-kind: ConfigMap
+-metadata:
+-  name: {{ template "promtail.fullname" . }}
+-  namespace: {{ .Release.Namespace }}
+-  labels:
+-    app: {{ template "promtail.name" . }}
+-    chart: {{ template "promtail.chart" . }}
+-    release: {{ .Release.Name }}
+-    heritage: {{ .Release.Service }}
+-data:
+-  promtail.yaml: |
+-    {{- toYaml .Values.config | nindent 4 }}
+-    scrape_configs:
+-    {{- if .Values.scrapeConfigs }}
+-    {{- toYaml .Values.scrapeConfigs | nindent 4 }}
+-    {{- else }}
+-    - job_name: kubernetes-pods-name
+-      pipeline_stages:
+-        {{- toYaml .Values.pipelineStages | nindent 8 }}
+-      kubernetes_sd_configs:
+-      - role: pod
+-      relabel_configs:
+-      - source_labels:
+-        - __meta_kubernetes_pod_label_name
+-        target_label: __service__
+-      - source_labels:
+-        - __meta_kubernetes_pod_node_name
+-        target_label: __host__
+-      - action: drop
+-        regex: ''
+-        source_labels:
+-        - __service__
+-      - action: labelmap
+-        regex: __meta_kubernetes_pod_label_(.+)
+-      - action: replace
+-        replacement: $1
+-        separator: /
+-        source_labels:
+-        - __meta_kubernetes_namespace
+-        - __service__
+-        target_label: job
+-      - action: replace
+-        source_labels:
+-        - __meta_kubernetes_namespace
+-        target_label: namespace
+-      - action: replace
+-        source_labels:
+-        - __meta_kubernetes_pod_name
+-        target_label: pod
+-      - action: replace
+-        source_labels:
+-        - __meta_kubernetes_pod_container_name
+-        target_label: container
+-      - replacement: /var/log/pods/*$1/*.log
+-        separator: /
+-        source_labels:
+-        - __meta_kubernetes_pod_uid
+-        - __meta_kubernetes_pod_container_name
+-        target_label: __path__
+-    - job_name: kubernetes-pods-app
+-      pipeline_stages:
+-        {{- toYaml .Values.pipelineStages | nindent 8 }}
+-      kubernetes_sd_configs:
+-      - role: pod
+-      relabel_configs:
+-      - action: drop
+-        regex: .+
+-        source_labels:
+-        - __meta_kubernetes_pod_label_name
+-      - source_labels:
+-        - __meta_kubernetes_pod_label_app
+-        target_label: __service__
+-      - source_labels:
+-        - __meta_kubernetes_pod_node_name
+-        target_label: __host__
+-      - action: drop
+-        regex: ''
+-        source_labels:
+-        - __service__
+-      - action: labelmap
+-        regex: __meta_kubernetes_pod_label_(.+)
+-      - action: replace
+-        replacement: $1
+-        separator: /
+-        source_labels:
+-        - __meta_kubernetes_namespace
+-        - __service__
+-        target_label: job
+-      - action: replace
+-        source_labels:
+-        - __meta_kubernetes_namespace
+-        target_label: namespace
+-      - action: replace
+-        source_labels:
+-        - __meta_kubernetes_pod_name
+-        target_label: pod
+-      - action: replace
+-        source_labels:
+-        - __meta_kubernetes_pod_container_name
+-        target_label: container
+-      - replacement: /var/log/pods/*$1/*.log
+-        separator: /
+-        source_labels:
+-        - __meta_kubernetes_pod_uid
+-        - __meta_kubernetes_pod_container_name
+-        target_label: __path__
+-    - job_name: kubernetes-pods-direct-controllers
+-      pipeline_stages:
+-        {{- toYaml .Values.pipelineStages | nindent 8 }}
+-      kubernetes_sd_configs:
+-      - role: pod
+-      relabel_configs:
+-      - action: drop
+-        regex: .+
+-        separator: ''
+-        source_labels:
+-        - __meta_kubernetes_pod_label_name
+-        - __meta_kubernetes_pod_label_app
+-      - action: drop
+-        regex: '[0-9a-z-.]+-[0-9a-f]{8,10}'
+-        source_labels:
+-        - __meta_kubernetes_pod_controller_name
+-      - source_labels:
+-        - __meta_kubernetes_pod_controller_name
+-        target_label: __service__
+-      - source_labels:
+-        - __meta_kubernetes_pod_node_name
+-        target_label: __host__
+-      - action: drop
+-        regex: ''
+-        source_labels:
+-        - __service__
+-      - action: labelmap
+-        regex: __meta_kubernetes_pod_label_(.+)
+-      - action: replace
+-        replacement: $1
+-        separator: /
+-        source_labels:
+-        - __meta_kubernetes_namespace
+-        - __service__
+-        target_label: job
+-      - action: replace
+-        source_labels:
+-        - __meta_kubernetes_namespace
+-        target_label: namespace
+-      - action: replace
+-        source_labels:
+-        - __meta_kubernetes_pod_name
+-        target_label: pod
+-      - action: replace
+-        source_labels:
+-        - __meta_kubernetes_pod_container_name
+-        target_label: container
+-      - replacement: /var/log/pods/*$1/*.log
+-        separator: /
+-        source_labels:
+-        - __meta_kubernetes_pod_uid
+-        - __meta_kubernetes_pod_container_name
+-        target_label: __path__
+-    - job_name: kubernetes-pods-indirect-controller
+-      pipeline_stages:
+-        {{- toYaml .Values.pipelineStages | nindent 8 }}
+-      kubernetes_sd_configs:
+-      - role: pod
+-      relabel_configs:
+-      - action: drop
+-        regex: .+
+-        separator: ''
+-        source_labels:
+-        - __meta_kubernetes_pod_label_name
+-        - __meta_kubernetes_pod_label_app
+-      - action: keep
+-        regex: '[0-9a-z-.]+-[0-9a-f]{8,10}'
+-        source_labels:
+-        - __meta_kubernetes_pod_controller_name
+-      - action: replace
+-        regex: '([0-9a-z-.]+)-[0-9a-f]{8,10}'
+-        source_labels:
+-        - __meta_kubernetes_pod_controller_name
+-        target_label: __service__
+-      - source_labels:
+-        - __meta_kubernetes_pod_node_name
+-        target_label: __host__
+-      - action: drop
+-        regex: ''
+-        source_labels:
+-        - __service__
+-      - action: labelmap
+-        regex: __meta_kubernetes_pod_label_(.+)
+-      - action: replace
+-        replacement: $1
+-        separator: /
+-        source_labels:
+-        - __meta_kubernetes_namespace
+-        - __service__
+-        target_label: job
+-      - action: replace
+-        source_labels:
+-        - __meta_kubernetes_namespace
+-        target_label: namespace
+-      - action: replace
+-        source_labels:
+-        - __meta_kubernetes_pod_name
+-        target_label: pod
+-      - action: replace
+-        source_labels:
+-        - __meta_kubernetes_pod_container_name
+-        target_label: container
+-      - replacement: /var/log/pods/*$1/*.log
+-        separator: /
+-        source_labels:
+-        - __meta_kubernetes_pod_uid
+-        - __meta_kubernetes_pod_container_name
+-        target_label: __path__
+-    - job_name: kubernetes-pods-static
+-      pipeline_stages:
+-        {{- toYaml .Values.pipelineStages | nindent 8 }}
+-      kubernetes_sd_configs:
+-      - role: pod
+-      relabel_configs:
+-      - action: drop
+-        regex: ''
+-        source_labels:
+-        - __meta_kubernetes_pod_annotation_kubernetes_io_config_mirror
+-      - action: replace
+-        source_labels:
+-        - __meta_kubernetes_pod_label_component
+-        target_label: __service__
+-      - source_labels:
+-        - __meta_kubernetes_pod_node_name
+-        target_label: __host__
+-      - action: drop
+-        regex: ''
+-        source_labels:
+-        - __service__
+-      - action: labelmap
+-        regex: __meta_kubernetes_pod_label_(.+)
+-      - action: replace
+-        replacement: $1
+-        separator: /
+-        source_labels:
+-        - __meta_kubernetes_namespace
+-        - __service__
+-        target_label: job
+-      - action: replace
+-        source_labels:
+-        - __meta_kubernetes_namespace
+-        target_label: namespace
+-      - action: replace
+-        source_labels:
+-        - __meta_kubernetes_pod_name
+-        target_label: pod
+-      - action: replace
+-        source_labels:
+-        - __meta_kubernetes_pod_container_name
+-        target_label: container
+-      - replacement: /var/log/pods/*$1/*.log
+-        separator: /
+-        source_labels:
+-        - __meta_kubernetes_pod_annotation_kubernetes_io_config_mirror
+-        - __meta_kubernetes_pod_container_name
+-        target_label: __path__
+-    {{- end }}
+-    {{- if .Values.extraScrapeConfigs }}
+-    {{- toYaml .Values.extraScrapeConfigs | nindent 4 }}
+-    {{- end }}
+diff --git a/charts/promtail/templates/daemonset.yaml b/charts/promtail/templates/daemonset.yaml
+index 2a22e154..ace9512f 100644
+--- a/charts/promtail/templates/daemonset.yaml
++++ b/charts/promtail/templates/daemonset.yaml
+@@ -1,127 +1,129 @@
+ apiVersion: apps/v1
+ kind: DaemonSet
+ metadata:
+-  name: {{ template "promtail.fullname" . }}
+-  namespace: {{ .Release.Namespace }}
++  name: {{ include "promtail.fullname" . }}
+   labels:
+-    app: {{ template "promtail.name" . }}
+-    chart: {{ template "promtail.chart" . }}
+-    release: {{ .Release.Name }}
+-    heritage: {{ .Release.Service }}
++    {{- include "promtail.labels" . | nindent 4 }}
++  {{- with .Values.annotations }}
+   annotations:
+-    {{- toYaml .Values.annotations | nindent 4 }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+ spec:
+   selector:
+     matchLabels:
+-      app: {{ template "promtail.name" . }}
+-      release: {{ .Release.Name }}
++      {{- include "promtail.selectorLabels" . | nindent 6 }}
+   updateStrategy:
+-    {{- toYaml .Values.deploymentStrategy | nindent 4 }}
++    {{- toYaml .Values.updateStrategy | nindent 4 }}
+   template:
+     metadata:
+       labels:
+-        app: {{ template "promtail.name" . }}
+-        release: {{ .Release.Name }}
++        {{- include "promtail.selectorLabels" . | nindent 8 }}
+         {{- with .Values.podLabels }}
+         {{- toYaml . | nindent 8 }}
+         {{- end }}
+       annotations:
+-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
++        checksum/config: {{ include (print .Template.BasePath "/secret.yaml") . | sha256sum }}
+         {{- with .Values.podAnnotations }}
+         {{- toYaml . | nindent 8 }}
+         {{- end }}
+     spec:
+-      serviceAccountName: {{ template "promtail.serviceAccountName" . }}
+-    {{- if .Values.priorityClassName }}
+-      priorityClassName: {{ .Values.priorityClassName }}
+-    {{- end }}
+-    {{- if .Values.initContainer.enabled }}
++      serviceAccountName: {{ include "promtail.serviceAccountName" . }}
++      {{- with .Values.priorityClassName }}
++      priorityClassName: {{ . }}
++      {{- end }}
++      {{- if .Values.initContainer.enabled }}
+       initContainers:
+-      - name: init
+-        image: busybox
+-        command:
+-        - sh
+-        - -c
+-        - sysctl -w fs.inotify.max_user_instances={{ .Values.initContainer.fsInotifyMaxUserInstances }}
+-        securityContext:
+-          privileged: true
+-    {{- end }}
+-      {{- if .Values.image.pullSecrets }}
++        - name: init
++          image: "{{ .Values.initContainer.image.registry }}/{{ .Values.initContainer.image.repository }}:{{ .Values.initContainer.image.tag }}"
++          imagePullPolicy: {{ .Values.initContainer.image.pullPolicy }}
++          command:
++            - sh
++            - -c
++            - sysctl -w fs.inotify.max_user_instances={{ .Values.initContainer.fsInotifyMaxUserInstances }}
++          securityContext:
++            privileged: true
++      {{- end }}
++      {{- with .Values.imagePullSecrets }}
+       imagePullSecrets:
+-      {{- range .Values.image.pullSecrets }}
+-        - name: {{ . }}
+-      {{- end}}
++        {{- toYaml . | nindent 8 }}
+       {{- end }}
++      securityContext:
++        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+       containers:
+         - name: promtail
+-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+           imagePullPolicy: {{ .Values.image.pullPolicy }}
+           args:
+             - "-config.file=/etc/promtail/promtail.yaml"
+-            {{- if not (or .Values.config.client.url .Values.config.clients) }}
+-            {{- if and .Values.loki.user .Values.loki.password }}
+-            - "-client.url={{ .Values.loki.serviceScheme }}://{{ .Values.loki.user }}:{{ .Values.loki.password }}@{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}/loki/api/v1/push"
+-            {{- else }}
+-            - "-client.url={{ .Values.loki.serviceScheme }}://{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}/loki/api/v1/push"
+-            {{- end }}
+-            {{- end }}
+-            {{- if .Values.extraCommandlineArgs }}
+-            {{- range .Values.extraCommandlineArgs }}
+-            - {{ . | quote }}
+-            {{- end }}
++            {{- with .Values.extraArgs }}
++            {{- toYaml . | nindent 12 }}
+             {{- end }}
+           volumeMounts:
+             - name: config
+               mountPath: /etc/promtail
+             - name: run
+               mountPath: /run/promtail
+-            {{- with .Values.volumeMounts }}
++            {{- with .Values.defaultVolumeMounts }}
+             {{- toYaml . | nindent 12 }}
+             {{- end }}
+             {{- with .Values.extraVolumeMounts }}
+             {{- toYaml . | nindent 12 }}
+             {{- end }}
+           env:
+-            {{- with .Values.env }}
+-              {{- toYaml . | nindent 12 }}
+-            {{- end }}
+             - name: HOSTNAME
+               valueFrom:
+                 fieldRef:
+                   fieldPath: spec.nodeName
++          {{- with .Values.extraEnv }}
++            {{- toYaml . | nindent 12 }}
++          {{- end }}
++          {{- with .Values.extraEnvFrom }}
++          envFrom:
++            {{- toYaml . | nindent 12 }}
++          {{- end }}
+           ports:
+-            - containerPort: {{ .Values.config.server.http_listen_port }}
+-              name: http-metrics
+-            {{- if .Values.syslogService.enabled }}
+-            - containerPort: {{ .Values.syslogService.port }}
+-              name: syslog
++            - name: http-metrics
++              containerPort: {{ .Values.config.serverPort }}
++              protocol: TCP
++            {{- range $key, $values := .Values.extraPorts }}
++            - name: {{ .name | default $key }}
++              containerPort: {{ $values.containerPort }}
++              protocol: {{ $values.protocol | default "TCP" }}
+             {{- end }}
+           securityContext:
+-            {{- toYaml .Values.securityContext | nindent 12 }}
+-          {{- if .Values.livenessProbe }}
++            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
++          {{- with .Values.livenessProbe }}
+           livenessProbe:
+-            {{- toYaml .Values.livenessProbe | nindent 12 }}
++            {{- toYaml . | nindent 12 }}
+           {{- end }}
+-          {{- if .Values.readinessProbe }}
++          {{- with .Values.readinessProbe }}
+           readinessProbe:
+-            {{- toYaml .Values.readinessProbe | nindent 12 }}
++            {{- toYaml . | nindent 12 }}
+           {{- end }}
++          {{- with .Values.resources }}
+           resources:
+-            {{- toYaml .Values.resources | nindent 12 }}
+-      nodeSelector:
+-        {{- toYaml .Values.nodeSelector | nindent 8 }}
++            {{- toYaml . | nindent 12 }}
++          {{- end }}
++      {{- with .Values.affinity }}
+       affinity:
+-        {{- toYaml .Values.affinity | nindent 8 }}
++        {{- toYaml . | nindent 8 }}
++      {{- end }}
++      {{- with .Values.nodeSelector }}
++      nodeSelector:
++        {{- toYaml . | nindent 8 }}
++      {{- end }}
++      {{- with .Values.tolerations }}
+       tolerations:
+-        {{- toYaml .Values.tolerations | nindent 8 }}
++        {{- toYaml . | nindent 8 }}
++      {{- end }}
+       volumes:
+         - name: config
+-          configMap:
+-            name: {{ template "promtail.fullname" . }}
++          secret:
++            secretName: {{ include "promtail.fullname" . }}
+         - name: run
+           hostPath:
+             path: /run/promtail
+-        {{- with .Values.volumes }}
++        {{- with .Values.defaultVolumes }}
+         {{- toYaml . | nindent 8 }}
+         {{- end }}
+         {{- with .Values.extraVolumes }}
+diff --git a/charts/promtail/templates/podsecuritypolicy.yaml b/charts/promtail/templates/podsecuritypolicy.yaml
+index 56643cb5..b8287cdc 100644
+--- a/charts/promtail/templates/podsecuritypolicy.yaml
++++ b/charts/promtail/templates/podsecuritypolicy.yaml
+@@ -1,13 +1,10 @@
+-{{- if .Values.rbac.pspEnabled }}
++{{- if and .Values.rbac.create .Values.rbac.pspEnabled }}
+ apiVersion: policy/v1beta1
+ kind: PodSecurityPolicy
+ metadata:
+-  name: {{ template "promtail.fullname" . }}
++  name: {{ include "promtail.fullname" . }}
+   labels:
+-    app: {{ template "promtail.name" . }}
+-    chart: {{ template "promtail.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++    {{- include "promtail.labels" . | nindent 4 }}
+ spec:
+   {{- toYaml .Values.podSecurityPolicy | nindent 2 }}
+ {{- end }}
+diff --git a/charts/promtail/templates/role.yaml b/charts/promtail/templates/role.yaml
+index 1f55b1de..feedf839 100644
+--- a/charts/promtail/templates/role.yaml
++++ b/charts/promtail/templates/role.yaml
+@@ -1,19 +1,17 @@
+-{{- if .Values.rbac.create }}
++{{- if and .Values.rbac.create .Values.rbac.pspEnabled }}
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: Role
+ metadata:
+-  name: {{ template "promtail.fullname" . }}
+-  namespace: {{ .Release.Namespace }}
++  name: {{ include "promtail.fullname" . }}-psp
+   labels:
+-    app: {{ template "promtail.name" . }}
+-    chart: {{ template "promtail.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-{{- if .Values.rbac.pspEnabled }}
++    {{- include "promtail.labels" . | nindent 4 }}
+ rules:
+-- apiGroups:      ['extensions']
+-  resources:      ['podsecuritypolicies']
+-  verbs:          ['use']
+-  resourceNames:  [{{ template "promtail.fullname" . }}]
+-{{- end }}
++  - apiGroups:
++      - extensions
++    resources:
++      - podsecuritypolicies
++    verbs:
++      - use
++    resourceNames:
++      - {{ include "promtail.fullname" . }}
+ {{- end }}
+diff --git a/charts/promtail/templates/rolebinding.yaml b/charts/promtail/templates/rolebinding.yaml
+index a035c19f..3456b2da 100644
+--- a/charts/promtail/templates/rolebinding.yaml
++++ b/charts/promtail/templates/rolebinding.yaml
+@@ -1,20 +1,15 @@
+-{{- if .Values.rbac.create }}
++{{- if and .Values.rbac.create .Values.rbac.pspEnabled }}
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: RoleBinding
+ metadata:
+-  name: {{ template "promtail.fullname" . }}
+-  namespace: {{ .Release.Namespace }}
++  name: {{ include "promtail.fullname" . }}-psp
+   labels:
+-    app: {{ template "promtail.name" . }}
+-    chart: {{ template "promtail.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++    {{- include "promtail.labels" . | nindent 4 }}
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: Role
+-  name: {{ template "promtail.fullname" . }}
++  name: {{ include "promtail.fullname" . }}-psp
+ subjects:
+-- kind: ServiceAccount
+-  name: {{ template "promtail.serviceAccountName" . }}
++  - kind: ServiceAccount
++    name: {{ include "promtail.serviceAccountName" . }}
+ {{- end }}
+-
+diff --git a/charts/promtail/templates/secret.yaml b/charts/promtail/templates/secret.yaml
+new file mode 100644
+index 00000000..ec46fcc2
+--- /dev/null
++++ b/charts/promtail/templates/secret.yaml
+@@ -0,0 +1,9 @@
++apiVersion: v1
++kind: Secret
++metadata:
++  name: {{ include "promtail.fullname" . }}
++  labels:
++    {{- include "promtail.labels" . | nindent 4 }}
++stringData:
++  promtail.yaml: |
++    {{- tpl .Values.config.file . | nindent 4 }}
+diff --git a/charts/promtail/templates/service-extra.yaml b/charts/promtail/templates/service-extra.yaml
+new file mode 100644
+index 00000000..15ad96aa
+--- /dev/null
++++ b/charts/promtail/templates/service-extra.yaml
+@@ -0,0 +1,51 @@
++{{- range $key, $values := .Values.extraPorts }}
++---
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ include "promtail.fullname" $ }}-{{ $key | lower }}
++  labels:
++    {{- include "promtail.labels" $ | nindent 4 }}
++    {{- with .labels }}
++    {{- toYaml $ | nindent 4 }}
++    {{- end }}
++  {{- with .annotations }}
++  annotations:
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++spec:
++  {{- with $values.service }}
++  type: {{ .type | default "ClusterIP" }}
++  {{- with .clusterIP }}
++  clusterIP: {{ . }}
++  {{- end }}
++  {{- with .loadBalancerIP }}
++  loadBalancerIP: {{ . }}
++  {{- end }}
++  {{- with .loadBalancerSourceRanges }}
++  loadBalancerSourceRanges:
++    {{- toYaml . | nindent 4 }}
++  {{- end -}}
++  {{- with .externalIPs }}
++  externalIPs:
++    {{- toYaml . | indent 4 }}
++  {{- end }}
++  {{- with .externalTrafficPolicy }}
++  externalTrafficPolicy: {{ . }}
++  {{- end }}
++  {{- end }}
++  ports:
++    - name: {{ .name | default $key }}
++      targetPort: {{ .name | default $key }}
++      protocol: TCP
++      {{- if $values.service }}
++      port: {{ $values.service.port | default $values.containerPort }}
++      {{- if $values.service.nodePort }}
++      nodePort: {{ $values.service.nodePort }}
++      {{- end }}
++      {{- else }}
++      port: {{ $values.containerPort }}
++      {{- end }}
++  selector:
++    {{- include "promtail.selectorLabels" $ | nindent 4 }}
++{{- end }}
+diff --git a/charts/promtail/templates/service-headless.yaml b/charts/promtail/templates/service-headless.yaml
+deleted file mode 100644
+index f5f52365..00000000
+--- a/charts/promtail/templates/service-headless.yaml
++++ /dev/null
+@@ -1,22 +0,0 @@
+-{{- if .Values.serviceMonitor.enabled }}
+-apiVersion: v1
+-kind: Service
+-metadata:
+-  name: {{ template "promtail.fullname" . }}-headless
+-  namespace: {{ .Release.Namespace }}
+-  labels:
+-    app: {{ template "promtail.name" . }}
+-    chart: {{ template "promtail.chart" . }}
+-    release: {{ .Release.Name }}
+-    heritage: {{ .Release.Service }}
+-spec:
+-  clusterIP: None
+-  ports:
+-    - port: {{ .Values.config.server.http_listen_port }}
+-      protocol: TCP
+-      name: http-metrics
+-      targetPort: http-metrics
+-  selector:
+-    app: {{ template "promtail.name" . }}
+-    release: {{ .Release.Name }}
+-{{- end }}
+diff --git a/charts/promtail/templates/service-metrics.yaml b/charts/promtail/templates/service-metrics.yaml
+new file mode 100644
+index 00000000..c35cd60e
+--- /dev/null
++++ b/charts/promtail/templates/service-metrics.yaml
+@@ -0,0 +1,17 @@
++{{- if .Values.serviceMonitor.enabled }}
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ include "promtail.fullname" . }}-metrics
++  labels:
++    {{- include "promtail.labels" . | nindent 4 }}
++spec:
++  clusterIP: None
++  ports:
++    - name: http-metrics
++      port: {{ .Values.config.serverPort }}
++      targetPort: http-metrics
++      protocol: TCP
++  selector:
++    {{- include "promtail.selectorLabels" . | nindent 4 }}
++{{- end }}
+diff --git a/charts/promtail/templates/service-syslog.yaml b/charts/promtail/templates/service-syslog.yaml
+deleted file mode 100644
+index 247ebdfa..00000000
+--- a/charts/promtail/templates/service-syslog.yaml
++++ /dev/null
+@@ -1,50 +0,0 @@
+-{{- if .Values.syslogService.enabled }}
+-apiVersion: v1
+-kind: Service
+-metadata:
+-  name: {{ template "promtail.fullname" . }}-syslog
+-  namespace: {{ .Release.Namespace }}
+-  labels:
+-    app: {{ template "promtail.name" . }}
+-    chart: {{ template "promtail.chart" . }}
+-    release: {{ .Release.Name }}
+-    heritage: {{ .Release.Service }}
+-    {{- with .Values.syslogService.labels }}
+-    {{- toYaml . | nindent 4 }}
+-    {{- end }}
+-  annotations:
+-    {{- toYaml .Values.syslogService.annotations | nindent 4 }}
+-spec:
+-  type: {{ .Values.syslogService.type }}
+-  {{- if .Values.syslogService.clusterIP }}
+-  clusterIP: {{ .Values.syslogService.clusterIP }}
+-  {{end}}
+-  {{- if .Values.syslogService.loadBalancerIP }}
+-  loadBalancerIP: {{ .Values.syslogService.loadBalancerIP }}
+-  {{- end }}
+-  {{- if .Values.syslogService.loadBalancerSourceRanges }}
+-  loadBalancerSourceRanges:
+-{{ toYaml .Values.syslogService.loadBalancerSourceRanges | indent 4 }}
+-  {{- end -}}
+-  {{- if .Values.syslogService.externalIPs }}
+-  externalIPs:
+-{{ toYaml .Values.syslogService.externalIPs | indent 4 }}
+-  {{- end }}
+-  {{- if .Values.syslogService.externalTrafficPolicy }}
+-  externalTrafficPolicy: {{ .Values.syslogService.externalTrafficPolicy }}
+-  {{- end }}
+-  ports:
+-    - port: {{ .Values.syslogService.port }}
+-      protocol: TCP
+-      name: syslog
+-      targetPort: syslog
+-{{- if (and (eq .Values.syslogService.type "NodePort") (not (empty .Values.syslogService.nodePort))) }}
+-      nodePort: {{ .Values.syslogService.nodePort }}
+-{{- end }}
+-{{- if .Values.extraPorts }}
+-{{ toYaml .Values.extraPorts | indent 4}}
+-{{- end }}
+-  selector:
+-    app: {{ template "promtail.name" . }}
+-    release: {{ .Release.Name }}
+-{{- end }}
+diff --git a/charts/promtail/templates/serviceaccount.yaml b/charts/promtail/templates/serviceaccount.yaml
+index 9181d98a..9ff15b0c 100644
+--- a/charts/promtail/templates/serviceaccount.yaml
++++ b/charts/promtail/templates/serviceaccount.yaml
+@@ -2,12 +2,15 @@
+ apiVersion: v1
+ kind: ServiceAccount
+ metadata:
++  name: {{ include "promtail.serviceAccountName" . }}
+   labels:
+-    app: {{ template "promtail.name" . }}
+-    chart: {{ template "promtail.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "promtail.serviceAccountName" . }}
+-  namespace: {{ .Release.Namespace }}
++    {{- include "promtail.labels" . | nindent 4 }}
++  {{- with .Values.serviceAccount.annotations }}
++  annotations:
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++{{- with .Values.serviceAccount.imagePullSecrets }}
++imagePullSecrets:
++  {{- toYaml . | nindent 2 }}
++{{- end }}
+ {{- end }}
+-
+diff --git a/charts/promtail/templates/servicemonitor.yaml b/charts/promtail/templates/servicemonitor.yaml
+index 7b2d3bef..219ec082 100644
+--- a/charts/promtail/templates/servicemonitor.yaml
++++ b/charts/promtail/templates/servicemonitor.yaml
+@@ -2,33 +2,33 @@
+ apiVersion: monitoring.coreos.com/v1
+ kind: ServiceMonitor
+ metadata:
+-  name: {{ template "promtail.fullname" . }}
+-  labels:
+-    app: {{ template "promtail.name" . }}
+-    chart: {{ template "promtail.chart" . }}
+-    release: {{ .Release.Name }}
+-    heritage: {{ .Release.Service }}
+-    {{- if .Values.serviceMonitor.additionalLabels }}
+-{{ toYaml .Values.serviceMonitor.additionalLabels | indent 4 }}
+-    {{- end }}
+-  {{- if .Values.serviceMonitor.annotations }}
++  name: {{ include "promtail.fullname" $ }}
++  {{- with .Values.serviceMonitor.namespace }}
++  namespace: {{ . }}
++  {{- end }}
++  {{- with .Values.serviceMonitor.annotations }}
+   annotations:
+-{{ toYaml .Values.serviceMonitor.annotations | indent 4 }}
++    {{- toYaml . | nindent 4 }}
+   {{- end }}
++  labels:
++    {{- include "promtail.labels" $ | nindent 4 }}
++    {{- with .Values.serviceMonitor.labels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
+ spec:
++  {{- with .Values.serviceMonitor.namespaceSelector }}
++  namespaceSelector:
++  {{- toYaml . | nindent 4 }}
++  {{- end }}
+   selector:
+     matchLabels:
+-      app: {{ template "promtail.name" . }}
+-      release: {{ .Release.Name | quote }}
+-  namespaceSelector:
+-    matchNames:
+-      - {{ .Release.Namespace | quote }}
++      {{- include "promtail.selectorLabels" . | nindent 6 }}
+   endpoints:
+-  - port: http-metrics
+-    {{- if .Values.serviceMonitor.interval }}
+-    interval: {{ .Values.serviceMonitor.interval }}
+-    {{- end }}
+-    {{- if .Values.serviceMonitor.scrapeTimeout }}
+-    scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
+-    {{- end }}
++    - port: http-metrics
++      {{- with .Values.serviceMonitor.interval }}
++      interval: {{ . }}
++      {{- end }}
++      {{- with .Values.serviceMonitor.scrapeTimeout }}
++      scrapeTimeout: {{ . }}
++      {{- end }}
+ {{- end }}
+diff --git a/charts/promtail/values.yaml b/charts/promtail/values.yaml
+index a0fbeadc..da0cff54 100644
+--- a/charts/promtail/values.yaml
++++ b/charts/promtail/values.yaml
+@@ -1,88 +1,59 @@
+-## Affinity for pod assignment
+-## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+-affinity: {}
+-
+-annotations: {}
++# -- Overrides the chart's name
++nameOverride: null
+ 
+-# The update strategy to apply to the DaemonSet
+-##
+-deploymentStrategy: {}
+-#  rollingUpdate:
+-#    maxUnavailable: 1
+-#  type: RollingUpdate
++# -- Overrides the chart's computed fullname
++fullnameOverride: null
+ 
+ initContainer:
+-  enabled: false
++  # -- Specifies whether the init container for setting inotify max user instances is to be enabled
++  enabled: true
++  image:
++    # -- The Docker registry for the init container
++    registry: docker.io
++    # -- Docker image repository for the init container
++    repository: busybox
++    # -- Docker tag for the init container
++    tag: 1.33
++    # -- Docker image pull policy for the init container image
++    pullPolicy: IfNotPresent
++  # -- The inotify max user instances to configure
+   fsInotifyMaxUserInstances: 128
+ 
+ image:
++  # -- The Docker registry
++  registry: docker.io
++  # -- Docker image repository
+   repository: grafana/promtail
+-  tag: 2.1.0
++  # -- Overrides the image tag whose default is the chart's appVersion
++  tag: null
++  # -- Docker image pull policy
+   pullPolicy: IfNotPresent
+-  ## Optionally specify an array of imagePullSecrets.
+-  ## Secrets must be manually created in the namespace.
+-  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+-  ##
+-  # pullSecrets:
+-  #   - myRegistryKeySecretName
+-
+-livenessProbe: {}
+-
+-loki:
+-  serviceName: ""  # Defaults to "${RELEASE}-loki" if not set
+-  servicePort: 3100
+-  serviceScheme: http
+-  # user: user
+-  # password: pass
+ 
+-nameOverride: promtail
++# -- Image pull secrets for Docker images
++imagePullSecrets: []
+ 
+-## Node labels for pod assignment
+-## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+-nodeSelector: {}
++# -- Annotations for the SaemonSet
++annotations: {}
+ 
+-pipelineStages:
+-- docker: {}
++# -- The update strategy for the DaemonSet
++updateStrategy: {}
+ 
+-## Pod Labels
++# -- Pod labels
+ podLabels: {}
+ 
+-podAnnotations:
+-  prometheus.io/scrape: "true"
+-  prometheus.io/port: "http-metrics"
+-
+-## Assign a PriorityClassName to pods if set
+-# priorityClassName:
++# -- Pod annotations
++podAnnotations: {}
++#  prometheus.io/scrape: "true"
++#  prometheus.io/port: "http-metrics"
+ 
+-rbac:
+-  create: true
+-  pspEnabled: true
++# -- The name of the PriorityClass
++priorityClassName: null
+ 
+-podSecurityPolicy:
+-  privileged: false
+-  allowPrivilegeEscalation: false
+-  volumes:
+-    - 'secret'
+-    - 'configMap'
+-    - 'hostPath'
+-    - 'projected'
+-    - 'downwardAPI'
+-    - 'emptyDir'
+-  hostNetwork: false
+-  hostIPC: false
+-  hostPID: false
+-  runAsUser:
+-    rule: 'RunAsAny'
+-  seLinux:
+-    rule: 'RunAsAny'
+-  supplementalGroups:
+-    rule: 'RunAsAny'
+-  fsGroup:
+-    rule: 'RunAsAny'
+-  readOnlyRootFilesystem: true
+-  requiredDropCapabilities:
+-    - ALL
++# -- Liveness probe
++livenessProbe: {}
+ 
++# -- Readiness probe
++# @default -- See `values.yaml`
+ readinessProbe:
+   failureThreshold: 5
+   httpGet:
+@@ -93,6 +64,7 @@ readinessProbe:
+   successThreshold: 1
+   timeoutSeconds: 1
+ 
++# -- Resource requests and limits
+ resources: {}
+ #  limits:
+ #    cpu: 200m
+@@ -101,119 +73,323 @@ resources: {}
+ #    cpu: 100m
+ #    memory: 128Mi
+ 
+-# Custom scrape_configs to override the default ones in the configmap
+-scrapeConfigs: []
+-
+-# Custom scrape_configs together with the default ones in the configmap
+-extraScrapeConfigs: []
++# -- The security context for pods
++podSecurityContext:
++  runAsUser: 0
++  runAsGroup: 0
+ 
+-securityContext:
++# -- The security context for containers
++containerSecurityContext:
+   readOnlyRootFilesystem: true
+-  runAsGroup: 0
+-  runAsUser: 0
++  capabilities:
++    drop:
++      - ALL
++  allowPrivilegeEscalation: false
++
++rbac:
++  # -- Specifies whether RBAC resources are to be created
++  create: true
++  # -- Specifies whether a PodSecurityPolicy is to be created
++  pspEnabled: false
+ 
+ serviceAccount:
++  # -- Specifies whether a ServiceAccount should be created
+   create: true
+-  name:
++  # -- The name of the ServiceAccount to use.
++  # If not set and `create` is true, a name is generated using the fullname template
++  name: null
++  # -- Image pull secrets for the service account
++  imagePullSecrets: []
++  # -- Annotations for the service account
++  annotations: {}
+ 
+-## Tolerations for pod assignment
+-## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
++# -- Node selector for pods
++nodeSelector: {}
++
++# -- Affinity configuration for pods
++affinity: {}
++
++# -- Tolerations for pods. By default, pods will be scheduled on master nodes.
+ tolerations:
+-- key: node-role.kubernetes.io/master
+-  operator: Exists
+-  effect: NoSchedule
+-
+-# Extra volumes to scrape logs from
+-volumes:
+-- name: docker
+-  hostPath:
+-    path: /var/lib/docker/containers
+-- name: pods
+-  hostPath:
+-    path: /var/log/pods
+-
+-# Custom volumes together with the default ones
++  - key: node-role.kubernetes.io/master
++    operator: Exists
++    effect: NoSchedule
++
++# -- Default volumes that are mounted into pods. In most cases, these should not be changed.
++# Use `extraVolumes`/`extraVolumeMounts` for additional custom volumes.
++# @default -- See `values.yaml`
++defaultVolumes:
++  - name: containers
++    hostPath:
++      path: /var/lib/docker/containers
++  - name: pods
++    hostPath:
++      path: /var/log/pods
++
++# -- Default volume mounts. Corresponds to `volumes`.
++# @default -- See `values.yaml`
++defaultVolumeMounts:
++  - name: containers
++    mountPath: /var/lib/docker/containers
++    readOnly: true
++  - name: pods
++    mountPath: /var/log/pods
++    readOnly: true
++
++# Extra volumes to be added in addition to those specified under `defaultVolumes`.
+ extraVolumes: []
+ 
+-volumeMounts:
+-- name: docker
+-  mountPath: /var/lib/docker/containers
+-  readOnly: true
+-- name: pods
+-  mountPath: /var/log/pods
+-  readOnly: true
+-
+-# Custom volumeMounts together with the default ones
++# Extra volume mounts together. Corresponds to `extraVolumes`.
+ extraVolumeMounts: []
+ 
+-# Add extra Commandline args while starting up promtail.
+-# more info : https://github.com/grafana/loki/pull/1530
++# Extra args for the Promtail container.
++extraArgs: []
++# -- Example:
++# -- extraArgs:
++# --   - -client.external-labels=hostname=$(HOSTNAME)
+ 
+-extraCommandlineArgs: []
+-# example:
+-# extraCommandlineArgs:
+-#   - -client.external-labels=hostname=$(HOSTNAME)
++# -- Extra environment variables
++extraEnv: []
+ 
+-config:
+-  client:
+-    # Maximum wait period before sending batch
+-    batchwait: 1s
+-    # Maximum batch size to accrue before sending, unit is byte
+-    batchsize: 1048576
+-
+-    # Maximum time to wait for server to respond to a request
+-    timeout: 10s
+-
+-    backoff_config:
+-      # Initial backoff time between retries
+-      min_period: 500ms
+-      # Maximum backoff time between retries
+-      max_period: 5m
+-      # Maximum number of retries when sending batches, 0 means infinite retries
+-      max_retries: 10
+-
+-    # The labels to add to any time series or alerts when communicating with loki
+-    external_labels: {}
+-
+-  server:
+-    http_listen_port: 3101
+-
+-  positions:
+-    filename: /run/promtail/positions.yaml
+-  target_config:
+-    # Period to resync directories being watched and files being tailed
+-    sync_period: 10s
++# -- Extra environment variables from secrets or configmaps
++extraEnvFrom: []
+ 
++# ServiceMonitor configuration
+ serviceMonitor:
++  # -- If enabled, ServiceMonitor resources for Prometheus Operator are created
+   enabled: false
+-  interval: ""
+-  additionalLabels: {}
+-  annotations: {}
+-  # scrapeTimeout: 10s
+-
+-# Extra env variables to pass to the promtail container
+-env: []
+-
+-# enable and configure if using the syslog scrape config
+-syslogService:
+-  enabled: false
+-  type: ClusterIP
+-  port: 1514
+-  # externalIPs: []
+-  ## Specify the nodePort value for the LoadBalancer and NodePort service types.
+-  ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
+-  ##
+-  # nodePort:
+-  ## Provide any additional annotations which may be required. This can be used to
+-  ## set the LoadBalancer service type to internal only.
+-  ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
+-  ##
++  # -- Alternative namespace for ServiceMonitor resources
++  namespace: null
++  # -- Namespace selector for ServiceMonitor resources
++  namespaceSelector: {}
++  # -- ServiceMonitor annotations
+   annotations: {}
++  # -- Additional ServiceMonitor labels
+   labels: {}
+-  ## Use loadBalancerIP to request a specific static IP,
+-  ## otherwise leave blank
+-  ##
+-  loadBalancerIP:
+-  # loadBalancerSourceRanges: []
+-  ## Set the externalTrafficPolicy in the Service to either Cluster or Local
+-  # externalTrafficPolicy: Cluster
++  # -- ServiceMonitor scrape interval
++  interval: null
++  # -- ServiceMonitor scrape timeout in Go duration format (e.g. 15s)
++  scrapeTimeout: null
++
++# -- Configure additional ports and services. For each configured port, a corresponding service is created.
++# See values.yaml for details
++extraPorts: {}
++#  syslog:
++#    name: tcp-syslog
++#    containerPort: 1514
++#    protocol: TCP
++#    service:
++#      type: ClusterIP
++#      clusterIP: null
++#      port: 1514
++#      externalIPs: []
++#      nodePort: null
++#      annotations: {}
++#      labels: {}
++#      loadBalancerIP: null
++#      loadBalancerSourceRanges: []
++#      externalTrafficPolicy: null
++
++# -- PodSecurityPolicy configuration.
++# @default -- See `values.yaml`
++podSecurityPolicy:
++  privileged: false
++  allowPrivilegeEscalation: false
++  volumes:
++    - 'secret'
++    - 'hostPath'
++    - 'downwardAPI'
++  hostNetwork: false
++  hostIPC: false
++  hostPID: false
++  runAsUser:
++    rule: 'RunAsAny'
++  seLinux:
++    rule: 'RunAsAny'
++  supplementalGroups:
++    rule: 'RunAsAny'
++  fsGroup:
++    rule: 'RunAsAny'
++  readOnlyRootFilesystem: true
++  requiredDropCapabilities:
++    - ALL
++
++# -- Section for crafting Promtails config file. The only directly relevant value is `config.file`
++# which is a templated string that references the other values and snippets below this key.
++# @default -- See `values.yaml`
++config:
++  # -- The port of the Promtail server
++  # Must be reference in `config.file` to configure `server.http_listen_port`
++  # See default config in `values.yaml`
++  serverPort: 3101
++  # -- The Loki address to post logs to.
++  # Must be reference in `config.file` to configure `client.url`.
++  # See default config in `values.yaml`
++  lokiAddress: http://loki-gateway/loki/api/v1/push
++  # -- A section of reusable snippets that can be reference in `config.file`.
++  # Custom snippets may be added in order to reduce redundancy.
++  # This is especially helpful when multiple `kubernetes_sd_configs` are use which usually have large parts in common.
++  # @default -- See `values.yaml`
++  snippets:
++    pipelineStages:
++      - cri: {}
++    common:
++      - action: replace
++        source_labels:
++          - __meta_kubernetes_pod_node_name
++        target_label: node_name
++      - action: replace
++        source_labels:
++          - __meta_kubernetes_namespace
++        target_label: namespace
++      - action: replace
++        replacement: $1
++        separator: /
++        source_labels:
++          - namespace
++          - app
++        target_label: job
++      - action: replace
++        source_labels:
++          - __meta_kubernetes_pod_name
++        target_label: pod
++      - action: replace
++        source_labels:
++          - __meta_kubernetes_pod_container_name
++        target_label: container
++      - action: replace
++        replacement: /var/log/pods/*$1/*.log
++        separator: /
++        source_labels:
++          - __meta_kubernetes_pod_uid
++          - __meta_kubernetes_pod_container_name
++        target_label: __path__
++    scrapeConfigs: |
++      # See also https://github.com/grafana/loki/blob/master/production/ksonnet/promtail/scrape_config.libsonnet for reference
++
++      # Pods with a label 'app.kubernetes.io/name'
++      - job_name: kubernetes-pods-app-kubernetes-io-name
++        pipeline_stages:
++          {{- toYaml .Values.config.snippets.pipelineStages | nindent 4 }}
++        kubernetes_sd_configs:
++          - role: pod
++        relabel_configs:
++          - action: replace
++            source_labels:
++              - __meta_kubernetes_pod_label_app_kubernetes_io_name
++            target_label: app
++          - action: replace
++            source_labels:
++              - __meta_kubernetes_pod_label_app_kubernetes_io_component
++            target_label: component
++          {{- toYaml .Values.config.snippets.common | nindent 4 }}
++
++      # Pods with a label 'app'
++      - job_name: kubernetes-pods-app
++        pipeline_stages:
++          {{- toYaml .Values.config.snippets.pipelineStages | nindent 4 }}
++        kubernetes_sd_configs:
++          - role: pod
++        relabel_configs:
++          # Drop pods with label 'app.kubernetes.io/name'. They are already considered above
++          - action: drop
++            regex: .+
++            source_labels:
++              - __meta_kubernetes_pod_label_app_kubernetes_io_name
++          - action: replace
++            source_labels:
++              - __meta_kubernetes_pod_label_app
++            target_label: app
++          - action: replace
++            source_labels:
++              - __meta_kubernetes_pod_label_component
++            target_label: component
++          {{- toYaml .Values.config.snippets.common | nindent 4 }}
++
++      # Pods with direct controllers, such as StatefulSet
++      - job_name: kubernetes-pods-direct-controllers
++        pipeline_stages:
++          {{- toYaml .Values.config.snippets.pipelineStages | nindent 4 }}
++        kubernetes_sd_configs:
++          - role: pod
++        relabel_configs:
++          # Drop pods with label 'app.kubernetes.io/name' or 'app'. They are already considered above
++          - action: drop
++            regex: .+
++            separator: ''
++            source_labels:
++              - __meta_kubernetes_pod_label_app_kubernetes_io_name
++              - __meta_kubernetes_pod_label_app
++          - action: drop
++            regex: '[0-9a-z-.]+-[0-9a-f]{8,10}'
++            source_labels:
++              - __meta_kubernetes_pod_controller_name
++          - action: replace
++            source_labels:
++              - __meta_kubernetes_pod_controller_name
++            target_label: app
++          {{- toYaml .Values.config.snippets.common | nindent 4 }}
++
++      # Pods with indirect controllers, such as Deployment
++      - job_name: kubernetes-pods-indirect-controller
++        pipeline_stages:
++          {{- toYaml .Values.config.snippets.pipelineStages | nindent 4 }}
++        kubernetes_sd_configs:
++          - role: pod
++        relabel_configs:
++          # Drop pods with label 'app.kubernetes.io/name' or 'app'. They are already considered above
++          - action: drop
++            regex: .+
++            separator: ''
++            source_labels:
++              - __meta_kubernetes_pod_label_app_kubernetes_io_name
++              - __meta_kubernetes_pod_label_app
++          - action: keep
++            regex: '[0-9a-z-.]+-[0-9a-f]{8,10}'
++            source_labels:
++              - __meta_kubernetes_pod_controller_name
++          - action: replace
++            regex: '([0-9a-z-.]+)-[0-9a-f]{8,10}'
++            source_labels:
++              - __meta_kubernetes_pod_controller_name
++            target_label: app
++          {{- toYaml .Values.config.snippets.common | nindent 4 }}
++
++      # All remaining pods not yet covered
++      - job_name: kubernetes-other
++        pipeline_stages:
++          {{- toYaml .Values.config.snippets.pipelineStages | nindent 4 }}
++        kubernetes_sd_configs:
++          - role: pod
++        relabel_configs:
++          # Drop what has already been covered
++          - action: drop
++            regex: .+
++            separator: ''
++            source_labels:
++              - __meta_kubernetes_pod_label_app_kubernetes_io_name
++              - __meta_kubernetes_pod_label_app
++              - __meta_kubernetes_pod_controller_name
++          - action: replace
++            source_labels:
++            - __meta_kubernetes_pod_label_component
++            target_label: component
++          {{- toYaml .Values.config.snippets.common | nindent 4 }}
++
++  # -- Config file contents for Promtail.
++  # Must be configured as string.
++  # It is templated so it can be assembled from reusable snippets in order to avoid redundancy.
++  # @default -- See `values.yaml`
++  file: |
++    server:
++      log_level: debug
++      http_listen_port: {{ .Values.config.serverPort }}
++
++    client:
++      url: {{ .Values.config.lokiAddress }}
++
++    positions:
++      filename: /run/promtail/positions.yaml
++
++    scrape_configs:
++      {{- tpl .Values.config.snippets.scrapeConfigs $ | nindent 2 }}

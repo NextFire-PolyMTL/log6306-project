@@ -1,0 +1,1618 @@
+commit 3672ec1b73a1e7bb35cf723b67b493ce086229f2
+Author: Ryan Luckie <rtluckie@users.noreply.github.com>
+Date:   Tue Apr 10 12:54:09 2018 -0500
+
+    [stable/grafana] Utilize 5.x datasource and dashboard import tooling and general refactor (#4713)
+    
+    * Refactor grafana
+    
+    - rename manifest to align with helm create
+    - remove unnecessary manifests
+    
+    * Grafana refactor
+    
+    - utilize new features of grafana 5.x to configure datasources and dashboards
+      - remove all jobs
+    - update ingress manifest to align with helm create
+    - consolidate configmaps
+    - cleanup and refactor values.yaml
+    - remove unnecessary nesting from values.yaml
+    - add initContainer to download dashboards
+    - update labels and selectors to align with helm best practices
+    - general cleanup to align with helm best practices/patterns observed in `helm create`
+    - update values, NOTES, README and _helpers accordingly
+    - cleanup service manifest to allow more flexibility
+    - add rtluckie to maintainers
+    - bump chart version
+    
+    Tested on:
+    k8s 1.8.10, 1.9.6 and 1.10.0
+    
+    Limitations:
+    - Imported dashboards only support a single datasource
+    
+    * Changes from comments
+    
+    - remove deprecated grafana.ini option
+    - rework .Values.dashboards to make triggering download initContainer easier
+    - make initContainer image configurable
+    - add note to values.yaml regarding dashboards' dependency on dashboardProviders
+    - bump chart version to 1.0.0
+    
+    * NOTES fixes
+    
+    - remove unnecessary echo
+    - fix service.port references
+    
+    * More changes from comments
+    
+    - update name to gh username in Charts.yaml
+    - cleanup plugins install
+    - cleanup dashboards install -- don't rely on `defaults`
+    - cleanup reusing pv claim -- don't reply on `defaults`
+    - cleanup secrets -- don't rely on `defaults`
+    - cleanup service manifest -- don't rely `defaults`
+    - use storageClassName instead of storageClass (don't rely on `defaults`)
+    - remove redundant defaults from grafana.ini configmap
+    
+    * Fix small regression
+    
+    - use default when using templated value for pv name when existingClaim
+      is not defined
+
+diff --git a/stable/grafana/Chart.yaml b/stable/grafana/Chart.yaml
+index ed24ec544..c55e4c812 100755
+--- a/stable/grafana/Chart.yaml
++++ b/stable/grafana/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: grafana
+-version: 0.8.5
++version: 1.0.0
+ appVersion: 5.0.4
+ description: The leading tool for querying and visualizing time series and metrics.
+ home: https://grafana.net
+@@ -9,4 +9,6 @@ sources:
+ maintainers:
+   - name: Ming Hsieh
+     email: zanhsieh@gmail.com
++  - name: rtluckie
++    email: rluckie@cisco.com
+ engine: gotpl
+diff --git a/stable/grafana/README.md b/stable/grafana/README.md
+index e44afa415..767705c78 100644
+--- a/stable/grafana/README.md
++++ b/stable/grafana/README.md
+@@ -29,31 +29,33 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ ## Configuration
+ 
+-| Parameter                                 | Description                         | Default                                           |
+-|-------------------------------------------|-------------------------------------|---------------------------------------------------|
+-| `server.image`                            | Container image to run              | grafana/grafana:5.0.4                             |
+-| `server.adminUser`                        | Admin user username                 | admin                                             |
+-| `server.adminPassword`                    | Admin user password                 | Randomly generated                                |
+-| `server.antiAffinity.enabled`             | Enable anti affinity                | false                                             |
+-| `server.antiAffinity.type`                | Hard or soft anti affinity          | hard                                              |
+-| `server.persistentVolume.enabled`         | Create a volume to store data       | true                                              |
+-| `server.persistentVolume.size`            | Size of persistent volume claim     | 1Gi RW                                            |
+-| `server.persistentVolume.storageClass`    | Type of persistent volume claim     | `nil` (uses alpha storage class annotation)       |
+-| `server.persistentVolume.accessMode`      | ReadWriteOnce or ReadOnly           | [ReadWriteOnce]                                   |
+-| `server.persistentVolume.existingClaim`   | Existing persistent volume claim    | null                                              |
+-| `server.persistentVolume.subPath`         | Subdirectory of pvc to mount        | null                                              |
+-| `server.readinessProbe`                   | Server readiness probe              | httpGet: {path: /api/health, port: 3000}, initialDelaySeconds: 30, timeoutSeconds: 30 |
+-| `server.replicaCount`                     | Desired number of grafana pods      | 1                                                 |
+-| `server.resources`                        | Server resource requests and limits | requests: {cpu: 100m, memory: 100Mi}              |
+-| `server.tolerations`                      | node taints to tolerate (requires Kubernetes >=1.6) | null |
+-| `server.service.annotations`              | Service annotations                 | null                                              |
+-| `server.service.httpPort`                 | Service port                        | 80                                                |
+-| `server.service.loadBalancerIP`           | IP to assign to load balancer       | null                                              |
+-| `server.service.loadBalancerSourceRanges` | List of IP CIDRs allowed access     | null                                              |
+-| `server.service.nodePort`                 | For service type "NodePort"         | null                                              |
+-| `server.service.externalIPs`              | External IP addresses               | null                                              |
+-| `server.service.clusterIP`                | Custom clusterIP to use for service | null                                         |
+-| `server.service.type`                     | ClusterIP, NodePort, or LoadBalancer| ClusterIP                                         |
+-| `server.setDatasource.enabled`            | Creates grafana datasource with job | false                                             |
+-| `server.extraEnv`                          | Extra environment variables to set in the server container. List of [EnvVar](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.9/#envvar-v1-core) values | [] |
+-| `dashboardImports.enabled`                | Creates grafana dashboards with job | false |
++
++| Parameter                  | Description                         | Default                                                 |
++|----------------------------|-------------------------------------|---------------------------------------------------------|
++| `replicas`                 | Number of nodes | `1` |
++| `image.repository`         | Image repository | `grafana/grafana` |
++| `image.tag`                | Image tag. (`Must be >= 5.0.0`) Possible values listed [here](https://hub.docker.com/r/grafana/grafana/tags/).| `5.0.4`|
++| `image.pullPolicy`         | Image pull policy | `IfNotPresent` |
++| `service.type`             | Kubernetes service type | `ClusterIP` |
++| `service.port`             | Kubernetes port where service is exposed| `9000` |
++| `service.annotations`      | Service annotations | `80` |
++| `ingress.enabled`          | Enables Ingress | `false` |
++| `ingress.annotations`      | Ingress annotations | `{}` |
++| `ingress.hosts`            | Ingress accepted hostnames | `[]` |
++| `ingress.tls`              | Ingress TLS configuration | `[]` |
++| `resources`                | CPU/Memory resource requests/limits | `{}` |
++| `nodeSelector`             | Node labels for pod assignment | `{}` |
++| `tolerations`              | Toleration labels for pod assignment | `[]` |
++| `affinity`                 | Affinity settings for pod assignment | `{}` |
++| `persistence.enabled`      | Use persistent volume to store data | `false` |
++| `persistence.size`         | Size of persistent volume claim | `10Gi` |
++| `persistence.existingClaim`| Use an existing PVC to persist data | `nil` |
++| `persistence.storageClass` | Type of persistent volume claim | `generic` |
++| `persistence.accessModes`  | Persistence access modes | `[]` |
++| `persistence.subPath`      | Mount a sub directory of the persistent volume if set | `""` |
++| `env`                      | Extra environment variables passed to pods | `{}` |
++| `datasource`               | Configure grafana datasources | `{}` |
++| `dashboardProviders`       | Configure grafana dashboard providers | `{}` |
++| `dashboards`               | Dashboards to import | `{}` |
++| `grafana.ini`              | Grafana's primary configuration | `{}` |
++
+diff --git a/stable/grafana/templates/NOTES.txt b/stable/grafana/templates/NOTES.txt
+index 8d84fbc5b..634e30afd 100644
+--- a/stable/grafana/templates/NOTES.txt
++++ b/stable/grafana/templates/NOTES.txt
+@@ -1,36 +1,35 @@
+-1. Get your '{{ .Values.server.adminUser }}' user password by running:
++1. Get your '{{ .Values.adminUser }}' user password by running:
+ 
+-   kubectl get secret --namespace {{ .Release.Namespace }} {{ template "grafana.server.fullname" . }} -o jsonpath="{.data.grafana-admin-password}" | base64 --decode ; echo
++   kubectl get secret --namespace {{ .Release.Namespace }} {{ template "grafana.fullname" . }} -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
+ 
+-2. The Grafana server can be accessed via port {{ .Values.server.service.httpPort }} on the following DNS name from within your cluster:
++2. The Grafana server can be accessed via port {{ .Values.service.port }} on the following DNS name from within your cluster:
+ 
+-   {{ template "grafana.server.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
+-{{ if .Values.server.ingress.enabled }}
++   {{ template "grafana.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
++{{ if .Values.ingress.enabled }}
+    From outside the cluster, the server URL(s) are:
+-{{- range .Values.server.ingress.hosts }}
++{{- range .Values.ingress.hosts }}
+      http://{{ . }}
+ {{- end }}
+ {{ else }}
+    Get the Grafana URL to visit by running these commands in the same shell:
+-{{ if contains "NodePort" .Values.server.service.type -}}
+-     export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ template "grafana.server.fullname" . }})
++{{ if contains "NodePort" .Values.service.type -}}
++     export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ template "grafana.fullname" . }})
+      export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+      echo http://$NODE_IP:$NODE_PORT
+-{{ else if contains "LoadBalancer" .Values.server.service.type -}}
++{{ else if contains "LoadBalancer" .Values.service.type -}}
+    NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+-        You can watch the status of by running 'kubectl get svc --namespace {{ .Release.Namespace }} -w {{ template "grafana.server.fullname" . }}'
+-     export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "grafana.server.fullname" . }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+-     echo http://$SERVICE_IP:{{ .Values.server.httpPort -}}
+-{{ else if contains "ClusterIP"  .Values.server.service.type }}
+-     export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app={{ template "grafana.fullname" . }},component={{ .Values.server.name }}" -o jsonpath="{.items[0].metadata.name}")
++        You can watch the status of by running 'kubectl get svc --namespace {{ .Release.Namespace }} -w {{ template "grafana.fullname" . }}'
++     export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "grafana.fullname" . }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
++     http://$SERVICE_IP:{{ .Values.service.port -}}
++{{ else if contains "ClusterIP"  .Values.service.type }}
++     export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app={{ template "grafana.fullname" . }},component={{ .Values.name }}" -o jsonpath="{.items[0].metadata.name}")
+      kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 3000
+ {{- end }}
+ {{- end }}
+ 
+-3. Login with the password from step 1 and the username: {{ .Values.server.adminUser }}
++3. Login with the password from step 1 and the username: {{ .Values.adminUser }}
+ 
+-{{- if .Values.server.persistentVolume.enabled }}
+-{{- else }}
++{{- if not .Values.persistence.enabled }}
+ #################################################################################
+ ######   WARNING: Persistence is disabled!!! You will lose your data when   #####
+ ######            the Grafana pod is terminated.                            #####
+diff --git a/stable/grafana/templates/_helpers.tpl b/stable/grafana/templates/_helpers.tpl
+index 9a233e536..7ca9802ed 100644
+--- a/stable/grafana/templates/_helpers.tpl
++++ b/stable/grafana/templates/_helpers.tpl
+@@ -6,21 +6,12 @@ Expand the name of the chart.
+ {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
+ 
+-{{/*
+-Create a default fully qualified app name.
+-We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+-*/}}
+-{{- define "grafana.fullname" -}}
+-{{- $name := default "grafana" .Values.nameOverride -}}
+-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
+-
+ {{/*
+ Create a default fully qualified app name.
+ We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+ If release name contains chart name it will be used as a full name.
+ */}}
+-{{- define "grafana.server.fullname" -}}
++{{- define "grafana.fullname" -}}
+ {{- if .Values.fullnameOverride -}}
+ {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+ {{- else -}}
+@@ -32,3 +23,10 @@ If release name contains chart name it will be used as a full name.
+ {{- end -}}
+ {{- end -}}
+ {{- end -}}
++
++{{/*
++Create chart name and version as used by the chart label.
++*/}}
++{{- define "grafana.chart" -}}
++{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
+diff --git a/stable/grafana/templates/configmap.yaml b/stable/grafana/templates/configmap.yaml
+index 3bb71dae4..6314d708c 100644
+--- a/stable/grafana/templates/configmap.yaml
++++ b/stable/grafana/templates/configmap.yaml
+@@ -1,15 +1,52 @@
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
++  name: {{ template "grafana.fullname" . }}
+   labels:
+-    app: {{ template "grafana.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Values.server.name }}"
+-    heritage: "{{ .Release.Service }}"
+-    release: "{{ .Release.Name }}"
+-  name: {{ template "grafana.server.fullname" . }}-config
++    app: {{ template "grafana.name" . }}
++    chart: {{ template "grafana.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
+ data:
+-  {{- if .Values.server.installPlugins }}
+-  grafana-install-plugins: {{ .Values.server.installPlugins | quote }}
++{{- with .Values.plugins }}
++  plugins: {{ . | quote }}
++{{- end }}
++  grafana.ini: |
++{{- range $key, $value := index .Values "grafana.ini" }}
++    [{{ $key }}]
++    {{- range $elem, $elemVal := $value }}
++    {{ $elem }} = {{ $elemVal }}
++    {{- end }}
++{{- end }}
++
++{{- if .Values.datasources }}
++  {{- range $key, $value := .Values.datasources }}
++  {{ $key }}: |
++{{ toYaml $value | indent 4 }}
++  {{- end -}}
++{{- end -}}
++
++{{- if .Values.dashboardProviders }}
++  {{- range $key, $value := .Values.dashboardProviders }}
++  {{ $key }}: |
++{{ toYaml $value | indent 4 }}
++  {{- end -}}
++{{- end -}}
++
++{{- if .Values.dashboards  }}
++  download_dashboards.sh: |
++    #!/usr/bin/env sh
++    set -euf
++    mkdir -p /var/lib/grafana/dashboards
++  {{- range $key, $value := .Values.dashboards }}
++    {{ if hasKey $value "gnetId" }}
++    curl -sk \
++    --connect-timeout 60 \
++    --max-time 60 \
++    -H "Accept: application/json" \
++    -H "Content-Type: application/json;charset=UTF-8" \
++    https://grafana.com/api/dashboards/{{ $value.gnetId }}/revisions/{{- if $value.revision -}}{{ $value.revision }}{{- else -}}1{{- end -}}/download {{ if $value.datasource }}| sed 's|\"datasource\":[^,]*|\"datasource\": \"{{ $value.datasource }}\"|g'{{ end }} \
++    > /var/lib/grafana/dashboards/{{ $key }}.json
++    {{- end }}
+   {{- end }}
+-{{ toYaml .Values.serverConfigFile | indent 2 }}
++{{- end }}
+diff --git a/stable/grafana/templates/dashboards-configmap.yaml b/stable/grafana/templates/dashboards-configmap.yaml
+deleted file mode 100644
+index 67851f208..000000000
+--- a/stable/grafana/templates/dashboards-configmap.yaml
++++ /dev/null
+@@ -1,12 +0,0 @@
+-apiVersion: v1
+-kind: ConfigMap
+-metadata:
+-  labels:
+-    app: {{ template "grafana.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Values.server.name }}"
+-    heritage: "{{ .Release.Service }}"
+-    release: "{{ .Release.Name }}"
+-  name: {{ template "grafana.server.fullname" . }}-dashs
+-data:
+-{{ toYaml .Values.serverDashboardFiles | indent 2 }}
+diff --git a/stable/grafana/templates/dashboards-import-configmap.yaml b/stable/grafana/templates/dashboards-import-configmap.yaml
+deleted file mode 100644
+index ddfa5dc7f..000000000
+--- a/stable/grafana/templates/dashboards-import-configmap.yaml
++++ /dev/null
+@@ -1,14 +0,0 @@
+-{{- if .Values.dashboardImports.enabled -}}
+-apiVersion: v1
+-kind: ConfigMap
+-metadata:
+-  labels:
+-    app: {{ template "grafana.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Values.server.name }}"
+-    heritage: "{{ .Release.Service }}"
+-    release: "{{ .Release.Name }}"
+-  name: {{ template "grafana.server.fullname" . }}-dashboardimport
+-data:
+-{{ toYaml .Values.dashboardImports.files | indent 2 }}
+-{{- end -}}
+\ No newline at end of file
+diff --git a/stable/grafana/templates/dashboards-import-job-configmap.yaml b/stable/grafana/templates/dashboards-import-job-configmap.yaml
+deleted file mode 100755
+index c524affd5..000000000
+--- a/stable/grafana/templates/dashboards-import-job-configmap.yaml
++++ /dev/null
+@@ -1,32 +0,0 @@
+-{{- if .Values.dashboardImports.enabled -}}
+-apiVersion: v1
+-kind: ConfigMap
+-metadata:
+-  labels:
+-    app: {{ template "grafana.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    heritage: "{{ .Release.Service }}"
+-    release: "{{ .Release.Name }}"
+-  name: {{ template "grafana.server.fullname" . }}-import-script
+-data:
+-  init.sh: |
+-    #!/bin/sh
+-    set -e
+-    cd /var/lib/grafana/import
+-    {{- range $name, $val := .Values.dashboardImports.dashboards }}
+-      wget -O {{ $name }} {{ $val }}
+-    {{- end }}
+-    for dashboard in $(ls); do
+-      wget \
+-      "http://{{ template "grafana.server.fullname" . }}:{{ .Values.server.service.httpPort }}/api/dashboards/db" \
+-      --user=${ADMIN_USER} \
+-      --password=${ADMIN_PASSWORD} \
+-      --auth-no-challenge \
+-      --content-on-error \
+-      -O- \
+-      --timeout=10 \
+-      --header="Content-Type: application/json;charset=UTF-8" \
+-      --post-data="{ \"dashboard\":$(cat $dashboard), \"overwrite\":true }" ;
+-    done;
+-
+-{{- end -}}
+diff --git a/stable/grafana/templates/dashboards-import-job.yaml b/stable/grafana/templates/dashboards-import-job.yaml
+deleted file mode 100755
+index c36d27d47..000000000
+--- a/stable/grafana/templates/dashboards-import-job.yaml
++++ /dev/null
+@@ -1,52 +0,0 @@
+-{{- if .Values.dashboardImports.enabled -}}
+-apiVersion: batch/v1
+-kind: Job
+-metadata:
+-  annotations:
+-    "helm.sh/hook": {{ .Values.dashboardImports.hook }}
+-    "helm.sh/hook-weight": "0"
+-    "helm.sh/hook-delete-policy": hook-succeeded
+-  labels:
+-    app: {{ template "grafana.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    heritage: "{{ .Release.Service }}"
+-    release: "{{ .Release.Name }}"
+-  name: {{ template "grafana.server.fullname" . }}-import-dashboards
+-spec:
+-  activeDeadlineSeconds: {{ .Values.dashboardImports.activeDeadlineSeconds }}
+-  backoffLimit: {{ .Values.dashboardImports.backoffLimit }}
+-  template:
+-    metadata:
+-      labels:
+-        app: {{ template "grafana.fullname" . }}
+-        release: "{{ .Release.Name }}"
+-    spec:
+-      volumes:
+-        - name: dashboards-import-volume
+-          configMap:
+-            name: {{ template "grafana.server.fullname" . }}-dashboardimport
+-        - name: dashboards-script-volume
+-          configMap:
+-            name: {{ template "grafana.server.fullname" . }}-import-script
+-      containers:
+-        - name: {{ template "grafana.server.fullname" . }}-dashboardimport
+-          image: "{{ .Values.dashboardImports.image }}"
+-          volumeMounts:
+-            - name: dashboards-import-volume
+-              mountPath: "/var/lib/grafana/import"
+-            - name: dashboards-script-volume
+-              mountPath: "/var/lib/grafana/script"
+-          env:
+-            - name: ADMIN_USER
+-              valueFrom:
+-                secretKeyRef:
+-                  name: {{ template "grafana.server.fullname" . }}
+-                  key: grafana-admin-user
+-            - name: ADMIN_PASSWORD
+-              valueFrom:
+-                secretKeyRef:
+-                  name: {{ template "grafana.server.fullname" . }}
+-                  key: grafana-admin-password
+-          command: ["/bin/sh", "-x", "/var/lib/grafana/script/init.sh"]
+-      restartPolicy: {{ .Values.dashboardImports.restartPolicy }}
+-{{- end -}}
+diff --git a/stable/grafana/templates/dashboards-json-configmap.yaml b/stable/grafana/templates/dashboards-json-configmap.yaml
+new file mode 100644
+index 000000000..73c16105c
+--- /dev/null
++++ b/stable/grafana/templates/dashboards-json-configmap.yaml
+@@ -0,0 +1,18 @@
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  name: {{ template "grafana.fullname" . }}-dashboards-json
++  labels:
++    app: {{ template "grafana.name" . }}
++    chart: {{ template "grafana.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++data:
++{{- if .Values.dashboards }}
++  {{- range $key, $value := .Values.dashboards }}
++    {{ if hasKey $value "json" }}
++  {{ $key }}.json: |
++    {{ $value.json }}
++    {{- end }}
++  {{- end }}
++{{- end -}}
+diff --git a/stable/grafana/templates/deployment.yaml b/stable/grafana/templates/deployment.yaml
+index 9f3799c20..d65fee16f 100644
+--- a/stable/grafana/templates/deployment.yaml
++++ b/stable/grafana/templates/deployment.yaml
+@@ -1,123 +1,135 @@
+-apiVersion: extensions/v1beta1
++apiVersion: apps/v1beta2
+ kind: Deployment
+ metadata:
++  name: {{ template "grafana.fullname" . }}
+   labels:
+-    app: {{ template "grafana.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Values.server.name }}"
+-    heritage: "{{ .Release.Service }}"
+-    release: "{{ .Release.Name }}"
+-  name: {{ template "grafana.server.fullname" . }}
++    app: {{ template "grafana.name" . }}
++    chart: {{ template "grafana.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++{{- with .Values.annotations }}
++  annotations:
++{{ toYaml . | indent 4 }}
++{{- end }}
+ spec:
+-  replicas: {{ .Values.server.replicaCount }}
++  replicas: {{ .Values.replicas }}
++  selector:
++    matchLabels:
++      app: {{ template "grafana.name" . }}
++      release: {{ .Release.Name }}
+   template:
+     metadata:
+-      annotations:
+-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+-        checksum/dashboards-config: {{ include (print $.Template.BasePath "/dashboards-configmap.yaml") . | sha256sum }}
+-      {{- range $key, $value := .Values.server.annotations }}
+-        {{ $key }}: {{ $value | quote }}
+-      {{- end }}
+       labels:
+-        app: {{ template "grafana.fullname" . }}
+-        component: "{{ .Values.server.name }}"
+-        release: "{{ .Release.Name }}"
++        app: {{ template "grafana.name" . }}
++        release: {{ .Release.Name }}
+     spec:
+-      nodeSelector:
+-{{ toYaml .Values.server.nodeSelector | indent 8 }}
+-  {{- if .Values.server.tolerations }}
+-      tolerations:
+-{{ toYaml .Values.server.tolerations | indent 8 }}
+-  {{- end }}
+-      {{- if .Values.server.antiAffinity.enabled }}
+-      affinity:
+-        podAntiAffinity:
+-          {{- $antiAffinityType := default "hard" .Values.server.antiAffinity.type | lower }}
+-          {{- if eq $antiAffinityType "hard" }}
+-          requiredDuringSchedulingIgnoredDuringExecution:
+-          - topologyKey: "kubernetes.io/hostname"
+-            labelSelector:
+-              matchLabels:
+-                app: {{ template "grafana.server.fullname" . }}
+-          {{- end }}
+-          {{- if eq $antiAffinityType "soft" }}
+-          preferredDuringSchedulingIgnoredDuringExecution:
+-          - weight: 1
+-            podAffinityTerm:
+-              topologyKey: "kubernetes.io/hostname"
+-              labelSelector:
+-                matchLabels:
+-                  app: {{ template "grafana.server.fullname" . }}
+-          {{- end }}
+-      {{- end }}
++{{- if .Values.dashboards }}
+       initContainers:
+-        - name: copy-configs
+-          image: busybox
+-          command: ['sh', '-c', 'cp /tmp/config-volume-configmap/* /tmp/config-volume 2>/dev/null || true; cp /tmp/dashboard-volume-configmap/* /tmp/dashboard-volume 2>/dev/null || true']
++        - name: download-dashboards
++          image: "{{ .Values.downloadDashboardsImage.repository }}:{{ .Values.downloadDashboardsImage.tag }}"
++          imagePullPolicy: {{ .Values.downloadDashboardsImage.pullPolicy }}
++          command: ["sh", "/etc/grafana/download_dashboards.sh"]
+           volumeMounts:
+-            - name: config-volume-configmap
+-              mountPath: /tmp/config-volume-configmap
+-            - name: dashboard-volume-configmap
+-              mountPath: /tmp/dashboard-volume-configmap
+-            - name: config-volume
+-              mountPath: /tmp/config-volume
+-            - name: dashboard-volume
+-              mountPath: /tmp/dashboard-volume
++            - name: config
++              mountPath: "/etc/grafana/download_dashboards.sh"
++              subPath: download_dashboards.sh
++            - name: storage
++              mountPath: "/var/lib/grafana"
++              subPath: {{ .Values.persistence.subPath }}
++{{- end }}
+       containers:
+-        - name: {{ template "grafana.name" . }}
+-          image: "{{ .Values.server.image }}"
+-          imagePullPolicy: {{ default "Always" .Values.server.imagePullPolicy }}
++        - name: {{ .Chart.Name }}
++          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++          imagePullPolicy: {{ .Values.image.pullPolicy }}
++          volumeMounts:
++            - name: config
++              mountPath: "/etc/grafana/grafana.ini"
++              subPath: grafana.ini
++{{- if .Values.dashboards }}
++  {{- range $key, $value := .Values.dashboards }}
++    {{ if hasKey $value "json" }}
++            - name: dashboards-json
++              mountPath: "/var/lib/grafana/dashboards/{{ $key }}.json"
++              subPath: {{ $key }}.json
++    {{- end }}
++  {{- end }}
++{{- end -}}
++{{- if .Values.datasources }}
++            - name: config
++              mountPath: "/etc/grafana/provisioning/datasources/datasources.yaml"
++              subPath: datasources.yaml
++{{- end }}
++{{- if .Values.dashboardProviders }}
++            - name: config
++              mountPath: "/etc/grafana/provisioning/dashboards/dashboardproviders.yaml"
++              subPath: dashboardproviders.yaml
++{{- end }}
++            - name: storage
++              mountPath: "/var/lib/grafana"
++              subPath: {{ .Values.persistence.subPath }}
++          ports:
++            - name: service
++              containerPort: {{ .Values.service.port }}
++              protocol: TCP
+           env:
+             - name: GF_SECURITY_ADMIN_USER
+               valueFrom:
+                 secretKeyRef:
+-                  name: {{ template "grafana.server.fullname" . }}
+-                  key: grafana-admin-user
++                  name: {{ template "grafana.fullname" . }}
++                  key: admin-user
+             - name: GF_SECURITY_ADMIN_PASSWORD
+               valueFrom:
+                 secretKeyRef:
+-                  name: {{ template "grafana.server.fullname" . }}
+-                  key: grafana-admin-password
+-            {{- if .Values.server.installPlugins }}
++                  name: {{ template "grafana.fullname" . }}
++                  key: admin-password
++            {{- if .Values.plugins }}
+             - name: GF_INSTALL_PLUGINS
+               valueFrom:
+                 configMapKeyRef:
+-                  name: {{ template "grafana.server.fullname" . }}-config
+-                  key: grafana-install-plugins
+-            {{- end }}
+-            {{- if .Values.server.extraEnv }}
+-{{ toYaml .Values.server.extraEnv | indent 12 }}
++                  name: {{ template "grafana.fullname" . }}
++                  key: plugins
+             {{- end }}
+-          ports:
+-            - containerPort: 3000
++{{- range $key, $value := .Values.env }}
++            - name: "{{ $key }}"
++              value: "{{ $value }}"
++{{- end }}
++          livenessProbe:
++            httpGet:
++              path: /api/health
++              port: 3000
+           readinessProbe:
+-{{ toYaml .Values.server.readinessProbe | indent 12 }}
++            httpGet:
++              path: /api/health
++              port: 3000
++              initialDelaySeconds: 60
++              timeoutSeconds: 30
++              failureThreshold: 10
++              periodSeconds: 10
+           resources:
+-{{ toYaml .Values.server.resources | indent 12 }}
+-          volumeMounts:
+-            - name: config-volume
+-              mountPath: {{ default "/etc/grafana" .Values.server.configLocalPath | quote }}
+-            - name: dashboard-volume
+-              mountPath: {{ default "/var/lib/grafana/dashboards" .Values.server.dashboardLocalPath | quote }}
+-            - name: storage-volume
+-              mountPath: {{ default "/var/lib/grafana" .Values.server.storageLocalPath | quote }}
+-              subPath: "{{ .Values.server.persistentVolume.subPath }}"
+-      terminationGracePeriodSeconds: {{ default 300 .Values.server.terminationGracePeriodSeconds }}
++{{ toYaml .Values.resources | indent 12 }}
++    {{- with .Values.nodeSelector }}
++      nodeSelector:
++{{ toYaml . | indent 8 }}
++    {{- end }}
++    {{- with .Values.affinity }}
++      affinity:
++{{ toYaml . | indent 8 }}
++    {{- end }}
++    {{- with .Values.tolerations }}
++      tolerations:
++{{ toYaml . | indent 8 }}
++    {{- end }}
+       volumes:
+-        - name: config-volume
+-          emptyDir: {}
+-        - name: dashboard-volume
+-          emptyDir: {}
+-        - name: config-volume-configmap
++        - name: config
+           configMap:
+-            name: {{ template "grafana.server.fullname" . }}-config
+-        - name: dashboard-volume-configmap
++            name: {{ template "grafana.fullname" . }}
++        - name: dashboards-json
+           configMap:
+-            name: {{ template "grafana.server.fullname" . }}-dashs
+-        - name: storage-volume
+-      {{- if .Values.server.persistentVolume.enabled }}
++            name: {{ template "grafana.fullname" . }}-dashboards-json
++        - name: storage
++      {{- if .Values.persistence.enabled }}
+           persistentVolumeClaim:
+-            claimName: {{ if .Values.server.persistentVolume.existingClaim }}{{ .Values.server.persistentVolume.existingClaim }}{{- else }}{{ template "grafana.server.fullname" . }}{{- end }}
++            claimName: {{ .Values.persistence.existingClaim | default (include "grafana.fullname" .) }}
+       {{- else }}
+           emptyDir: {}
+       {{- end -}}
+diff --git a/stable/grafana/templates/ingress.yaml b/stable/grafana/templates/ingress.yaml
+index 114e8492b..9a48840f7 100644
+--- a/stable/grafana/templates/ingress.yaml
++++ b/stable/grafana/templates/ingress.yaml
+@@ -1,37 +1,39 @@
+-{{- if .Values.server.ingress.enabled -}}
+-{{- $releaseName := .Release.Name -}}
+-{{- $servicePort := .Values.server.service.httpPort -}}
+-{{- $path := .Values.server.ingress.path -}}
+-{{- $root := . }}
++{{- if .Values.ingress.enabled -}}
++{{- $fullName := include "grafana.fullname" . -}}
++{{- $servicePort := .Values.service.port -}}
++{{- $ingressPath := .Values.ingress.path -}}
+ apiVersion: extensions/v1beta1
+ kind: Ingress
+ metadata:
+-  annotations:
+-  {{- range $key, $value := .Values.server.ingress.annotations }}
+-    {{ $key }}: {{ $value | quote }}
+-  {{- end }}
++  name: {{ $fullName }}
+   labels:
+-    app: {{ template "grafana.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Values.server.name }}"
+-    heritage: "{{ .Release.Service }}"
+-    release: "{{ .Release.Name }}"
+-  name: {{ template "grafana.server.fullname" . }}
++    app: {{ template "grafana.name" . }}
++    chart: {{ template "grafana.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++{{- with .Values.ingress.annotations }}
++  annotations:
++{{ toYaml . | indent 4 }}
++{{- end }}
+ spec:
++{{- if .Values.ingress.tls }}
++  tls:
++  {{- range .Values.ingress.tls }}
++    - hosts:
++      {{- range .hosts }}
++        - {{ . }}
++      {{- end }}
++      secretName: {{ .secretName }}
++  {{- end }}
++{{- end }}
+   rules:
+-  {{- range .Values.server.ingress.hosts }}
++  {{- range .Values.ingress.hosts }}
+     - host: {{ . }}
+       http:
+         paths:
+-          - backend:
+-              serviceName: {{ template "grafana.server.fullname" $root }}
++          - path: {{ $ingressPath }}
++            backend:
++              serviceName: {{ $fullName }}
+               servicePort: {{ $servicePort }}
+-            {{- if $path }}
+-            path: {{ $path }}
+-            {{- end -}}
+-  {{- end -}}
+-  {{- if .Values.server.ingress.tls }}
+-  tls:
+-{{ toYaml .Values.server.ingress.tls | indent 4 }}
+-  {{- end -}}
+-{{- end -}}
++  {{- end }}
++{{- end }}
+diff --git a/stable/grafana/templates/job.yaml b/stable/grafana/templates/job.yaml
+deleted file mode 100644
+index 3c4093272..000000000
+--- a/stable/grafana/templates/job.yaml
++++ /dev/null
+@@ -1,50 +0,0 @@
+-{{- if .Values.server.setDatasource.enabled -}}
+-apiVersion: batch/v1
+-kind: Job
+-metadata:
+-  annotations:
+-    "helm.sh/hook": post-install
+-    "helm.sh/hook-weight": "-5"
+-    "helm.sh/hook-delete-policy": hook-succeeded
+-  labels:
+-    app: {{ template "grafana.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Values.server.name }}"
+-    heritage: "{{ .Release.Service }}"
+-    release: "{{ .Release.Name }}"
+-  name: {{ template "grafana.server.fullname" . }}-set-datasource
+-spec:
+-  activeDeadlineSeconds: {{ .Values.server.setDatasource.activeDeadlineSeconds }}
+-  template:
+-    metadata:
+-      labels:
+-        app: {{ template "grafana.fullname" . }}
+-        component: "{{ .Values.server.name }}"
+-        release: "{{ .Release.Name }}"
+-    spec:
+-      containers:
+-      - name: {{ template "grafana.server.fullname" . }}-set-datasource
+-        image: "{{ .Values.server.setDatasource.image }}"
+-        env:
+-        - name: ADMIN_USER
+-          valueFrom:
+-            secretKeyRef:
+-              name: {{ template "grafana.server.fullname" . }}
+-              key: grafana-admin-user
+-        - name: ADMIN_PASSWORD
+-          valueFrom:
+-            secretKeyRef:
+-              name: {{ template "grafana.server.fullname" . }}
+-              key: grafana-admin-password
+-        args:
+-          - "http://$(ADMIN_USER):$(ADMIN_PASSWORD)@{{ template "grafana.server.fullname" . }}:{{ .Values.server.service.httpPort }}/api/datasources"
+-          - "--max-time"
+-          - "10"
+-          - "-H"
+-          - "Content-Type: application/json;charset=UTF-8"
+-          - "--data-binary"
+-          {{- with .Values.server.setDatasource.datasource }}
+-          - "{\"name\":\"{{ .name }}\",\"type\":\"{{ .type }}\",\"url\":\"{{ .url }}\",\"database\":\"{{ .database }}\",\"jsonData\":{ {{ .jsonData }} },\"access\":\"{{ .access }}\",\"isDefault\":{{ .isDefault }}}"
+-          {{- end }}
+-      restartPolicy: {{ .Values.server.setDatasource.restartPolicy }}
+-{{- end -}}
+diff --git a/stable/grafana/templates/pvc.yaml b/stable/grafana/templates/pvc.yaml
+index 4c05a3f86..e1cc03296 100644
+--- a/stable/grafana/templates/pvc.yaml
++++ b/stable/grafana/templates/pvc.yaml
+@@ -1,33 +1,24 @@
+-{{- if .Values.server.persistentVolume.enabled -}}
+-{{- if not .Values.server.persistentVolume.existingClaim -}}
++{{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
+ apiVersion: v1
+ kind: PersistentVolumeClaim
+ metadata:
++  name: {{ template "grafana.fullname" . }}
++  labels:
++    app: {{ template "grafana.name" . }}
++    chart: {{ template "grafana.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++  {{- with .Values.persistence.annotations  }}
+   annotations:
+-  {{- if .Values.server.persistentVolume.annotations }}
+-{{ toYaml .Values.server.persistentVolume.annotations | indent 4 }}
++{{ toYaml . | indent 4 }}
+   {{- end }}
+-  labels:
+-    app: {{ template "grafana.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Values.server.name }}"
+-    heritage: "{{ .Release.Service }}"
+-    release: "{{ .Release.Name }}"
+-  name: {{ template "grafana.server.fullname" . }}
+ spec:
+   accessModes:
+-{{- range .Values.server.persistentVolume.accessModes }}
++    {{- range .Values.persistence.accessModes }}
+     - {{ . | quote }}
+-{{- end }}
++    {{- end }}
+   resources:
+     requests:
+-      storage: {{ .Values.server.persistentVolume.size | quote }}
+-{{- if .Values.server.persistentVolume.storageClass }}
+-{{- if (eq "-" .Values.server.persistentVolume.storageClass) }}
+-  storageClassName: ""
+-{{- else }}
+-  storageClassName: "{{ .Values.server.persistentVolume.storageClass }}"
+-{{- end }}
+-{{- end }}
+-{{- end -}}
++      storage: {{ .Values.persistence.size | quote }}
++  storageClassName: {{ .Values.persistence.storageClassName }}
+ {{- end -}}
+diff --git a/stable/grafana/templates/secret.yaml b/stable/grafana/templates/secret.yaml
+index 3e8e9d013..200778a3e 100644
+--- a/stable/grafana/templates/secret.yaml
++++ b/stable/grafana/templates/secret.yaml
+@@ -1,17 +1,17 @@
+ apiVersion: v1
+ kind: Secret
+ metadata:
++  name: {{ template "grafana.fullname" . }}
+   labels:
+-    app: {{ template "grafana.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    heritage: "{{ .Release.Service }}"
+-    release: "{{ .Release.Name }}"
+-  name: {{ template "grafana.server.fullname" . }}
++    app: {{ template "grafana.name" . }}
++    chart: {{ template "grafana.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
+ type: Opaque
+ data:
+-  {{- if .Values.server.adminPassword }}
+-  grafana-admin-password: {{ .Values.server.adminPassword | b64enc | quote }}
++  admin-user: {{ .Values.adminUser | b64enc | quote }}
++  {{- if .Values.adminPassword }}
++  admin-password: {{ .Values.adminPassword | b64enc | quote }}
+   {{- else }}
+-  grafana-admin-password: {{ randAlphaNum 10 | b64enc | quote }}
++  admin-password: {{ randAlphaNum 40 | b64enc | quote }}
+   {{- end }}
+-  grafana-admin-user: {{ .Values.server.adminUser | b64enc | quote }}
+diff --git a/stable/grafana/templates/service.yaml b/stable/grafana/templates/service.yaml
+new file mode 100644
+index 000000000..512f205ee
+--- /dev/null
++++ b/stable/grafana/templates/service.yaml
+@@ -0,0 +1,46 @@
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ template "grafana.fullname" . }}
++  labels:
++    app: {{ template "grafana.name" . }}
++    chart: {{ template "grafana.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++{{- with .Values.service.annotations }}
++  annotations:
++{{ toYaml . | indent 4 }}
++{{- end }}
++spec:
++{{- if (or (eq .Values.service.type "ClusterIP") (empty .Values.service.type)) }}
++  type: ClusterIP
++  {{- if .Values.service.clusterIP }}
++  clusterIP: {{ .Values.service.clusterIP }}
++  {{end}}
++{{- else if eq .Values.service.type "LoadBalancer" }}
++  type: {{ .Values.service.type }}
++  {{- if .Values.service.loadBalancerIP }}
++  loadBalancerIP: {{ .Values.service.loadBalancerIP }}
++  {{- end }}
++  {{- if .Values.service.loadBalancerSourceRanges }}
++  loadBalancerSourceRanges:
++{{ toYaml .Values.service.loadBalancerSourceRanges | indent 4 }}
++  {{- end -}}
++{{- else }}
++  type: {{ .Values.service.type }}
++{{- end }}
++{{- if .Values.service.externalIPs }}
++  externalIPs:
++{{ toYaml .Values.service.externalIPs | indent 4 }}
++{{- end }}
++  ports:
++    - name: service
++      port: {{ .Values.service.port }}
++      protocol: TCP
++      targetPort: 3000
++{{ if (and (eq .Values.service.type "NodePort") (not (empty .Values.service.nodePort))) }}
++      nodePort: {{.Values.service.nodePort}}
++{{ end }}
++  selector:
++    app: {{ template "grafana.name" . }}
++    release: {{ .Release.Name }}
+diff --git a/stable/grafana/templates/svc.yaml b/stable/grafana/templates/svc.yaml
+deleted file mode 100644
+index c70312df8..000000000
+--- a/stable/grafana/templates/svc.yaml
++++ /dev/null
+@@ -1,49 +0,0 @@
+-apiVersion: v1
+-kind: Service
+-metadata:
+-{{- if .Values.server.service.annotations }}
+-  annotations:
+-{{ toYaml .Values.server.service.annotations | indent 4 }}
+-{{- end }}
+-  labels:
+-    app: {{ template "grafana.fullname" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    component: "{{ .Values.server.name }}"
+-    heritage: "{{ .Release.Service }}"
+-    release: "{{ .Release.Name }}"
+-  name: {{ template "grafana.server.fullname" . }}
+-spec:
+-  ports:
+-    - name: {{ default "http" .Values.server.service.httpPortName | quote }}
+-      port: {{ .Values.server.service.httpPort }}
+-      protocol: TCP
+-      targetPort: 3000
+-{{- if eq "NodePort" .Values.server.service.type }}
+-  {{- if .Values.server.service.nodePort }}
+-      nodePort:  {{ .Values.server.service.nodePort }}
+-  {{- end }}
+-{{- end }}
+-{{- if .Values.server.service.externalIPs }}
+-  externalIPs:
+-{{ toYaml .Values.server.service.externalIPs | indent 4 }}
+-{{- end }}
+-{{- if eq "ClusterIP" .Values.server.service.type }}
+-  {{- if .Values.server.service.clusterIP }}
+-  clusterIP:  {{ .Values.server.service.clusterIP }}
+-  {{- end }}
+-{{- end }}  
+-  selector:
+-    app: {{ template "grafana.fullname" . }}
+-    component: "{{ .Values.server.name }}"
+-  type: "{{ .Values.server.service.type }}"
+-{{- if eq "LoadBalancer" .Values.server.service.type }}
+-  {{- if .Values.server.service.loadBalancerIP }}
+-  loadBalancerIP: {{ .Values.server.service.loadBalancerIP }}
+-  {{- end -}}
+-  {{- if .Values.server.service.loadBalancerSourceRanges }}
+-  loadBalancerSourceRanges:
+-  {{- range .Values.server.service.loadBalancerSourceRanges }}
+-  - {{ . }}
+-  {{- end }}
+-  {{- end -}}
+-{{- end -}}
+diff --git a/stable/grafana/values.yaml b/stable/grafana/values.yaml
+index ead1527aa..5f12d6007 100644
+--- a/stable/grafana/values.yaml
++++ b/stable/grafana/values.yaml
+@@ -1,475 +1,137 @@
+-server:
+-  ## Grafana Pod annotations:
+-  ##
+-  # annotations:
+-  #   iam.amazonaws.com/role: grafana
+-
+-  ## Grafana Docker image
+-  ##
+-  image: "grafana/grafana:5.0.4"
+-
+-  extraEnv: []
+-
+-  nodeSelector: {}
+-  tolerations: []
+-
+-  # Multiple replicas do not work with the default sqlite database,
+-  # see http://docs.grafana.org/tutorials/ha_setup/.
+-  replicaCount: 1
+-
+-  antiAffinity:
+-    enabled: false
+-    type: hard
+-
+-  ingress:
+-    ## If true, Grafana Ingress will be created
+-    ##
+-    enabled: false
+-
+-    ## Grafana Ingress annotations
+-    ##
+-    # annotations:
+-    #   kubernetes.io/ingress.class: nginx
+-    #   kubernetes.io/tls-acme: 'true'
+-
+-    ## Grafana Ingress hostnames
+-    ## Must be provided if Ingress is enabled
+-    ##
+-    # hosts:
+-    #   - grafana.domain.com
+-
+-    ## Grafana Ingress path
+-    ## Optional, allows specifying paths for more flexibility
+-    ## E.g. Traefik ingress likes paths
+-    ##
+-    # path: /
+-
+-    ## Grafana Ingress TLS configuration
+-    ## Secrets must be manually created in the namespace
+-    ##
+-    # tls:
+-    #   - secretName: grafana-server-tls
+-    #     hosts:
+-    #       - grafana.domain.com
+-
+-  ## Grafana container name
+-  ##
+-  name: grafana
+-
+-  adminUser: "admin"
+-  # adminPassword: "admin"
+-
+-  ## Global imagePullPolicy
+-  ## Default: 'Always' if image tag is 'latest', else 'IfNotPresent'
+-  ## Ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-  ##
+-  # imagePullPolicy:
+-
+-  # Persist data to a persitent volume
+-  persistentVolume:
+-    ## If true, Grafana will create a Persistent Volume Claim
+-    ## If false, use emptyDir
+-    ##
+-    enabled: true
+-
+-    ## Grafana data Persistent Volume access modes
+-    ## Must match those of existing PV or dynamic provisioner
+-    ## Ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+-    ##
+-    accessModes:
+-      - ReadWriteOnce
+-
+-    ## Grafana data Persistent Volume annotations
+-    ##
+-    annotations: {}
+-
+-    ## Grafana data Persistent Volume existing claim name
+-    ## Requires server.persistentVolume.enabled: true
+-    ## If defined, PVC must be created manually before volume will be bound
+-    existingClaim: ""
+-
+-    ## Grafana data Persistent Volume size
+-    ## Default: 1Gi
+-    ##
+-    size: 1Gi
+-
+-    ## grafana data Persistent Volume Storage Class
+-    ## If defined, storageClassName: <storageClass>
+-    ## If set to "-", storageClassName: "", which disables dynamic provisioning
+-    ## If undefined (the default) or set to null, no storageClassName spec is
+-    ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+-    ##   GKE, AWS & OpenStack)
+-    ##
+-    # storageClass: "-"
+-
+-    ## Subdirectory of data Persistent Volume to mount
+-    ## Useful if the volume's root directory is not empty
+-    ##
+-    subPath: ""
+-
+-  ## Grafana resource requests and limits
+-  ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+-  ##
+-  resources:
+-    # limits:
+-    #   cpu: 500m
+-    #   memory: 512Mi
+-    requests:
+-      cpu: 100m
+-      memory: 100Mi
+-
+-  ## Grafana readiness probe
+-  ## Ref: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#container-probes
+-  ##
+-  readinessProbe:
+-    httpGet:
+-      path: /api/health
+-      port: 3000
+-    initialDelaySeconds: 30
+-    timeoutSeconds: 30
+-
+-  ## Grafana service
+-  service:
+-    ## Grafana service annotations
+-    ##
+-    annotations: {}
+-
+-    ## Grafana service type
+-    ##
+-    type: ClusterIP
+-
+-    ## Grafana service port
+-    ##
+-    httpPort: 80
+-
+-    ## ClusterIP to use for service
+-    ## clusterIP: None
+-
+-    ## Load balancer IP address
+-    ## Is not required, but allows for static address with
+-    ## serviceType LoadBalancer.
+-    ## If not supported by cloud provider, this field is ignored.
+-    ## Default: nil
+-    ##
+-    # loadBalancerIP: 130.211.x.x
+-
+-    ## This will restrict traffic through the cloud-provider load-balancer
+-    ## to the specified client IPs.
+-    ## If not supported by cloud provider, this field is ignored.
+-    ## Default: nil
+-    ##
+-    # loadBalancerSourceRanges:
+-    #   - 0.0.0.0/0
+-
+-    ## nodePort port number
+-    ## Is not required, but allows for static port assignment with
+-    ## serviceType NodePort.
+-    ## Default: nil
+-    # nodePort: 30000
+-
+-    ## External IP addresses of service
+-    ## Default: nil
+-    ##
+-    # externalIPs:
+-    # - 192.168.0.1
+-
+-
+-  ## Grafana local config path
+-  ## Default '/etc/grafana'
+-  ##
+-  # configLocalPath: /etc/grafana
+-
+-  ## Grafana local dashboards path
+-  ## Default: '/var/lib/grafana/dashboards'
+-  ##
+-  # dashboardLocalPath: /var/lib/grafana/dashboards
+-
+-  ## Grafana local data storage path
+-  ## Default: '/var/lib/grafana/data'
+-  ##
+-  # storageLocalPath: /var/lib/grafana/data
+-
+-  ## Grafana Pod termination grace period
+-  ## Default: 300s (5m)
+-  ##
+-  # terminationGracePeriodSeconds: 300
+-
+-  ## Pass the plugins you want installed as a comma separated list.
+-  ## This will pass each plugin name to `grafana-cli plugins install ${plugin}`.
+-  ## Ref: https://github.com/grafana/grafana-docker#installing-plugins-for-grafana-3
+-  ##
+-  # installPlugins:
+-
+-  # Set datasource in beginning
+-  setDatasource:
+-    ## If true, an initial Grafana Datasource will be set
+-    ## Default: false
+-    ##
+-    enabled: false
+-
+-    ## How long should it take to commit failure
+-    ## Default: 300
+-    ##
+-    activeDeadlineSeconds: 300
+-
+-    ## Curl Docker image
+-    ## Default: appropriate/curl:latest
+-    ##
+-    image: appropriate/curl:latest
+-
+-    ## This assembles how curl post into Grafana
+-    ## Ref1: http://docs.grafana.org/reference/http_api/#create-data-source
+-    ## Ref2: https://github.com/grafana/grafana/issues/1789
+-    ##
+-    datasource:
+-      ## The datasource name.
+-      ## Default: default
+-      name: default
+-
+-      ## Type of datasource
+-      ## Default: prometheus
+-      ##
+-      type: prometheus
+-
+-      ## The url of the datasource. To set correctly you need to know
+-      ## the right datasource name and its port ahead. Check kubernetes
+-      ## dashboard or describe the service should fulfill the requirements.
+-      ## Syntax like `http://<release name>-<server name>:<port number>
+-      ## Default: <empty>
+-      ##
+-      url:
+-
+-      ## The name of the database at the datasource.
+-      ## Required parameter when used with elasticsearch, which refers to the index_name
+-      ## Default: <empty>
+-      database:
+-
+-      ## Additional JSON data to be passed to the configuration of the datasource.
+-      ## The JSON data is passed to curl, therefore it needs proper quoting and
+-      ## escaping and needs to be on a single line. For example:
+-      ##  '\"esVersion\": 2, \"interval\": \"Daily\", \"timeField\": \"@timestamp\"'
+-      jsonData: null
+-
+-      ## Specify if Grafana has to go thru proxy to reach datasource
+-      ## Default: proxy
+-      ##
+-      access: proxy
+-
+-      ## Specify should Grafana use this datasource as default
+-      ## Default: true
+-      ##
+-      isDefault: true
+-
+-    ## Specify the job policy
+-    ## Default: OnFailure
+-    ##
+-    restartPolicy: OnFailure
+-
+-## Grafana config file ConfigMap entry
++replicas: 1
++
++image:
++  repository: grafana/grafana
++  tag: 5.0.4
++  pullPolicy: IfNotPresent
++
++downloadDashboardsImage:
++  repository: appropriate/curl
++  tag: latest
++  pullPolicy: IfNotPresent
++## Expose the grafana service to be accessed from outside the cluster (LoadBalancer service).
++## or access it from within the cluster (ClusterIP service). Set the service type and the port to serve it.
++## ref: http://kubernetes.io/docs/user-guide/services/
+ ##
+-serverConfigFile:
+-  grafana.ini: |
+-    ; instance_name = ${HOSTNAME}
+-    [paths]
+-    data = /var/lib/grafana/data
+-    logs = /var/log/grafana
+-    plugins = /var/lib/grafana/plugins
+-
+-    [server]
+-    ;protocol = http
+-    ;http_addr =
+-    ;http_port = 3000
+-    ;domain = localhost
+-    ;enforce_domain = false
+-    ;root_url = %(protocol)s://%(domain)s:%(http_port)s/
+-    ;router_logging = false
+-    ;static_root_path = public
+-    ;enable_gzip = false
+-    ;cert_file =
+-    ;cert_key =
+-
+-    [database]
+-    ;type = sqlite3
+-    ;host = 127.0.0.1:3306
+-    ;name = grafana
+-    ;user = root
+-    ;password =
+-    ;ssl_mode = disable
+-    ;path = grafana.db
+-
+-    [session]
+-    ;provider = file
+-    ;provider_config = sessions
+-    ;cookie_name = grafana_sess
+-    ;cookie_secure = false
+-    ;session_life_time = 86400
+-
+-    [analytics]
+-    ;reporting_enabled = true
+-    check_for_updates = true
+-    ;google_analytics_ua_id =
+-
+-    [security]
+-    ;admin_user = admin
+-    ;admin_password = admin
+-    ;secret_key = SW2YcwTIb9zpOOhoPsMm
+-    ;login_remember_days = 7
+-    ;cookie_username = grafana_user
+-    ;cookie_remember_name = grafana_remember
+-    ;disable_gravatar = false
+-    ;data_source_proxy_whitelist =
+-
+-    [snapshots]
+-    ;external_enabled = true
+-    ;external_snapshot_url = https://snapshots-origin.raintank.io
+-    ;external_snapshot_name = Publish to snapshot.raintank.io
+-
+-    [users]
+-    ;allow_sign_up = true
+-    ;allow_org_create = true
+-    ;auto_assign_org = true
+-    ;auto_assign_org_role = Viewer
+-    ;login_hint = email or username
+-    ;default_theme = dark
+-
+-    [auth.anonymous]
+-    ;enabled = false
+-    ;org_name = Main Org.
+-    ;org_role = Viewer
+-
+-    [auth.github]
+-    ;enabled = false
+-    ;allow_sign_up = false
+-    ;client_id = some_id
+-    ;client_secret = some_secret
+-    ;scopes = user:email,read:org
+-    ;auth_url = https://github.com/login/oauth/authorize
+-    ;token_url = https://github.com/login/oauth/access_token
+-    ;api_url = https://api.github.com/user
+-    ;team_ids =
+-    ;allowed_organizations =
+-
+-    [auth.google]
+-    ;enabled = false
+-    ;allow_sign_up = false
+-    ;client_id = some_client_id
+-    ;client_secret = some_client_secret
+-    ;scopes = https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email
+-    ;auth_url = https://accounts.google.com/o/oauth2/auth
+-    ;token_url = https://accounts.google.com/o/oauth2/token
+-    ;api_url = https://www.googleapis.com/oauth2/v1/userinfo
+-    ;allowed_domains =
+-
+-    [auth.proxy]
+-    ;enabled = false
+-    ;header_name = X-WEBAUTH-USER
+-    ;header_property = username
+-    ;auto_sign_up = true
+-
+-    [auth.basic]
+-    ;enabled = true
++service:
++  type: ClusterIP
++  port: 80
++  annotations: {}
+ 
+-    [auth.ldap]
+-    ;enabled = false
+-    ;config_file = /etc/grafana/ldap.toml
+-
+-    [smtp]
+-    ;enabled = false
+-    ;host = localhost:25
+-    ;user =
+-    ;password =
+-    ;cert_file =
+-    ;key_file =
+-    ;skip_verify = false
+-    ;from_address = admin@grafana.localhost
+-
+-    [emails]
+-    ;welcome_email_on_sign_up = false
+-
+-    [log]
+-    mode = console
+-    level = info
+-
+-    [log.console]
+-    ;level =
+-    ;format = console
++ingress:
++  enabled: false
++  annotations: {}
++    # kubernetes.io/ingress.class: nginx
++    # kubernetes.io/tls-acme: "true"
++  path: /
++  hosts:
++    - chart-example.local
++  tls: []
++  #  - secretName: chart-example-tls
++  #    hosts:
++  #      - chart-example.local
++
++resources: {}
++#  limits:
++#    cpu: 100m
++#    memory: 128Mi
++#  requests:
++#    cpu: 100m
++#    memory: 128Mi
++
++## Node labels for pod assignment
++## ref: https://kubernetes.io/docs/user-guide/node-selection/
++#
++nodeSelector: {}
++
++## Tolerations for pod assignment
++## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
++##
++tolerations: []
+ 
+-    [event_publisher]
+-    ;enabled = false
+-    ;rabbitmq_url = amqp://localhost/
+-    ;exchange = grafana_events
++## Affinity for pod assignment
++## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
++##
++affinity: {}
+ 
+-    [dashboards.json]
+-    enabled = true
+-    path = /var/lib/grafana/dashboards
++## Enable persistence using Persistent Volume Claims
++## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
++##
++persistence:
++  enabled: false
++  # storageClassName: default
++  # accessModes:
++  #   - ReadWriteOnce
++  # size: 10Gi
++  # annotations: {}
++  # subPath: ""
++  # existingClaim:
+ 
+-    [metrics]
+-    ;enabled           = true
+-    ;interval_seconds  = 10
++adminUser: admin
++# adminPassword: strongpassword
+ 
+-    ; [metrics.graphite]
+-    ; address = localhost:2003
+-    ; prefix = prod.grafana.%(instance_name)s.
+ 
+-    [grafana_net]
+-    url = https://grafana.net
++## Extra enviornment variables that will be pass onto deployment pods
++env: {}
+ 
++# Pass the plugins you want installed as a comma separated list.
++# plugins: "digrich-bubblechart-panel,grafana-clock-panel"
++plugins: ""
+ 
+-## Grafana dashboard files ConfigMap entries
+-## If you'd like to preinstall prometheus dashboard on the same namespace as example, get it from:
+-##
+-## https://grafana.net/dashboards/2
++## Configure grafana datasources
++## ref: http://docs.grafana.org/administration/provisioning/#datasources
+ ##
+-## and add it below.
++datasources: {}
++#  datasources.yaml:
++#    apiVersion: 1
++#    datasources:
++#    - name: Prometheus
++#      type: prometheus
++#      url: http://prometheus-prometheus-server
++#      access: proxy
++#      isDefault: true
++
++## Configure grafana dashboard providers
++## ref: http://docs.grafana.org/administration/provisioning/#dashboards
+ ##
+-serverDashboardFiles: {}
+-
+-## Grafana dashboard files to import ConfigMap entries
+-## The behaviuor is different then 'serverDashboardFiles' in that, this flow will create a Job to import using the API.
+-## If you'd like to preinstall prometheus dashboard on the same namespace as example, get it from:
+-##
+-## https://grafana.net/dashboards/2
++dashboardProviders: {}
++#  dashboardproviders.yaml:
++#    apiVersion: 1
++#    providers:
++#    - name: 'default'
++#      orgId: 1
++#      folder: ''
++#      type: file
++#      disableDeletion: false
++#      editable: true
++#      options:
++#        path: /var/lib/grafana/dashboards
++
++## Configure grafana dashboard to import
++## NOTE: To use dashboards you must also enable/configure dashboardProviders
++## ref: https://grafana.com/dashboards
+ ##
+-## and add it below.
++dashboards: {}
++#  some-dashboard:
++#    json: |
++#      $RAW_JSON
++#  prometheus-stats:
++#    gnetId: 2
++#    revision: 2
++#    datasource: Prometheus
++
++## Grafana's primary configuration
++## NOTE: values in map will be converted to ini format
++## ref: http://docs.grafana.org/installation/configuration/
+ ##
+-dashboardImports:
+-  ## If true, a Job will be created to import dashboards
+-  ## Default: false
+-  ##
+-  enabled: false
+-
+-  ## How long should it take to commit failure
+-  ## Default: 30
+-  ##
+-  activeDeadlineSeconds: 30
+-
+-  ## Docker image to run import process
+-  ## Default: jgoclawski/wget:1.0
+-  ##
+-  image: jgoclawski/wget:1.0
+-
+-  ## Grafana dashboard files to import as ConfigMap entries
+-  # files: {}
+-
+-  ## Grafana dashboard URL to import (this should be a JSON file, not the HTML page)
+-  # Example:
+-  # dashboards:
+-  #   Prometheus_Stats.json: https://grafana.com/api/dashboards/2/revisions/2/download
+-  #   Docker_Dashboard.json: https://grafana.com/api/dashboards/179/revisions/5/download
+-  #   MyPrivateDashboard.json: http://example.com/dashboard.json
+-  # dashboards: {}
+-
+-  ## Specify the Job policy
+-  ## Default: Never
+-  ##
+-  restartPolicy: Never
+-
+-  ## Specify Pod Backoff failure policy
+-  ## Default: 1
+-  ##
+-  backoffLimit: 1
+-
+-  ## Specify when Helm should run the import job
+-  ## Default: post-install,post-upgrade
+-  ##
+-  hook: post-install,post-upgrade
++grafana.ini:
++  paths:
++    data: /var/lib/grafana/data
++    logs: /var/log/grafana
++    plugins: /var/lib/grafana/plugins
++  analytics:
++    check_for_updates: true
++  log:
++    mode: console
++  grafana_net:
++    url: https://grafana.net

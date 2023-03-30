@@ -1,0 +1,2099 @@
+commit d2cd8421fa76adeb2c2898c0ca63b3f04563aedc
+Author: Harry <harrybagdi@gmail.com>
+Date:   Fri Jan 3 11:39:40 2020 -0800
+
+    [stable/kong] 0.33: misc updates (#19840)
+    
+    * [stable/kong] consolidate all rbac resources into a single file
+    
+    - Simplify and reduce number of ifs in our helm chart to reduce
+    maintainence burden
+    
+    Signed-off-by: Harry Bagdi <harrybagdi@gmail.com>
+    
+    * [stable/kong] move all custom resources into a single file
+    
+    Signed-off-by: Harry Bagdi <harrybagdi@gmail.com>
+    
+    * [stable/kong] remove podDistruption budget for ingressController
+    
+    Ingress Controller has been consolidated into the Kong pod itself now
+    so this policy is not needed anymore.
+    
+    Signed-off-by: Harry Bagdi <harrybagdi@gmail.com>
+    
+    * [stable/kong] refactor wait-for-postgres container into helpers for de-duplication
+    
+    Signed-off-by: Harry Bagdi <harrybagdi@gmail.com>
+    
+    * [stable/kong] refactor env section of the deployment into a helper
+    
+    In the next commit, we will use this same env section for the migration
+    containers as well to ensure consistency in Kong's configuration across
+    different pods.
+    
+    Signed-off-by: Harry Bagdi <harrybagdi@gmail.com>
+    
+    * [stable/kong] use kong.final_env for migration containers
+    
+    This ensures that the exact same configuration for kong is used across
+    containers of all types.
+    
+    Signed-off-by: Harry Bagdi <harrybagdi@gmail.com>
+    
+    * [stable/kong] wait-for-postgres to be available
+    
+    Previously, if the Postgres instance was managed externally, eg, like an
+    RDS instance, then the chart would fail to wait for it. The migrations
+    eventually succeeded but if the pod fails while connecting to Postgres,
+    it is more helpful as it highlights an issue with network itself.
+    
+    Signed-off-by: Harry Bagdi <harrybagdi@gmail.com>
+    
+    * [stable/kong] use a hard-coded name for the container name
+    
+    This allows us to have determisintic container names and makes writing
+    scripts easier. The name of the pod and deployment are still generated
+    by Helm.
+    
+    Signed-off-by: Harry Bagdi <harrybagdi@gmail.com>
+    
+    * [stable/kong] bump up Postgresql sub-chart to 8.1.2
+    
+    Signed-off-by: Harry Bagdi <harrybagdi@gmail.com>
+    
+    * [stable/kong] write changelog and bump chart for 0.33
+    
+    Signed-off-by: Harry Bagdi <harrybagdi@gmail.com>
+    
+    * fix: remove installCRDs since it is present twice
+    
+    Signed-off-by: Harry Bagdi <harrybagdi@gmail.com>
+    
+    * [stable/kong] add content of FAQ doc
+    
+    Signed-off-by: Harry Bagdi <harrybagdi@gmail.com>
+    
+    * [stable/kong] re-orgnize values.yaml
+    
+    Signed-off-by: Harry Bagdi <harrybagdi@gmail.com>
+    
+    * [stable/kong] fix language in the FAQ
+    
+    Signed-off-by: Harry Bagdi <harrybagdi@gmail.com>
+
+diff --git a/stable/kong/Chart.yaml b/stable/kong/Chart.yaml
+index 6764d9acb..fa3d6570b 100644
+--- a/stable/kong/Chart.yaml
++++ b/stable/kong/Chart.yaml
+@@ -12,5 +12,5 @@ maintainers:
+ name: kong
+ sources:
+ - https://github.com/Kong/kong
+-version: 0.32.1
++version: 0.33.0
+ appVersion: 1.4
+diff --git a/stable/kong/FAQs.md b/stable/kong/FAQs.md
+index 2a0efb5e1..1bac26274 100644
+--- a/stable/kong/FAQs.md
++++ b/stable/kong/FAQs.md
+@@ -1,2 +1,32 @@
+ # Frequently Asked Questions (FAQs)
+ 
++#### Kong fails to start after `helm upgrade` when Postgres is used. What do I do?
++
++You may be running into this issue: https://github.com/helm/charts/issues/12575.
++This issue is caused due to: https://github.com/helm/helm/issues/3053.
++
++The problem that happens is that Postgres database has the old password but
++the new secret has a different password, which is used by Kong, and password
++based authentication fails.
++
++The solution to the problem is to specify a password to the `postgresql` chart.
++This is to ensure that the password is not generated randomly but is set to
++the same one that is user-provided on each upgrade.
++
++#### Kong fails to start on a fresh installation with Postgres. What do I do?
++
++Please make sure that there is no `PersistentVolumes` present from a previous
++release. If there are, it can lead to data or passwords being out of sync
++and result in connection issues.
++
++A simple way to find out is to use the following command:
++
++```
++kubectl get pv -n <your-namespace>
++```
++
++And then based on the `AGE` column, determine if you have an old volume.
++If you do, then please delete the release, delete the volume, and then
++do a fresh installation. PersistentVolumes can remain in the cluster even if
++you delete the namespace itself (the namespace in which they were present).
++
+diff --git a/stable/kong/README.md b/stable/kong/README.md
+index af017dcdc..30fa3549c 100644
+--- a/stable/kong/README.md
++++ b/stable/kong/README.md
+@@ -242,23 +242,16 @@ section of `values.yaml` file:
+ | Parameter                          | Description                                                                           | Default                                                                      |
+ | ---------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+ | enabled                            | Deploy the ingress controller, rbac and crd                                           | true                                                                         |
++| replicaCount                       | Number of desired ingress controllers                                                 | 1                                                                            |
+ | image.repository                   | Docker image with the ingress controller                                              | kong-docker-kubernetes-ingress-controller.bintray.io/kong-ingress-controller |
+-| image.tag                          | Version of the ingress controller                                                     | 0.6.2                                                                        |
++| image.tag                          | Version of the ingress controller                                                     | 0.6.0                                                                        |
++| readinessProbe                     | Kong ingress controllers readiness probe                                              |                                                                              |
++| livenessProbe                      | Kong ingress controllers liveness probe                                               |                                                                              |
+ | env                                | Specify Kong Ingress Controller configuration via environment variables               |                                                                              |
++| ingressClass                       | The ingress-class value for controller                                                | kong                                                                         |
+ | admissionWebhook.enabled           | Whether to enable the validating admission webhook                                    | false                                                                        |
+ | admissionWebhook.failurePolicy     | How unrecognized errors from the admission endpoint are handled (Ignore or Fail)      | Fail                                                                         |
+ | admissionWebhook.port              | The port the ingress controller will listen on for admission webhooks                 | 8080                                                                         |
+-| admissionWebhook.port              | The port the ingress controller will listen on for admission webhooks                 | 8080                                                                         |
+-| ingressClass                       | The ingress-class value for controller                                                | kong                                                                         |
+-| installCRDs                        | Install the Custom Resource definitions along-with Kong                               | `true`                                                                       |
+-| rbac.create                        | Install and setup RBAC resources for the Controller authorization policies            | `true`                                                                       |
+-| serviceAccount.create              | Install and setup ServiceAccount resources for the Controller authentication          | `true`                                                                       |
+-| serviceAccount.name                | Name of ServiceAccount to use if serviceAccount.create is set to `false`              | `true`                                                                       |
+-| livenessProbe                      | Kong ingress controllers liveness probe                                               |                                                                              |
+-| readinessProbe                     | Kong ingress controllers readiness probe                                              |                                                                              |
+-| podDisruptionBudget.enabled        | Enable PodDisruptionBudget for ingress controller                                     | `false`                                                                      |
+-| podDisruptionBudget.maxUnavailable | Represents the minimum number of Pods that can be unavailable (integer or percentage) | `50%`                                                                        |
+-| podDisruptionBudget.minAvailable   | Represents the number of Pods that must be available (integer or percentage)          |                                                                              |
+ 
+ For a complete list of all configuration values you can set in the 
+ `env` section, please read the Kong Ingress Controller's
+@@ -457,6 +450,37 @@ value is your SMTP password.
+ 
+ ## Changelog
+ 
++
++### 0.33.0
++
++> PR [#19840](https://github.com/helm/charts/pull/19840)
++
++#### Dependencies
++
++- Postgre sub-chart has been bumped up to 8.1.2
++
++#### Fixed
++
++- Removed podDisruption budge for Ingress Controller. Ingress Controller and
++  Kong run in the same pod so this was no longer applicable
++- Migration job now receives the same environment variable and configuration
++  as that of the Kong pod.
++- If Kong is configured to run with Postgres, the Kong pods now always wait
++  for Postgres to start. Previously this was done only when the sub-chart
++  postgres was deployed.
++- A hard-coded container name is used for kong: `proxy`. Previously this
++  was auto-generated by Helm. This deterministic naming allows for simpler
++  scripts and documentation.
++
++#### Under the hood
++
++Following changes have no end user visible effects:
++
++- All Custom Resource Definitions have been consolidated into a single
++  template file
++- All RBAC resources have been consolidated into a single template file
++- `wait-for-postgres` container has been refactored and de-duplicated
++
+ ### 0.32.1
+ 
+ #### Improvements
+diff --git a/stable/kong/requirements.lock b/stable/kong/requirements.lock
+index c890977ff..58b39937c 100644
+--- a/stable/kong/requirements.lock
++++ b/stable/kong/requirements.lock
+@@ -1,6 +1,6 @@
+ dependencies:
+ - name: postgresql
+   repository: https://kubernetes-charts.storage.googleapis.com/
+-  version: 6.3.15
+-digest: sha256:1110c0b8497a990af34f196753420ab9b1b00fed77c540bce43542bdedd74b9b
+-generated: "2019-10-31T09:56:30.102440266-07:00"
++  version: 8.1.2
++digest: sha256:c4bf54db60c2c5953ba7b79ce4814f8b8225d04e932868bcfab23b93c05b0f7f
++generated: "2019-12-31T13:58:27.104134475-08:00"
+diff --git a/stable/kong/requirements.yaml b/stable/kong/requirements.yaml
+index b25cd9641..98315ed99 100644
+--- a/stable/kong/requirements.yaml
++++ b/stable/kong/requirements.yaml
+@@ -1,5 +1,5 @@
+ dependencies:
+ - name: postgresql
+-  version: ~6.3.0
++  version: ~8.1.0
+   repository: https://kubernetes-charts.storage.googleapis.com/
+   condition: postgresql.enabled
+diff --git a/stable/kong/templates/_helpers.tpl b/stable/kong/templates/_helpers.tpl
+index bc75020ed..470a8ce39 100644
+--- a/stable/kong/templates/_helpers.tpl
++++ b/stable/kong/templates/_helpers.tpl
+@@ -335,3 +335,157 @@ Use the Pod security context defined in Values or set the UID by default
+ {{- define "kong.podsecuritycontext" -}}
+ {{ .Values.securityContext | toYaml }}
+ {{- end -}}
++
++{{/*
++The environment values passed to Kong; this should come after all
++the template that it itself is using form the above sections.
++*/}}
++{{- define "kong.final_env" -}}
++- name: KONG_LUA_PACKAGE_PATH
++  value: "/opt/?.lua;;"
++{{- if not .Values.env.admin_listen }}
++{{- if .Values.admin.useTLS }}
++- name: KONG_ADMIN_LISTEN
++  value: "0.0.0.0:{{ .Values.admin.containerPort }} ssl"
++{{- else }}
++- name: KONG_ADMIN_LISTEN
++  value: 0.0.0.0:{{ .Values.admin.containerPort }}
++{{- end }}
++{{- end }}
++{{- if .Values.admin.ingress.enabled }}
++- name: KONG_ADMIN_API_URI
++  value: {{ include "kong.ingress.serviceUrl" .Values.admin.ingress }}
++{{- end }}
++{{- if not .Values.env.proxy_listen }}
++- name: KONG_PROXY_LISTEN
++  value: {{ template "kong.kongProxyListenValue" . }}
++{{- end }}
++{{- if and (not .Values.env.admin_gui_listen) (.Values.enterprise.enabled) }}
++- name: KONG_ADMIN_GUI_LISTEN
++  value: {{ template "kong.kongManagerListenValue" . }}
++{{- end }}
++{{- if and (.Values.manager.ingress.enabled) (.Values.enterprise.enabled) }}
++- name: KONG_ADMIN_GUI_URL
++  value: {{ include "kong.ingress.serviceUrl" .Values.manager.ingress }}
++{{- end }}
++{{- if and (not .Values.env.portal_gui_listen) (.Values.enterprise.enabled) (.Values.enterprise.portal.enabled) }}
++- name: KONG_PORTAL_GUI_LISTEN
++  value: {{ template "kong.kongPortalListenValue" . }}
++{{- end }}
++{{- if and (.Values.portal.ingress.enabled) (.Values.enterprise.enabled) (.Values.enterprise.portal.enabled) }}
++- name: KONG_PORTAL_GUI_HOST
++  value: {{ .Values.portal.ingress.hostname }}
++{{- if .Values.portal.ingress.tls }}
++- name: KONG_PORTAL_GUI_PROTOCOL
++  value: https
++{{- else }}
++- name: KONG_PORTAL_GUI_PROTOCOL
++  value: http
++{{- end }}
++{{- end }}
++{{- if and (not .Values.env.portal_api_listen) (.Values.enterprise.enabled) (.Values.enterprise.portal.enabled) }}
++- name: KONG_PORTAL_API_LISTEN
++  value: {{ template "kong.kongPortalApiListenValue" . }}
++{{- end }}
++{{- if and (.Values.portalapi.ingress.enabled) (.Values.enterprise.enabled) (.Values.enterprise.portal.enabled) }}
++- name: KONG_PORTAL_API_URL
++  value: {{ include "kong.ingress.serviceUrl" .Values.portalapi.ingress }}
++{{- end }}
++- name: KONG_NGINX_DAEMON
++  value: "off"
++{{- if .Values.enterprise.enabled }}
++{{- if not .Values.enterprise.vitals.enabled }}
++- name: KONG_VITALS
++  value: "off"
++{{- end }}
++{{- if .Values.enterprise.portal.enabled }}
++- name: KONG_PORTAL
++  value: "on"
++{{- if .Values.enterprise.portal.portal_auth }}
++- name: KONG_PORTAL_AUTH
++  value: {{ .Values.enterprise.portal.portal_auth }}
++- name: KONG_PORTAL_SESSION_CONF
++  valueFrom:
++    secretKeyRef:
++      name: {{ .Values.enterprise.portal.session_conf_secret }}
++      key: portal_session_conf
++{{- end }}
++{{- end }}
++{{- if .Values.enterprise.rbac.enabled }}
++- name: KONG_ENFORCE_RBAC
++  value: "on"
++- name: KONG_ADMIN_GUI_AUTH
++  value: {{ .Values.enterprise.rbac.admin_gui_auth | default "basic-auth" }}
++{{- if not (eq .Values.enterprise.rbac.admin_gui_auth "basic-auth") }}
++- name: KONG_ADMIN_GUI_AUTH_CONF
++  valueFrom:
++    secretKeyRef:
++      name: {{ .Values.enterprise.rbac.admin_gui_auth_conf_secret }}
++      key: admin_gui_auth_conf
++{{- end }}
++- name: KONG_ADMIN_GUI_SESSION_CONF
++  valueFrom:
++    secretKeyRef:
++      name: {{ .Values.enterprise.rbac.session_conf_secret }}
++      key: admin_gui_session_conf
++{{- end }}
++{{- if .Values.enterprise.smtp.enabled }}
++- name: KONG_PORTAL_EMAILS_FROM
++  value: {{ .Values.enterprise.smtp.portal_emails_from }}
++- name: KONG_PORTAL_EMAILS_REPLY_TO
++  value: {{ .Values.enterprise.smtp.portal_emails_reply_to }}
++- name: KONG_ADMIN_EMAILS_FROM
++  value: {{ .Values.enterprise.smtp.admin_emails_from }}
++- name: KONG_ADMIN_EMAILS_REPLY_TO
++  value: {{ .Values.enterprise.smtp.admin_emails_reply_to }}
++- name: KONG_SMTP_HOST
++  value: {{ .Values.enterprise.smtp.smtp_host }}
++- name: KONG_SMTP_PORT
++  value: {{ .Values.enterprise.smtp.smtp_port | quote }}
++- name: KONG_SMTP_STARTTLS
++  value: {{ .Values.enterprise.smtp.smtp_starttls | quote }}
++{{- if .Values.enterprise.smtp.auth.smtp_username }}
++- name: KONG_SMTP_USERNAME
++  value: {{ .Values.enterprise.smtp.auth.smtp_username }}
++- name: KONG_SMTP_PASSWORD
++  valueFrom:
++    secretKeyRef:
++      name: {{ .Values.enterprise.smtp.auth.smtp_password_secret }}
++      key: smtp_password
++{{- end }}
++{{- else }}
++- name: KONG_SMTP_MOCK
++  value: "on"
++{{- end }}
++{{- include "kong.license" . }}
++{{- end }}
++- name: KONG_NGINX_HTTP_INCLUDE
++  value: /kong/servers.conf
++{{- if .Values.postgresql.enabled }}
++- name: KONG_PG_HOST
++  value: {{ template "kong.postgresql.fullname" . }}
++- name: KONG_PG_PORT
++  value: "{{ .Values.postgresql.service.port }}"
++- name: KONG_PG_PASSWORD
++  valueFrom:
++    secretKeyRef:
++      name: {{ template "kong.postgresql.fullname" . }}
++      key: postgresql-password
++{{- end }}
++{{- if (and (not .Values.ingressController.enabled) (eq .Values.env.database "off")) }}
++- name: KONG_DECLARATIVE_CONFIG
++  value: "/kong_dbless/kong.yml"
++{{- end }}
++- name: KONG_PLUGINS
++  value: {{ template "kong.plugins" . }}
++{{- include "kong.env" . }}
++{{- end -}}
++
++{{- define "kong.wait-for-postgres" -}}
++- name: wait-for-postgres
++  image: "{{ .Values.waitImage.repository }}:{{ .Values.waitImage.tag }}"
++  imagePullPolicy: {{ .Values.waitImage.pullPolicy }}
++  env:
++  {{- include "kong.final_env" . | nindent 2 }}
++  command: [ "/bin/sh", "-c", "until nc -zv $KONG_PG_HOST $KONG_PG_PORT -w1; do echo 'waiting for db'; sleep 1; done" ]
++{{- end -}}
+diff --git a/stable/kong/templates/controller-cluster-role.yaml b/stable/kong/templates/controller-cluster-role.yaml
+deleted file mode 100644
+index 9e256b5c3..000000000
+--- a/stable/kong/templates/controller-cluster-role.yaml
++++ /dev/null
+@@ -1,70 +0,0 @@
+-{{- if and .Values.ingressController.rbac.create .Values.ingressController.enabled -}}
+-apiVersion: rbac.authorization.k8s.io/v1beta1
+-kind: ClusterRole
+-metadata:
+-  labels:
+-    app: {{ template "kong.name" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
+-  name:  {{ template "kong.fullname" . }}
+-rules:
+-  - apiGroups:
+-      - ""
+-    resources:
+-      - endpoints
+-      - nodes
+-      - pods
+-      - secrets
+-    verbs:
+-      - list
+-      - watch
+-  - apiGroups:
+-      - ""
+-    resources:
+-      - nodes
+-    verbs:
+-      - get
+-  - apiGroups:
+-      - ""
+-    resources:
+-      - services
+-    verbs:
+-      - get
+-      - list
+-      - watch
+-  - apiGroups:
+-      - "extensions"
+-      - "networking.k8s.io"
+-    resources:
+-      - ingresses
+-    verbs:
+-      - get
+-      - list
+-      - watch
+-  - apiGroups:
+-      - ""
+-    resources:
+-        - events
+-    verbs:
+-        - create
+-        - patch
+-  - apiGroups:
+-      - "extensions"
+-      - "networking.k8s.io"
+-    resources:
+-      - ingresses/status
+-    verbs:
+-      - update
+-  - apiGroups:
+-      - "configuration.konghq.com"
+-    resources:
+-      - kongplugins
+-      - kongcredentials
+-      - kongconsumers
+-      - kongingresses
+-    verbs:
+-      - get
+-      - list
+-      - watch
+-{{- end -}}
+diff --git a/stable/kong/templates/controller-pdb.yaml b/stable/kong/templates/controller-pdb.yaml
+deleted file mode 100644
+index d03278195..000000000
+--- a/stable/kong/templates/controller-pdb.yaml
++++ /dev/null
+@@ -1,20 +0,0 @@
+-{{- if and .Values.ingressController.enabled .Values.ingressController.podDisruptionBudget.enabled }}
+-apiVersion: policy/v1beta1
+-kind: PodDisruptionBudget
+-metadata:
+-  name: "{{ template "kong.fullname" . }}-controller"
+-  labels:
+-    app: "{{ template "kong.name" . }}"
+-spec:
+-  {{- if .Values.ingressController.podDisruptionBudget.minAvailable }}
+-  minAvailable: {{ .Values.ingressController.podDisruptionBudget.minAvailable }}
+-  {{- end  }}
+-  {{- if .Values.ingressController.podDisruptionBudget.maxUnavailable }}
+-  maxUnavailable: {{ .Values.ingressController.podDisruptionBudget.maxUnavailable }}
+-  {{- end  }}
+-  selector:
+-    matchLabels:
+-      app: {{ template "kong.name" . }}
+-      release: {{ .Release.Name }}
+-      component: controller
+-{{- end }}
+\ No newline at end of file
+diff --git a/stable/kong/templates/controller-rbac-cluster-role-binding.yaml b/stable/kong/templates/controller-rbac-cluster-role-binding.yaml
+deleted file mode 100644
+index 2e4e7526f..000000000
+--- a/stable/kong/templates/controller-rbac-cluster-role-binding.yaml
++++ /dev/null
+@@ -1,19 +0,0 @@
+-{{- if and .Values.ingressController.rbac.create .Values.ingressController.enabled -}}
+-apiVersion: rbac.authorization.k8s.io/v1beta1
+-kind: ClusterRoleBinding
+-metadata:
+-  name:  {{ template "kong.fullname" . }}
+-  labels:
+-    app: {{ template "kong.name" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
+-roleRef:
+-  apiGroup: rbac.authorization.k8s.io
+-  kind: ClusterRole
+-  name:  {{ template "kong.fullname" . }}
+-subjects:
+-  - kind: ServiceAccount
+-    name: {{ template "kong.serviceAccountName" . }}
+-    namespace: {{ .Release.Namespace }}
+-{{- end -}}
+diff --git a/stable/kong/templates/controller-rbac-resources.yaml b/stable/kong/templates/controller-rbac-resources.yaml
+new file mode 100644
+index 000000000..bbc4ad121
+--- /dev/null
++++ b/stable/kong/templates/controller-rbac-resources.yaml
+@@ -0,0 +1,152 @@
++{{- if and .Values.ingressController.rbac.create .Values.ingressController.enabled -}}
++apiVersion: rbac.authorization.k8s.io/v1beta1
++kind: Role
++metadata:
++  name:  {{ template "kong.fullname" . }}
++  namespace: {{ .Release.namespace }}
++  labels:
++    app: {{ template "kong.name" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++rules:
++  - apiGroups:
++      - ""
++    resources:
++      - configmaps
++      - pods
++      - secrets
++      - namespaces
++    verbs:
++      - get
++  - apiGroups:
++      - ""
++    resources:
++      - configmaps
++    resourceNames:
++      # Defaults to "<election-id>-<ingress-class>"
++      # Here: "<kong-ingress-controller-leader-nginx>-<nginx>"
++      # This has to be adapted if you change either parameter
++      # when launching the nginx-ingress-controller.
++      - "kong-ingress-controller-leader-{{ .Values.ingressController.ingressClass }}-{{ .Values.ingressController.ingressClass }}"
++    verbs:
++      - get
++      - update
++  - apiGroups:
++      - ""
++    resources:
++      - configmaps
++    verbs:
++      - create
++  - apiGroups:
++      - ""
++    resources:
++      - endpoints
++    verbs:
++      - get
++---
++apiVersion: rbac.authorization.k8s.io/v1beta1
++kind: RoleBinding
++metadata:
++  name:  {{ template "kong.fullname" . }}
++  namespace: {{ .Release.Namespace }}
++  labels:
++    app: {{ template "kong.name" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++roleRef:
++  apiGroup: rbac.authorization.k8s.io
++  kind: Role
++  name: {{ template "kong.fullname" . }}
++subjects:
++  - kind: ServiceAccount
++    name: {{ template "kong.serviceAccountName" . }}
++    namespace: {{ .Release.Namespace }}
++---
++apiVersion: rbac.authorization.k8s.io/v1beta1
++kind: ClusterRole
++metadata:
++  labels:
++    app: {{ template "kong.name" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++  name:  {{ template "kong.fullname" . }}
++rules:
++  - apiGroups:
++      - ""
++    resources:
++      - endpoints
++      - nodes
++      - pods
++      - secrets
++    verbs:
++      - list
++      - watch
++  - apiGroups:
++      - ""
++    resources:
++      - nodes
++    verbs:
++      - get
++  - apiGroups:
++      - ""
++    resources:
++      - services
++    verbs:
++      - get
++      - list
++      - watch
++  - apiGroups:
++      - "extensions"
++      - "networking.k8s.io"
++    resources:
++      - ingresses
++    verbs:
++      - get
++      - list
++      - watch
++  - apiGroups:
++      - ""
++    resources:
++        - events
++    verbs:
++        - create
++        - patch
++  - apiGroups:
++      - "extensions"
++      - "networking.k8s.io"
++    resources:
++      - ingresses/status
++    verbs:
++      - update
++  - apiGroups:
++      - "configuration.konghq.com"
++    resources:
++      - kongplugins
++      - kongcredentials
++      - kongconsumers
++      - kongingresses
++    verbs:
++      - get
++      - list
++---
++apiVersion: rbac.authorization.k8s.io/v1beta1
++kind: ClusterRoleBinding
++metadata:
++  name:  {{ template "kong.fullname" . }}
++  labels:
++    app: {{ template "kong.name" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++roleRef:
++  apiGroup: rbac.authorization.k8s.io
++  kind: ClusterRole
++  name:  {{ template "kong.fullname" . }}
++subjects:
++  - kind: ServiceAccount
++    name: {{ template "kong.serviceAccountName" . }}
++    namespace: {{ .Release.Namespace }}
++{{- end -}}
+diff --git a/stable/kong/templates/controller-rbac-role-binding.yaml b/stable/kong/templates/controller-rbac-role-binding.yaml
+deleted file mode 100644
+index 6dad01956..000000000
+--- a/stable/kong/templates/controller-rbac-role-binding.yaml
++++ /dev/null
+@@ -1,20 +0,0 @@
+-{{- if and .Values.ingressController.rbac.create .Values.ingressController.enabled -}}
+-apiVersion: rbac.authorization.k8s.io/v1beta1
+-kind: RoleBinding
+-metadata:
+-  name:  {{ template "kong.fullname" . }}
+-  namespace: {{ .Release.Namespace }}
+-  labels:
+-    app: {{ template "kong.name" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
+-roleRef:
+-  apiGroup: rbac.authorization.k8s.io
+-  kind: Role
+-  name: {{ template "kong.fullname" . }}
+-subjects:
+-  - kind: ServiceAccount
+-    name: {{ template "kong.serviceAccountName" . }}
+-    namespace: {{ .Release.Namespace }}
+-{{- end -}}
+diff --git a/stable/kong/templates/controller-rbac-role.yaml b/stable/kong/templates/controller-rbac-role.yaml
+deleted file mode 100644
+index 90e076730..000000000
+--- a/stable/kong/templates/controller-rbac-role.yaml
++++ /dev/null
+@@ -1,47 +0,0 @@
+-{{- if and .Values.ingressController.rbac.create .Values.ingressController.enabled -}}
+-apiVersion: rbac.authorization.k8s.io/v1beta1
+-kind: Role
+-metadata:
+-  name:  {{ template "kong.fullname" . }}
+-  namespace: {{ .Release.namespace }}
+-  labels:
+-    app: {{ template "kong.name" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
+-rules:
+-  - apiGroups:
+-      - ""
+-    resources:
+-      - configmaps
+-      - pods
+-      - secrets
+-      - namespaces
+-    verbs:
+-      - get
+-  - apiGroups:
+-      - ""
+-    resources:
+-      - configmaps
+-    resourceNames:
+-      # Defaults to "<election-id>-<ingress-class>"
+-      # Here: "<kong-ingress-controller-leader-nginx>-<nginx>"
+-      # This has to be adapted if you change either parameter
+-      # when launching the nginx-ingress-controller.
+-      - "kong-ingress-controller-leader-{{ .Values.ingressController.ingressClass }}-{{ .Values.ingressController.ingressClass }}"
+-    verbs:
+-      - get
+-      - update
+-  - apiGroups:
+-      - ""
+-    resources:
+-      - configmaps
+-    verbs:
+-      - create
+-  - apiGroups:
+-      - ""
+-    resources:
+-      - endpoints
+-    verbs:
+-      - get
+-{{- end -}}
+diff --git a/stable/kong/templates/crd-kongconsumer.yaml b/stable/kong/templates/crd-kongconsumer.yaml
+deleted file mode 100644
+index a25eff50b..000000000
+--- a/stable/kong/templates/crd-kongconsumer.yaml
++++ /dev/null
+@@ -1,36 +0,0 @@
+-{{- if and .Values.ingressController.enabled .Values.ingressController.installCRDs -}}
+-apiVersion: apiextensions.k8s.io/v1beta1
+-kind: CustomResourceDefinition
+-metadata:
+-  name: kongconsumers.configuration.konghq.com
+-  labels:
+-    app: {{ template "kong.name" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
+-spec:
+-  group: configuration.konghq.com
+-  version: v1
+-  scope: Namespaced
+-  names:
+-    kind: KongConsumer
+-    plural: kongconsumers
+-    shortNames:
+-    - kc
+-  additionalPrinterColumns:
+-  - name: Username
+-    type: string
+-    description: Username of a Kong Consumer
+-    JSONPath: .username
+-  - name: Age
+-    type: date
+-    description: Age
+-    JSONPath: .metadata.creationTimestamp
+-  validation:
+-    openAPIV3Schema:
+-      properties:
+-        username:
+-          type: string
+-        custom_id:
+-          type: string
+-{{- end -}}
+diff --git a/stable/kong/templates/crd-kongcredential.yaml b/stable/kong/templates/crd-kongcredential.yaml
+deleted file mode 100644
+index d44215787..000000000
+--- a/stable/kong/templates/crd-kongcredential.yaml
++++ /dev/null
+@@ -1,41 +0,0 @@
+-{{- if and .Values.ingressController.enabled .Values.ingressController.installCRDs -}}
+-apiVersion: apiextensions.k8s.io/v1beta1
+-kind: CustomResourceDefinition
+-metadata:
+-  name: kongcredentials.configuration.konghq.com
+-  labels:
+-    app: {{ template "kong.name" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
+-spec:
+-  group: configuration.konghq.com
+-  version: v1
+-  scope: Namespaced
+-  names:
+-    kind: KongCredential
+-    plural: kongcredentials
+-  additionalPrinterColumns:
+-  - name: Credential-type
+-    type: string
+-    description: Type of credential
+-    JSONPath: .type
+-  - name: Age
+-    type: date
+-    description: Age
+-    JSONPath: .metadata.creationTimestamp
+-  - name: Consumer-Ref
+-    type: string
+-    description: Owner of the credential
+-    JSONPath: .consumerRef
+-  validation:
+-    openAPIV3Schema:
+-      required:
+-      - consumerRef
+-      - type
+-      properties:
+-        consumerRef:
+-          type: string
+-        type:
+-          type: string
+-{{- end -}}
+diff --git a/stable/kong/templates/crd-kongplugins.yaml b/stable/kong/templates/crd-kongplugins.yaml
+deleted file mode 100644
+index d8fff8e91..000000000
+--- a/stable/kong/templates/crd-kongplugins.yaml
++++ /dev/null
+@@ -1,65 +0,0 @@
+-{{- if and .Values.ingressController.enabled .Values.ingressController.installCRDs -}}
+-apiVersion: apiextensions.k8s.io/v1beta1
+-kind: CustomResourceDefinition
+-metadata:
+-  name: kongplugins.configuration.konghq.com
+-  labels:
+-    app: {{ template "kong.name" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
+-spec:
+-  group: configuration.konghq.com
+-  version: v1
+-  scope: Namespaced
+-  names:
+-    kind: KongPlugin
+-    plural: kongplugins
+-    shortNames:
+-    - kp
+-  additionalPrinterColumns:
+-  - name: Plugin-Type
+-    type: string
+-    description: Name of the plugin
+-    JSONPath: .plugin
+-  - name: Age
+-    type: date
+-    description: Age
+-    JSONPath: .metadata.creationTimestamp
+-  - name: Disabled
+-    type: boolean
+-    description: Indicates if the plugin is disabled
+-    JSONPath: .disabled
+-    priority: 1
+-  - name: Config
+-    type: string
+-    description: Configuration of the plugin
+-    JSONPath: .config
+-    priority: 1
+-  validation:
+-    openAPIV3Schema:
+-      required:
+-      - plugin
+-      properties:
+-        plugin:
+-          type: string
+-        disabled:
+-          type: boolean
+-        config:
+-          type: object
+-        run_on:
+-          type: string
+-          enum:
+-          - first
+-          - second
+-          - all
+-        protocols:
+-          type: array
+-          items:
+-            type: string
+-            enum:
+-            - http
+-            - https
+-            - tcp
+-            - tls
+-{{- end -}}
+diff --git a/stable/kong/templates/crd-kongingress.yaml b/stable/kong/templates/custom-resource-definitions.yaml
+similarity index 57%
+rename from stable/kong/templates/crd-kongingress.yaml
+rename to stable/kong/templates/custom-resource-definitions.yaml
+index 1f6eaf9b8..4e0c0346b 100644
+--- a/stable/kong/templates/crd-kongingress.yaml
++++ b/stable/kong/templates/custom-resource-definitions.yaml
+@@ -1,6 +1,145 @@
+ {{- if and .Values.ingressController.enabled .Values.ingressController.installCRDs -}}
+ apiVersion: apiextensions.k8s.io/v1beta1
+ kind: CustomResourceDefinition
++metadata:
++  name: kongconsumers.configuration.konghq.com
++  labels:
++    app: {{ template "kong.name" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++spec:
++  group: configuration.konghq.com
++  version: v1
++  scope: Namespaced
++  names:
++    kind: KongConsumer
++    plural: kongconsumers
++    shortNames:
++    - kc
++  additionalPrinterColumns:
++  - name: Username
++    type: string
++    description: Username of a Kong Consumer
++    JSONPath: .username
++  - name: Age
++    type: date
++    description: Age
++    JSONPath: .metadata.creationTimestamp
++  validation:
++    openAPIV3Schema:
++      properties:
++        username:
++          type: string
++        custom_id:
++          type: string
++---
++apiVersion: apiextensions.k8s.io/v1beta1
++kind: CustomResourceDefinition
++metadata:
++  name: kongcredentials.configuration.konghq.com
++  labels:
++    app: {{ template "kong.name" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++spec:
++  group: configuration.konghq.com
++  version: v1
++  scope: Namespaced
++  names:
++    kind: KongCredential
++    plural: kongcredentials
++  additionalPrinterColumns:
++  - name: Credential-type
++    type: string
++    description: Type of credential
++    JSONPath: .type
++  - name: Age
++    type: date
++    description: Age
++    JSONPath: .metadata.creationTimestamp
++  - name: Consumer-Ref
++    type: string
++    description: Owner of the credential
++    JSONPath: .consumerRef
++  validation:
++    openAPIV3Schema:
++      required:
++      - consumerRef
++      - type
++      properties:
++        consumerRef:
++          type: string
++        type:
++          type: string
++---
++apiVersion: apiextensions.k8s.io/v1beta1
++kind: CustomResourceDefinition
++metadata:
++  name: kongplugins.configuration.konghq.com
++  labels:
++    app: {{ template "kong.name" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++spec:
++  group: configuration.konghq.com
++  version: v1
++  scope: Namespaced
++  names:
++    kind: KongPlugin
++    plural: kongplugins
++    shortNames:
++    - kp
++  additionalPrinterColumns:
++  - name: Plugin-Type
++    type: string
++    description: Name of the plugin
++    JSONPath: .plugin
++  - name: Age
++    type: date
++    description: Age
++    JSONPath: .metadata.creationTimestamp
++  - name: Disabled
++    type: boolean
++    description: Indicates if the plugin is disabled
++    JSONPath: .disabled
++    priority: 1
++  - name: Config
++    type: string
++    description: Configuration of the plugin
++    JSONPath: .config
++    priority: 1
++  validation:
++    openAPIV3Schema:
++      required:
++      - plugin
++      properties:
++        plugin:
++          type: string
++        disabled:
++          type: boolean
++        config:
++          type: object
++        run_on:
++          type: string
++          enum:
++          - first
++          - second
++          - all
++        protocols:
++          type: array
++          items:
++            type: string
++            enum:
++            - http
++            - https
++            - tcp
++            - tls
++---
++apiVersion: apiextensions.k8s.io/v1beta1
++kind: CustomResourceDefinition
+ metadata:
+   name: kongingresses.configuration.konghq.com
+   labels:
+diff --git a/stable/kong/templates/deployment.yaml b/stable/kong/templates/deployment.yaml
+index 53a9a7d05..cde83fe09 100644
+--- a/stable/kong/templates/deployment.yaml
++++ b/stable/kong/templates/deployment.yaml
+@@ -53,148 +53,11 @@ spec:
+       {{- if .Values.ingressController.enabled }}
+       {{- include "kong.controller-container" . | nindent 6 }}
+       {{ end }}
+-      - name: {{ template "kong.name" . }}
++      - name: "proxy"
+         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+         imagePullPolicy: {{ .Values.image.pullPolicy }}
+         env:
+-        - name: KONG_LUA_PACKAGE_PATH
+-          value: "/opt/?.lua;;"
+-        {{- if not .Values.env.admin_listen }}
+-        {{- if .Values.admin.useTLS }}
+-        - name: KONG_ADMIN_LISTEN
+-          value: "0.0.0.0:{{ .Values.admin.containerPort }} ssl"
+-        {{- else }}
+-        - name: KONG_ADMIN_LISTEN
+-          value: 0.0.0.0:{{ .Values.admin.containerPort }}
+-        {{- end }}
+-        {{- end }}
+-        {{- if .Values.admin.ingress.enabled }}
+-        - name: KONG_ADMIN_API_URI
+-          value: {{ include "kong.ingress.serviceUrl" .Values.admin.ingress }}
+-        {{- end }}
+-        {{- if not .Values.env.proxy_listen }}
+-        - name: KONG_PROXY_LISTEN
+-          value: {{ template "kong.kongProxyListenValue" . }}
+-        {{- end }}
+-        {{- if and (not .Values.env.admin_gui_listen) (.Values.enterprise.enabled) }}
+-        - name: KONG_ADMIN_GUI_LISTEN
+-          value: {{ template "kong.kongManagerListenValue" . }}
+-        {{- end }}
+-        {{- if and (.Values.manager.ingress.enabled) (.Values.enterprise.enabled) }}
+-        - name: KONG_ADMIN_GUI_URL
+-          value: {{ include "kong.ingress.serviceUrl" .Values.manager.ingress }}
+-        {{- end }}
+-        {{- if and (not .Values.env.portal_gui_listen) (.Values.enterprise.enabled) (.Values.enterprise.portal.enabled) }}
+-        - name: KONG_PORTAL_GUI_LISTEN
+-          value: {{ template "kong.kongPortalListenValue" . }}
+-        {{- end }}
+-        {{- if and (.Values.portal.ingress.enabled) (.Values.enterprise.enabled) (.Values.enterprise.portal.enabled) }}
+-        - name: KONG_PORTAL_GUI_HOST
+-          value: {{ .Values.portal.ingress.hostname }}
+-        {{- if .Values.portal.ingress.tls }}
+-        - name: KONG_PORTAL_GUI_PROTOCOL
+-          value: https
+-        {{- else }}
+-        - name: KONG_PORTAL_GUI_PROTOCOL
+-          value: http
+-        {{- end }}
+-        {{- end }}
+-        {{- if and (not .Values.env.portal_api_listen) (.Values.enterprise.enabled) (.Values.enterprise.portal.enabled) }}
+-        - name: KONG_PORTAL_API_LISTEN
+-          value: {{ template "kong.kongPortalApiListenValue" . }}
+-        {{- end }}
+-        {{- if and (.Values.portalapi.ingress.enabled) (.Values.enterprise.enabled) (.Values.enterprise.portal.enabled) }}
+-        - name: KONG_PORTAL_API_URL
+-          value: {{ include "kong.ingress.serviceUrl" .Values.portalapi.ingress }}
+-        {{- end }}
+-        - name: KONG_NGINX_DAEMON
+-          value: "off"
+-        {{- if .Values.enterprise.enabled }}
+-        {{- if not .Values.enterprise.vitals.enabled }}
+-        - name: KONG_VITALS
+-          value: "off"
+-        {{- end }}
+-        {{- if .Values.enterprise.portal.enabled }}
+-        - name: KONG_PORTAL
+-          value: "on"
+-        {{- if .Values.enterprise.portal.portal_auth }}
+-        - name: KONG_PORTAL_AUTH
+-          value: {{ .Values.enterprise.portal.portal_auth }}
+-        - name: KONG_PORTAL_SESSION_CONF
+-          valueFrom:
+-            secretKeyRef:
+-              name: {{ .Values.enterprise.portal.session_conf_secret }}
+-              key: portal_session_conf
+-        {{- end }}
+-        {{- end }}
+-        {{- if .Values.enterprise.rbac.enabled }}
+-        - name: KONG_ENFORCE_RBAC
+-          value: "on"
+-        - name: KONG_ADMIN_GUI_AUTH
+-          value: {{ .Values.enterprise.rbac.admin_gui_auth | default "basic-auth" }}
+-        {{- if not (eq .Values.enterprise.rbac.admin_gui_auth "basic-auth") }}
+-        - name: KONG_ADMIN_GUI_AUTH_CONF
+-          valueFrom:
+-            secretKeyRef:
+-              name: {{ .Values.enterprise.rbac.admin_gui_auth_conf_secret }}
+-              key: admin_gui_auth_conf
+-        {{- end }}
+-        - name: KONG_ADMIN_GUI_SESSION_CONF
+-          valueFrom:
+-            secretKeyRef:
+-              name: {{ .Values.enterprise.rbac.session_conf_secret }}
+-              key: admin_gui_session_conf
+-        {{- end }}
+-        {{- if .Values.enterprise.smtp.enabled }}
+-        - name: KONG_PORTAL_EMAILS_FROM
+-          value: {{ .Values.enterprise.smtp.portal_emails_from }}
+-        - name: KONG_PORTAL_EMAILS_REPLY_TO
+-          value: {{ .Values.enterprise.smtp.portal_emails_reply_to }}
+-        - name: KONG_ADMIN_EMAILS_FROM
+-          value: {{ .Values.enterprise.smtp.admin_emails_from }}
+-        - name: KONG_ADMIN_EMAILS_REPLY_TO
+-          value: {{ .Values.enterprise.smtp.admin_emails_reply_to }}
+-        - name: KONG_SMTP_HOST
+-          value: {{ .Values.enterprise.smtp.smtp_host }}
+-        - name: KONG_SMTP_PORT
+-          value: {{ .Values.enterprise.smtp.smtp_port | quote }}
+-        - name: KONG_SMTP_STARTTLS
+-          value: {{ .Values.enterprise.smtp.smtp_starttls | quote }}
+-        {{- if .Values.enterprise.smtp.auth.smtp_username }}
+-        - name: KONG_SMTP_USERNAME
+-          value: {{ .Values.enterprise.smtp.auth.smtp_username }}
+-        - name: KONG_SMTP_PASSWORD
+-          valueFrom:
+-            secretKeyRef:
+-              name: {{ .Values.enterprise.smtp.auth.smtp_password_secret }}
+-              key: smtp_password
+-        {{- end }}
+-        {{- else }}
+-        - name: KONG_SMTP_MOCK
+-          value: "on"
+-        {{- end }}
+-        {{- include "kong.license" . | nindent 8 }}
+-        {{- end }}
+-        - name: KONG_NGINX_HTTP_INCLUDE
+-          value: /kong/servers.conf
+-        {{- if .Values.postgresql.enabled }}
+-        - name: KONG_PG_HOST
+-          value: {{ template "kong.postgresql.fullname" . }}
+-        - name: KONG_PG_PORT
+-          value: "{{ .Values.postgresql.service.port }}"
+-        - name: KONG_PG_PASSWORD
+-          valueFrom:
+-            secretKeyRef:
+-              name: {{ template "kong.postgresql.fullname" . }}
+-              key: postgresql-password
+-        {{- end }}
+-        {{- if (and (not .Values.ingressController.enabled) (eq .Values.env.database "off")) }}
+-        - name: KONG_DECLARATIVE_CONFIG
+-          value: "/kong_dbless/kong.yml"
+-        {{- end }}
+-        - name: KONG_PLUGINS
+-          value: {{ template "kong.plugins" . }}
+-        {{- include "kong.env" .  | indent 8 }}
++        {{- include "kong.final_env" . | nindent 8 }}
+         lifecycle:
+           preStop:
+             exec:
+diff --git a/stable/kong/templates/migrations-post-upgrade.yaml b/stable/kong/templates/migrations-post-upgrade.yaml
+index 26d2cf2f0..ff231bf6c 100644
+--- a/stable/kong/templates/migrations-post-upgrade.yaml
++++ b/stable/kong/templates/migrations-post-upgrade.yaml
+@@ -32,49 +32,16 @@ spec:
+         - name: {{ . }}
+       {{- end }}
+       {{- end }}
+-      {{- if .Values.postgresql.enabled }}
+       initContainers:
+-      - name: wait-for-postgres
+-        image: "{{ .Values.waitImage.repository }}:{{ .Values.waitImage.tag }}"
+-        imagePullPolicy: {{ .Values.waitImage.pullPolicy }}
+-        env:
+-        - name: KONG_PG_HOST
+-          value: {{ template "kong.postgresql.fullname" . }}
+-        - name: KONG_PG_PORT
+-          value: "{{ .Values.postgresql.service.port }}"
+-        - name: KONG_PG_PASSWORD
+-          valueFrom:
+-            secretKeyRef:
+-              name: {{ template "kong.postgresql.fullname" . }}
+-              key: postgresql-password
+-        command: [ "/bin/sh", "-c", "until nc -zv $KONG_PG_HOST $KONG_PG_PORT -w1; do echo 'waiting for db'; sleep 1; done" ]
++      {{- if (eq .Values.env.database "postgres") }}
++      {{- include "kong.wait-for-postgres" . | nindent 6 }}
+       {{- end }}
+       containers:
+       - name: {{ template "kong.name" . }}-post-upgrade-migrations
+         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+         imagePullPolicy: {{ .Values.image.pullPolicy }}
+         env:
+-        - name: KONG_LUA_PACKAGE_PATH
+-          value: "/opt/?.lua;;"
+-        - name: KONG_PLUGINS
+-          value: {{ template "kong.plugins" . }}
+-        - name: KONG_NGINX_DAEMON
+-          value: "off"
+-        {{- if .Values.enterprise.enabled }}
+-        {{- include "kong.license" . | nindent 8 }}
+-        {{- end }}
+-        {{- if .Values.postgresql.enabled }}
+-        - name: KONG_PG_HOST
+-          value: {{ template "kong.postgresql.fullname" . }}
+-        - name: KONG_PG_PORT
+-          value: "{{ .Values.postgresql.service.port }}"
+-        - name: KONG_PG_PASSWORD
+-          valueFrom:
+-            secretKeyRef:
+-              name: {{ template "kong.postgresql.fullname" . }}
+-              key: postgresql-password
+-        {{- end }}
+-        {{- include "kong.env" .  | indent 8 }}
++        {{- include "kong.final_env" . | nindent 8 }}
+         command: [ "/bin/sh", "-c", "kong migrations finish" ]
+         volumeMounts:
+         {{- include "kong.volumeMounts" . | nindent 8 }}
+diff --git a/stable/kong/templates/migrations-pre-upgrade.yaml b/stable/kong/templates/migrations-pre-upgrade.yaml
+index 2055aa206..090e0b81b 100644
+--- a/stable/kong/templates/migrations-pre-upgrade.yaml
++++ b/stable/kong/templates/migrations-pre-upgrade.yaml
+@@ -32,49 +32,16 @@ spec:
+         - name: {{ . }}
+       {{- end }}
+       {{- end }}
+-      {{- if .Values.postgresql.enabled }}
+       initContainers:
+-      - name: wait-for-postgres
+-        image: "{{ .Values.waitImage.repository }}:{{ .Values.waitImage.tag }}"
+-        imagePullPolicy: {{ .Values.waitImage.pullPolicy }}
+-        env:
+-        - name: KONG_PG_HOST
+-          value: {{ template "kong.postgresql.fullname" . }}
+-        - name: KONG_PG_PORT
+-          value: "{{ .Values.postgresql.service.port }}"
+-        - name: KONG_PG_PASSWORD
+-          valueFrom:
+-            secretKeyRef:
+-              name: {{ template "kong.postgresql.fullname" . }}
+-              key: postgresql-password
+-        command: [ "/bin/sh", "-c", "until nc -zv $KONG_PG_HOST $KONG_PG_PORT -w1; do echo 'waiting for db'; sleep 1; done" ]
++      {{- if (eq .Values.env.database "postgres") }}
++      {{- include "kong.wait-for-postgres" . | nindent 6 }}
+       {{- end }}
+       containers:
+       - name: {{ template "kong.name" . }}-upgrade-migrations
+         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+         imagePullPolicy: {{ .Values.image.pullPolicy }}
+         env:
+-        - name: KONG_LUA_PACKAGE_PATH
+-          value: "/opt/?.lua;;"
+-        - name: KONG_PLUGINS
+-          value: {{ template "kong.plugins" . }}
+-        - name: KONG_NGINX_DAEMON
+-          value: "off"
+-        {{- if .Values.enterprise.enabled }}
+-        {{- include "kong.license" . | nindent 8 }}
+-        {{- end }}
+-        {{- if .Values.postgresql.enabled }}
+-        - name: KONG_PG_HOST
+-          value: {{ template "kong.postgresql.fullname" . }}
+-        - name: KONG_PG_PORT
+-          value: "{{ .Values.postgresql.service.port }}"
+-        - name: KONG_PG_PASSWORD
+-          valueFrom:
+-            secretKeyRef:
+-              name: {{ template "kong.postgresql.fullname" . }}
+-              key: postgresql-password
+-        {{- end }}
+-        {{- include "kong.env" .  | indent 8 }}
++        {{- include "kong.final_env" . | nindent 8 }}
+         command: [ "/bin/sh", "-c", "kong migrations up" ]
+         volumeMounts:
+         {{- include "kong.volumeMounts" . | nindent 8 }}
+diff --git a/stable/kong/templates/migrations.yaml b/stable/kong/templates/migrations.yaml
+index bfec1f2c4..18626cd1e 100644
+--- a/stable/kong/templates/migrations.yaml
++++ b/stable/kong/templates/migrations.yaml
+@@ -27,49 +27,16 @@ spec:
+         - name: {{ . }}
+       {{- end }}
+       {{- end }}
+-      {{- if .Values.postgresql.enabled }}
+       initContainers:
+-      - name: wait-for-postgres
+-        image: "{{ .Values.waitImage.repository }}:{{ .Values.waitImage.tag }}"
+-        imagePullPolicy: {{ .Values.waitImage.pullPolicy }}
+-        env:
+-        - name: KONG_PG_HOST
+-          value: {{ template "kong.postgresql.fullname" . }}
+-        - name: KONG_PG_PORT
+-          value: "{{ .Values.postgresql.service.port }}"
+-        - name: KONG_PG_PASSWORD
+-          valueFrom:
+-            secretKeyRef:
+-              name: {{ template "kong.postgresql.fullname" . }}
+-              key: postgresql-password
+-        command: [ "/bin/sh", "-c", "until nc -zv $KONG_PG_HOST $KONG_PG_PORT -w1; do echo 'waiting for db'; sleep 1; done" ]
++      {{- if (eq .Values.env.database "postgres") }}
++      {{- include "kong.wait-for-postgres" . | nindent 6 }}
+       {{- end }}
+       containers:
+       - name: {{ template "kong.name" . }}-migrations
+         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+         imagePullPolicy: {{ .Values.image.pullPolicy }}
+         env:
+-        - name: KONG_PLUGINS
+-          value: {{ template "kong.plugins" . }}
+-        - name: KONG_LUA_PACKAGE_PATH
+-          value: "/opt/?.lua;;"
+-        - name: KONG_NGINX_DAEMON
+-          value: "off"
+-        {{- if .Values.enterprise.enabled }}
+-        {{- include "kong.license" . | nindent 8 }}
+-        {{- end }}
+-        {{- if .Values.postgresql.enabled }}
+-        - name: KONG_PG_HOST
+-          value: {{ template "kong.postgresql.fullname" . }}
+-        - name: KONG_PG_PORT
+-          value: "{{ .Values.postgresql.service.port }}"
+-        - name: KONG_PG_PASSWORD
+-          valueFrom:
+-            secretKeyRef:
+-              name: {{ template "kong.postgresql.fullname" . }}
+-              key: postgresql-password
+-        {{- end }}
+-        {{- include "kong.env" .  | indent 8 }}
++        {{- include "kong.final_env" . | nindent 8 }}
+         command: [ "/bin/sh", "-c", "kong migrations bootstrap" ]
+         volumeMounts:
+         {{- include "kong.volumeMounts" . | nindent 8 }}
+diff --git a/stable/kong/values.yaml b/stable/kong/values.yaml
+index bf65bfcab..f33d28f97 100644
+--- a/stable/kong/values.yaml
++++ b/stable/kong/values.yaml
+@@ -1,8 +1,39 @@
+-# Default values for kong.
++# Default values for Kong's Helm Chart.
+ # Declare variables to be passed into your templates.
++#
++# Sections:
++# - Kong parameters
++# - Ingress Controller parameters
++# - Postgres sub-chart parameters
++# - Miscellaneous parameters
++# - Kong Enterprise parameters
++
++# -----------------------------------------------------------------------------
++# Kong parameters
++# -----------------------------------------------------------------------------
+ 
++# Specify Kong configurations
++# Kong configurations guide https://docs.konghq.com/latest/configuration
++# Values here take precedence over values from other sections of values.yaml,
++# e.g. setting pg_user here will override the value normally set when postgresql.enabled
++# is set below. In general, you should not set values here if they are set elsewhere.
++env:
++  database: "off"
++  nginx_worker_processes: "1"
++  proxy_access_log: /dev/stdout
++  admin_access_log: /dev/stdout
++  admin_gui_access_log: /dev/stdout
++  portal_api_access_log: /dev/stdout
++  proxy_error_log: /dev/stderr
++  admin_error_log: /dev/stderr
++  admin_gui_error_log: /dev/stderr
++  portal_api_error_log: /dev/stderr
++  prefix: /kong_prefix/
++
++# Specify Kong's Docker image and repository details here
+ image:
+   repository: kong
++  # repository: kong-docker-kong-enterprise-k8s.bintray.io/kong-enterprise-k8s
+   # repository: kong-docker-kong-enterprise-edition-docker.bintray.io/kong-enterprise-edition
+   tag: 1.4
+   pullPolicy: IfNotPresent
+@@ -14,12 +45,9 @@ image:
+   # pullSecrets:
+   #   - myRegistrKeySecretName
+ 
+-waitImage:
+-  repository: busybox
+-  tag: latest
+-  pullPolicy: IfNotPresent
+-
+ # Specify Kong admin service configuration
++# Note: It is recommended to not use the Admin API to configure Kong
++# when using Kong as an Ingress Controller.
+ admin:
+   enabled: false
+   # If you want to specify annotations for the admin service, uncomment the following
+@@ -36,7 +64,8 @@ admin:
+   type: NodePort
+   # Set a nodePort which is available
+   # nodePort: 32444
+-  # Kong admin ingress settings.
++  # Kong admin ingress settings. Useful if you want to expose the Admin
++  # API of Kong outside the k8s cluster.
+   ingress:
+     # Enable/disable exposure using ingress.
+     enabled: false
+@@ -77,6 +106,8 @@ proxy:
+   type: LoadBalancer
+ 
+   # Kong proxy ingress settings.
++  # Note: You need this only if you are using another Ingress Controller
++  # to expose Kong outside the k8s cluster.
+   ingress:
+     # Enable/disable exposure using ingress.
+     enabled: false
+@@ -96,202 +127,147 @@ proxy:
+ 
+   externalIPs: []
+ 
+-manager:
+-  # If you want to specify annotations for the Manager service, uncomment the following
+-  # line, add additional or adjust as needed, and remove the curly braces after 'annotations:'.
+-  annotations: {}
+-  #  service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
++# Custom Kong plugins can be loaded into Kong by mounting the plugin code
++# into the file-system of Kong container.
++# The plugin code should be present in ConfigMap or Secret inside the same
++# namespace as Kong is being installed.
++# The `name` property refers to the name of the ConfigMap or Secret
++# itself, while the pluginName refers to the name of the plugin as it appears
++# in Kong.
++plugins: {}
++  # configMaps:
++  # - pluginName: rewriter
++  #   name: kong-plugin-rewriter
++  # secrets:
++  # - pluginName: rewriter
++  #   name: kong-plugin-rewriter
++# Inject specified secrets as a volume in Kong Container at path /etc/secrets/{secret-name}/
++# This can be used to override default SSL certificates
++# Example configuration
++# secretVolumes:
++# - kong-proxy-tls
++# - kong-admin-tls
++secretVolumes: []
+ 
+-  # HTTP plain-text traffic
+-  http:
+-    enabled: true
+-    servicePort: 8002
+-    containerPort: 8002
+-    # Set a nodePort which is available if service type is NodePort
+-    # nodePort: 32080
++# Set runMigrations to run Kong migrations
++runMigrations: true
+ 
+-  tls:
+-    enabled: true
+-    servicePort: 8445
+-    containerPort: 8445
+-    # Set a nodePort which is available if service type is NodePort
+-    # nodePort: 32443
++# Kong's configuration for DB-less mode
++# Note: Use this section only if you are deploying Kong in DB-less mode
++# and not as an Ingress Controller.
++dblessConfig:
++  # Either Kong's configuration is managed from an existing ConfigMap (with Key: kong.yml)
++  configMap: ""
++  # Or the configuration is passed in full-text below
++  config:
++    _format_version: "1.1"
++    services:
++      # Example configuration
++      # - name: example.com
++      #   url: http://example.com
++      #   routes:
++      #   - name: example
++      #     paths:
++      #     - "/example"
+ 
+-  type: NodePort
++# -----------------------------------------------------------------------------
++# Ingress Controller parameters
++# -----------------------------------------------------------------------------
+ 
+-  # Kong proxy ingress settings.
+-  ingress:
+-    # Enable/disable exposure using ingress.
++# Kong Ingress Controller's primary purpose is to satisfy Ingress resources
++# created in k8s.  It uses CRDs for more fine grained control over routing and
++# for Kong specific configuration.
++ingressController:
++  enabled: true
++  image:
++    repository: kong-docker-kubernetes-ingress-controller.bintray.io/kong-ingress-controller
++    tag: 0.6.2
++
++  # Specify Kong Ingress Controller configuration via environment variables
++  env: {}
++
++  admissionWebhook:
+     enabled: false
+-    # TLS secret name.
+-    # tls: kong-proxy.example.com-tls
+-    # Ingress hostname
+-    hostname:
+-    # Map of ingress annotations.
+-    annotations: {}
+-    # Ingress path.
+-    path: /
++    failurePolicy: Fail
++    port: 8080
+ 
+-  externalIPs: []
++  ingressClass: kong
+ 
+-portal:
+-  # If you want to specify annotations for the Portal service, uncomment the following
+-  # line, add additional or adjust as needed, and remove the curly braces after 'annotations:'.
+-  annotations: {}
+-  #  service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
++  rbac:
++    # Specifies whether RBAC resources should be created
++    create: true
+ 
+-  # HTTP plain-text traffic
+-  http:
+-    enabled: true
+-    servicePort: 8003
+-    containerPort: 8003
+-    # Set a nodePort which is available if service type is NodePort
+-    # nodePort: 32080
++  serviceAccount:
++    # Specifies whether a ServiceAccount should be created
++    create: true
++    # The name of the ServiceAccount to use.
++    # If not set and create is true, a name is generated using the fullname template
++    name:
+ 
+-  tls:
+-    enabled: true
+-    servicePort: 8446
+-    containerPort: 8446
+-    # Set a nodePort which is available if service type is NodePort
+-    # nodePort: 32443
++  installCRDs: true
+ 
+-  type: NodePort
++  # general properties
++  livenessProbe:
++    failureThreshold: 3
++    httpGet:
++      path: "/healthz"
++      port: 10254
++      scheme: HTTP
++    initialDelaySeconds: 10
++    periodSeconds: 10
++    successThreshold: 1
++    timeoutSeconds: 5
++  readinessProbe:
++    failureThreshold: 3
++    httpGet:
++      path: "/healthz"
++      port: 10254
++      scheme: HTTP
++    initialDelaySeconds: 10
++    periodSeconds: 10
++    successThreshold: 1
++    timeoutSeconds: 5
++  resources: {}
+ 
+-  # Kong proxy ingress settings.
+-  ingress:
+-    # Enable/disable exposure using ingress.
+-    enabled: false
+-    # TLS secret name.
+-    # tls: kong-proxy.example.com-tls
+-    # Ingress hostname
+-    hostname:
+-    # Map of ingress annotations.
+-    annotations: {}
+-    # Ingress path.
+-    path: /
++# -----------------------------------------------------------------------------
++# Postgres sub-chart parameters
++# -----------------------------------------------------------------------------
+ 
+-  externalIPs: []
++# Kong can run without a database or use either Postgres or Cassandra
++# as a backend datatstore for it's configuration.
++# By default, this chart installs Kong without a database.
+ 
+-portalapi:
+-  # If you want to specify annotations for the Portal API service, uncomment the following
+-  # line, add additional or adjust as needed, and remove the curly braces after 'annotations:'.
+-  annotations: {}
+-  #  service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
++# If you would like to use a database, there are two options:
++# - (recommended) Deploy and maintain a database and pass the connection
++#   details to Kong via the `env` section.
++# - You can use the below `postgresql` sub-chart to deploy a database
++#   along-with Kong as part of a single Helm release.
+ 
+-  # HTTP plain-text traffic
+-  http:
+-    enabled: true
+-    servicePort: 8004
+-    containerPort: 8004
+-    # Set a nodePort which is available if service type is NodePort
+-    # nodePort: 32080
++# PostgreSQL chart documentation:
++# https://github.com/helm/charts/blob/master/stable/postgresql/README.md
+ 
+-  tls:
+-    enabled: true
+-    servicePort: 8447
+-    containerPort: 8447
+-    # Set a nodePort which is available if service type is NodePort
+-    # nodePort: 32443
++postgresql:
++  enabled: false
++  # postgresqlUsername: kong
++  # postgresqlDatabase: kong
++  # service:
++  #   port: 5432
+ 
+-  type: NodePort
++# -----------------------------------------------------------------------------
++# Miscellaneous parameters
++# -----------------------------------------------------------------------------
+ 
+-  # Kong proxy ingress settings.
+-  ingress:
+-    # Enable/disable exposure using ingress.
+-    enabled: false
+-    # TLS secret name.
+-    # tls: kong-proxy.example.com-tls
+-    # Ingress hostname
+-    hostname:
+-    # Map of ingress annotations.
+-    annotations: {}
+-    # Ingress path.
+-    path: /
++waitImage:
++  repository: busybox
++  tag: latest
++  pullPolicy: IfNotPresent
+ 
+-  externalIPs: []
+-
+-# Toggle Kong Enterprise features on or off
+-# RBAC and SMTP configuration have additional options that must all be set together
+-# Other settings should be added to the "env" settings below
+-enterprise:
+-  enabled: false
+-  # Kong Enterprise license secret name
+-  # This secret must contain a single 'license' key, containing your base64-encoded license data
+-  # The license secret is required for all Kong Enterprise deployments
+-  license_secret: you-must-create-a-kong-license-secret
+-  # Session configuration secret
+-  # The session conf secret is required if using RBAC or the Portal
+-  vitals:
+-    enabled: true
+-  portal:
+-    enabled: false
+-    # portal_auth here sets the default authentication mechanism for the Portal
+-    # FIXME This can be changed per-workspace, but must currently default to
+-    # basic-auth to work around limitations with session configuration
+-    portal_auth: basic-auth
+-    # If the Portal is enabled and any workspace's Portal uses authentication,
+-    # this Secret must contain an portal_session_conf key
+-    # The key value must be a secret configuration, following the example at
+-    # https://docs.konghq.com/enterprise/latest/developer-portal/configuration/authentication/sessions
+-    session_conf_secret: you-must-create-a-portal-session-conf-secret
+-  rbac:
+-    enabled: false
+-    admin_gui_auth: basic-auth
+-    # If RBAC is enabled, this Secret must contain an admin_gui_session_conf key
+-    # The key value must be a secret configuration, following the example at
+-    # https://docs.konghq.com/enterprise/latest/kong-manager/authentication/sessions
+-    session_conf_secret: you-must-create-an-rbac-session-conf-secret
+-    # If admin_gui_auth is not set to basic-auth, provide a secret name which
+-    # has an admin_gui_auth_conf key containing the plugin config JSON
+-    admin_gui_auth_conf_secret: you-must-create-an-admin-gui-auth-conf-secret
+-  # For configuring emails and SMTP, please read through:
+-  # https://docs.konghq.com/enterprise/latest/developer-portal/configuration/smtp
+-  # https://docs.konghq.com/enterprise/latest/kong-manager/networking/email
+-  smtp:
+-    enabled: false
+-    portal_emails_from: none@example.com
+-    portal_emails_reply_to: none@example.com
+-    admin_emails_from: none@example.com
+-    admin_emails_reply_to: none@example.com
+-    smtp_admin_emails: none@example.com
+-    smtp_host: smtp.example.com
+-    smtp_port: 587
+-    smtp_starttls: true
+-    auth:
+-      # If your SMTP server does not require authentication, this section can
+-      # be left as-is. If smtp_username is set to anything other than an empty
+-      # string, you must create a Secret with an smtp_password key containing
+-      # your SMTP password and specify its name here.
+-      smtp_username: ''  # e.g. postmaster@example.com
+-      smtp_password_secret: you-must-create-an-smtp-password
+-
+-# Set runMigrations to run Kong migrations
+-runMigrations: true
+-
+-# update strategy
+-updateStrategy: {}
+-  # type: RollingUpdate
+-  # rollingUpdate:
+-  #   maxSurge: "100%"
+-  #   maxUnavailable: "0%"
+-
+-# Specify Kong configurations
+-# Kong configurations guide https://getkong.org/docs/latest/configuration/
+-# Values here take precedence over values from other sections of values.yaml,
+-# e.g. setting pg_user here will override the value normally set when postgresql.enabled
+-# is set below. In general, you should not set values here if they are set elsewhere.
+-env:
+-  database: "off"
+-  nginx_worker_processes: "1"
+-  proxy_access_log: /dev/stdout
+-  admin_access_log: /dev/stdout
+-  admin_gui_access_log: /dev/stdout
+-  portal_api_access_log: /dev/stdout
+-  proxy_error_log: /dev/stderr
+-  admin_error_log: /dev/stderr
+-  admin_gui_error_log: /dev/stderr
+-  portal_api_error_log: /dev/stderr
+-  prefix: /kong_prefix/
++# update strategy
++updateStrategy: {}
++  # type: RollingUpdate
++  # rollingUpdate:
++  #   maxSurge: "100%"
++  #   maxUnavailable: "0%"
+ 
+ # If you want to specify resources, uncomment the following
+ # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+@@ -317,7 +293,6 @@ readinessProbe:
+   failureThreshold: 5
+ 
+ # livenessProbe for Kong pods
+-# If using Kong Enterprise with RBAC, you must add a Kong-Admin-Token header
+ livenessProbe:
+   httpGet:
+     path: "/status"
+@@ -359,125 +334,184 @@ podSecurityPolicy:
+ securityContext:
+   runAsUser: 1000
+ 
+-# Kong has a choice of either Postgres or Cassandra as a backend datatstore.
+-# This chart allows you to choose either of them with the `database.type`
+-# parameter.  Postgres is chosen by default.
+-
+-# Additionally, this chart allows you to use your own database or spin up a new
+-# instance by using the `postgres.enabled` or `cassandra.enabled` parameters.
+-# Enabling both will create both databases in your cluster, but only one
+-# will be used by Kong based on the `env.database` parameter.
+-# Postgres is enabled by default.
++serviceMonitor:
++  # Specifies whether ServiceMonitor for Prometheus operator should be created
++  enabled: false
++  # interval: 10s
++  # Specifies namespace, where ServiceMonitor should be installed
++  # namespace: monitoring
++  # labels:
++  #   foo: bar
+ 
++# -----------------------------------------------------------------------------
++# Kong Enterprise parameters
++# -----------------------------------------------------------------------------
+ 
+-# PostgreSQL chart configs
+-postgresql:
++# Toggle Kong Enterprise features on or off
++# RBAC and SMTP configuration have additional options that must all be set together
++# Other settings should be added to the "env" settings below
++enterprise:
+   enabled: false
+-  # postgresqlUsername: kong
+-  # postgresqlDatabase: kong
+-  # service:
+-  #   port: 5432
++  # Kong Enterprise license secret name
++  # This secret must contain a single 'license' key, containing your base64-encoded license data
++  # The license secret is required for all Kong Enterprise deployments
++  license_secret: you-must-create-a-kong-license-secret
++  # Session configuration secret
++  # The session conf secret is required if using RBAC or the Portal
++  vitals:
++    enabled: true
++  portal:
++    enabled: false
++    # portal_auth here sets the default authentication mechanism for the Portal
++    # FIXME This can be changed per-workspace, but must currently default to
++    # basic-auth to work around limitations with session configuration
++    portal_auth: basic-auth
++    # If the Portal is enabled and any workspace's Portal uses authentication,
++    # this Secret must contain an portal_session_conf key
++    # The key value must be a secret configuration, following the example at
++    # https://docs.konghq.com/enterprise/latest/developer-portal/configuration/authentication/sessions
++    session_conf_secret: you-must-create-a-portal-session-conf-secret
++  rbac:
++    enabled: false
++    admin_gui_auth: basic-auth
++    # If RBAC is enabled, this Secret must contain an admin_gui_session_conf key
++    # The key value must be a secret configuration, following the example at
++    # https://docs.konghq.com/enterprise/latest/kong-manager/authentication/sessions
++    session_conf_secret: you-must-create-an-rbac-session-conf-secret
++    # If admin_gui_auth is not set to basic-auth, provide a secret name which
++    # has an admin_gui_auth_conf key containing the plugin config JSON
++    admin_gui_auth_conf_secret: you-must-create-an-admin-gui-auth-conf-secret
++  # For configuring emails and SMTP, please read through:
++  # https://docs.konghq.com/enterprise/latest/developer-portal/configuration/smtp
++  # https://docs.konghq.com/enterprise/latest/kong-manager/networking/email
++  smtp:
++    enabled: false
++    portal_emails_from: none@example.com
++    portal_emails_reply_to: none@example.com
++    admin_emails_from: none@example.com
++    admin_emails_reply_to: none@example.com
++    smtp_admin_emails: none@example.com
++    smtp_host: smtp.example.com
++    smtp_port: 587
++    smtp_starttls: true
++    auth:
++      # If your SMTP server does not require authentication, this section can
++      # be left as-is. If smtp_username is set to anything other than an empty
++      # string, you must create a Secret with an smtp_password key containing
++      # your SMTP password and specify its name here.
++      smtp_username: ''  # e.g. postmaster@example.com
++      smtp_password_secret: you-must-create-an-smtp-password
+ 
+-# Custom Kong plugins can be loaded into Kong by mounting the plugin code
+-# into the file-system of Kong container.
+-# The plugin code should be present in ConfigMap or Secret inside the same
+-# namespace as Kong is being installed.
+-# The `name` property refers to the name of the ConfigMap or Secret
+-# itself, while the pluginName refers to the name of the plugin as it appears
+-# in Kong.
+-plugins: {}
+-  # configMaps:
+-  # - pluginName: rewriter
+-  #   name: kong-plugin-rewriter
+-  # secrets:
+-  # - pluginName: rewriter
+-  #   name: kong-plugin-rewriter
+-# Kong Ingress Controller's primary purpose is to satisfy Ingress resources
+-# created in k8s.  It uses CRDs for more fine grained control over routing and
+-# for Kong specific configuration.
+-ingressController:
+-  enabled: true
+-  image:
+-    repository: kong-docker-kubernetes-ingress-controller.bintray.io/kong-ingress-controller
+-    tag: 0.6.2
++manager:
++  # If you want to specify annotations for the Manager service, uncomment the following
++  # line, add additional or adjust as needed, and remove the curly braces after 'annotations:'.
++  annotations: {}
++  #  service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
+ 
+-  # Specify Kong Ingress Controller configuration via environment variables
+-  env: {}
++  # HTTP plain-text traffic
++  http:
++    enabled: true
++    servicePort: 8002
++    containerPort: 8002
++    # Set a nodePort which is available if service type is NodePort
++    # nodePort: 32080
+ 
+-  admissionWebhook:
++  tls:
++    enabled: true
++    servicePort: 8445
++    containerPort: 8445
++    # Set a nodePort which is available if service type is NodePort
++    # nodePort: 32443
++
++  type: NodePort
++
++  # Kong proxy ingress settings.
++  ingress:
++    # Enable/disable exposure using ingress.
+     enabled: false
+-    failurePolicy: Fail
+-    port: 8080
++    # TLS secret name.
++    # tls: kong-proxy.example.com-tls
++    # Ingress hostname
++    hostname:
++    # Map of ingress annotations.
++    annotations: {}
++    # Ingress path.
++    path: /
+ 
+-  installCRDs: true
+-  ingressClass: kong
++  externalIPs: []
+ 
+-  rbac:
+-    # Specifies whether RBAC resources should be created
+-    create: true
++portal:
++  # If you want to specify annotations for the Portal service, uncomment the following
++  # line, add additional or adjust as needed, and remove the curly braces after 'annotations:'.
++  annotations: {}
++  #  service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
+ 
+-  serviceAccount:
+-    # Specifies whether a ServiceAccount should be created
+-    create: true
+-    # The name of the ServiceAccount to use.
+-    # If not set and create is true, a name is generated using the fullname template
+-    name:
++  # HTTP plain-text traffic
++  http:
++    enabled: true
++    servicePort: 8003
++    containerPort: 8003
++    # Set a nodePort which is available if service type is NodePort
++    # nodePort: 32080
+ 
+-  # general properties
+-  livenessProbe:
+-    failureThreshold: 3
+-    httpGet:
+-      path: "/healthz"
+-      port: 10254
+-      scheme: HTTP
+-    initialDelaySeconds: 10
+-    periodSeconds: 10
+-    successThreshold: 1
+-    timeoutSeconds: 5
+-  readinessProbe:
+-    failureThreshold: 3
+-    httpGet:
+-      path: "/healthz"
+-      port: 10254
+-      scheme: HTTP
+-    initialDelaySeconds: 10
+-    periodSeconds: 10
+-    successThreshold: 1
+-    timeoutSeconds: 5
+-  resources: {}
+-  podDisruptionBudget:
++  tls:
++    enabled: true
++    servicePort: 8446
++    containerPort: 8446
++    # Set a nodePort which is available if service type is NodePort
++    # nodePort: 32443
++
++  type: NodePort
++
++  # Kong proxy ingress settings.
++  ingress:
++    # Enable/disable exposure using ingress.
+     enabled: false
+-    maxUnavailable: "50%"
++    # TLS secret name.
++    # tls: kong-proxy.example.com-tls
++    # Ingress hostname
++    hostname:
++    # Map of ingress annotations.
++    annotations: {}
++    # Ingress path.
++    path: /
+ 
+-# We pass the dbless (declarative) config over here.
+-dblessConfig:
+-  # Either Kong's configuration is managed from an existing ConfigMap (with Key: kong.yml)
+-  configMap: ""
+-  # Or the configuration is passed in full-text below
+-  config:
+-    _format_version: "1.1"
+-    services:
+-      # Example configuration
+-      # - name: example.com
+-      #   url: http://example.com
+-      #   routes:
+-      #   - name: example
+-      #     paths:
+-      #     - "/example"
++  externalIPs: []
+ 
+-# Inject specified secrets as a volume in Kong Container at path /etc/secrets/{secret-name}/
+-# This can be used to override default SSL certificates
+-# Example configuration
+-# secretVolumes:
+-# - kong-proxy-tls
+-# - kong-admin-tls
+-secretVolumes: []
++portalapi:
++  # If you want to specify annotations for the Portal API service, uncomment the following
++  # line, add additional or adjust as needed, and remove the curly braces after 'annotations:'.
++  annotations: {}
++  #  service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
+ 
+-serviceMonitor:
+-  # Specifies whether ServiceMonitor for Prometheus operator should be created
+-  enabled: false
+-  # interval: 10s
+-  # Specifies namespace, where ServiceMonitor should be installed
+-  # namespace: monitoring
+-  # labels:
+-  #   foo: bar
++  # HTTP plain-text traffic
++  http:
++    enabled: true
++    servicePort: 8004
++    containerPort: 8004
++    # Set a nodePort which is available if service type is NodePort
++    # nodePort: 32080
++
++  tls:
++    enabled: true
++    servicePort: 8447
++    containerPort: 8447
++    # Set a nodePort which is available if service type is NodePort
++    # nodePort: 32443
++
++  type: NodePort
++
++  # Kong proxy ingress settings.
++  ingress:
++    # Enable/disable exposure using ingress.
++    enabled: false
++    # TLS secret name.
++    # tls: kong-proxy.example.com-tls
++    # Ingress hostname
++    hostname:
++    # Map of ingress annotations.
++    annotations: {}
++    # Ingress path.
++    path: /
++
++  externalIPs: []

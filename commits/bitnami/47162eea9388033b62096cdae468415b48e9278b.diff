@@ -1,0 +1,1292 @@
+commit 47162eea9388033b62096cdae468415b48e9278b
+Author: André Bauer <monotek@users.noreply.github.com>
+Date:   Wed Mar 18 13:36:20 2020 +0100
+
+    [bitnami/influxdb] added backup funtion & some refactoring (#1962)
+    
+    * added backup funtion & some refactoring
+    
+    Signed-off-by: André Bauer <andre.bauer@kiwigrid.com>
+    
+    * renamed more rcp typos
+    
+    Signed-off-by: André Bauer <andre.bauer@kiwigrid.com>
+    
+    * added backup values to prod too
+    
+    Signed-off-by: André Bauer <andre.bauer@kiwigrid.com>
+    
+    * added pr changes
+    
+    Signed-off-by: André Bauer <andre.bauer@kiwigrid.com>
+    
+    * changed retention / run container as nonroot / fixed indent
+    
+    Signed-off-by: André Bauer <monotek23@gmail.com>
+    
+    * Use Bitnami containers
+    
+    Signed-off-by: Andrés Bono <andresbono@vmware.com>
+    
+    * Adapt backups to Bitnami Azure CLI container
+    
+    Signed-off-by: Andrés Bono <andresbono@vmware.com>
+    
+    * Adapt backups to Bitnami Google Cloud SDK container
+    
+    Signed-off-by: Andrés Bono <andresbono@vmware.com>
+    
+    * Update bitnami/influxdb/templates/influxdb/secrets-backup.yaml
+    
+    Co-Authored-By: Juan Ariza Toledano <juanariza@vmware.com>
+    
+    * Update bitnami/influxdb/values.yaml
+    
+    Co-Authored-By: Juan Ariza Toledano <juanariza@vmware.com>
+    
+    * Update bitnami/influxdb/templates/influxdb/cronjob-backup.yaml
+    
+    Co-Authored-By: Juan Ariza Toledano <juanariza@vmware.com>
+    
+    * Update bitnami/influxdb/templates/influxdb/cronjob-backup.yaml
+    
+    Co-Authored-By: Juan Ariza Toledano <juanariza@vmware.com>
+    
+    * Update bitnami/influxdb/templates/influxdb/cronjob-backup.yaml
+    
+    Co-Authored-By: Juan Ariza Toledano <juanariza@vmware.com>
+    
+    * Update bitnami/influxdb/templates/influxdb/cronjob-backup.yaml
+    
+    Co-Authored-By: Juan Ariza Toledano <juanariza@vmware.com>
+    
+    * Update bitnami/influxdb/values.yaml
+    
+    Co-Authored-By: Juan Ariza Toledano <juanariza@vmware.com>
+    
+    * Update bitnami/influxdb/values-production.yaml
+    
+    Co-Authored-By: Juan Ariza Toledano <juanariza@vmware.com>
+    
+    * Update bitnami/influxdb/values-production.yaml
+    
+    Co-Authored-By: Juan Ariza Toledano <juanariza@vmware.com>
+    
+    * Update bitnami/influxdb/values.yaml
+    
+    * Update bitnami/influxdb/values-production.yaml
+    
+    * [bitnami/influxdb] Update components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    Co-authored-by: Andrés Bono <andresbono@vmware.com>
+    Co-authored-by: Juan Ariza Toledano <juanariza@vmware.com>
+    Co-authored-by: Bitnami Containers <containers@bitnami.com>
+
+diff --git a/bitnami/influxdb/README.md b/bitnami/influxdb/README.md
+index 9bd02065b5..8a3cf97725 100644
+--- a/bitnami/influxdb/README.md
++++ b/bitnami/influxdb/README.md
+@@ -49,126 +49,153 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following tables lists the configurable parameters of the InfluxDB chart and their default values.
+ 
+-|                  Parameter                  |                                                                                        Description                                                                                        |                         Default                         |
+-|---------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------|
+-| `global.imageRegistry`                      | Global Docker image registry                                                                                                                                                              | `nil`                                                   |
+-| `global.imagePullSecrets`                   | Global Docker registry secret names as an array                                                                                                                                           | `[]` (does not add image pull secrets to deployed pods) |
+-| `global.storageClass`                       | Global storage class for dynamic provisioning                                                                                                                                             | `nil`                                                   |
+-| `image.registry`                            | InfluxDB image registry                                                                                                                                                                   | `docker.io`                                             |
+-| `image.repository`                          | InfluxDB image name                                                                                                                                                                       | `bitnami/influxdb`                                      |
+-| `image.tag`                                 | InfluxDB image tag                                                                                                                                                                        | `{TAG_NAME}`                                            |
+-| `image.pullPolicy`                          | InfluxDB image pull policy                                                                                                                                                                | `IfNotPresent`                                          |
+-| `image.pullSecrets`                         | Specify docker-registry secret names as an array                                                                                                                                          | `[]` (does not add image pull secrets to deployed pods) |
+-| `image.debug`                               | Specify if debug logs should be enabled                                                                                                                                                   | `false`                                                 |
+-| `nameOverride`                              | String to partially override influxdb.fullname template with a string (will prepend the release name)                                                                                     | `nil`                                                   |
+-| `fullnameOverride`                          | String to fully override influxdb.fullname template with a string                                                                                                                         | `nil`                                                   |
+-| `clusterDomain`                             | Default Kubernetes cluster domain                                                                                                                                                         | `cluster.local`                                         |
+-| `architecture`                              | InfluxDB architecture (`standalone` or `high-availability`)                                                                                                                               | `standalone`                                            |
+-| `database`                                  | Database to be created on first run                                                                                                                                                       | `my_database`                                           |
+-| `authEnabled`                               | Enable/disable authentication                                                                                                                                                             | `true`                                                  |
+-| `adminUser.name`                            | InfluxDB admin user name                                                                                                                                                                  | `admin`                                                 |
+-| `adminUser.pwd`                             | InfluxDB admin user's password                                                                                                                                                            | `nil`                                                   |
+-| `adminUser.usePasswordFile`                 | Mount admin user's password as file instead of environment variable                                                                                                                       | `false`                                                 |
+-| `user.name`                                 | Name for InfluxDB user with 'admin' privileges on the db specified at `database`                                                                                                          | `nil`                                                   |
+-| `user.pwd`                                  | InfluxDB password for `user.name` user                                                                                                                                                    | `nil`                                                   |
+-| `user.usePasswordFile`                      | Mount `user.name` user's password as file instead of environment variable                                                                                                                 | `nil`                                                   |
+-| `readUser.name`                             | Name for InfluxDB user with 'read' privileges on the db specified at `database`                                                                                                           | `nil`                                                   |
+-| `readUser.pwd`                              | InfluxDB password for `readUser.name` user                                                                                                                                                | `nil`                                                   |
+-| `readUser.usePasswordFile`                  | Mount `readUser.name` user's password as file instead of environment variable                                                                                                             | `nil`                                                   |
+-| `writeUser.name`                            | Name for InfluxDB user with 'write' privileges on the db specified at `database`                                                                                                          | `nil`                                                   |
+-| `writeUser.pwd`                             | InfluxDB password for `writeUser.name` user                                                                                                                                               | `nil`                                                   |
+-| `writeUser.usePasswordFile`                 | Mount `writeUser.name` user's password as file instead of environment variable                                                                                                            | `nil`                                                   |
+-| `existingSecret`                            | Name of existing Secret object with InfluxDB credentials (`adminUser.password`, `user.password`, `readUser.password`, and `writeUser.pwd` will be ignored and picked up from this secret) | `nil`                                                   |
+-| `influxdb.configuration`                    | Specify content for influxdb.conf                                                                                                                                                         | `nil (do not create influxdb.conf)`                     |
+-| `influxdb.existingConfiguration`            | Name of existing ConfigMap object with the InfluxDB configuration (`influxdb.configuration` will be ignored).                                                                             | `nil`                                                   |
+-| `influxdb.initdbScripts`                    | Dictionary of initdb scripts                                                                                                                                                              | `nil`                                                   |
+-| `influxdb.initdbScriptsCM`                  | Name of existing ConfigMap object with the initdb scripts (`influxdb.initdbScripts` will be ignored).                                                                                     | `nil`                                                   |
+-| `influxdb.initdbScriptsSecret`              | Secret with initdb scripts that contain sensitive information (Note: can be used with `initdbScriptsConfigMap` or `initdbScripts`).                                                       | `nil`                                                   |
+-| `influxdb.extraEnvVars`                     | Array containing extra env vars to configure InfluxDB                                                                                                                                     | `nil`                                                   |
+-| `influxdb.replicaCount`                     | The number of InfluxDB replicas to deploy                                                                                                                                                 | `1`                                                     |
+-| `influxdb.antiAffinity`                     | Pod anti-affinity policy                                                                                                                                                                  | `soft`                                                  |
+-| `influxdb.nodeAffinity`                     | Node affinity policy                                                                                                                                                                      | `{}` (The value is evaluated as a template)             |
+-| `influxdb.nodeSelector`                     | Node labels for pod assignment                                                                                                                                                            | `{}` (The value is evaluated as a template)             |
+-| `influxdb.tolerations`                      | Tolerations for pod assignment                                                                                                                                                            | `[]` (The value is evaluated as a template)             |
+-| `influxdb.securityContext.enabled`          | Enable security context for InfluxDB                                                                                                                                                      | `true`                                                  |
+-| `influxdb.securityContext.fsGroup`          | Group ID for the InfluxDB filesystem                                                                                                                                                      | `1001`                                                  |
+-| `influxdb.securityContext.runAsUser`        | User ID for the InfluxDB container                                                                                                                                                        | `1001`                                                  |
+-| `influxdb.resources`                        | The [resources] to allocate for container                                                                                                                                                 | `{}`                                                    |
+-| `influxdb.livenessProbe`                    | Liveness probe configuration for InfluxDB                                                                                                                                                 | `Check values.yaml file`                                |
+-| `influxdb.readinessProbe`                   | Readiness probe configuration for InfluxDB                                                                                                                                                | `Check values.yaml file`                                |
+-| `influxdb.containerPorts.http`              | InfluxDB container HTTP port                                                                                                                                                              | `8086`                                                  |
+-| `influxdb.containerPorts.rcp`               | InfluxDB container RCP port                                                                                                                                                               | `8088`                                                  |
+-| `influxdb.service.type`                     | Kubernetes service type (`ClusterIP`, `NodePort` or `LoadBalancer`)                                                                                                                       | `ClusterIP`                                             |
+-| `influxdb.service.port`                     | InfluxDB HTTP port                                                                                                                                                                        | `8086`                                                  |
+-| `influxdb.service.rcpPort`                  | InfluxDB RCP port                                                                                                                                                                         | `8088`                                                  |
+-| `influxdb.service.nodePorts.http`           | Kubernetes HTTP node port                                                                                                                                                                 | `""`                                                    |
+-| `influxdb.service.nodePorts.rcp`            | Kubernetes RCP node port                                                                                                                                                                  | `""`                                                    |
+-| `influxdb.service.annotations`              | Annotations for InfluxDB service                                                                                                                                                          | `{}`                                                    |
+-| `influxdb.service.loadBalancerIP`           | loadBalancerIP if service type is `LoadBalancer`                                                                                                                                          | `nil`                                                   |
+-| `influxdb.service.loadBalancerSourceRanges` | Address that are allowed when service is LoadBalancer                                                                                                                                     | `[]`                                                    |
+-| `influxdb.service.clusterIP`                | Static clusterIP or None for headless services                                                                                                                                            | `nil`                                                   |
+-| `relay.image.registry`                      | InfluxDB Relay image registry                                                                                                                                                             | `docker.io`                                             |
+-| `relay.image.repository`                    | InfluxDB Relay image name                                                                                                                                                                 | `bitnami/influxdb-relay`                                |
+-| `relay.image.tag`                           | InfluxDB Relay image tag                                                                                                                                                                  | `{TAG_NAME}`                                            |
+-| `relay.image.pullPolicy`                    | InfluxDB Relay image pull policy                                                                                                                                                          | `IfNotPresent`                                          |
+-| `relay.image.pullSecrets`                   | Specify docker-registry secret names as an array                                                                                                                                          | `[]` (does not add image pull secrets to deployed pods) |
+-| `relay.configuration`                       | Specify content for relay.toml                                                                                                                                                            | `Check values.yaml file`                                |
+-| `relay.existingConfiguration`               | Name of existing ConfigMap object with the InfluxDB Relay configuration (`relay.configuration` will be ignored).                                                                          | `nil`                                                   |
+-| `relay.replicaCount`                        | The number of InfluxDB Relay replicas to deploy                                                                                                                                           | `1`                                                     |
+-| `relay.antiAffinity`                        | Pod anti-affinity policy                                                                                                                                                                  | `soft`                                                  |
+-| `relay.nodeAffinity`                        | Node affinity policy                                                                                                                                                                      | `{}` (The value is evaluated as a template)             |
+-| `relay.nodeSelector`                        | Node labels for pod assignment                                                                                                                                                            | `{}` (The value is evaluated as a template)             |
+-| `relay.tolerations`                         | Tolerations for pod assignment                                                                                                                                                            | `[]` (The value is evaluated as a template)             |
+-| `relay.securityContext.enabled`             | Enable security context for InfluxDB Relay                                                                                                                                                | `true`                                                  |
+-| `relay.securityContext.fsGroup`             | Group ID for the InfluxDB Relay filesystem                                                                                                                                                | `1001`                                                  |
+-| `relay.securityContext.runAsUser`           | User ID for the InfluxDB Relay container                                                                                                                                                  | `1001`                                                  |
+-| `relay.resources`                           | The [resources] to allocate for container                                                                                                                                                 | `{}`                                                    |
+-| `relay.livenessProbe`                       | Liveness probe configuration for InfluxDB Relay                                                                                                                                           | `Check values.yaml file`                                |
+-| `relay.readinessProbe`                      | Readiness probe configuration for InfluxDB Relay                                                                                                                                          | `Check values.yaml file`                                |
+-| `relay.containerPorts.http`                 | InfluxDB Relay container HTTP port                                                                                                                                                        | `9096`                                                  |
+-| `relay.service.type`                        | Kubernetes service type (`ClusterIP`, `NodePort` or `LoadBalancer`)                                                                                                                       | `ClusterIP`                                             |
+-| `relay.service.port`                        | InfluxDB Relay HTTP port                                                                                                                                                                  | `9096`                                                  |
+-| `relay.service.nodePort`                    | Kubernetes HTTP node port                                                                                                                                                                 | `""`                                                    |
+-| `relay.service.annotations`                 | Annotations for InfluxDB Relay service                                                                                                                                                    | `{}`                                                    |
+-| `relay.service.loadBalancerIP`              | loadBalancerIP if service type is `LoadBalancer`                                                                                                                                          | `nil`                                                   |
+-| `relay.service.loadBalancerSourceRanges`    | Address that are allowed when service is LoadBalancer                                                                                                                                     | `[]`                                                    |
+-| `relay.service.clusterIP`                   | Static clusterIP or None for headless services                                                                                                                                            | `nil`                                                   |
+-| `ingress.enabled`                           | Enable ingress controller resource                                                                                                                                                        | `false`                                                 |
+-| `ingress.certManager`                       | Add annotations for cert-manager                                                                                                                                                          | `false`                                                 |
+-| `ingress.annotations`                       | Ingress annotations                                                                                                                                                                       | `[]`                                                    |
+-| `ingress.hosts[0].name`                     | Hostname for InfluxDB service                                                                                                                                                             | `influxdb.local`                                        |
+-| `ingress.hosts[0].path`                     | Path within the url structure                                                                                                                                                             | `/`                                                     |
+-| `ingress.tls[0].hosts[0]`                   | TLS hosts                                                                                                                                                                                 | `influxdb.local`                                        |
+-| `ingress.tls[0].secretName`                 | TLS Secret (certificates)                                                                                                                                                                 | `influxdb.local-tls`                                    |
+-| `ingress.secrets[0].name`                   | TLS Secret Name                                                                                                                                                                           | `nil`                                                   |
+-| `ingress.secrets[0].certificate`            | TLS Secret Certificate                                                                                                                                                                    | `nil`                                                   |
+-| `ingress.secrets[0].key`                    | TLS Secret Key                                                                                                                                                                            | `nil`                                                   |
+-| `metrics.enabled`                           | Enable the export of Prometheus metrics                                                                                                                                                   | `false`                                                 |
+-| `metrics.service.type`                      | Kubernetes service type (`ClusterIP`, `NodePort` or `LoadBalancer`)                                                                                                                       | `ClusterIP`                                             |
+-| `metrics.service.port`                      | InfluxDB Prometheus port                                                                                                                                                                  | `9122`                                                  |
+-| `metrics.service.nodePort`                  | Kubernetes HTTP node port                                                                                                                                                                 | `""`                                                    |
+-| `metrics.service.annotations`               | Annotations for Prometheus metrics service                                                                                                                                                | `Check values.yaml file`                                |
+-| `metrics.service.loadBalancerIP`            | loadBalancerIP if service type is `LoadBalancer`                                                                                                                                          | `nil`                                                   |
+-| `metrics.service.loadBalancerSourceRanges`  | Address that are allowed when service is LoadBalancer                                                                                                                                     | `[]`                                                    |
+-| `metrics.service.clusterIP`                 | Static clusterIP or None for headless services                                                                                                                                            | `nil`                                                   |
+-| `metrics.serviceMonitor.enabled`            | if `true`, creates a Prometheus Operator ServiceMonitor (also requires `metrics.enabled` to be `true`)                                                                                    | `false`                                                 |
+-| `metrics.serviceMonitor.namespace`          | Namespace in which Prometheus is running                                                                                                                                                  | `nil`                                                   |
+-| `metrics.serviceMonitor.interval`           | Interval at which metrics should be scraped.                                                                                                                                              | `nil` (Prometheus Operator default value)               |
+-| `metrics.serviceMonitor.scrapeTimeout`      | Timeout after which the scrape is ended                                                                                                                                                   | `nil` (Prometheus Operator default value)               |
+-| `metrics.serviceMonitor.selector`           | Prometheus instance selector labels                                                                                                                                                       | `nil`                                                   |
+-| `networkPolicy.enabled`                     | Enable NetworkPolicy                                                                                                                                                                      | `false`                                                 |
+-| `networkPolicy.allowExternal`               | Don't require client label for connections                                                                                                                                                | `true`                                                  |
+-| `persistence.enabled`                       | Enable data persistence                                                                                                                                                                   | `true`                                                  |
+-| `persistence.existingClaim`                 | Use a existing PVC which must be created manually before bound                                                                                                                            | `nil`                                                   |
+-| `persistence.storageClass`                  | Specify the `storageClass` used to provision the volume                                                                                                                                   | `nil`                                                   |
+-| `persistence.accessMode`                    | Access mode of data volume                                                                                                                                                                | `ReadWriteOnce`                                         |
+-| `persistence.size`                          | Size of data volume                                                                                                                                                                       | `8Gi`                                                   |
+-| `volumePermissions.enabled`                 | Enable init container that changes the owner and group of the persistent volume mountpoint to `runAsUser:fsGroup`                                                                         | `false`                                                 |
+-| `volumePermissions.image.registry`          | Init container volume-permissions image registry                                                                                                                                          | `docker.io`                                             |
+-| `volumePermissions.image.repository`        | Init container volume-permissions image name                                                                                                                                              | `bitnami/minideb`                                       |
+-| `volumePermissions.image.tag`               | Init container volume-permissions image tag                                                                                                                                               | `buster`                                                |
+-| `volumePermissions.image.pullPolicy`        | Init container volume-permissions image pull policy                                                                                                                                       | `Always`                                                |
+-| `volumePermissions.image.pullSecrets`       | Specify docker-registry secret names as an array                                                                                                                                          | `[]` (does not add image pull secrets to deployed pods) |
++|                  Parameter                        |                                                                                        Description                                                                                        |                         Default                         |
++|---------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------|
++| `global.imageRegistry`                            | Global Docker image registry                                                                                                                                                              | `nil`                                                   |
++| `global.imagePullSecrets`                         | Global Docker registry secret names as an array                                                                                                                                           | `[]` (does not add image pull secrets to deployed pods) |
++| `global.storageClass`                             | Global storage class for dynamic provisioning                                                                                                                                             | `nil`                                                   |
++| `image.registry`                                  | InfluxDB image registry                                                                                                                                                                   | `docker.io`                                             |
++| `image.repository`                                | InfluxDB image name                                                                                                                                                                       | `bitnami/influxdb`                                      |
++| `image.tag`                                       | InfluxDB image tag                                                                                                                                                                        | `{TAG_NAME}`                                            |
++| `image.pullPolicy`                                | InfluxDB image pull policy                                                                                                                                                                | `IfNotPresent`                                          |
++| `image.pullSecrets`                               | Specify docker-registry secret names as an array                                                                                                                                          | `[]` (does not add image pull secrets to deployed pods) |
++| `image.debug`                                     | Specify if debug logs should be enabled                                                                                                                                                   | `false`                                                 |
++| `nameOverride`                                    | String to partially override influxdb.fullname template with a string (will prepend the release name)                                                                                     | `nil`                                                   |
++| `fullnameOverride`                                | String to fully override influxdb.fullname template with a string                                                                                                                         | `nil`                                                   |
++| `clusterDomain`                                   | Default Kubernetes cluster domain                                                                                                                                                         | `cluster.local`                                         |
++| `architecture`                                    | InfluxDB architecture (`standalone` or `high-availability`)                                                                                                                               | `standalone`                                            |
++| `database`                                        | Database to be created on first run                                                                                                                                                       | `my_database`                                           |
++| `authEnabled`                                     | Enable/disable authentication                                                                                                                                                             | `true`                                                  |
++| `adminUser.name`                                  | InfluxDB admin user name                                                                                                                                                                  | `admin`                                                 |
++| `adminUser.pwd`                                   | InfluxDB admin user's password                                                                                                                                                            | `nil`                                                   |
++| `adminUser.usePasswordFile`                       | Mount admin user's password as file instead of environment variable                                                                                                                       | `false`                                                 |
++| `user.name`                                       | Name for InfluxDB user with 'admin' privileges on the db specified at `database`                                                                                                          | `nil`                                                   |
++| `user.pwd`                                        | InfluxDB password for `user.name` user                                                                                                                                                    | `nil`                                                   |
++| `user.usePasswordFile`                            | Mount `user.name` user's password as file instead of environment variable                                                                                                                 | `nil`                                                   |
++| `readUser.name`                                   | Name for InfluxDB user with 'read' privileges on the db specified at `database`                                                                                                           | `nil`                                                   |
++| `readUser.pwd`                                    | InfluxDB password for `readUser.name` user                                                                                                                                                | `nil`                                                   |
++| `readUser.usePasswordFile`                        | Mount `readUser.name` user's password as file instead of environment variable                                                                                                             | `nil`                                                   |
++| `writeUser.name`                                  | Name for InfluxDB user with 'write' privileges on the db specified at `database`                                                                                                          | `nil`                                                   |
++| `writeUser.pwd`                                   | InfluxDB password for `writeUser.name` user                                                                                                                                               | `nil`                                                   |
++| `writeUser.usePasswordFile`                       | Mount `writeUser.name` user's password as file instead of environment variable                                                                                                            | `nil`                                                   |
++| `existingSecret`                                  | Name of existing Secret object with InfluxDB credentials (`adminUser.password`, `user.password`, `readUser.password`, and `writeUser.pwd` will be ignored and picked up from this secret) | `nil`                                                   |
++| `influxdb.configuration`                          | Specify content for influxdb.conf                                                                                                                                                         | `nil (do not create influxdb.conf)`                     |
++| `influxdb.existingConfiguration`                  | Name of existing ConfigMap object with the InfluxDB configuration (`influxdb.configuration` will be ignored).                                                                             | `nil`                                                   |
++| `influxdb.initdbScripts`                          | Dictionary of initdb scripts                                                                                                                                                              | `nil`                                                   |
++| `influxdb.initdbScriptsCM`                        | Name of existing ConfigMap object with the initdb scripts (`influxdb.initdbScripts` will be ignored).                                                                                     | `nil`                                                   |
++| `influxdb.initdbScriptsSecret`                    | Secret with initdb scripts that contain sensitive information (Note: can be used with `initdbScriptsConfigMap` or `initdbScripts`).                                                       | `nil`                                                   |
++| `influxdb.extraEnvVars`                           | Array containing extra env vars to configure InfluxDB                                                                                                                                     | `nil`                                                   |
++| `influxdb.replicaCount`                           | The number of InfluxDB replicas to deploy                                                                                                                                                 | `1`                                                     |
++| `influxdb.antiAffinity`                           | Pod anti-affinity policy                                                                                                                                                                  | `soft`                                                  |
++| `influxdb.nodeAffinity`                           | Node affinity policy                                                                                                                                                                      | `{}` (The value is evaluated as a template)             |
++| `influxdb.nodeSelector`                           | Node labels for pod assignment                                                                                                                                                            | `{}` (The value is evaluated as a template)             |
++| `influxdb.tolerations`                            | Tolerations for pod assignment                                                                                                                                                            | `[]` (The value is evaluated as a template)             |
++| `influxdb.securityContext.enabled`                | Enable security context for InfluxDB                                                                                                                                                      | `true`                                                  |
++| `influxdb.securityContext.fsGroup`                | Group ID for the InfluxDB filesystem                                                                                                                                                      | `1001`                                                  |
++| `influxdb.securityContext.runAsUser`              | User ID for the InfluxDB container                                                                                                                                                        | `1001`                                                  |
++| `influxdb.resources`                              | The [resources] to allocate for container                                                                                                                                                 | `{}`                                                    |
++| `influxdb.livenessProbe`                          | Liveness probe configuration for InfluxDB                                                                                                                                                 | `Check values.yaml file`                                |
++| `influxdb.readinessProbe`                         | Readiness probe configuration for InfluxDB                                                                                                                                                | `Check values.yaml file`                                |
++| `influxdb.containerPorts.http`                    | InfluxDB container HTTP port                                                                                                                                                              | `8086`                                                  |
++| `influxdb.containerPorts.rpc`                     | InfluxDB container RPC port                                                                                                                                                               | `8088`                                                  |
++| `influxdb.service.type`                           | Kubernetes service type (`ClusterIP`, `NodePort` or `LoadBalancer`)                                                                                                                       | `ClusterIP`                                             |
++| `influxdb.service.port`                           | InfluxDB HTTP port                                                                                                                                                                        | `8086`                                                  |
++| `influxdb.service.rpcPort`                        | InfluxDB RPC port                                                                                                                                                                         | `8088`                                                  |
++| `influxdb.service.nodePorts.http`                 | Kubernetes HTTP node port                                                                                                                                                                 | `""`                                                    |
++| `influxdb.service.nodePorts.rpc`                  | Kubernetes RPC node port                                                                                                                                                                  | `""`                                                    |
++| `influxdb.service.annotations`                    | Annotations for InfluxDB service                                                                                                                                                          | `{}`                                                    |
++| `influxdb.service.loadBalancerIP`                 | loadBalancerIP if service type is `LoadBalancer`                                                                                                                                          | `nil`                                                   |
++| `influxdb.service.loadBalancerSourceRanges`       | Address that are allowed when service is LoadBalancer                                                                                                                                     | `[]`                                                    |
++| `influxdb.service.clusterIP`                      | Static clusterIP or None for headless services                                                                                                                                            | `nil`                                                   |
++| `relay.image.registry`                            | InfluxDB Relay image registry                                                                                                                                                             | `docker.io`                                             |
++| `relay.image.repository`                          | InfluxDB Relay image name                                                                                                                                                                 | `bitnami/influxdb-relay`                                |
++| `relay.image.tag`                                 | InfluxDB Relay image tag                                                                                                                                                                  | `{TAG_NAME}`                                            |
++| `relay.image.pullPolicy`                          | InfluxDB Relay image pull policy                                                                                                                                                          | `IfNotPresent`                                          |
++| `relay.image.pullSecrets`                         | Specify docker-registry secret names as an array                                                                                                                                          | `[]` (does not add image pull secrets to deployed pods) |
++| `relay.configuration`                             | Specify content for relay.toml                                                                                                                                                            | `Check values.yaml file`                                |
++| `relay.existingConfiguration`                     | Name of existing ConfigMap object with the InfluxDB Relay configuration (`relay.configuration` will be ignored).                                                                          | `nil`                                                   |
++| `relay.replicaCount`                              | The number of InfluxDB Relay replicas to deploy                                                                                                                                           | `1`                                                     |
++| `relay.antiAffinity`                              | Pod anti-affinity policy                                                                                                                                                                  | `soft`                                                  |
++| `relay.nodeAffinity`                              | Node affinity policy                                                                                                                                                                      | `{}` (The value is evaluated as a template)             |
++| `relay.nodeSelector`                              | Node labels for pod assignment                                                                                                                                                            | `{}` (The value is evaluated as a template)             |
++| `relay.tolerations`                               | Tolerations for pod assignment                                                                                                                                                            | `[]` (The value is evaluated as a template)             |
++| `relay.securityContext.enabled`                   | Enable security context for InfluxDB Relay                                                                                                                                                | `true`                                                  |
++| `relay.securityContext.fsGroup`                   | Group ID for the InfluxDB Relay filesystem                                                                                                                                                | `1001`                                                  |
++| `relay.securityContext.runAsUser`                 | User ID for the InfluxDB Relay container                                                                                                                                                  | `1001`                                                  |
++| `relay.resources`                                 | The [resources] to allocate for container                                                                                                                                                 | `{}`                                                    |
++| `relay.livenessProbe`                             | Liveness probe configuration for InfluxDB Relay                                                                                                                                           | `Check values.yaml file`                                |
++| `relay.readinessProbe`                            | Readiness probe configuration for InfluxDB Relay                                                                                                                                          | `Check values.yaml file`                                |
++| `relay.containerPorts.http`                       | InfluxDB Relay container HTTP port                                                                                                                                                        | `9096`                                                  |
++| `relay.service.type`                              | Kubernetes service type (`ClusterIP`, `NodePort` or `LoadBalancer`)                                                                                                                       | `ClusterIP`                                             |
++| `relay.service.port`                              | InfluxDB Relay HTTP port                                                                                                                                                                  | `9096`                                                  |
++| `relay.service.nodePort`                          | Kubernetes HTTP node port                                                                                                                                                                 | `""`                                                    |
++| `relay.service.annotations`                       | Annotations for InfluxDB Relay service                                                                                                                                                    | `{}`                                                    |
++| `relay.service.loadBalancerIP`                    | loadBalancerIP if service type is `LoadBalancer`                                                                                                                                          | `nil`                                                   |
++| `relay.service.loadBalancerSourceRanges`          | Address that are allowed when service is LoadBalancer                                                                                                                                     | `[]`                                                    |
++| `relay.service.clusterIP`                         | Static clusterIP or None for headless services                                                                                                                                            | `nil`                                                   |
++| `ingress.enabled`                                 | Enable ingress controller resource                                                                                                                                                        | `false`                                                 |
++| `ingress.certManager`                             | Add annotations for cert-manager                                                                                                                                                          | `false`                                                 |
++| `ingress.annotations`                             | Ingress annotations                                                                                                                                                                       | `[]`                                                    |
++| `ingress.hosts[0].name`                           | Hostname for InfluxDB service                                                                                                                                                             | `influxdb.local`                                        |
++| `ingress.hosts[0].path`                           | Path within the url structure                                                                                                                                                             | `/`                                                     |
++| `ingress.tls[0].hosts[0]`                         | TLS hosts                                                                                                                                                                                 | `influxdb.local`                                        |
++| `ingress.tls[0].secretName`                       | TLS Secret (certificates)                                                                                                                                                                 | `influxdb.local-tls`                                    |
++| `ingress.secrets[0].name`                         | TLS Secret Name                                                                                                                                                                           | `nil`                                                   |
++| `ingress.secrets[0].certificate`                  | TLS Secret Certificate                                                                                                                                                                    | `nil`                                                   |
++| `ingress.secrets[0].key`                          | TLS Secret Key                                                                                                                                                                            | `nil`                                                   |
++| `metrics.enabled`                                 | Enable the export of Prometheus metrics                                                                                                                                                   | `false`                                                 |
++| `metrics.service.type`                            | Kubernetes service type (`ClusterIP`, `NodePort` or `LoadBalancer`)                                                                                                                       | `ClusterIP`                                             |
++| `metrics.service.port`                            | InfluxDB Prometheus port                                                                                                                                                                  | `9122`                                                  |
++| `metrics.service.nodePort`                        | Kubernetes HTTP node port                                                                                                                                                                 | `""`                                                    |
++| `metrics.service.annotations`                     | Annotations for Prometheus metrics service                                                                                                                                                | `Check values.yaml file`                                |
++| `metrics.service.loadBalancerIP`                  | loadBalancerIP if service type is `LoadBalancer`                                                                                                                                          | `nil`                                                   |
++| `metrics.service.loadBalancerSourceRanges`        | Address that are allowed when service is LoadBalancer                                                                                                                                     | `[]`                                                    |
++| `metrics.service.clusterIP`                       | Static clusterIP or None for headless services                                                                                                                                            | `nil`                                                   |
++| `metrics.serviceMonitor.enabled`                  | if `true`, creates a Prometheus Operator ServiceMonitor (also requires `metrics.enabled` to be `true`)                                                                                    | `false`                                                 |
++| `metrics.serviceMonitor.namespace`                | Namespace in which Prometheus is running                                                                                                                                                  | `nil`                                                   |
++| `metrics.serviceMonitor.interval`                 | Interval at which metrics should be scraped.                                                                                                                                              | `nil` (Prometheus Operator default value)               |
++| `metrics.serviceMonitor.scrapeTimeout`            | Timeout after which the scrape is ended                                                                                                                                                   | `nil` (Prometheus Operator default value)               |
++| `metrics.serviceMonitor.selector`                 | Prometheus instance selector labels                                                                                                                                                       | `nil`                                                   |
++| `networkPolicy.enabled`                           | Enable NetworkPolicy                                                                                                                                                                      | `false`                                                 |
++| `networkPolicy.allowExternal`                     | Don't require client label for connections                                                                                                                                                | `true`                                                  |
++| `persistence.enabled`                             | Enable data persistence                                                                                                                                                                   | `true`                                                  |
++| `persistence.existingClaim`                       | Use a existing PVC which must be created manually before bound                                                                                                                            | `nil`                                                   |
++| `persistence.storageClass`                        | Specify the `storageClass` used to provision the volume                                                                                                                                   | `nil`                                                   |
++| `persistence.accessMode`                          | Access mode of data volume                                                                                                                                                                | `ReadWriteOnce`                                         |
++| `persistence.size`                                | Size of data volume                                                                                                                                                                       | `8Gi`                                                   |
++| `volumePermissions.enabled`                       | Enable init container that changes the owner and group of the persistent volume mountpoint to `runAsUser:fsGroup`                                                                         | `false`                                                 |
++| `volumePermissions.image.registry`                | Init container volume-permissions image registry                                                                                                                                          | `docker.io`                                             |
++| `volumePermissions.image.repository`              | Init container volume-permissions image name                                                                                                                                              | `bitnami/minideb`                                       |
++| `volumePermissions.image.tag`                     | Init container volume-permissions image tag                                                                                                                                               | `buster`                                                |
++| `volumePermissions.image.pullPolicy`              | Init container volume-permissions image pull policy                                                                                                                                       | `Always`                                                |
++| `volumePermissions.image.pullSecrets`             | Specify docker-registry secret names as an array                                                                                                                                          | `[]` (does not add image pull secrets to deployed pods) |
++| `backup.enabled`                                  | enable InfluxDB backup                                                                                                                                                                    | `false`                                                 |
++| `backup.directory`                                | directory where backups are stored in                                                                                                                                                     | `"/backups"`                                            |
++| `backup.retentionDays`                            | retention time in days for backups (older backups are deleted)                                                                                                                            | `10`                                                    |
++| `backup.cronjob.schedule`                         | crontab style time schedule for backup execution                                                                                                                                          | `"0 2 * * *"`                                           |
++| `backup.cronjob.historyLimit`                     | cronjob historylimit                                                                                                                                                                      | `1`                                                     |
++| `backup.cronjob.annotations`                      | backup pod annotations                                                                                                                                                                    | `{}`                                                    |
++| `backup.uploadProviders.google.enabled`           | enable upload to google storage bucket                                                                                                                                                    | `false`                                                 |
++| `backup.uploadProviders.google.secret`            | json secret whith serviceaccount data to access Google storage bucket                                                                                                                     | `""`                                                    |
++| `backup.uploadProviders.google.secretKey`         | service account secret key name                                                                                                                                                           | `"key.json"`                                            |
++| `backup.uploadProviders.google.existingSecret`    | Name of existing secret object with Google serviceaccount json credentials                                                                                                                | `""`                                                    |
++| `backup.uploadProviders.google.bucketName`        | google storage bucket name name                                                                                                                                                           | `"gs://bucket/influxdb"`                                |
++| `backup.uploadProviders.google.image.registry`    | Google Cloud SDK image registry                                                                                                                                                           | `docker.io`                                             |
++| `backup.uploadProviders.google.image.repository`  | Google Cloud SDK image name                                                                                                                                                               | `bitnami/google-cloud-sdk`                              |
++| `backup.uploadProviders.google.image.tag`         | Google Cloud SDK image tag                                                                                                                                                                | `{TAG_NAME}`                                            |
++| `backup.uploadProviders.google.image.pullPolicy`  | Google Cloud SDK image pull policy                                                                                                                                                        | `IfNotPresent`                                          |
++| `backup.uploadProviders.google.image.pullSecrets` | Specify docker-registry secret names as an array                                                                                                                                          | `[]` (does not add image pull secrets to deployed pods) |
++| `backup.uploadProviders.azure.enabled`            | enable upload to azure storage container                                                                                                                                                  | `false`                                                 |
++| `backup.uploadProviders.azure.secret`             | secret whith credentials to access Azure storage                                                                                                                                          | `""`                                                    |
++| `backup.uploadProviders.azure.secretKey`          | service account secret key name                                                                                                                                                           | `"connection-string"`                                   |
++| `backup.uploadProviders.azure.existingSecret`     | Name of existing secret object                                                                                                                                                            | `""`                                                    |
++| `backup.uploadProviders.azure.containerName`      | destination container                                                                                                                                                                     | `"influxdb-container"`                                  |
++| `backup.uploadProviders.azure.image.registry`     | Azure CLI image registry                                                                                                                                                                  | `docker.io`                                             |
++| `backup.uploadProviders.azure.image.repository`   | Azure CLI image name                                                                                                                                                                      | `bitnami/azure-cli`                                     |
++| `backup.uploadProviders.azure.image.tag`          | Azure CLI image tag                                                                                                                                                                       | `{TAG_NAME}`                                            |
++| `backup.uploadProviders.azure.image.pullPolicy`   | Azure CLI image pull policy                                                                                                                                                               | `IfNotPresent`                                          |
++| `backup.uploadProviders.azure.image.pullSecrets`  | Specify docker-registry secret names as an array                                                                                                                                          | `[]` (does not add image pull secrets to deployed pods) |
++
+ 
+ Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
+ 
+diff --git a/bitnami/influxdb/templates/_helpers.tpl b/bitnami/influxdb/templates/_helpers.tpl
+index 79e1d8d087..187df30fd1 100644
+--- a/bitnami/influxdb/templates/_helpers.tpl
++++ b/bitnami/influxdb/templates/_helpers.tpl
+@@ -118,6 +118,52 @@ Also, we can't use a single if because lazy evaluation is not an option
+ {{- end -}}
+ {{- end -}}
+ 
++{{/*
++Return the proper gcloud-sdk image name
++*/}}
++{{- define "gcloudSdk.image" -}}
++{{- $registryName := .Values.backup.uploadProviders.google.image.registry -}}
++{{- $repositoryName := .Values.backup.uploadProviders.google.image.repository -}}
++{{- $tag := .Values.backup.uploadProviders.google.image.tag | toString -}}
++{{/*
++Helm 2.11 supports the assignment of a value to a variable defined in a different scope,
++but Helm 2.9 and 2.10 doesn't support it, so we need to implement this if-else logic.
++Also, we can't use a single if because lazy evaluation is not an option
++*/}}
++{{- if .Values.global }}
++    {{- if .Values.global.imageRegistry }}
++        {{- printf "%s/%s:%s" .Values.global.imageRegistry $repositoryName $tag -}}
++    {{- else -}}
++        {{- printf "%s/%s:%s" $registryName $repositoryName $tag -}}
++    {{- end -}}
++{{- else -}}
++    {{- printf "%s/%s:%s" $registryName $repositoryName $tag -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Return the proper azure-cli image name
++*/}}
++{{- define "azureCli.image" -}}
++{{- $registryName := .Values.backup.uploadProviders.azure.image.registry -}}
++{{- $repositoryName := .Values.backup.uploadProviders.azure.image.repository -}}
++{{- $tag := .Values.backup.uploadProviders.azure.image.tag | toString -}}
++{{/*
++Helm 2.11 supports the assignment of a value to a variable defined in a different scope,
++but Helm 2.9 and 2.10 doesn't support it, so we need to implement this if-else logic.
++Also, we can't use a single if because lazy evaluation is not an option
++*/}}
++{{- if .Values.global }}
++    {{- if .Values.global.imageRegistry }}
++        {{- printf "%s/%s:%s" .Values.global.imageRegistry $repositoryName $tag -}}
++    {{- else -}}
++        {{- printf "%s/%s:%s" $registryName $repositoryName $tag -}}
++    {{- end -}}
++{{- else -}}
++    {{- printf "%s/%s:%s" $registryName $repositoryName $tag -}}
++{{- end -}}
++{{- end -}}
++
+ {{/*
+ Return the proper Docker Image Registry Secret Names
+ */}}
+diff --git a/bitnami/influxdb/templates/influxdb/configmap-backup.yaml b/bitnami/influxdb/templates/influxdb/configmap-backup.yaml
+new file mode 100644
+index 0000000000..14bd91a4f7
+--- /dev/null
++++ b/bitnami/influxdb/templates/influxdb/configmap-backup.yaml
+@@ -0,0 +1,38 @@
++{{- if .Values.backup.enabled }}
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  name: {{ include "influxdb.fullname" . }}-backup
++  labels:
++    {{- include "influxdb.labels" . | nindent 4 }}
++    app.kubernetes.io/component: influxdb
++data:
++  backup.sh: |-
++    #!/bin/bash
++
++    set -e
++
++    DATE="$(date +%Y%m%d_%H%M%S)"
++
++    for DATABASE in $(influx -username {{ .Values.adminUser.name }} -password "${INFLUXDB_ADMIN_USER_PASSWORD}" -host {{ include "influxdb.fullname" . }}.{{ .Release.Namespace }}.svc -port {{ .Values.influxdb.service.port }} -execute 'SHOW DATABASES' | sed -e '1,3d'); do
++        echo "backuping ${DATABASE} db to {{ .Values.backup.directory }}/${DATABASE}"
++        mkdir -p {{ .Values.backup.directory }}/${DATABASE}
++        influxd backup -host {{ include "influxdb.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.influxdb.service.rpcPort }} -portable -db ${DATABASE} {{ .Values.backup.directory }}/"${DATABASE}/${DATE}"
++    done
++
++    echo "deleting old backups"
++    find {{ .Values.backup.directory }} -not -name ".snapshot" -not -name "lost+found" -mindepth 2 -maxdepth 2 -type d -mtime +{{ .Values.backup.retentionDays }} -exec rm -r {} \;
++  upload-google.sh: |-
++    #!/bin/sh
++
++    set -e
++
++    gcloud auth activate-service-account --key-file /var/secrets/google/{{ .Values.backup.uploadProviders.google.secretKey }}
++    gsutil -m rsync -r -d {{ .Values.backup.directory }}/ {{ .Values.backup.uploadProviders.google.bucketName }}
++  upload-azure.sh: |-
++    #!/bin/sh
++
++    set -e
++
++    az storage blob sync --source {{ .Values.backup.directory }} --container {{ .Values.backup.uploadProviders.azure.containerName }}
++{{ end }}
+diff --git a/bitnami/influxdb/templates/influxdb/initdb-scripts-configmap.yaml b/bitnami/influxdb/templates/influxdb/configmap-initdb-scripts.yaml
+similarity index 88%
+rename from bitnami/influxdb/templates/influxdb/initdb-scripts-configmap.yaml
+rename to bitnami/influxdb/templates/influxdb/configmap-initdb-scripts.yaml
+index 4d49cc3e74..dc5b01ee12 100644
+--- a/bitnami/influxdb/templates/influxdb/initdb-scripts-configmap.yaml
++++ b/bitnami/influxdb/templates/influxdb/configmap-initdb-scripts.yaml
+@@ -3,7 +3,8 @@ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+   name: {{ include "influxdb.fullname" . }}-initdb-scripts
+-  labels: {{- include "influxdb.labels" . | nindent 4 }}
++  labels: 
++    {{- include "influxdb.labels" . | nindent 4 }}
+     app.kubernetes.io/component: influxdb
+ data:
+ {{- with .Files.Glob "files/docker-entrypoint-initdb.d/*.{sh,txt}" }}
+diff --git a/bitnami/influxdb/templates/influxdb/configmap.yaml b/bitnami/influxdb/templates/influxdb/configmap.yaml
+index f40afe0851..532ff3d8a0 100644
+--- a/bitnami/influxdb/templates/influxdb/configmap.yaml
++++ b/bitnami/influxdb/templates/influxdb/configmap.yaml
+@@ -3,7 +3,8 @@ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+   name: {{ include "influxdb.fullname" . }}
+-  labels: {{- include "influxdb.labels" . | nindent 4 }}
++  labels: 
++    {{- include "influxdb.labels" . | nindent 4 }}
+     app.kubernetes.io/component: influxdb
+ data:
+ {{- if (.Files.Glob "files/conf/influxdb.conf") }}
+diff --git a/bitnami/influxdb/templates/influxdb/cronjob-backup.yaml b/bitnami/influxdb/templates/influxdb/cronjob-backup.yaml
+new file mode 100644
+index 0000000000..6d3355208b
+--- /dev/null
++++ b/bitnami/influxdb/templates/influxdb/cronjob-backup.yaml
+@@ -0,0 +1,107 @@
++{{- if .Values.backup.enabled }}
++apiVersion: batch/v1beta1
++kind: CronJob
++metadata:
++  name: "{{ template "influxdb.fullname" . }}-backup"
++  labels:
++    {{- include "influxdb.labels" . | nindent 4 }}
++spec:
++  schedule: {{.Values.backup.cronjob.schedule | quote }}
++  concurrencyPolicy: Forbid
++  successfulJobsHistoryLimit: {{ .Values.backup.cronjob.historyLimit }}
++  failedJobsHistoryLimit: {{ .Values.backup.cronjob.historyLimit }}
++  jobTemplate:
++    spec:
++      template:
++        metadata:
++          labels:
++            {{- include "influxdb.matchLabels" . | nindent 12 }}
++          annotations:
++            {{- toYaml .Values.backup.cronjob.Podannotations | nindent 12 }}
++        spec:
++          {{- if .Values.backup.cronjob.securityContext.enabled }}
++          securityContext:
++            fsGroup: {{ .Values.backup.cronjob.securityContext.fsGroup }}
++            runAsUser: {{ .Values.backup.cronjob.securityContext.runAsUser }}
++          {{- end }}
++          restartPolicy: OnFailure
++          volumes:
++            - name: backup-scripts
++              configMap:
++                name: {{ include "influxdb.fullname" . }}-backup
++                defaultMode: 0755
++            {{- if .Values.backup.uploadProviders.google.enabled }}
++            - name: google-cloud-key
++              secret:
++            {{- if .Values.backup.uploadProviders.google.existingSecret }}
++                secretName: {{ .Values.backup.uploadProviders.google.existingSecret | quote }}
++            {{- else }}
++                secretName: {{ include "influxdb.fullname" . }}-backup-gcloud
++            {{- end }}
++            {{- end }}
++            - name: {{ include "influxdb.fullname" . }}-backups
++            {{- if .Values.persistence.enabled }}
++              persistentVolumeClaim:
++                claimName: {{ include "influxdb.fullname" . }}-backups
++            {{- else }}
++                emptyDir: {}
++            {{- end }}
++          initContainers:
++            - name: influxdb-backup
++              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++              env:
++                - name: INFLUXDB_ADMIN_USER_PASSWORD
++                  valueFrom:
++                    secretKeyRef:
++                      name: {{ include "influxdb.secretName" . }}
++                      key: admin-user-password
++              command:
++                - "/tmp/backup.sh"
++              volumeMounts:
++                - name: {{ include "influxdb.fullname" . }}-backups
++                  mountPath: {{ .Values.backup.directory | quote }}
++                - name: backup-scripts
++                  mountPath: /tmp/backup.sh
++                  subPath: backup.sh
++          containers:
++            - name: influxdb-backup-dummy-container
++              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++              command:
++                - "/bin/true"
++            {{- if .Values.backup.uploadProviders.google.enabled }}
++            - name: gsutil-cp
++              image: {{ include "gcloudSdk.image" . }}
++              command:
++                - "/tmp/upload-google.sh"
++              volumeMounts:
++                - name: {{ include "influxdb.fullname" . }}-backups
++                  mountPath: {{ .Values.backup.directory | quote }}
++                - name: backup-scripts
++                  mountPath: /tmp/upload-google.sh
++                  subPath: upload-google.sh
++                - name: google-cloud-key
++                  mountPath: /var/secrets/google/
++            {{- end }}
++            {{- if .Values.backup.uploadProviders.azure.enabled }}
++            - name: azure-cli
++              image: {{ include "azureCli.image" . }}
++              command:
++              - "/tmp/upload-azure.sh"
++              env:
++                - name: AZURE_STORAGE_CONNECTION_STRING
++                  valueFrom:
++                    secretKeyRef:
++                      {{- if .Values.backup.uploadProviders.azure.existingSecret }}
++                      name: {{ .Values.backup.uploadProviders.azure.existingSecret | quote }}
++                      {{- else }}
++                      name: {{ include "influxdb.fullname" . }}-backup-azure
++                      {{- end }}
++                      key: {{ .Values.backup.uploadProviders.azure.secretKey }}
++              volumeMounts:
++                - name: {{ include "influxdb.fullname" . }}-backups
++                  mountPath: {{ .Values.backup.directory | quote }}
++                - name: backup-scripts
++                  mountPath: /tmp/upload-azure.sh
++                  subPath: upload-azure.sh
++            {{- end }}
++{{- end }}
+diff --git a/bitnami/influxdb/templates/influxdb/standalone-dpl.yaml b/bitnami/influxdb/templates/influxdb/deployment-standalone.yaml
+similarity index 96%
+rename from bitnami/influxdb/templates/influxdb/standalone-dpl.yaml
+rename to bitnami/influxdb/templates/influxdb/deployment-standalone.yaml
+index 1904a2ed08..63bacd5b6a 100644
+--- a/bitnami/influxdb/templates/influxdb/standalone-dpl.yaml
++++ b/bitnami/influxdb/templates/influxdb/deployment-standalone.yaml
+@@ -3,7 +3,8 @@ apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+   name: {{ include "influxdb.fullname" . }}
+-  labels: {{- include "influxdb.labels" . | nindent 4 }}
++  labels: 
++    {{- include "influxdb.labels" . | nindent 4 }}
+     app.kubernetes.io/component: influxdb
+ spec:
+   replicas: 1
+@@ -13,11 +14,13 @@ spec:
+     rollingUpdate: null
+     {{- end }}
+   selector:
+-    matchLabels: {{- include "influxdb.matchLabels" . | nindent 6 }}
++    matchLabels: 
++      {{- include "influxdb.matchLabels" . | nindent 6 }}
+       app.kubernetes.io/component: influxdb
+   template:
+     metadata:
+-      labels: {{- include "influxdb.labels" . | nindent 8 }}
++      labels: 
++        {{- include "influxdb.labels" . | nindent 8 }}
+         app.kubernetes.io/component: influxdb
+     spec:
+ {{- include "influxdb.imagePullSecrets" . | nindent 6 }}
+@@ -27,7 +30,8 @@ spec:
+           requiredDuringSchedulingIgnoredDuringExecution:
+             - topologyKey: "kubernetes.io/hostname"
+               labelSelector:
+-                matchLabels: {{- include "influxdb.matchLabels" . | nindent 18 }}
++                matchLabels: 
++                  {{- include "influxdb.matchLabels" . | nindent 18 }}
+                   app.kubernetes.io/component: influxdb
+         {{- else if eq .Values.influxdb.antiAffinity "soft" }}
+         podAntiAffinity:
+@@ -36,7 +40,8 @@ spec:
+               podAffinityTerm:
+                 topologyKey: kubernetes.io/hostname
+                 labelSelector:
+-                  matchLabels: {{- include "influxdb.matchLabels" . | nindent 20 }}
++                  matchLabels: 
++                    {{- include "influxdb.matchLabels" . | nindent 20 }}
+                     app.kubernetes.io/component: influxdb
+         {{- end }}
+         {{- if .Values.influxdb.nodeAffinity }}
+@@ -153,8 +158,8 @@ spec:
+             - name: http
+               containerPort: {{ .Values.influxdb.containerPorts.http }}
+               protocol: TCP
+-            - name: rcp
+-              containerPort: {{ .Values.influxdb.containerPorts.rcp }}
++            - name: rpc
++              containerPort: {{ .Values.influxdb.containerPorts.rpc }}
+               protocol: TCP
+           {{- if .Values.influxdb.livenessProbe.enabled }}
+           {{- $livenessTimeout := sub (int .Values.influxdb.livenessProbe.timeoutSeconds) 1 }}
+diff --git a/bitnami/influxdb/templates/influxdb/pvc-backup.yaml b/bitnami/influxdb/templates/influxdb/pvc-backup.yaml
+new file mode 100644
+index 0000000000..f3b3b67bf8
+--- /dev/null
++++ b/bitnami/influxdb/templates/influxdb/pvc-backup.yaml
+@@ -0,0 +1,17 @@
++{{- if and .Values.backup.enabled .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
++kind: PersistentVolumeClaim
++apiVersion: v1
++metadata:
++  name: {{ include "influxdb.fullname" . }}-backups
++  labels: 
++    {{- include "influxdb.labels" . | nindent 4 }}
++spec:
++  accessModes:
++  {{- range .Values.persistence.accessModes }}
++    - {{ . | quote }}
++  {{- end }}
++  resources:
++    requests:
++      storage: {{ .Values.persistence.size | quote }}
++{{- include "influxdb.storageClass" . | nindent 2 }}
++{{- end }}
+diff --git a/bitnami/influxdb/templates/influxdb/pvc.yaml b/bitnami/influxdb/templates/influxdb/pvc.yaml
+index b868394caa..3f88d8a130 100644
+--- a/bitnami/influxdb/templates/influxdb/pvc.yaml
++++ b/bitnami/influxdb/templates/influxdb/pvc.yaml
+@@ -3,7 +3,8 @@ kind: PersistentVolumeClaim
+ apiVersion: v1
+ metadata:
+   name: {{ include "influxdb.fullname" . }}
+-  labels: {{- include "influxdb.labels" . | nindent 4 }}
++  labels: 
++    {{- include "influxdb.labels" . | nindent 4 }}
+ spec:
+   accessModes:
+   {{- range .Values.persistence.accessModes }}
+diff --git a/bitnami/influxdb/templates/influxdb/secrets-backup.yaml b/bitnami/influxdb/templates/influxdb/secrets-backup.yaml
+new file mode 100644
+index 0000000000..aae194a005
+--- /dev/null
++++ b/bitnami/influxdb/templates/influxdb/secrets-backup.yaml
+@@ -0,0 +1,25 @@
++{{- if .Values.backup.enabled }}
++{{- if and (.Values.backup.uploadProviders.google.enabled) (not .Values.backup.uploadProviders.google.existingSecret) -}}
++apiVersion: v1
++kind: Secret
++metadata:
++  name: {{ include "influxdb.fullname" . }}-backup-gcloud
++  labels:
++    {{- include "influxdb.labels" . | nindent 4 }}
++type: Opaque
++data:
++  {{ .Values.backup.uploadProviders.google.secretKey }}: {{ .Values.backup.uploadProviders.google.secret | b64enc | quote }}
++{{- end }}
++---
++{{ if and (.Values.backup.uploadProviders.azure.enabled) (not .Values.backup.uploadProviders.azure.existingSecret) -}}
++apiVersion: v1
++kind: Secret
++metadata:
++  name: {{ include "influxdb.fullname" . }}-backup-azure
++  labels:
++    {{- include "influxdb.labels" . | nindent 4 }}
++type: Opaque
++data:
++  {{ .Values.backup.uploadProviders.azure.secretKey }}: {{ .Values.backup.uploadProviders.azure.secret | b64enc | quote }}
++{{- end }}
++{{- end }}
+diff --git a/bitnami/influxdb/templates/influxdb/secrets.yaml b/bitnami/influxdb/templates/influxdb/secrets.yaml
+index 6fe87e0c1d..6bd5032f14 100644
+--- a/bitnami/influxdb/templates/influxdb/secrets.yaml
++++ b/bitnami/influxdb/templates/influxdb/secrets.yaml
+@@ -3,7 +3,8 @@ apiVersion: v1
+ kind: Secret
+ metadata:
+   name: {{ include "influxdb.fullname" . }}
+-  labels: {{- include "influxdb.labels" . | nindent 4 }}
++  labels: 
++    {{- include "influxdb.labels" . | nindent 4 }}
+ type: Opaque
+ data:
+   admin-user-password: {{ ternary (randAlphaNum 10) .Values.adminUser.pwd (empty .Values.adminUser.pwd) | b64enc | quote }}
+diff --git a/bitnami/influxdb/templates/influxdb/service-headless.yaml b/bitnami/influxdb/templates/influxdb/service-headless.yaml
+index 02d24860e7..aac56021ea 100644
+--- a/bitnami/influxdb/templates/influxdb/service-headless.yaml
++++ b/bitnami/influxdb/templates/influxdb/service-headless.yaml
+@@ -3,7 +3,8 @@ apiVersion: v1
+ kind: Service
+ metadata:
+   name: {{ include "influxdb.fullname" . }}-headless
+-  labels: {{- include "influxdb.labels" . | nindent 4 }}
++  labels: 
++    {{- include "influxdb.labels" . | nindent 4 }}
+     app.kubernetes.io/component: influxdb
+ spec:
+   type: ClusterIP
+@@ -13,10 +14,11 @@ spec:
+       targetPort: http
+       protocol: TCP
+       name: http
+-    - port: {{ .Values.influxdb.service.rcpPort }}
+-      targetPort: rcp
++    - port: {{ .Values.influxdb.service.rpcPort }}
++      targetPort: rpc
+       protocol: TCP
+-      name: rcp
+-  selector: {{- include "influxdb.matchLabels" . | nindent 4 }}
++      name: rpc
++  selector: 
++    {{- include "influxdb.matchLabels" . | nindent 4 }}
+     app.kubernetes.io/component: influxdb
+ {{- end }}
+diff --git a/bitnami/influxdb/templates/influxdb/metrics-svc.yaml b/bitnami/influxdb/templates/influxdb/service-metrics.yaml
+similarity index 91%
+rename from bitnami/influxdb/templates/influxdb/metrics-svc.yaml
+rename to bitnami/influxdb/templates/influxdb/service-metrics.yaml
+index 9af6a78dc4..7ea088cd75 100644
+--- a/bitnami/influxdb/templates/influxdb/metrics-svc.yaml
++++ b/bitnami/influxdb/templates/influxdb/service-metrics.yaml
+@@ -3,7 +3,8 @@ apiVersion: v1
+ kind: Service
+ metadata:
+   name: {{ include "influxdb.fullname" . }}-metrics
+-  labels: {{- include "influxdb.labels" . | nindent 4 }}
++  labels: 
++    {{- include "influxdb.labels" . | nindent 4 }}
+     app.kubernetes.io/component: influxdb
+   {{- if .Values.metrics.service.annotations }}
+   annotations: {{- include "influxdb.tplValue" ( dict "value" .Values.metrics.service.annotations "context" $) | nindent 4 }}
+@@ -32,6 +33,7 @@ spec:
+       {{- else if eq .Values.metrics.service.type "ClusterIP" }}
+       nodePort: null
+       {{- end }}
+-  selector: {{- include "influxdb.matchLabels" . | nindent 4 }}
++  selector: 
++    {{- include "influxdb.matchLabels" . | nindent 4 }}
+     app.kubernetes.io/component: influxdb
+ {{- end }}
+diff --git a/bitnami/influxdb/templates/influxdb/service.yaml b/bitnami/influxdb/templates/influxdb/service.yaml
+index dc08e29602..cb79756ec8 100644
+--- a/bitnami/influxdb/templates/influxdb/service.yaml
++++ b/bitnami/influxdb/templates/influxdb/service.yaml
+@@ -2,7 +2,8 @@ apiVersion: v1
+ kind: Service
+ metadata:
+   name: {{ include "influxdb.fullname" . }}
+-  labels: {{- include "influxdb.labels" . | nindent 4 }}
++  labels: 
++    {{- include "influxdb.labels" . | nindent 4 }}
+     app.kubernetes.io/component: influxdb
+   {{- if .Values.influxdb.service.annotations }}
+   annotations: {{- include "influxdb.tplValue" ( dict "value" .Values.influxdb.service.annotations "context" $) | nindent 4 }}
+@@ -31,14 +32,15 @@ spec:
+       {{- else if eq .Values.influxdb.service.type "ClusterIP" }}
+       nodePort: null
+       {{- end }}
+-    - port: {{ .Values.influxdb.service.rcpPort }}
+-      targetPort: rcp
++    - port: {{ .Values.influxdb.service.rpcPort }}
++      targetPort: rpc
+       protocol: TCP
+-      name: rcp
+-      {{- if (and (or (eq .Values.influxdb.service.type "NodePort") (eq .Values.influxdb.service.type "LoadBalancer")) (not (empty .Values.influxdb.service.nodePorts.rcp)))}}
+-      nodePort: {{ .Values.influxdb.service.nodePorts.rcp }}
++      name: rpc
++      {{- if (and (or (eq .Values.influxdb.service.type "NodePort") (eq .Values.influxdb.service.type "LoadBalancer")) (not (empty .Values.influxdb.service.nodePorts.rpc)))}}
++      nodePort: {{ .Values.influxdb.service.nodePorts.rpc }}
+       {{- else if eq .Values.influxdb.service.type "ClusterIP" }}
+       nodePort: null
+       {{- end }}
+-  selector: {{- include "influxdb.matchLabels" . | nindent 4 }}
++  selector: 
++    {{- include "influxdb.matchLabels" . | nindent 4 }}
+     app.kubernetes.io/component: influxdb
+diff --git a/bitnami/influxdb/templates/influxdb/servicemonitor.yaml b/bitnami/influxdb/templates/influxdb/servicemonitor.yaml
+index 699564dd3b..61e6dcdaea 100644
+--- a/bitnami/influxdb/templates/influxdb/servicemonitor.yaml
++++ b/bitnami/influxdb/templates/influxdb/servicemonitor.yaml
+@@ -6,7 +6,8 @@ metadata:
+   {{- if .Values.metrics.serviceMonitor.namespace }}
+   namespace: {{ .Values.metrics.serviceMonitor.namespace }}
+   {{- end }}
+-  labels: {{- include "influxdb.labels" . | nindent 4 }}
++  labels: 
++    {{- include "influxdb.labels" . | nindent 4 }}
+     app.kubernetes.io/component: influxdb
+     {{- range $key, $value := .Values.metrics.serviceMonitor.selector }}
+     {{ $key }}: {{ $value | quote }}
+diff --git a/bitnami/influxdb/templates/influxdb/statefulset.yaml b/bitnami/influxdb/templates/influxdb/statefulset-high-availability.yaml
+similarity index 95%
+rename from bitnami/influxdb/templates/influxdb/statefulset.yaml
+rename to bitnami/influxdb/templates/influxdb/statefulset-high-availability.yaml
+index 5ce8434622..208e26662f 100644
+--- a/bitnami/influxdb/templates/influxdb/statefulset.yaml
++++ b/bitnami/influxdb/templates/influxdb/statefulset-high-availability.yaml
+@@ -3,7 +3,8 @@ apiVersion: apps/v1
+ kind: StatefulSet
+ metadata:
+   name: {{ include "influxdb.fullname" . }}
+-  labels: {{- include "influxdb.labels" . | nindent 4 }}
++  labels: 
++    {{- include "influxdb.labels" . | nindent 4 }}
+     app.kubernetes.io/component: influxdb
+ spec:
+   serviceName: {{ include "influxdb.fullname" . }}-headless
+@@ -14,11 +15,13 @@ spec:
+     rollingUpdate: null
+     {{- end }}
+   selector:
+-    matchLabels: {{- include "influxdb.matchLabels" . | nindent 6 }}
++    matchLabels: 
++      {{- include "influxdb.matchLabels" . | nindent 6 }}
+       app.kubernetes.io/component: influxdb
+   template:
+     metadata:
+-      labels: {{ include "influxdb.labels" . | nindent 8 }}
++      labels: 
++        {{ include "influxdb.labels" . | nindent 8 }}
+         app.kubernetes.io/component: influxdb
+     spec:
+ {{- include "influxdb.imagePullSecrets" . | nindent 6 }}
+@@ -28,7 +31,8 @@ spec:
+           requiredDuringSchedulingIgnoredDuringExecution:
+             - topologyKey: "kubernetes.io/hostname"
+               labelSelector:
+-                matchLabels: {{- include "influxdb.matchLabels" . | nindent 18 }}
++                matchLabels: 
++                  {{- include "influxdb.matchLabels" . | nindent 18 }}
+                   app.kubernetes.io/component: influxdb
+         {{- else if eq .Values.influxdb.antiAffinity "soft" }}
+         podAntiAffinity:
+@@ -37,7 +41,8 @@ spec:
+               podAffinityTerm:
+                 topologyKey: kubernetes.io/hostname
+                 labelSelector:
+-                  matchLabels: {{- include "influxdb.matchLabels" . | nindent 20 }}
++                  matchLabels: 
++                    {{- include "influxdb.matchLabels" . | nindent 20 }}
+                     app.kubernetes.io/component: influxdb
+         {{- end }}
+         {{- if .Values.influxdb.nodeAffinity }}
+@@ -154,8 +159,8 @@ spec:
+             - name: http
+               containerPort: {{ .Values.influxdb.containerPorts.http }}
+               protocol: TCP
+-            - name: rcp
+-              containerPort: {{ .Values.influxdb.containerPorts.rcp }}
++            - name: rpc
++              containerPort: {{ .Values.influxdb.containerPorts.rpc }}
+               protocol: TCP
+           {{- if .Values.influxdb.livenessProbe.enabled }}
+           {{- $livenessTimeout := sub (int .Values.influxdb.livenessProbe.timeoutSeconds) 1 }}
+@@ -255,6 +260,11 @@ spec:
+                 path: write-user-password
+               {{- end }}
+         {{- end }}
++  {{- if and .Values.persistence.enabled .Values.persistence.existingClaim }}
++        - name: data
++          persistentVolumeClaim:
++            claimName: {{ .Values.persistence.existingClaim }}
++  {{- end }}
+   {{- if and .Values.persistence.enabled .Values.persistence.existingClaim }}
+         - name: data
+           persistentVolumeClaim:
+diff --git a/bitnami/influxdb/templates/networkpolicy.yaml b/bitnami/influxdb/templates/networkpolicy.yaml
+index f4b99ca9f8..00d3f49400 100644
+--- a/bitnami/influxdb/templates/networkpolicy.yaml
++++ b/bitnami/influxdb/templates/networkpolicy.yaml
+@@ -15,7 +15,7 @@ spec:
+     - ports:
+         - port: {{ .Values.influxdb.containerPorts.http }}
+           protocol: TCP
+-        - port: {{ .Values.influxdb.containerPorts.rcp }}
++        - port: {{ .Values.influxdb.containerPorts.rpc }}
+           protocol: TCP
+       {{- if not .Values.networkPolicy.allowExternal }}
+       from:
+diff --git a/bitnami/influxdb/templates/relay/configmap.yaml b/bitnami/influxdb/templates/relay/configmap.yaml
+index f05656ba68..07e383cb0c 100644
+--- a/bitnami/influxdb/templates/relay/configmap.yaml
++++ b/bitnami/influxdb/templates/relay/configmap.yaml
+@@ -3,7 +3,8 @@ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+   name: {{ include "influxdb.fullname" . }}-relay
+-  labels: {{- include "influxdb.labels" . | nindent 4 }}
++  labels: 
++    {{- include "influxdb.labels" . | nindent 4 }}
+     app.kubernetes.io/component: relay
+ data:
+ {{- if (.Files.Glob "files/conf/relay.toml") }}
+diff --git a/bitnami/influxdb/templates/relay/deployment.yaml b/bitnami/influxdb/templates/relay/deployment.yaml
+index d255947779..2b07f75525 100644
+--- a/bitnami/influxdb/templates/relay/deployment.yaml
++++ b/bitnami/influxdb/templates/relay/deployment.yaml
+@@ -3,7 +3,8 @@ apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+   name: {{ include "influxdb.fullname" . }}-relay
+-  labels: {{- include "influxdb.labels" . | nindent 4 }}
++  labels: 
++    {{- include "influxdb.labels" . | nindent 4 }}
+     app.kubernetes.io/component: relay
+ spec:
+   replicas: {{ .Values.relay.replicaCount }}
+@@ -13,11 +14,13 @@ spec:
+     rollingUpdate: null
+     {{- end }}
+   selector:
+-    matchLabels: {{- include "influxdb.matchLabels" . | nindent 6 }}
++    matchLabels: 
++      {{- include "influxdb.matchLabels" . | nindent 6 }}
+       app.kubernetes.io/component: relay
+   template:
+     metadata:
+-      labels: {{- include "influxdb.labels" . | nindent 8 }}
++      labels: 
++        {{- include "influxdb.labels" . | nindent 8 }}
+         app.kubernetes.io/component: relay
+     spec:
+ {{- include "influxdb.imagePullSecrets" . | nindent 6 }}
+@@ -27,7 +30,8 @@ spec:
+           requiredDuringSchedulingIgnoredDuringExecution:
+             - topologyKey: "kubernetes.io/hostname"
+               labelSelector:
+-                matchLabels: {{- include "influxdb.matchLabels" . | nindent 18 }}
++                matchLabels: 
++                  {{- include "influxdb.matchLabels" . | nindent 18 }}
+                   app.kubernetes.io/component: relay
+         {{- else if eq .Values.relay.antiAffinity "soft" }}
+         podAntiAffinity:
+@@ -36,7 +40,8 @@ spec:
+               podAffinityTerm:
+                 topologyKey: kubernetes.io/hostname
+                 labelSelector:
+-                  matchLabels: {{- include "influxdb.matchLabels" . | nindent 20 }}
++                  matchLabels: 
++                    {{- include "influxdb.matchLabels" . | nindent 20 }}
+                     app.kubernetes.io/component: relay
+         {{- end }}
+         {{- if .Values.relay.nodeAffinity }}
+diff --git a/bitnami/influxdb/templates/relay/service.yaml b/bitnami/influxdb/templates/relay/service.yaml
+index 3ae778fdb0..3949588616 100644
+--- a/bitnami/influxdb/templates/relay/service.yaml
++++ b/bitnami/influxdb/templates/relay/service.yaml
+@@ -3,7 +3,8 @@ apiVersion: v1
+ kind: Service
+ metadata:
+   name: {{ include "influxdb.fullname" . }}-relay
+-  labels: {{- include "influxdb.labels" . | nindent 4 }}
++  labels: 
++    {{- include "influxdb.labels" . | nindent 4 }}
+     app.kubernetes.io/component: relay
+   {{- if .Values.relay.service.annotations }}
+   annotations: {{- include "influxdb.tplValue" ( dict "value" .Values.relay.service.annotations "context" $) | nindent 4 }}
+@@ -32,6 +33,7 @@ spec:
+       {{- else if eq .Values.relay.service.type "ClusterIP" }}
+       nodePort: null
+       {{- end }}
+-  selector: {{- include "influxdb.matchLabels" . | nindent 4 }}
++  selector: 
++    {{- include "influxdb.matchLabels" . | nindent 4 }}
+     app.kubernetes.io/component: relay
+   {{- end }}
+diff --git a/bitnami/influxdb/values-production.yaml b/bitnami/influxdb/values-production.yaml
+index 584144b20a..b038967a06 100644
+--- a/bitnami/influxdb/values-production.yaml
++++ b/bitnami/influxdb/values-production.yaml
+@@ -18,7 +18,7 @@
+ image:
+   registry: docker.io
+   repository: bitnami/influxdb
+-  tag: 1.7.10-debian-10-r32
++  tag: 1.7.10-debian-10-r35
+   ## Specify a imagePullPolicy. Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+   ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+   ##
+@@ -210,7 +210,7 @@ influxdb:
+   ##
+   containerPorts:
+     http: 8086
+-    rcp: 8088
++    rpc: 8088
+ 
+   ## Service paramaters
+   ##
+@@ -221,15 +221,15 @@ influxdb:
+     ## InfluxDB HTTP Port
+     ##
+     port: 8086
+-    ## InfluxDB RPC Port
++    ## InfluxDB rpc Port
+     ##
+-    rcpPort: 8088
++    rpcPort: 8088
+     ## Specify the nodePort(s) value for the LoadBalancer and NodePort service types.
+     ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
+     ##
+     nodePorts:
+       http: ""
+-      rcp: ""
++      rpc: ""
+     ## Set the LoadBalancer service type to internal only.
+     ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
+     ##
+@@ -564,3 +564,87 @@ volumePermissions:
+     ##
+     # pullSecrets:
+     #   - myRegistryKeySecretName
++
++## InfluxDB backup parameters
++##
++backup:
++  enabled: false
++  ## Directory where backups are stored
++  ##
++  directory: "/backups"
++  ## Retention time in days for backups 
++  ##
++  retentionDays: 10
++  ## Cronjob configuration
++  ## This cronjob is used to create InfluxDB backups
++  ##
++  cronjob:
++    ## Schedule in Cron format to save snapshots
++    ## See https://en.wikipedia.org/wiki/Cron
++    ##
++    schedule: "0 2 * * *"
++    ## Number of successful finished jobs to retain
++    ##
++    historyLimit: 1
++    ## Pod annotations
++    ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
++    ##
++    podAnnotations: {}
++    ## K8s Security Context for Backup Cronjob pods
++    ## https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
++    ##
++    securityContext:
++      enabled: true
++      fsGroup: 1001
++      runAsUser: 1001
++  ## Storage providers where to upload backups
++  ##
++  uploadProviders:
++    ## Google Storage Bucket configuration 
++    ##
++    google: 
++      enabled: false
++      secret: ""
++      secretKey: "key.json"
++      existingSecret: ""
++      bucketName: "gs://bucket/influxdb"
++      ## Bitnami Google Cloud SDK image
++      ## ref: https://hub.docker.com/r/bitnami/google-cloud-sdk/tags/
++      ##
++      image:
++        registry: docker.io
++        repository: bitnami/google-cloud-sdk
++        tag: 0.284.0-debian-10-r17
++        ## Specify a imagePullPolicy. Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++        ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++        ##
++        pullPolicy: IfNotPresent
++        ## Optionally specify an array of imagePullSecrets (secrets must be manually created in the namespace)
++        ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++        ##
++        # pullSecrets:
++        #   - myRegistryKeySecretName
++    ## Azure Storage Container configuration 
++    ##
++    azure:
++      enabled: false
++      secret: ""
++      secretKey: "connection-string"
++      existingSecret: ""
++      containerName: "influxdb-container"
++      ## Bitnami Azure CLI image
++      ## ref: https://hub.docker.com/r/bitnami/azure-cli/tags/
++      ##
++      image:
++        registry: docker.io
++        repository: bitnami/azure-cli
++        tag: 2.2.0-debian-10-r5
++        ## Specify a imagePullPolicy. Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++        ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++        ##
++        pullPolicy: IfNotPresent
++        ## Optionally specify an array of imagePullSecrets (secrets must be manually created in the namespace)
++        ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++        ##
++        # pullSecrets:
++        #   - myRegistryKeySecretName
+diff --git a/bitnami/influxdb/values.yaml b/bitnami/influxdb/values.yaml
+index b138cbb565..e95e4e595c 100644
+--- a/bitnami/influxdb/values.yaml
++++ b/bitnami/influxdb/values.yaml
+@@ -18,7 +18,7 @@
+ image:
+   registry: docker.io
+   repository: bitnami/influxdb
+-  tag: 1.7.10-debian-10-r32
++  tag: 1.7.10-debian-10-r35
+   ## Specify a imagePullPolicy. Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+   ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+   ##
+@@ -210,7 +210,7 @@ influxdb:
+   ##
+   containerPorts:
+     http: 8086
+-    rcp: 8088
++    rpc: 8088
+ 
+   ## Service paramaters
+   ##
+@@ -223,13 +223,13 @@ influxdb:
+     port: 8086
+     ## InfluxDB RPC Port
+     ##
+-    rcpPort: 8088
++    rpcPort: 8088
+     ## Specify the nodePort(s) value for the LoadBalancer and NodePort service types.
+     ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
+     ##
+     nodePorts:
+       http: ""
+-      rcp: ""
++      rpc: ""
+     ## Set the LoadBalancer service type to internal only.
+     ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
+     ##
+@@ -564,3 +564,87 @@ volumePermissions:
+     ##
+     # pullSecrets:
+     #   - myRegistryKeySecretName
++
++## InfluxDB backup parameters
++##
++backup:
++  enabled: false
++  ## Directory where backups are stored
++  ##
++  directory: "/backups"
++  ## Retention time in days for backups 
++  ##
++  retentionDays: 10
++  ## Cronjob configuration
++  ## This cronjob is used to create InfluxDB backups
++  ##
++  cronjob:
++    ## Schedule in Cron format to save snapshots
++    ## See https://en.wikipedia.org/wiki/Cron
++    ##
++    schedule: "0 2 * * *"
++    ## Number of successful finished jobs to retain
++    ##
++    historyLimit: 1
++    ## Pod annotations
++    ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
++    ##
++    podAnnotations: {}
++    ## K8s Security Context for Backup Cronjob pods
++    ## https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
++    ##
++    securityContext:
++      enabled: true
++      fsGroup: 1001
++      runAsUser: 1001
++  ## Storage providers where to upload backups
++  ##
++  uploadProviders:
++    ## Google Storage Bucket configuration 
++    ##
++    google: 
++      enabled: false
++      secret: ""
++      secretKey: "key.json"
++      existingSecret: ""
++      bucketName: "gs://bucket/influxdb"
++      ## Bitnami Google Cloud SDK image
++      ## ref: https://hub.docker.com/r/bitnami/google-cloud-sdk/tags/
++      ##
++      image:
++        registry: docker.io
++        repository: bitnami/google-cloud-sdk
++        tag: 0.284.0-debian-10-r17
++        ## Specify a imagePullPolicy. Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++        ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++        ##
++        pullPolicy: IfNotPresent
++        ## Optionally specify an array of imagePullSecrets (secrets must be manually created in the namespace)
++        ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++        ##
++        # pullSecrets:
++        #   - myRegistryKeySecretName
++    ## Azure Storage Container configuration 
++    ##
++    azure:
++      enabled: false
++      secret: ""
++      secretKey: "connection-string"
++      existingSecret: ""
++      containerName: "influxdb-container"
++      ## Bitnami Azure CLI image
++      ## ref: https://hub.docker.com/r/bitnami/azure-cli/tags/
++      ##
++      image:
++        registry: docker.io
++        repository: bitnami/azure-cli
++        tag: 2.2.0-debian-10-r5
++        ## Specify a imagePullPolicy. Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++        ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++        ##
++        pullPolicy: IfNotPresent
++        ## Optionally specify an array of imagePullSecrets (secrets must be manually created in the namespace)
++        ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++        ##
++        # pullSecrets:
++        #   - myRegistryKeySecretName

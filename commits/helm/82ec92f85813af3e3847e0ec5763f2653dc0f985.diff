@@ -1,0 +1,99 @@
+commit 82ec92f85813af3e3847e0ec5763f2653dc0f985
+Author: Frode Egeland <egeland@gmail.com>
+Date:   Tue Jul 2 17:57:08 2019 +1000
+
+    [stable/k8s-spot-termination-handler] add annotations and updateStrategy (#14830)
+    
+    * [stable/k8s-spot-termination-handler] Alexey's changes
+    
+    Squashed commit of Alexey's changes
+    
+    Signed-off-by: Alexey Shabalin <alexey.shabalin@fairfaxmedia.com.au>
+    Signed-off-by: Frode Egeland <egeland@gmail.com>
+    
+    * [stable/k8s-spot-termination-handler] fix bug, refactor
+    
+    * Fix an issue where k8s needs an int, but chart was providing a str
+    * Remove excess whitespace
+    * Move updateStrategy section to a place it makes more sense
+    
+    Signed-off-by: Frode Egeland <egeland@gmail.com>
+    
+    * [stable/k8s-spot-termination-handler] bump chart version
+    
+    Signed-off-by: Frode Egeland <egeland@gmail.com>
+
+diff --git a/stable/k8s-spot-termination-handler/Chart.yaml b/stable/k8s-spot-termination-handler/Chart.yaml
+index c8c3740cb..4520457d4 100644
+--- a/stable/k8s-spot-termination-handler/Chart.yaml
++++ b/stable/k8s-spot-termination-handler/Chart.yaml
+@@ -2,7 +2,7 @@ apiVersion: v1
+ appVersion: "1.13.0-1"
+ description: The K8s Spot Termination handler handles draining AWS Spot Instances in response to termination requests.
+ name: k8s-spot-termination-handler
+-version: 1.3.1
++version: 1.4.0
+ keywords:
+   - spot
+   - termination
+diff --git a/stable/k8s-spot-termination-handler/README.md b/stable/k8s-spot-termination-handler/README.md
+index 87a4097b8..df56479f2 100644
+--- a/stable/k8s-spot-termination-handler/README.md
++++ b/stable/k8s-spot-termination-handler/README.md
+@@ -45,3 +45,5 @@ Parameter | Description | Default
+ `affinity` | node/pod affinities (requires Kubernetes >=1.6) | `{}`
+ `priorityClassName` | pod priorityClassName for pod. | ``
+ `hostNetwork` | controls whether the pod may use the node network namespace | `true`
++`podAnnotations` | annotations to be added to pods | `{}`
++`updateStrategy` | can be either `RollingUpdate` or `OnDelete` | `RollingUpdate`
+diff --git a/stable/k8s-spot-termination-handler/templates/daemonset.yaml b/stable/k8s-spot-termination-handler/templates/daemonset.yaml
+index 8268d08f3..65c70a3b8 100644
+--- a/stable/k8s-spot-termination-handler/templates/daemonset.yaml
++++ b/stable/k8s-spot-termination-handler/templates/daemonset.yaml
+@@ -8,8 +8,20 @@ metadata:
+     app.kubernetes.io/instance: {{ .Release.Name }}
+     app.kubernetes.io/managed-by: {{ .Release.Service }}
+ spec:
++  {{- if .Values.updateStrategy }}
++  updateStrategy:
++    type: {{ .Values.updateStrategy }}
++    {{- if and .Values.updateStrategy (eq .Values.updateStrategy "RollingUpdate") }}
++    rollingUpdate:
++      maxUnavailable: {{ default 1 .Values.maxUnavailable }}
++    {{- end }}
++  {{- end }}
+   template:
+     metadata:
++      {{- if .Values.podAnnotations }}
++      annotations:
++{{ toYaml .Values.podAnnotations | indent 8 }}
++      {{- end }}
+       labels:
+         app.kubernetes.io/name: {{ template "k8s-spot-termination-handler.name" . }}
+         app.kubernetes.io/instance: {{ .Release.Name }}
+@@ -67,6 +79,6 @@ spec:
+       tolerations:
+ {{ toYaml . | indent 8 }}
+     {{- end }}
+-    {{- if .Values.priorityClassName }} 
++    {{- if .Values.priorityClassName }}
+       priorityClassName: {{ .Values.priorityClassName }}
+     {{- end }}
+diff --git a/stable/k8s-spot-termination-handler/values.yaml b/stable/k8s-spot-termination-handler/values.yaml
+index d8af879e0..2c1e2e947 100644
+--- a/stable/k8s-spot-termination-handler/values.yaml
++++ b/stable/k8s-spot-termination-handler/values.yaml
+@@ -64,3 +64,13 @@ tolerations: []
+ 
+ affinity: {}
+ hostNetwork: true
++
++# annotations to be added to pods
++podAnnotations: {}
++
++# If the spot handler was installed before Kubernetes version 1.6
++# then you need to explicitly set the value below otherwise
++# you will have to manually cycle your pods every time you perform the update.
++# Default value for Kubernetes v1.5 and before was "OnDelete".
++updateStrategy: RollingUpdate
++maxUnavailable: 1

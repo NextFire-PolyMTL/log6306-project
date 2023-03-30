@@ -1,0 +1,99 @@
+commit 72675e583d42684323bb538a953c92763f0f243a
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Apr 4 14:23:28 2018 +0200
+
+    [stable/opencart] Refactor image property in values.yaml (#4649)
+    
+    * [stable/opencart] Refactor image properties in values.yaml
+    
+    * Use rolling tag and refactor pullSecrets
+    
+    * Fix lint issue
+    
+    * Update Chart.yaml
+
+diff --git a/stable/opencart/Chart.yaml b/stable/opencart/Chart.yaml
+index 7f27b5941..7c3d24117 100644
+--- a/stable/opencart/Chart.yaml
++++ b/stable/opencart/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: opencart
+-version: 0.7.1
++version: 1.0.0
+ appVersion: 3.0.2
+ description: A free and open source e-commerce platform for online merchants. It provides
+   a professional and reliable foundation for a successful online store.
+diff --git a/stable/opencart/README.md b/stable/opencart/README.md
+index abc1cf662..802baa0d2 100644
+--- a/stable/opencart/README.md
++++ b/stable/opencart/README.md
+@@ -47,8 +47,11 @@ The following table lists the configurable parameters of the OpenCart chart and
+ 
+ |              Parameter              |                Description                |                         Default                          |
+ |-------------------------------------|-------------------------------------------|----------------------------------------------------------|
+-| `image`                             | OpenCart image                            | `bitnami/opencart:{VERSION}`                             |
+-| `imagePullPolicy`                   | Image pull policy                         | `Always` if `image` tag is `latest`, else `IfNotPresent` |
++| `image.registry`                    | OpenCart image registry                   | `docker.io`                                              |
++| `image.repository`                  | OpenCart Image name                       | `bitnami/opencart`                                       |
++| `image.tag`                         | OpenCart Image tag                        | `{VERSION}`                                              |
++| `image.pullPolicy`                  | Image pull policy                         | `Always` if `imageTag` is `latest`, else `IfNotPresent`  |
++| `image.pullSecrets`                 | Specify image pull secrets                | `nil`                                                    |
+ | `opencartHost`                      | OpenCart host to create application URLs  | `nil`                                                    |
+ | `opencartLoadBalancerIP`            | `loadBalancerIP` for the OpenCart Service | `nil`                                                    |
+ | `opencartUsername`                  | User of the application                   | `user`                                                   |
+diff --git a/stable/opencart/templates/deployment.yaml b/stable/opencart/templates/deployment.yaml
+index ecde22aec..e1cb82bbd 100644
+--- a/stable/opencart/templates/deployment.yaml
++++ b/stable/opencart/templates/deployment.yaml
+@@ -14,10 +14,16 @@ spec:
+       labels:
+         app: {{ template "opencart.fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "opencart.fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: ALLOW_EMPTY_PASSWORD
+           value: {{ .Values.allowEmptyPassword | quote }}
+diff --git a/stable/opencart/values.yaml b/stable/opencart/values.yaml
+index 196910ea1..2d42e4784 100644
+--- a/stable/opencart/values.yaml
++++ b/stable/opencart/values.yaml
+@@ -1,13 +1,21 @@
+ ## Bitnami OpenCart image version
+ ## ref: https://hub.docker.com/r/bitnami/opencart/tags/
+ ##
+-image: bitnami/opencart:3.0.2-0-r4
+-
+-## Specify a imagePullPolicy
+-## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-# imagePullPolicy:
++image:
++  registry: docker.io
++  repository: bitnami/opencart
++  tag: 3.0.2-0
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
+ 
+ ## OpenCart host to create application URLs
+ ## ref: https://github.com/bitnami/bitnami-docker-opencart#configuration

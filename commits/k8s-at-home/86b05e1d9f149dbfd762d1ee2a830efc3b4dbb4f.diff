@@ -1,0 +1,240 @@
+commit 86b05e1d9f149dbfd762d1ee2a830efc3b4dbb4f
+Author: j_r0dd <285797+jr0dd@users.noreply.github.com>
+Date:   Sun Sep 12 15:20:51 2021 -0400
+
+    [blocky] metrics refactor (#1172)
+    
+    * [blocky] metrics refactor
+    
+    * fix linting
+    
+    * fix typos
+    
+    * revert configmap changes
+    
+    * use include
+    
+    * disable metrics features after my testing
+    
+    * update docs
+
+diff --git a/charts/stable/blocky/Chart.yaml b/charts/stable/blocky/Chart.yaml
+index d16e7dd8..d412b969 100644
+--- a/charts/stable/blocky/Chart.yaml
++++ b/charts/stable/blocky/Chart.yaml
+@@ -1,8 +1,8 @@
+ apiVersion: v2
+-appVersion: v0.14
++appVersion: v0.15
+ description: DNS proxy as ad-blocker for local network
+ name: blocky
+-version: 8.0.0
++version: 9.0.0
+ kubeVersion: ">=1.16.0-0"
+ keywords:
+ - blocky
+diff --git a/charts/stable/blocky/README.md b/charts/stable/blocky/README.md
+index 0ba39ec1..eb6b81a4 100644
+--- a/charts/stable/blocky/README.md
++++ b/charts/stable/blocky/README.md
+@@ -1,6 +1,6 @@
+ # blocky
+ 
+-![Version: 8.0.0](https://img.shields.io/badge/Version-8.0.0-informational?style=flat-square) ![AppVersion: v0.14](https://img.shields.io/badge/AppVersion-v0.14-informational?style=flat-square)
++![Version: 9.0.0](https://img.shields.io/badge/Version-9.0.0-informational?style=flat-square) ![AppVersion: v0.15](https://img.shields.io/badge/AppVersion-v0.15-informational?style=flat-square)
+ 
+ DNS proxy as ad-blocker for local network
+ 
+@@ -82,9 +82,14 @@ N/A
+ | env.TZ | string | `"UTC"` | Set the container timezone |
+ | image.pullPolicy | string | `"IfNotPresent"` | image pull policy |
+ | image.repository | string | `"spx01/blocky"` | image repository |
+-| image.tag | string | `"v0.14"` | image tag |
++| image.tag | string | `"v0.15"` | image tag |
++| metrics.enabled | bool | See values.yaml | Enable and configure a Prometheus serviceMonitor for the chart under this key. |
++| metrics.prometheusRule | object | See values.yaml | Enable and configure Prometheus Rules for the chart under this key. |
++| metrics.prometheusRule.rules | list | See prometheusrules.yaml | Configure additionial rules for the chart under this key. |
++| metrics.serviceMonitor.interval | string | `"30s"` |  |
++| metrics.serviceMonitor.labels | object | `{}` |  |
++| metrics.serviceMonitor.scrapeTimeout | string | `"10s"` |  |
+ | persistence | object | See values.yaml | Configure persistence settings for the chart under this key. |
+-| prometheus.serviceMonitor | object | See values.yaml | Enable and configure a Prometheus serviceMonitor for the chart under this key. See also the notes under `additionalContainers`. |
+ | service | object | See values.yaml | Configures service settings for the chart. |
+ 
+ ## Changelog
+@@ -93,6 +98,12 @@ All notable changes to this application Helm chart will be documented in this fi
+ 
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++### [9.0.0]
++
++#### Changed
++
++- **BREAKING**: Refactored Prometheus metrics section to add rules. Enabling metrics automatically enables the serviceMonitor.
++
+ ### [8.0.0]
+ 
+ #### Changed
+@@ -121,6 +132,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ 
+ - N/A
+ 
++[9.0.0]: #900
+ [8.0.0]: #800
+ [7.0.0]: #700
+ [6.0.0]: #600
+diff --git a/charts/stable/blocky/README_CHANGELOG.md.gotmpl b/charts/stable/blocky/README_CHANGELOG.md.gotmpl
+index 81f253a9..40c9d8ae 100644
+--- a/charts/stable/blocky/README_CHANGELOG.md.gotmpl
++++ b/charts/stable/blocky/README_CHANGELOG.md.gotmpl
+@@ -9,6 +9,12 @@ All notable changes to this application Helm chart will be documented in this fi
+ 
+ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++### [9.0.0]
++
++#### Changed
++
++- **BREAKING**: Refactored Prometheus metrics section to add rules. Enabling metrics automatically enables the serviceMonitor.
++
+ ### [8.0.0]
+ 
+ #### Changed
+@@ -37,6 +43,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+ 
+ - N/A
+ 
++[9.0.0]: #900
+ [8.0.0]: #800
+ [7.0.0]: #700
+ [6.0.0]: #600
+diff --git a/charts/stable/blocky/templates/prometheusrules.yaml b/charts/stable/blocky/templates/prometheusrules.yaml
+new file mode 100644
+index 00000000..a5d67412
+--- /dev/null
++++ b/charts/stable/blocky/templates/prometheusrules.yaml
+@@ -0,0 +1,37 @@
++{{- if and .Values.metrics.enabled .Values.metrics.prometheusRule.enabled }}
++apiVersion: monitoring.coreos.com/v1
++kind: PrometheusRule
++metadata:
++  name: {{ include "common.names.fullname" . }}
++  labels:
++    {{- include "common.labels" . | nindent 4 }}
++    {{- with .Values.metrics.prometheusRule.labels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++spec:
++  groups:
++    - name: blocky
++      rules:
++        - alert: BlockyAbsent
++          annotations:
++            description: Blocky has disappeared from Prometheus service discovery.
++            summary: Blocky is down.
++          expr: |
++            absent(up{job=~".*blocky.*"} == 1)
++          for: 5m
++          labels:
++            severity: critical
++        - alert: BlockyDisabled
++          annotations:
++            description: Blocky's ad blocking has been disabled for 15min.
++              Please re-enable protection.
++            summary: Blocky is disabled.
++          expr: |
++            blocky_blocking_enabled == 0
++          for: 15m
++          labels:
++            severity: critical
++        {{- with .Values.metrics.prometheusRule.rules }}
++        {{- toYaml . | nindent 8 }}
++        {{- end }}
++{{- end }}
+diff --git a/charts/stable/blocky/templates/servicemonitor.yaml b/charts/stable/blocky/templates/servicemonitor.yaml
+index 5fdcf649..357659a6 100644
+--- a/charts/stable/blocky/templates/servicemonitor.yaml
++++ b/charts/stable/blocky/templates/servicemonitor.yaml
+@@ -1,11 +1,11 @@
+-{{- if .Values.prometheus.serviceMonitor.enabled }}
++{{- if .Values.metrics.enabled }}
+ apiVersion: monitoring.coreos.com/v1
+ kind: ServiceMonitor
+ metadata:
+-  name: {{ template "common.names.fullname" . }}
++  name: {{ include "common.names.fullname" . }}
+   labels:
+     {{- include "common.labels" . | nindent 4 }}
+-    {{- with .Values.prometheus.serviceMonitor.additionalLabels }}
++    {{- with .Values.metrics.serviceMonitor.labels }}
+     {{- toYaml . | nindent 4 }}
+     {{- end }}
+ spec:
+@@ -13,9 +13,12 @@ spec:
+     matchLabels:
+       {{- include "common.labels.selectorLabels" . | nindent 6 }}
+   endpoints:
+-  - port: http
+-    {{- with .Values.prometheus.serviceMonitor.interval }}
+-    interval: {{ . }}
+-    {{- end }}
+-    path: /metrics
++    - port: http
++      {{- with .Values.metrics.serviceMonitor.interval }}
++      interval: {{ . }}
++      {{- end }}
++      {{- with .Values.metrics.serviceMonitor.scrapeTimeout }}
++      scrapeTimeout: {{ . }}
++      {{- end }}
++      path: /metrics
+ {{- end }}
+diff --git a/charts/stable/blocky/values.yaml b/charts/stable/blocky/values.yaml
+index 369bab66..8ea04c2c 100644
+--- a/charts/stable/blocky/values.yaml
++++ b/charts/stable/blocky/values.yaml
+@@ -9,7 +9,7 @@ image:
+   # -- image repository
+   repository: spx01/blocky
+   # -- image tag
+-  tag: v0.14
++  tag: v0.15
+   # -- image pull policy
+   pullPolicy: IfNotPresent
+ 
+@@ -60,14 +60,32 @@ persistence:
+     enabled: false
+     mountPath: /logs
+ 
+-prometheus:
++metrics:
+   # -- Enable and configure a Prometheus serviceMonitor for the chart under this key.
+-  # See also the notes under `additionalContainers`.
+   # @default -- See values.yaml
++  enabled: false
+   serviceMonitor:
+-    enabled: false
+     interval: 30s
+-    additionalLabels: {}
++    scrapeTimeout: 10s
++    labels: {}
++  # -- Enable and configure Prometheus Rules for the chart under this key.
++  # @default -- See values.yaml
++  prometheusRule:
++    enabled: false
++    labels: {}
++    # -- Configure additionial rules for the chart under this key.
++    # @default -- See prometheusrules.yaml
++    rules: []
++      # - alert: BlockyDisabled
++      #   annotations:
++      #     description: Blocky's ad blocking has been disabled for 15min.
++      #       Please re-enable protection.
++      #     summary: Blocky is disabled.
++      #   expr: |
++      #     blocky_blocking_enabled == 0
++      #   for: 15m
++      #   labels:
++      #     severity: critical
+ 
+ # -- Full list of options https://github.com/0xERR0R/blocky/blob/master/docs/config.yml
+ # @default -- see URL to default config
