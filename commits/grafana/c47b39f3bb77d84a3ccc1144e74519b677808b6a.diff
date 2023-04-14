@@ -1,0 +1,34 @@
+commit c47b39f3bb77d84a3ccc1144e74519b677808b6a (from 91106722514b6bd8250fc174d08796b77e205475)
+Merge: 91106722 7fa5ba26
+Author: MH <zanhsieh@gmail.com>
+Date:   Sun Nov 20 01:20:28 2022 +0800
+
+    Merge pull request #1999 from zanac1986/fix/grafana-refactor-hotfix-1996
+    
+    [grafana] refactor hotfix #1996
+
+diff --git a/charts/grafana/Chart.yaml b/charts/grafana/Chart.yaml
+index a965cb71..4fbbd117 100644
+--- a/charts/grafana/Chart.yaml
++++ b/charts/grafana/Chart.yaml
+@@ -1,6 +1,6 @@
+ apiVersion: v2
+ name: grafana
+-version: 6.44.5
++version: 6.44.6
+ appVersion: 9.2.5
+ kubeVersion: "^1.8.0-0"
+ description: The leading tool for querying and visualizing time series and metrics.
+diff --git a/charts/grafana/templates/ingress.yaml b/charts/grafana/templates/ingress.yaml
+index 3afef8a9..063cdfaa 100644
+--- a/charts/grafana/templates/ingress.yaml
++++ b/charts/grafana/templates/ingress.yaml
+@@ -38,7 +38,7 @@ spec:
+       http:
+         paths:
+           {{- with $extraPaths }}
+-          {{- toYaml . | indent 10 }}
++          {{- toYaml . | nindent 10 }}
+           {{- end }}
+           - path: {{ $ingressPath }}
+             {{- if $ingressSupportsPathType }}

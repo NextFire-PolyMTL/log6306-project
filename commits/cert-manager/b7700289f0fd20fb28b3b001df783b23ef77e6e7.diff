@@ -1,0 +1,479 @@
+commit b7700289f0fd20fb28b3b001df783b23ef77e6e7
+Author: Andrew Kew <andrew@quadcorps.co.uk>
+Date:   Fri May 20 12:39:44 2022 +0100
+
+    Refactored the namespace override and moved it into helper script so it can be updated in single place, then found more files that needed the value updated
+    
+    Signed-off-by: Andrew Kew <andrew@quadcorps.co.uk>
+
+diff --git a/deploy/charts/cert-manager/templates/_helpers.tpl b/deploy/charts/cert-manager/templates/_helpers.tpl
+index 2b6ee7f6b..cbc70969c 100644
+--- a/deploy/charts/cert-manager/templates/_helpers.tpl
++++ b/deploy/charts/cert-manager/templates/_helpers.tpl
+@@ -58,7 +58,7 @@ If release name contains chart name it will be used as a full name.
+ {{- end -}}
+ 
+ {{- define "webhook.caRef" -}}
+-{{ .Release.Namespace }}/{{ template "webhook.fullname" . }}-ca
++{{- template "cert-manager.namespace" }}/{{ template "webhook.fullname" . }}-ca
+ {{- end -}}
+ 
+ {{/*
+@@ -157,3 +157,12 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
+ helm.sh/chart: {{ include "chartName" . }}
+ {{- end -}}
+ {{- end -}}
++
++{{/*
++Namespace for all resources to be installed into
++If not defined in values file then the helm release namespace is used
++By default this is not set so the helm release namespace will be used
++*/}}
++{{- define "cert-manager.namespace" -}}
++    {{ .Values.namespace | default .Release.Namespace }}
++{{- end -}}
+\ No newline at end of file
+diff --git a/deploy/charts/cert-manager/templates/cainjector-deployment.yaml b/deploy/charts/cert-manager/templates/cainjector-deployment.yaml
+index a6fe4b61b..2625cd8de 100644
+--- a/deploy/charts/cert-manager/templates/cainjector-deployment.yaml
++++ b/deploy/charts/cert-manager/templates/cainjector-deployment.yaml
+@@ -3,7 +3,7 @@ apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+   name: {{ include "cainjector.fullname" . }}
+-  namespace: {{ .Values.namespace | default .Release.Namespace | quote }}
++  namespace: {{ include "cert-manager.namespace" . }}
+   labels:
+     app: {{ include "cainjector.name" . }}
+     app.kubernetes.io/name: {{ include "cainjector.name" . }}
+diff --git a/deploy/charts/cert-manager/templates/cainjector-psp-clusterrolebinding.yaml b/deploy/charts/cert-manager/templates/cainjector-psp-clusterrolebinding.yaml
+index b287802fd..e2bfa26bb 100644
+--- a/deploy/charts/cert-manager/templates/cainjector-psp-clusterrolebinding.yaml
++++ b/deploy/charts/cert-manager/templates/cainjector-psp-clusterrolebinding.yaml
+@@ -17,6 +17,6 @@ roleRef:
+ subjects:
+   - kind: ServiceAccount
+     name: {{ template "cainjector.serviceAccountName" . }}
+-    namespace: {{ .Release.Namespace }}
++    namespace: {{ include "cert-manager.namespace" . }}
+ {{- end }}
+ {{- end }}
+diff --git a/deploy/charts/cert-manager/templates/cainjector-rbac.yaml b/deploy/charts/cert-manager/templates/cainjector-rbac.yaml
+index 6cb396ef3..0393f92be 100644
+--- a/deploy/charts/cert-manager/templates/cainjector-rbac.yaml
++++ b/deploy/charts/cert-manager/templates/cainjector-rbac.yaml
+@@ -46,7 +46,7 @@ roleRef:
+   name: {{ template "cainjector.fullname" . }}
+ subjects:
+   - name: {{ template "cainjector.serviceAccountName" . }}
+-    namespace: {{ .Release.Namespace | quote }}
++    namespace: {{ include "cert-manager.namespace" . }}
+     kind: ServiceAccount
+ 
+ ---
+@@ -98,6 +98,6 @@ roleRef:
+ subjects:
+   - kind: ServiceAccount
+     name: {{ template "cainjector.serviceAccountName" . }}
+-    namespace: {{ .Release.Namespace }}
++    namespace: {{ include "cert-manager.namespace" . }}
+ {{- end }}
+ {{- end }}
+diff --git a/deploy/charts/cert-manager/templates/cainjector-serviceaccount.yaml b/deploy/charts/cert-manager/templates/cainjector-serviceaccount.yaml
+index 6457b9ef0..fedc731f8 100644
+--- a/deploy/charts/cert-manager/templates/cainjector-serviceaccount.yaml
++++ b/deploy/charts/cert-manager/templates/cainjector-serviceaccount.yaml
+@@ -5,7 +5,7 @@ kind: ServiceAccount
+ automountServiceAccountToken: {{ .Values.cainjector.serviceAccount.automountServiceAccountToken }}
+ metadata:
+   name: {{ template "cainjector.serviceAccountName" . }}
+-  namespace: {{ .Release.Namespace | quote }}
++  namespace: {{ include "cert-manager.namespace" . }}
+   {{- with .Values.cainjector.serviceAccount.annotations }}
+   annotations:
+     {{- toYaml . | nindent 4 }}
+diff --git a/deploy/charts/cert-manager/templates/deployment.yaml b/deploy/charts/cert-manager/templates/deployment.yaml
+index b5dafd66e..5f1a9e849 100644
+--- a/deploy/charts/cert-manager/templates/deployment.yaml
++++ b/deploy/charts/cert-manager/templates/deployment.yaml
+@@ -2,7 +2,7 @@ apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+   name: {{ template "cert-manager.fullname" . }}
+-  namespace: {{ .Values.namespace | default .Release.Namespace | quote }}
++  namespace: {{ include "cert-manager.namespace" . }}
+   labels:
+     app: {{ template "cert-manager.name" . }}
+     app.kubernetes.io/name: {{ template "cert-manager.name" . }}
+diff --git a/deploy/charts/cert-manager/templates/psp-clusterrolebinding.yaml b/deploy/charts/cert-manager/templates/psp-clusterrolebinding.yaml
+index 1da89c8d5..4f09b6bf3 100644
+--- a/deploy/charts/cert-manager/templates/psp-clusterrolebinding.yaml
++++ b/deploy/charts/cert-manager/templates/psp-clusterrolebinding.yaml
+@@ -16,5 +16,5 @@ roleRef:
+ subjects:
+   - kind: ServiceAccount
+     name: {{ template "cert-manager.serviceAccountName" . }}
+-    namespace: {{ .Release.Namespace }}
++    namespace: {{ include "cert-manager.namespace" . }}
+ {{- end }}
+diff --git a/deploy/charts/cert-manager/templates/rbac.yaml b/deploy/charts/cert-manager/templates/rbac.yaml
+index f8ead0cba..361b1a223 100644
+--- a/deploy/charts/cert-manager/templates/rbac.yaml
++++ b/deploy/charts/cert-manager/templates/rbac.yaml
+@@ -42,7 +42,7 @@ subjects:
+   - apiGroup: ""
+     kind: ServiceAccount
+     name: {{ template "cert-manager.serviceAccountName" . }}
+-    namespace: {{ .Release.Namespace }}
++    namespace: {{ include "cert-manager.namespace" . }}
+ 
+ ---
+ 
+@@ -291,7 +291,7 @@ roleRef:
+   name: {{ template "cert-manager.fullname" . }}-controller-issuers
+ subjects:
+   - name: {{ template "cert-manager.serviceAccountName" . }}
+-    namespace: {{ .Release.Namespace | quote }}
++    namespace: {{ include "cert-manager.namespace" . }}
+     kind: ServiceAccount
+ 
+ ---
+@@ -312,7 +312,7 @@ roleRef:
+   name: {{ template "cert-manager.fullname" . }}-controller-clusterissuers
+ subjects:
+   - name: {{ template "cert-manager.serviceAccountName" . }}
+-    namespace: {{ .Release.Namespace | quote }}
++    namespace: {{ include "cert-manager.namespace" . }}
+     kind: ServiceAccount
+ 
+ ---
+@@ -333,7 +333,7 @@ roleRef:
+   name: {{ template "cert-manager.fullname" . }}-controller-certificates
+ subjects:
+   - name: {{ template "cert-manager.serviceAccountName" . }}
+-    namespace: {{ .Release.Namespace | quote }}
++    namespace: {{ include "cert-manager.namespace" . }}
+     kind: ServiceAccount
+ 
+ ---
+@@ -354,7 +354,7 @@ roleRef:
+   name: {{ template "cert-manager.fullname" . }}-controller-orders
+ subjects:
+   - name: {{ template "cert-manager.serviceAccountName" . }}
+-    namespace: {{ .Release.Namespace | quote }}
++    namespace: {{ include "cert-manager.namespace" . }}
+     kind: ServiceAccount
+ 
+ ---
+@@ -375,7 +375,7 @@ roleRef:
+   name: {{ template "cert-manager.fullname" . }}-controller-challenges
+ subjects:
+   - name: {{ template "cert-manager.serviceAccountName" . }}
+-    namespace: {{ .Release.Namespace | quote }}
++    namespace: {{ include "cert-manager.namespace" . }}
+     kind: ServiceAccount
+ 
+ ---
+@@ -396,7 +396,7 @@ roleRef:
+   name: {{ template "cert-manager.fullname" . }}-controller-ingress-shim
+ subjects:
+   - name: {{ template "cert-manager.serviceAccountName" . }}
+-    namespace: {{ .Release.Namespace | quote }}
++    namespace: {{ include "cert-manager.namespace" . }}
+     kind: ServiceAccount
+ 
+ ---
+@@ -489,7 +489,7 @@ roleRef:
+   name: {{ template "cert-manager.fullname" . }}-controller-approve:cert-manager-io
+ subjects:
+   - name: {{ template "cert-manager.serviceAccountName" . }}
+-    namespace: {{ .Release.Namespace | quote }}
++    namespace: {{ include "cert-manager.namespace" . }}
+     kind: ServiceAccount
+ 
+ ---
+@@ -540,6 +540,6 @@ roleRef:
+   name: {{ template "cert-manager.fullname" . }}-controller-certificatesigningrequests
+ subjects:
+   - name: {{ template "cert-manager.serviceAccountName" . }}
+-    namespace: {{ .Release.Namespace | quote }}
++    namespace: {{ include "cert-manager.namespace" . }}
+     kind: ServiceAccount
+ {{- end }}
+diff --git a/deploy/charts/cert-manager/templates/service.yaml b/deploy/charts/cert-manager/templates/service.yaml
+index 8ad24ca2d..ec34d5878 100644
+--- a/deploy/charts/cert-manager/templates/service.yaml
++++ b/deploy/charts/cert-manager/templates/service.yaml
+@@ -3,7 +3,7 @@ apiVersion: v1
+ kind: Service
+ metadata:
+   name: {{ template "cert-manager.fullname" . }}
+-  namespace: {{ .Release.Namespace | quote }}
++  namespace: {{ include "cert-manager.namespace" . }}
+ {{- with .Values.serviceAnnotations }}
+   annotations:
+ {{ toYaml . | indent 4 }}
+diff --git a/deploy/charts/cert-manager/templates/serviceaccount.yaml b/deploy/charts/cert-manager/templates/serviceaccount.yaml
+index 6e53f784b..6026842ff 100644
+--- a/deploy/charts/cert-manager/templates/serviceaccount.yaml
++++ b/deploy/charts/cert-manager/templates/serviceaccount.yaml
+@@ -8,7 +8,7 @@ imagePullSecrets:
+ automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+ metadata:
+   name: {{ template "cert-manager.serviceAccountName" . }}
+-  namespace: {{ .Release.Namespace | quote }}
++  namespace: {{ include "cert-manager.namespace" . }}
+   {{- with .Values.serviceAccount.annotations }}
+   annotations:
+     {{- toYaml . | nindent 4 }}
+diff --git a/deploy/charts/cert-manager/templates/servicemonitor.yaml b/deploy/charts/cert-manager/templates/servicemonitor.yaml
+index f962c6b42..d9d4d8fa1 100644
+--- a/deploy/charts/cert-manager/templates/servicemonitor.yaml
++++ b/deploy/charts/cert-manager/templates/servicemonitor.yaml
+@@ -6,7 +6,7 @@ metadata:
+ {{- if .Values.prometheus.servicemonitor.namespace }}
+   namespace: {{ .Values.prometheus.servicemonitor.namespace }}
+ {{- else }}
+-  namespace: {{ .Release.Namespace | quote }}
++  namespace: {{ include "cert-manager.namespace" . }}
+ {{- end }}
+   labels:
+     app: {{ include "cert-manager.name" . }}
+@@ -28,7 +28,7 @@ spec:
+ {{- if .Values.prometheus.servicemonitor.namespace }}
+   namespaceSelector:
+     matchNames:
+-      - {{ .Release.Namespace }}
++      - {{ include "cert-manager.namespace" . }}
+ {{- end }}
+   endpoints:
+   - targetPort: {{ .Values.prometheus.servicemonitor.targetPort }}
+diff --git a/deploy/charts/cert-manager/templates/startupapicheck-job.yaml b/deploy/charts/cert-manager/templates/startupapicheck-job.yaml
+index 66db004e1..468cbb615 100644
+--- a/deploy/charts/cert-manager/templates/startupapicheck-job.yaml
++++ b/deploy/charts/cert-manager/templates/startupapicheck-job.yaml
+@@ -3,7 +3,7 @@ apiVersion: batch/v1
+ kind: Job
+ metadata:
+   name: {{ include "startupapicheck.fullname" . }}
+-  namespace: {{ .Release.Namespace | quote }}
++  namespace: {{ include "cert-manager.namespace" . }}
+   labels:
+     app: {{ include "startupapicheck.name" . }}
+     app.kubernetes.io/name: {{ include "startupapicheck.name" . }}
+diff --git a/deploy/charts/cert-manager/templates/startupapicheck-psp-clusterrolebinding.yaml b/deploy/charts/cert-manager/templates/startupapicheck-psp-clusterrolebinding.yaml
+index d19fa84f2..54d5a42d6 100644
+--- a/deploy/charts/cert-manager/templates/startupapicheck-psp-clusterrolebinding.yaml
++++ b/deploy/charts/cert-manager/templates/startupapicheck-psp-clusterrolebinding.yaml
+@@ -21,6 +21,6 @@ roleRef:
+ subjects:
+   - kind: ServiceAccount
+     name: {{ template "startupapicheck.serviceAccountName" . }}
+-    namespace: {{ .Release.Namespace }}
++    namespace: {{ include "cert-manager.namespace" . }}
+ {{- end }}
+ {{- end }}
+diff --git a/deploy/charts/cert-manager/templates/startupapicheck-rbac.yaml b/deploy/charts/cert-manager/templates/startupapicheck-rbac.yaml
+index a6be7b9cd..606e72564 100644
+--- a/deploy/charts/cert-manager/templates/startupapicheck-rbac.yaml
++++ b/deploy/charts/cert-manager/templates/startupapicheck-rbac.yaml
+@@ -5,7 +5,7 @@ apiVersion: rbac.authorization.k8s.io/v1
+ kind: Role
+ metadata:
+   name: {{ template "startupapicheck.fullname" . }}:create-cert
+-  namespace: {{ .Release.Namespace | quote }}
++  namespace: {{ include "cert-manager.namespace" . }}
+   labels:
+     app: {{ include "startupapicheck.name" . }}
+     app.kubernetes.io/name: {{ include "startupapicheck.name" . }}
+@@ -25,7 +25,7 @@ apiVersion: rbac.authorization.k8s.io/v1
+ kind: RoleBinding
+ metadata:
+   name: {{ include "startupapicheck.fullname" . }}:create-cert
+-  namespace: {{ .Release.Namespace | quote }}
++  namespace: {{ include "cert-manager.namespace" . }}
+   labels:
+     app: {{ include "startupapicheck.name" . }}
+     app.kubernetes.io/name: {{ include "startupapicheck.name" . }}
+@@ -43,6 +43,6 @@ roleRef:
+ subjects:
+   - kind: ServiceAccount
+     name: {{ template "startupapicheck.serviceAccountName" . }}
+-    namespace: {{ .Release.Namespace }}
++    namespace: {{ include "cert-manager.namespace" . }}
+ {{- end }}
+ {{- end }}
+diff --git a/deploy/charts/cert-manager/templates/startupapicheck-serviceaccount.yaml b/deploy/charts/cert-manager/templates/startupapicheck-serviceaccount.yaml
+index 46262d5d7..8c417604a 100644
+--- a/deploy/charts/cert-manager/templates/startupapicheck-serviceaccount.yaml
++++ b/deploy/charts/cert-manager/templates/startupapicheck-serviceaccount.yaml
+@@ -5,7 +5,7 @@ kind: ServiceAccount
+ automountServiceAccountToken: {{ .Values.startupapicheck.serviceAccount.automountServiceAccountToken }}
+ metadata:
+   name: {{ template "startupapicheck.serviceAccountName" . }}
+-  namespace: {{ .Release.Namespace | quote }}
++  namespace: {{ include "cert-manager.namespace" . }}
+   {{- with .Values.startupapicheck.serviceAccount.annotations }}
+   annotations:
+     {{- toYaml . | nindent 4 }}
+diff --git a/deploy/charts/cert-manager/templates/webhook-config.yaml b/deploy/charts/cert-manager/templates/webhook-config.yaml
+index 29558e91a..ccee8e5c3 100644
+--- a/deploy/charts/cert-manager/templates/webhook-config.yaml
++++ b/deploy/charts/cert-manager/templates/webhook-config.yaml
+@@ -11,7 +11,7 @@ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+   name: {{ include "webhook.fullname" . }}
+-  namespace: {{ .Release.Namespace | quote }}
++  namespace: {{ include "cert-manager.namespace" . }}
+   labels:
+     app: {{ include "webhook.name" . }}
+     app.kubernetes.io/name: {{ include "webhook.name" . }}
+diff --git a/deploy/charts/cert-manager/templates/webhook-deployment.yaml b/deploy/charts/cert-manager/templates/webhook-deployment.yaml
+index d4793fd21..72d3ab6eb 100644
+--- a/deploy/charts/cert-manager/templates/webhook-deployment.yaml
++++ b/deploy/charts/cert-manager/templates/webhook-deployment.yaml
+@@ -2,7 +2,7 @@ apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+   name: {{ include "webhook.fullname" . }}
+-  namespace: {{ .Values.namespace | default .Release.Namespace | quote }}
++  namespace: {{ include "cert-manager.namespace" . }}
+   labels:
+     app: {{ include "webhook.name" . }}
+     app.kubernetes.io/name: {{ include "webhook.name" . }}
+@@ -75,7 +75,7 @@ spec:
+           {{ if or (not $config.tlsConfig) (and (not $tlsConfig.dynamic) (not $tlsConfig.filesystem) ) -}}
+           - --dynamic-serving-ca-secret-namespace=$(POD_NAMESPACE)
+           - --dynamic-serving-ca-secret-name={{ template "webhook.fullname" . }}-ca
+-          - --dynamic-serving-dns-names={{ template "webhook.fullname" . }},{{ template "webhook.fullname" . }}.{{ .Release.Namespace }},{{ template "webhook.fullname" . }}.{{ .Release.Namespace }}.svc{{ if .Values.webhook.url.host }},{{ .Values.webhook.url.host }}{{ end }}
++          - --dynamic-serving-dns-names={{ template "webhook.fullname" . }},{{ template "webhook.fullname" . }}.{{ template "cert-manager.namespace" . }},{{ template "webhook.fullname" . }}.{{ template "cert-manager.namespace" . }}.svc{{ if .Values.webhook.url.host }},{{ .Values.webhook.url.host }}{{ end }}
+           {{- end }}
+           {{- with .Values.webhook.extraArgs }}
+           {{- toYaml . | nindent 10 }}
+diff --git a/deploy/charts/cert-manager/templates/webhook-mutating-webhook.yaml b/deploy/charts/cert-manager/templates/webhook-mutating-webhook.yaml
+index fb8b795f6..f3db011ef 100644
+--- a/deploy/charts/cert-manager/templates/webhook-mutating-webhook.yaml
++++ b/deploy/charts/cert-manager/templates/webhook-mutating-webhook.yaml
+@@ -9,7 +9,7 @@ metadata:
+     app.kubernetes.io/component: "webhook"
+     {{- include "labels" . | nindent 4 }}
+   annotations:
+-    cert-manager.io/inject-ca-from-secret: "{{ .Release.Namespace }}/{{ template "webhook.fullname" . }}-ca"
++    cert-manager.io/inject-ca-from-secret: {{ printf "%s/%s-ca" (include "cert-manager.namespace" .) (include "webhook.fullname" .) | quote }}
+     {{- with .Values.webhook.mutatingWebhookConfigurationAnnotations }}
+     {{- toYaml . | nindent 4 }}
+     {{- end }}
+@@ -41,6 +41,6 @@ webhooks:
+       {{- else }}
+       service:
+         name: {{ template "webhook.fullname" . }}
+-        namespace: {{ .Release.Namespace | quote }}
++        namespace: {{ include "cert-manager.namespace" . }}
+         path: /mutate
+       {{- end }}
+diff --git a/deploy/charts/cert-manager/templates/webhook-psp-clusterrolebinding.yaml b/deploy/charts/cert-manager/templates/webhook-psp-clusterrolebinding.yaml
+index e8e1bb206..858df8ff2 100644
+--- a/deploy/charts/cert-manager/templates/webhook-psp-clusterrolebinding.yaml
++++ b/deploy/charts/cert-manager/templates/webhook-psp-clusterrolebinding.yaml
+@@ -16,5 +16,5 @@ roleRef:
+ subjects:
+   - kind: ServiceAccount
+     name: {{ template "webhook.serviceAccountName" . }}
+-    namespace: {{ .Release.Namespace }}
++    namespace: {{ include "cert-manager.namespace" . }}
+ {{- end }}
+diff --git a/deploy/charts/cert-manager/templates/webhook-rbac.yaml b/deploy/charts/cert-manager/templates/webhook-rbac.yaml
+index 1070333d9..b075ffd46 100644
+--- a/deploy/charts/cert-manager/templates/webhook-rbac.yaml
++++ b/deploy/charts/cert-manager/templates/webhook-rbac.yaml
+@@ -3,7 +3,7 @@ apiVersion: rbac.authorization.k8s.io/v1
+ kind: Role
+ metadata:
+   name: {{ template "webhook.fullname" . }}:dynamic-serving
+-  namespace: {{ .Release.Namespace | quote }}
++  namespace: {{ include "cert-manager.namespace" . }}
+   labels:
+     app: {{ include "webhook.name" . }}
+     app.kubernetes.io/name: {{ include "webhook.name" . }}
+@@ -26,7 +26,7 @@ apiVersion: rbac.authorization.k8s.io/v1
+ kind: RoleBinding
+ metadata:
+   name: {{ template "webhook.fullname" . }}:dynamic-serving
+-  namespace: {{ .Release.Namespace | quote }}
++  namespace: {{ include "cert-manager.namespace" . }}
+   labels:
+     app: {{ include "webhook.name" . }}
+     app.kubernetes.io/name: {{ include "webhook.name" . }}
+@@ -41,7 +41,7 @@ subjects:
+ - apiGroup: ""
+   kind: ServiceAccount
+   name: {{ template "webhook.serviceAccountName" . }}
+-  namespace: {{ .Release.Namespace }}
++  namespace: {{ include "cert-manager.namespace" . }}
+ 
+ ---
+ 
+@@ -79,5 +79,5 @@ subjects:
+ - apiGroup: ""
+   kind: ServiceAccount
+   name: {{ template "webhook.serviceAccountName" . }}
+-  namespace: {{ .Release.Namespace }}
++  namespace: {{ include "cert-manager.namespace" . }}
+ {{- end }}
+diff --git a/deploy/charts/cert-manager/templates/webhook-service.yaml b/deploy/charts/cert-manager/templates/webhook-service.yaml
+index ed0278ada..5f9395049 100644
+--- a/deploy/charts/cert-manager/templates/webhook-service.yaml
++++ b/deploy/charts/cert-manager/templates/webhook-service.yaml
+@@ -2,7 +2,7 @@ apiVersion: v1
+ kind: Service
+ metadata:
+   name: {{ template "webhook.fullname" . }}
+-  namespace: {{ .Release.Namespace | quote }}
++  namespace: {{ include "cert-manager.namespace" . }}
+ {{- with .Values.webhook.serviceAnnotations }}
+   annotations:
+ {{ toYaml . | indent 4 }}
+diff --git a/deploy/charts/cert-manager/templates/webhook-serviceaccount.yaml b/deploy/charts/cert-manager/templates/webhook-serviceaccount.yaml
+index 2792a43a3..dff5c0672 100644
+--- a/deploy/charts/cert-manager/templates/webhook-serviceaccount.yaml
++++ b/deploy/charts/cert-manager/templates/webhook-serviceaccount.yaml
+@@ -4,7 +4,7 @@ kind: ServiceAccount
+ automountServiceAccountToken: {{ .Values.webhook.serviceAccount.automountServiceAccountToken }}
+ metadata:
+   name: {{ template "webhook.serviceAccountName" . }}
+-  namespace: {{ .Release.Namespace | quote }}
++  namespace: {{ include "cert-manager.namespace" . }}
+   {{- with .Values.webhook.serviceAccount.annotations }}
+   annotations:
+     {{- toYaml . | nindent 4 }}
+diff --git a/deploy/charts/cert-manager/templates/webhook-validating-webhook.yaml b/deploy/charts/cert-manager/templates/webhook-validating-webhook.yaml
+index 2ca6403ec..a5d168e29 100644
+--- a/deploy/charts/cert-manager/templates/webhook-validating-webhook.yaml
++++ b/deploy/charts/cert-manager/templates/webhook-validating-webhook.yaml
+@@ -9,7 +9,7 @@ metadata:
+     app.kubernetes.io/component: "webhook"
+     {{- include "labels" . | nindent 4 }}
+   annotations:
+-    cert-manager.io/inject-ca-from-secret: "{{ .Release.Namespace }}/{{ template "webhook.fullname" . }}-ca"
++    cert-manager.io/inject-ca-from-secret: {{ printf "%s/%s-ca" (include "cert-manager.namespace" .) (include "webhook.fullname" .) | quote}}
+     {{- with .Values.webhook.validatingWebhookConfigurationAnnotations }}
+     {{- toYaml . | nindent 4 }}
+     {{- end }}
+@@ -24,7 +24,7 @@ webhooks:
+       - key: "name"
+         operator: "NotIn"
+         values:
+-        - {{ .Release.Namespace }}
++        - {{ include "cert-manager.namespace" . }}
+     rules:
+       - apiGroups:
+           - "cert-manager.io"
+@@ -50,6 +50,6 @@ webhooks:
+       {{- else }}
+       service:
+         name: {{ template "webhook.fullname" . }}
+-        namespace: {{ .Release.Namespace | quote }}
++        namespace: {{ include "cert-manager.namespace" . }}
+         path: /validate
+       {{- end }}

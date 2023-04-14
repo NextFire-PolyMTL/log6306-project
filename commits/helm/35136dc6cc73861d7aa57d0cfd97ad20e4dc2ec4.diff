@@ -1,0 +1,330 @@
+commit 35136dc6cc73861d7aa57d0cfd97ad20e4dc2ec4
+Author: Ehsan Danesh <ehsan.danesh@gmail.com>
+Date:   Mon Dec 2 19:00:58 2019 -0500
+
+    [stable/jenkins] Support for Jenkins native SSL / HTTPS (#17791)
+    
+    * Jenkins JKS ssl Support added
+    
+    Signed-off-by: Ehsan Danesh <edanesh@afilias.info>
+    
+    * [stable/jenkins] Self signed ssl keystore added
+    
+    Signed-off-by: Ehsan Danesh <edanesh@afilias.info>
+    
+    * [stable/jenkins] Removing extra plugin
+    
+    Signed-off-by: Ehsan Danesh <edanesh@afilias.info>
+    
+    * [stable/jenkins] Refactoring Chart.yaml
+    
+    Signed-off-by: Ehsan Danesh <edanesh@afilias.info>
+    
+    * [stable/jenkins] Updating README
+    
+    Signed-off-by: Ehsan Danesh <edanesh@afilias.info>
+    
+    * [stable/jenkins] Removing test tail commands
+    
+    Signed-off-by: Ehsan Danesh <edanesh@afilias.info>
+    
+    * [stable/jenkins] Updating README
+    
+    Signed-off-by: Ehsan Danesh <edanesh@afilias.info>
+    
+    * [stable/jenkins] Jenkins doc link to ssl confguration with jks
+    
+    Signed-off-by: Ehsan Danesh <edanesh@afilias.info>
+    
+    * [stable/jenkins] disbaling native ssl by default
+    
+    Signed-off-by: Ehsan Danesh <edanesh@afilias.info>
+    
+    * [stable/jenkins] Version bump
+    
+    Signed-off-by: Ehsan Danesh <edanesh@afilias.info>
+    
+    * [stable/jenkins] Indentation fix
+    
+    Signed-off-by: Ehsan Danesh <edanesh@afilias.info>
+    
+    * [stable/jenkins] Removing trailing space
+    
+    Signed-off-by: Ehsan Danesh <edanesh@afilias.info>
+    
+    * [stable/jenkins] make SSL as multiline input
+    
+    Signed-off-by: Ehsan Danesh <edanesh@afilias.info>
+    
+    * [stable/jenkins] support existing secrets fot native ssl
+    
+    Signed-off-by: Ehsan Danesh <edanesh@afilias.info>
+    
+    * [stable/jenkins] version bump
+    
+    Signed-off-by: Ehsan Danesh <edanesh@afilias.info>
+    
+    * [stable/jenkins] version bump in CHANGELOG
+    
+    Signed-off-by: Ehsan Danesh <edanesh@afilias.info>
+
+diff --git a/stable/jenkins/CHANGELOG.md b/stable/jenkins/CHANGELOG.md
+index e18232365..476e0fbda 100644
+--- a/stable/jenkins/CHANGELOG.md
++++ b/stable/jenkins/CHANGELOG.md
+@@ -4,6 +4,9 @@ This file documents all notable changes to Jenkins Helm Chart. The release
+ numbering uses [semantic versioning](http://semver.org).
+ 
+ NOTE: The change log until version 1.5.7 is auto generated based on git commits. Those include a reference to the git commit to be able to get more details.
++## 1.9.6
++
++Enables jenkins to use keystore inorder to have native ssl support [#17790](https: https://wiki.jenkins.io/pages/viewpage.action?pageId=135468777)
+ 
+ ## 1.9.5 Enable remoting security
+ 
+diff --git a/stable/jenkins/Chart.yaml b/stable/jenkins/Chart.yaml
+index f1e35bf68..8984050e2 100755
+--- a/stable/jenkins/Chart.yaml
++++ b/stable/jenkins/Chart.yaml
+@@ -1,7 +1,7 @@
+ apiVersion: v1
+ name: jenkins
+ home: https://jenkins.io/
+-version: 1.9.5
++version: 1.9.6
+ appVersion: lts
+ description: Open source continuous integration server. It supports multiple SCM tools
+   including CVS, Subversion and Git. It can execute Apache Ant and Apache Maven-based
+diff --git a/stable/jenkins/README.md b/stable/jenkins/README.md
+index 166e94035..91f028400 100644
+--- a/stable/jenkins/README.md
++++ b/stable/jenkins/README.md
+@@ -165,7 +165,14 @@ The following tables list the configurable parameters of the Jenkins chart and t
+ | `master.prometheus.alertingrules` | Array of prometheus alerting rules | `[]`                                        |
+ | `master.prometheus.alertingRulesAdditionalLabels` | Additional labels to add to the prometheus rule object     | `{}`                                   |
+ | `master.priorityClassName`        | The name of a `priorityClass` to apply to the master pod | Not set               |
+-| `master.testEnabled`              | Can be used to disable rendering test resources when using helm template | `true`                                 |
++| `master.testEnabled`              | Can be used to disable rendering test resources when using helm template | `true`                         |
++| `master.httpsKeyStore.enable`     | Enables https keystore on jenkins master      | `false`      | 
++| `master.httpsKeyStore.jenkinsHttpsJksSecretName`     | Name of the secret that already has ssl keystore      | ``      | 
++| `master.httpsKeyStore.httpPort`   | Http Port that Jenkins should listen on along with https, it also serves liveness and readiness probs port. When https keystore is enabled servicePort and targetPort will be used as https port  | `8081`   |
++| `master.httpsKeyStore.path`       | Path of https keystore file                  |     `/var/jenkins_keystore`     |
++| `master.httpsKeyStore.fileName`  | Jenkins keystore filename which will apear under master.httpsKeyStore.path      | `keystore.jks` |
++| `master.httpsKeyStore.password`   | Jenkins keystore password                                           | `password` |
++| `master.httpsKeyStore.jenkinsKeyStoreBase64Encoded`  | Base64 ecoded Keystore content. Keystore must be converted to base64 then being pasted here  | a self signed cert |
+ | `networkPolicy.enabled`           | Enable creation of NetworkPolicy resources. | `false`                            |
+ | `networkPolicy.apiVersion`        | NetworkPolicy ApiVersion             | `networking.k8s.io/v1`                    |
+ | `rbac.create`                     | Whether RBAC resources are created   | `true`                                    |
+@@ -515,3 +522,26 @@ and provide the file `templates/config.tpl` in your parent chart for your use ca
+     <CONTENTS_HERE>
+ {{ end }}
+ ```
++
++## Https keystore configuration
++This configuration enable jenkins to use keystore inorder to serve https: https://wiki.jenkins.io/pages/viewpage.action?pageId=135468777 <br />
++Here is the value file section related to keystore configuration. <br />
++Keystore itself should be placed in front of `jenkinsKeyStoreBase64Encoded` key and in base64 encoded format. To achive that after having `keystore.jks` file simply do this: `cat keystore.jks | base64` and paste the output in front of `jenkinsKeyStoreBase64Encoded` . <br />
++After enabling `httpsKeyStore.enable` make sure that `httpPort` and `targetPort` are not the same as `targetPort` will serve https. <br />
++Do not set `master.httpsKeyStore.httpPort` to `-1` because it will cause readiness and liveliness prob to fail. <br />
++If you already have a kubernetes secret that has keystore and its password you can specify its' name in front of `jenkinsHttpsJksSecretName`, You need to remember that your secret should have proper data key names `jenkins-jks-file` and `https-jks-password`. <br /> 
++
++```yaml
++master:
++   httpsKeyStore:
++       enable: true
++       jenkinsHttpsJksSecretName: ''
++       httpPort: 8081
++       path: "/var/jenkins_keystore"
++       fileName: "keystore.jks"
++       password: "changeit"
++       jenkinsKeyStoreBase64Encoded: ''
++```
++
++
++
+diff --git a/stable/jenkins/templates/NOTES.txt b/stable/jenkins/templates/NOTES.txt
+index c4e54f6f6..5255b2c99 100644
+--- a/stable/jenkins/templates/NOTES.txt
++++ b/stable/jenkins/templates/NOTES.txt
+@@ -15,7 +15,11 @@
+   NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+         You can watch the status of by running 'kubectl get svc --namespace {{ template "jenkins.namespace" . }} -w {{ template "jenkins.fullname" . }}'
+   export SERVICE_IP=$(kubectl get svc --namespace {{ template "jenkins.namespace" . }} {{ template "jenkins.fullname" . }} --template "{{ "{{ range (index .status.loadBalancer.ingress 0) }}{{ . }}{{ end }}" }}")
++{{- if .Values.master.httpsKeyStore.enable }}
++  echo https://$SERVICE_IP:{{ .Values.master.servicePort }}/login
++{{- else }}
+   echo http://$SERVICE_IP:{{ .Values.master.servicePort }}/login
++{{- end }}
+ 
+ {{- else if contains "ClusterIP"  .Values.master.serviceType }}
+   export POD_NAME=$(kubectl get pods --namespace {{ template "jenkins.namespace" . }} -l "app.kubernetes.io/component={{ .Values.master.componentName }}" -l "app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+diff --git a/stable/jenkins/templates/jenkins-master-deployment.yaml b/stable/jenkins/templates/jenkins-master-deployment.yaml
+index 1e7a0d8e1..6e98e33a8 100644
+--- a/stable/jenkins/templates/jenkins-master-deployment.yaml
++++ b/stable/jenkins/templates/jenkins-master-deployment.yaml
+@@ -153,8 +153,15 @@ spec:
+           image: "{{ .Values.master.image }}:{{ .Values.master.tag }}"
+ {{- end }}
+           imagePullPolicy: "{{ .Values.master.imagePullPolicy }}"
+-          {{- if .Values.master.useSecurity }}
+-          args: [ "--argumentsRealm.passwd.$(ADMIN_USER)=$(ADMIN_PASSWORD)",  "--argumentsRealm.roles.$(ADMIN_USER)=admin"]
++          {{- if .Values.master.httpsKeyStore.enable }}
++          {{- $httpsJKSFilePath :=  printf "%s/%s" .Values.master.httpsKeyStore.path .Values.master.httpsKeyStore.fileName -}}
++              {{- if .Values.master.useSecurity }} 
++          args: [ "--argumentsRealm.passwd.$(ADMIN_USER)=$(ADMIN_PASSWORD)",  "--argumentsRealm.roles.$(ADMIN_USER)=admin", "--httpPort={{.Values.master.httpsKeyStore.httpPort}}", "--httpsPort={{.Values.master.targetPort}}", '--httpsKeyStore={{ $httpsJKSFilePath }}', "--httpsKeyStorePassword=$(JENKINS_HTTPS_KEYSTORE_PASSWORD)" ]
++              {{- else }}
++          args: [ "--httpPort={{.Values.master.httpsKeyStore.httpPort}}", "--httpsPort={{.Values.master.targetPort}}", '--httpsKeyStore={{ $httpsJKSFilePath | quote }}', "--httpsKeyStorePassword=$(JENKINS_HTTPS_KEYSTORE_PASSWORD)" ]
++              {{- end }}
++          {{- else if .Values.master.useSecurity }}
++          args: [ "--argumentsRealm.passwd.$(ADMIN_USER)=$(ADMIN_PASSWORD)",  "--argumentsRealm.roles.$(ADMIN_USER)=admin", "--httpPort={{.Values.master.targetPort}}"]
+           {{- end }}
+           {{- if .Values.master.lifecycle }}
+           lifecycle:
+@@ -185,6 +192,14 @@ spec:
+                   name: {{ template "jenkins.fullname" . }}
+                   key: jenkins-admin-user
+             {{- end }}
++            {{- if .Values.master.httpsKeyStore.enable }}
++            - name: JENKINS_HTTPS_KEYSTORE_PASSWORD
++              valueFrom:
++                secretKeyRef:
++                  name: {{ if .Values.master.httpsKeyStore.jenkinsHttpsJksSecretName }} {{ .Values.master.httpsKeyStore.jenkinsHttpsJksSecretName }} {{ else }} {{ template "jenkins.fullname" . }}-https-jks  {{ end }}
++                  key: {{ "https-jks-password" | quote }}
++            {{- end }}
++
+             {{- if .Values.master.containerEnv }}
+ {{ toYaml .Values.master.containerEnv | indent 12 }}
+             {{- end }}
+@@ -193,7 +208,11 @@ spec:
+               value: {{ .Values.master.sidecars.configAutoReload.folder | default "/var/jenkins_home/casc_configs" | quote }}
+             {{- end }}
+           ports:
+-            - containerPort: 8080
++            {{- if .Values.master.httpsKeyStore.enable }}
++            - containerPort: {{.Values.master.httpsKeyStore.httpPort}}
++            {{- else }}
++            - containerPort: {{.Values.master.targetPort}}
++            {{- end }}
+               name: http
+             - containerPort: {{ .Values.master.slaveListenerPort }}
+               name: slavelistener
+@@ -233,6 +252,10 @@ spec:
+ {{- if .Values.persistence.mounts }}
+ {{ toYaml .Values.persistence.mounts | indent 12 }}
+ {{- end }}
++            {{- if .Values.master.httpsKeyStore.enable }}
++            - mountPath: {{ .Values.master.httpsKeyStore.path }}
++              name: jenkins-https-keystore
++            {{- end }}
+             - mountPath: /tmp
+               name: tmp
+             - mountPath: /var/jenkins_home
+@@ -355,6 +378,16 @@ spec:
+       - name: sc-config-volume
+         emptyDir: {}
+       {{- end }}
++
++      {{- if .Values.master.httpsKeyStore.enable }}
++      - name: jenkins-https-keystore
++        secret: 
++          secretName: {{ if .Values.master.httpsKeyStore.jenkinsHttpsJksSecretName }} {{ .Values.master.httpsKeyStore.jenkinsHttpsJksSecretName }} {{ else }} {{ template "jenkins.fullname" . }}-https-jks  {{ end }}
++          items:
++          - key: jenkins-jks-file
++            path: {{ .Values.master.httpsKeyStore.fileName }}
++      {{- end }}
++
+ {{- if .Values.master.imagePullSecretName }}
+       imagePullSecrets:
+       - name: {{ .Values.master.imagePullSecretName }}
+diff --git a/stable/jenkins/templates/secret-https-jks.yaml b/stable/jenkins/templates/secret-https-jks.yaml
+new file mode 100755
+index 000000000..fd595f3a5
+--- /dev/null
++++ b/stable/jenkins/templates/secret-https-jks.yaml
+@@ -0,0 +1,18 @@
++{{- if and .Values.master.httpsKeyStore.enable ( not  .Values.master.httpsKeyStore.jenkinsHttpsJksSecretName ) -}}
++apiVersion: v1
++kind: Secret
++metadata:
++  name: {{ template "jenkins.fullname" . }}-https-jks
++  namespace: {{ template "jenkins.namespace" . }}
++  labels:
++    "app.kubernetes.io/name": '{{ template "jenkins.name" .}}'
++    "helm.sh/chart": "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    "app.kubernetes.io/managed-by": "{{ .Release.Service }}"
++    "app.kubernetes.io/instance": "{{ .Release.Name }}"
++    "app.kubernetes.io/component": "{{ .Values.master.componentName }}"
++type: Opaque
++data:
++  jenkins-jks-file: |
++{{ .Values.master.httpsKeyStore.jenkinsKeyStoreBase64Encoded | indent 4 }}
++  https-jks-password: {{ .Values.master.httpsKeyStore.password | b64enc }}
++{{- end }}
+diff --git a/stable/jenkins/values.yaml b/stable/jenkins/values.yaml
+index 911ec7a64..702b9353b 100644
+--- a/stable/jenkins/values.yaml
++++ b/stable/jenkins/values.yaml
+@@ -14,6 +14,55 @@
+ clusterZone: "cluster.local"
+ 
+ master:
++  httpsKeyStore:
++    jenkinsHttpsJksSecretName: ''
++    enable: false
++    httpPort: 8081
++    path: "/var/jenkins_keystore"
++    fileName: "keystore.jks"
++    password: "password"
++    # Convert keystore.jks files content to base64 ( cat keystore.jks | base64 ) and put the output here
++    jenkinsKeyStoreBase64Encoded: |
++        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
+   # Used for label app.kubernetes.io/component
+   componentName: "jenkins-master"
+   image: "jenkins/jenkins"
+@@ -209,7 +258,6 @@ master:
+     # welcome-message: |
+     #   jenkins:
+     #     systemMessage: Welcome to our CI\CD server.  This Jenkins is configured and managed 'as code'.
+-
+   # Optionally specify additional init-containers
+   customInitContainers: []
+   # - name: custom-init

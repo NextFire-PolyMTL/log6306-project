@@ -1,0 +1,138 @@
+commit bb47f587471c62a3d3eb6da640a2b14eb0489ca8
+Author: Reinhard Nägele <unguiculus@gmail.com>
+Date:   Wed Jan 9 17:21:53 2019 +0100
+
+    [stable/keycloak] Refactor CLI scripts (#10503)
+    
+    Refactor custom CLI commands into their own files so they can also
+    be run separately with jboss-cli.sh for easier testing.
+    
+    Signed-off-by: Reinhard Nägele <unguiculus@gmail.com>
+
+diff --git a/stable/keycloak/Chart.yaml b/stable/keycloak/Chart.yaml
+index 1b982646e..22bcffdeb 100644
+--- a/stable/keycloak/Chart.yaml
++++ b/stable/keycloak/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: keycloak
+-version: 4.1.0
++version: 4.2.0
+ appVersion: 4.5.0.Final
+ description: Open Source Identity and Access Management For Modern Applications and Services
+ keywords:
+diff --git a/stable/keycloak/scripts/ha.cli b/stable/keycloak/scripts/ha.cli
+new file mode 100644
+index 000000000..0958059c9
+--- /dev/null
++++ b/stable/keycloak/scripts/ha.cli
+@@ -0,0 +1,6 @@
++/subsystem=infinispan/cache-container=keycloak/distributed-cache=sessions:write-attribute(name=owners, value=${env.CACHE_OWNERS:2})
++/subsystem=infinispan/cache-container=keycloak/distributed-cache=authenticationSessions:write-attribute(name=owners, value=${env.CACHE_OWNERS:2})
++/subsystem=infinispan/cache-container=keycloak/distributed-cache=offlineSessions:write-attribute(name=owners, value=${env.CACHE_OWNERS:2})
++/subsystem=infinispan/cache-container=keycloak/distributed-cache=loginFailures:write-attribute(name=owners, value=${env.CACHE_OWNERS:2})
++
++/subsystem=jgroups/channel=ee:write-attribute(name=stack, value=tcp)
+diff --git a/stable/keycloak/scripts/logging.cli b/stable/keycloak/scripts/logging.cli
+new file mode 100644
+index 000000000..d2a62de8b
+--- /dev/null
++++ b/stable/keycloak/scripts/logging.cli
+@@ -0,0 +1,3 @@
++# Allow log level to be configured via environment variable
++/subsystem=logging/console-handler=CONSOLE:write-attribute(name=level, value=${env.WILDFLY_LOGLEVEL:INFO})
++/subsystem=logging/root-logger=ROOT:write-attribute(name=level, value=${env.WILDFLY_LOGLEVEL:INFO})
+diff --git a/stable/keycloak/scripts/node-identifier.cli b/stable/keycloak/scripts/node-identifier.cli
+new file mode 100644
+index 000000000..de0f95064
+--- /dev/null
++++ b/stable/keycloak/scripts/node-identifier.cli
+@@ -0,0 +1,3 @@
++## Sets the node identifier to the node name (= pod name). Node identifiers have to be unique. They can have a
++## maximum length of 23 characters. Thus, the chart's fullname template truncates its length accordingly.
++/subsystem=transactions:write-attribute(name=node-identifier, value=${jboss.node.name})
+diff --git a/stable/keycloak/scripts/reverse-proxy.cli b/stable/keycloak/scripts/reverse-proxy.cli
+new file mode 100644
+index 000000000..fe592078f
+--- /dev/null
++++ b/stable/keycloak/scripts/reverse-proxy.cli
+@@ -0,0 +1,3 @@
++/socket-binding-group=standard-sockets/socket-binding=proxy-https:add(port=443)
++/subsystem=undertow/server=default-server/http-listener=default:write-attribute(name=redirect-socket, value=proxy-https)
++/subsystem=undertow/server=default-server/http-listener=default:write-attribute(name=proxy-address-forwarding, value=true)
+diff --git a/stable/keycloak/templates/configmap.yaml b/stable/keycloak/templates/configmap.yaml
+index ee7d9d81f..49309c92a 100644
+--- a/stable/keycloak/templates/configmap.yaml
++++ b/stable/keycloak/templates/configmap.yaml
+@@ -38,18 +38,18 @@ data:
+ 
+ {{- with .Values.keycloak.cli }}
+ 
+-{{ .nodeIdentifier | indent 4 }}
++{{ tpl .nodeIdentifier $ | indent 4 }}
+ 
+-{{ .logging | indent 4 }}
++{{ tpl .logging $ | indent 4 }}
+ 
+-{{ .reverseProxy | indent 4 }}
++{{ tpl .reverseProxy $ | indent 4 }}
+ 
+ {{- if $highAvailability }}
+-{{ .ha | indent 4 }}
++{{ tpl .ha $ | indent 4 }}
+ {{- end }}
+ 
+ {{- with .custom }}
+-{{ . | indent 4 }}
++{{ tpl . $ | indent 4 }}
+ {{- end }}
+ 
+ {{- end }}
+diff --git a/stable/keycloak/values.yaml b/stable/keycloak/values.yaml
+index 79df43756..50265c4a9 100644
+--- a/stable/keycloak/values.yaml
++++ b/stable/keycloak/values.yaml
+@@ -110,38 +110,23 @@ keycloak:
+     #   cpu: "100m"
+     #   memory: "1024Mi"
+ 
+-  ## WildFly CLI configurations. They all end up in the file 'keycloak.cli' configured in the configmap whichn is
++  ## WildFly CLI configurations. They all end up in the file 'keycloak.cli' configured in the configmap which is
+   ## executed on server startup.
+   cli:
+-    ## Sets the node identifier to the node name (= pod name). Node identifiers have to be unique. They can have a
+-    ## maximum length of 23 characters. Thus, the chart's fullname template truncates its length accordingly.
+     nodeIdentifier: |
+-      # Makes node identifier unique getting rid of a warning in the logs
+-      /subsystem=transactions:write-attribute(name=node-identifier, value=${jboss.node.name})
++      {{ .Files.Get "scripts/node-identifier.cli" }}
+ 
+     logging: |
+-      # Allow log level to be configured via environment variable
+-      /subsystem=logging/console-handler=CONSOLE:write-attribute(name=level, value=${env.WILDFLY_LOGLEVEL:INFO})
+-      /subsystem=logging/root-logger=ROOT:write-attribute(name=level, value=${env.WILDFLY_LOGLEVEL:INFO})
+-
+-      # Log only to console
+-      /subsystem=logging/root-logger=ROOT:write-attribute(name=handlers, value=[CONSOLE])
++      {{ .Files.Get "scripts/logging.cli" }}
+ 
+     reverseProxy: |
+-      /socket-binding-group=standard-sockets/socket-binding=proxy-https:add(port=443)
+-      /subsystem=undertow/server=default-server/http-listener=default:write-attribute(name=redirect-socket, value=proxy-https)
+-      /subsystem=undertow/server=default-server/http-listener=default:write-attribute(name=proxy-address-forwarding, value=true)
++      {{ .Files.Get "scripts/reverse-proxy.cli" }}
+ 
+     ha: |
+-      /subsystem=infinispan/cache-container=keycloak/distributed-cache=sessions:write-attribute(name=owners, value=${env.CACHE_OWNERS:2})
+-      /subsystem=infinispan/cache-container=keycloak/distributed-cache=authenticationSessions:write-attribute(name=owners, value=${env.CACHE_OWNERS:2})
+-      /subsystem=infinispan/cache-container=keycloak/distributed-cache=offlineSessions:write-attribute(name=owners, value=${env.CACHE_OWNERS:2})
+-      /subsystem=infinispan/cache-container=keycloak/distributed-cache=loginFailures:write-attribute(name=owners, value=${env.CACHE_OWNERS:2})
+-
+-      /subsystem=jgroups/channel=ee:write-attribute(name=stack, value=tcp)
++      {{ .Files.Get "scripts/ha.cli" }}
+ 
+     # Custom CLI script
+-    custom: ""
++    custom: |
+ 
+   ## Add additional volumes and mounts, e. g. for custom themes
+   extraVolumes: |

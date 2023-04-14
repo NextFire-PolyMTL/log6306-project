@@ -1,0 +1,558 @@
+commit f1fbb636276c2ac209dc5060947802285cf889a6 (from fa992c3965c0b64a4728cce7e0ae2f9f0f3014fa)
+Merge: fa992c39 8c9b62cb
+Author: MH <zanhsieh@gmail.com>
+Date:   Mon Dec 5 21:11:32 2022 +0800
+
+    Merge pull request #2039 from zanac1986/fix-promtail-refactor
+    
+    [promtail] Refactor
+
+diff --git a/charts/promtail/Chart.yaml b/charts/promtail/Chart.yaml
+index 09e47d49..1587b7e3 100644
+--- a/charts/promtail/Chart.yaml
++++ b/charts/promtail/Chart.yaml
+@@ -3,7 +3,7 @@ name: promtail
+ description: Promtail is an agent which ships the contents of local logs to a Loki instance
+ type: application
+ appVersion: 2.7.0
+-version: 6.7.0
++version: 6.7.1
+ home: https://grafana.com/loki
+ sources:
+   - https://github.com/grafana/loki
+diff --git a/charts/promtail/README.md b/charts/promtail/README.md
+index 03231562..aeb949ba 100644
+--- a/charts/promtail/README.md
++++ b/charts/promtail/README.md
+@@ -1,6 +1,6 @@
+ # promtail
+ 
+-![Version: 6.7.0](https://img.shields.io/badge/Version-6.7.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 2.7.0](https://img.shields.io/badge/AppVersion-2.7.0-informational?style=flat-square)
++![Version: 6.7.1](https://img.shields.io/badge/Version-6.7.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 2.7.0](https://img.shields.io/badge/AppVersion-2.7.0-informational?style=flat-square)
+ 
+ Promtail is an agent which ships the contents of local logs to a Loki instance
+ 
+diff --git a/charts/promtail/templates/_helpers.tpl b/charts/promtail/templates/_helpers.tpl
+index f823589b..8ecf1dd8 100644
+--- a/charts/promtail/templates/_helpers.tpl
++++ b/charts/promtail/templates/_helpers.tpl
+@@ -2,8 +2,8 @@
+ Expand the name of the chart.
+ */}}
+ {{- define "promtail.name" -}}
+-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
++{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
++{{- end }}
+ 
+ {{/*
+ Create a default fully qualified app name.
+@@ -11,24 +11,24 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this
+ If release name contains chart name it will be used as a full name.
+ */}}
+ {{- define "promtail.fullname" -}}
+-{{- if .Values.fullnameOverride -}}
+-{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+-{{- else -}}
+-{{- $name := default .Chart.Name .Values.nameOverride -}}
+-{{- if contains $name .Release.Name -}}
+-{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+-{{- else -}}
+-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
+-{{- end -}}
+-{{- end -}}
++{{- if .Values.fullnameOverride }}
++{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
++{{- else }}
++{{- $name := default .Chart.Name .Values.nameOverride }}
++{{- if contains $name .Release.Name }}
++{{- .Release.Name | trunc 63 | trimSuffix "-" }}
++{{- else }}
++{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
++{{- end }}
++{{- end }}
++{{- end }}
+ 
+ {{/*
+ Create chart name and version as used by the chart label.
+ */}}
+ {{- define "promtail.chart" -}}
+-{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
++{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
++{{- end }}
+ 
+ {{/*
+ Common labels
+@@ -54,38 +54,40 @@ app.kubernetes.io/instance: {{ .Release.Name }}
+ Create the name of the service account
+ */}}
+ {{- define "promtail.serviceAccountName" -}}
+-{{- if .Values.serviceAccount.create -}}
+-    {{ default (include "promtail.fullname" .) .Values.serviceAccount.name }}
+-{{- else -}}
+-    {{ default "default" .Values.serviceAccount.name }}
+-{{- end -}}
+-{{- end -}}
++{{- if .Values.serviceAccount.create }}
++{{- default (include "promtail.fullname" .) .Values.serviceAccount.name }}
++{{- else }}
++{{- default "default" .Values.serviceAccount.name }}
++{{- end }}
++{{- end }}
+ 
+ {{/*
+ The service name to connect to Loki. Defaults to the same logic as "loki.fullname"
+ */}}
+ {{- define "loki.serviceName" -}}
+-{{- if .Values.loki.serviceName -}}
+-{{- .Values.loki.serviceName -}}
+-{{- else if .Values.loki.fullnameOverride -}}
+-{{- .Values.loki.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+-{{- else -}}
+-{{- $name := default "loki" .Values.loki.nameOverride -}}
+-{{- if contains $name .Release.Name -}}
+-{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+-{{- else -}}
+-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
+-{{- end -}}
+-{{- end -}}
++{{- if .Values.loki.serviceName }}
++{{- .Values.loki.serviceName }}
++{{- else if .Values.loki.fullnameOverride }}
++{{- .Values.loki.fullnameOverride | trunc 63 | trimSuffix "-" }}
++{{- else }}
++{{- $name := default "loki" .Values.loki.nameOverride }}
++{{- if contains $name .Release.Name }}
++{{- .Release.Name | trunc 63 | trimSuffix "-" }}
++{{- else }}
++{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
++{{- end }}
++{{- end }}
++{{- end }}
+ 
+-{{/* Configure enableServiceLinks in pod */}}
++{{/*
++Configure enableServiceLinks in pod
++*/}}
+ {{- define "promtail.enableServiceLinks" -}}
+-{{- if semverCompare ">=1.13-0" .Capabilities.KubeVersion.GitVersion -}}
+-{{- if or (.Values.enableServiceLinks) (eq (.Values.enableServiceLinks | toString) "<nil>") -}}
+-enableServiceLinks: true
+-{{- else -}}
+-enableServiceLinks: false
+-{{- end -}}
+-{{- end -}}
+-{{- end -}}
+\ No newline at end of file
++{{- if semverCompare ">=1.13-0" .Capabilities.KubeVersion.GitVersion }}
++{{- if or (.Values.enableServiceLinks) (eq (.Values.enableServiceLinks | toString) "<nil>") }}
++{{- printf "enableServiceLinks: true" }}
++{{- else }}
++{{- printf "enableServiceLinks: false" }}
++{{- end }}
++{{- end }}
++{{- end }}
+\ No newline at end of file
+diff --git a/charts/promtail/templates/_pod.tpl b/charts/promtail/templates/_pod.tpl
+index ddb228d3..1e4034b8 100644
+--- a/charts/promtail/templates/_pod.tpl
++++ b/charts/promtail/templates/_pod.tpl
+@@ -1,118 +1,118 @@
+ {{/*
+ Pod template used in Daemonset and Deployment
+ */}}
+-{{- define "promtail.podTemplate" }}
+-    metadata:
+-      labels:
+-        {{- include "promtail.selectorLabels" . | nindent 8 }}
+-        {{- with .Values.podLabels }}
++{{- define "promtail.podTemplate" -}}
++metadata:
++  labels:
++    {{- include "promtail.selectorLabels" . | nindent 4 }}
++    {{- with .Values.podLabels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++  annotations:
++    checksum/config: {{ include (print .Template.BasePath "/secret.yaml") . | sha256sum }}
++    {{- with .Values.podAnnotations }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++spec:
++  serviceAccountName: {{ include "promtail.serviceAccountName" . }}
++  {{- include "promtail.enableServiceLinks" . | nindent 2 }}
++  {{- with .Values.priorityClassName }}
++  priorityClassName: {{ . }}
++  {{- end }}
++  {{- with .Values.initContainer }}
++  initContainers:
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++  {{- with .Values.imagePullSecrets }}
++  imagePullSecrets:
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++  securityContext:
++    {{- toYaml .Values.podSecurityContext | nindent 4 }}
++  containers:
++    - name: promtail
++      image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
++      imagePullPolicy: {{ .Values.image.pullPolicy }}
++      args:
++        - "-config.file=/etc/promtail/promtail.yaml"
++        {{- with .Values.extraArgs }}
+         {{- toYaml . | nindent 8 }}
+         {{- end }}
+-      annotations:
+-        checksum/config: {{ include (print .Template.BasePath "/secret.yaml") . | sha256sum }}
+-        {{- with .Values.podAnnotations }}
++      volumeMounts:
++        - name: config
++          mountPath: /etc/promtail
++        {{- with .Values.defaultVolumeMounts }}
+         {{- toYaml . | nindent 8 }}
+         {{- end }}
+-    spec:
+-      serviceAccountName: {{ include "promtail.serviceAccountName" . }}
+-      {{ include "promtail.enableServiceLinks" . }}
+-      {{- with .Values.priorityClassName }}
+-      priorityClassName: {{ . }}
+-      {{- end }}
+-      {{- with .Values.initContainer }}
+-      initContainers:
++        {{- with .Values.extraVolumeMounts }}
++        {{- toYaml . | nindent 8 }}
++        {{- end }}
++      env:
++        - name: HOSTNAME
++          valueFrom:
++            fieldRef:
++              fieldPath: spec.nodeName
++      {{- with .Values.extraEnv }}
+         {{- toYaml . | nindent 8 }}
+       {{- end }}
+-      {{- with .Values.imagePullSecrets }}
+-      imagePullSecrets:
++      {{- with .Values.extraEnvFrom }}
++      envFrom:
+         {{- toYaml . | nindent 8 }}
+       {{- end }}
++      ports:
++        - name: http-metrics
++          containerPort: {{ .Values.config.serverPort }}
++          protocol: TCP
++        {{- range $key, $values := .Values.extraPorts }}
++        - name: {{ .name | default $key }}
++          containerPort: {{ $values.containerPort }}
++          protocol: {{ $values.protocol | default "TCP" }}
++        {{- end }}
+       securityContext:
+-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+-      containers:
+-        - name: promtail
+-          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+-          args:
+-            - "-config.file=/etc/promtail/promtail.yaml"
+-            {{- with .Values.extraArgs }}
+-            {{- toYaml . | nindent 12 }}
+-            {{- end }}
+-          volumeMounts:
+-            - name: config
+-              mountPath: /etc/promtail
+-            {{- with .Values.defaultVolumeMounts }}
+-            {{- toYaml . | nindent 12 }}
+-            {{- end }}
+-            {{- with .Values.extraVolumeMounts }}
+-            {{- toYaml . | nindent 12 }}
+-            {{- end }}
+-          env:
+-            - name: HOSTNAME
+-              valueFrom:
+-                fieldRef:
+-                  fieldPath: spec.nodeName
+-          {{- with .Values.extraEnv }}
+-            {{- toYaml . | nindent 12 }}
+-          {{- end }}
+-          {{- with .Values.extraEnvFrom }}
+-          envFrom:
+-            {{- toYaml . | nindent 12 }}
+-          {{- end }}
+-          ports:
+-            - name: http-metrics
+-              containerPort: {{ .Values.config.serverPort }}
+-              protocol: TCP
+-            {{- range $key, $values := .Values.extraPorts }}
+-            - name: {{ .name | default $key }}
+-              containerPort: {{ $values.containerPort }}
+-              protocol: {{ $values.protocol | default "TCP" }}
+-            {{- end }}
+-          securityContext:
+-            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+-          {{- with .Values.livenessProbe }}
+-          livenessProbe:
+-            {{- tpl (toYaml .) $ | nindent 12 }}
+-          {{- end }}
+-          {{- with .Values.readinessProbe }}
+-          readinessProbe:
+-            {{- tpl (toYaml .) $ | nindent 12 }}
+-          {{- end }}
+-          {{- with .Values.resources }}
+-          resources:
+-            {{- toYaml . | nindent 12 }}
+-          {{- end }}
+-      {{- if .Values.deployment.enabled }}
+-      {{- range $name, $values := .Values.extraContainers }}
+-        - name: {{ $name }}
+-      {{ toYaml $values | nindent 10 }}
++        {{- toYaml .Values.containerSecurityContext | nindent 8 }}
++      {{- with .Values.livenessProbe }}
++      livenessProbe:
++        {{- tpl (toYaml .) $ | nindent 8 }}
+       {{- end }}
++      {{- with .Values.readinessProbe }}
++      readinessProbe:
++        {{- tpl (toYaml .) $ | nindent 8 }}
+       {{- end }}
+-      {{- with .Values.affinity }}
+-      affinity:
++      {{- with .Values.resources }}
++      resources:
+         {{- toYaml . | nindent 8 }}
+       {{- end }}
+-      {{- with .Values.nodeSelector }}
+-      nodeSelector:
+-        {{- toYaml . | nindent 8 }}
++    {{- if .Values.deployment.enabled }}
++    {{- range $name, $values := .Values.extraContainers }}
++    - name: {{ $name }}
++      {{ toYaml $values | nindent 6 }}
++    {{- end }}
++    {{- end }}
++  {{- with .Values.affinity }}
++  affinity:
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++  {{- with .Values.nodeSelector }}
++  nodeSelector:
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++  {{- with .Values.tolerations }}
++  tolerations:
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++  volumes:
++    - name: config
++      {{- if .Values.configmap.enabled }}
++      configMap:
++        name: {{ include "promtail.fullname" . }}
++      {{- else }}
++      secret:
++        secretName: {{ include "promtail.fullname" . }}
+       {{- end }}
+-      {{- with .Values.tolerations }}
+-      tolerations:
+-        {{- toYaml . | nindent 8 }}
+-      {{- end }}
+-      volumes:
+-        - name: config
+-          {{- if .Values.configmap.enabled }}
+-          configMap:
+-            name: {{ include "promtail.fullname" . }}
+-          {{- else }}
+-          secret:
+-            secretName: {{ include "promtail.fullname" . }}
+-          {{- end }}
+-        {{- with .Values.defaultVolumes }}
+-        {{- toYaml . | nindent 8 }}
+-        {{- end }}
+-        {{- with .Values.extraVolumes }}
+-        {{- toYaml . | nindent 8 }}
+-        {{- end }}
++    {{- with .Values.defaultVolumes }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++    {{- with .Values.extraVolumes }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
+ {{- end }}
+diff --git a/charts/promtail/templates/daemonset.yaml b/charts/promtail/templates/daemonset.yaml
+index e97d18dc..2862c25d 100644
+--- a/charts/promtail/templates/daemonset.yaml
++++ b/charts/promtail/templates/daemonset.yaml
+@@ -1,4 +1,4 @@
+-{{- if .Values.daemonset.enabled -}}
++{{- if .Values.daemonset.enabled }}
+ apiVersion: apps/v1
+ kind: DaemonSet
+ metadata:
+@@ -17,5 +17,5 @@ spec:
+   updateStrategy:
+     {{- toYaml .Values.updateStrategy | nindent 4 }}
+   template:
+-    {{- include "promtail.podTemplate" . -}}
+-{{- end -}}
++    {{- include "promtail.podTemplate" . | nindent 4 }}
++{{- end }}
+diff --git a/charts/promtail/templates/deployment.yaml b/charts/promtail/templates/deployment.yaml
+index 72d69215..502e02eb 100644
+--- a/charts/promtail/templates/deployment.yaml
++++ b/charts/promtail/templates/deployment.yaml
+@@ -1,4 +1,4 @@
+-{{- if .Values.deployment.enabled -}}
++{{- if .Values.deployment.enabled }}
+ apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+@@ -18,5 +18,5 @@ spec:
+     matchLabels:
+       {{- include "promtail.selectorLabels" . | nindent 6 }}
+   template:
+-    {{- include "promtail.podTemplate" . -}}
+-{{- end -}}
++    {{- include "promtail.podTemplate" . | nindent 4 }}
++{{- end }}
+diff --git a/charts/promtail/templates/networkpolicy.yaml b/charts/promtail/templates/networkpolicy.yaml
+index 103dcc13..264ba7db 100644
+--- a/charts/promtail/templates/networkpolicy.yaml
++++ b/charts/promtail/templates/networkpolicy.yaml
+@@ -18,8 +18,6 @@ spec:
+   ingress:
+     - from:
+         - podSelector: {}
+-
+-
+ ---
+ apiVersion: networking.k8s.io/v1
+ kind: NetworkPolicy
+@@ -40,7 +38,6 @@ spec:
+           protocol: UDP
+       to:
+         - namespaceSelector: {}
+-
+ ---
+ apiVersion: networking.k8s.io/v1
+ kind: NetworkPolicy
+@@ -59,13 +56,13 @@ spec:
+     - ports:
+         - port: {{ .Values.networkPolicy.k8sApi.port }}
+           protocol: TCP
+-    {{- if len .Values.networkPolicy.k8sApi.cidrs }}
++      {{- if len .Values.networkPolicy.k8sApi.cidrs }}
+       to:
+-      {{- range $cidr := .Values.networkPolicy.k8sApi.cidrs }}
++        {{- range $cidr := .Values.networkPolicy.k8sApi.cidrs }}
+         - ipBlock:
+             cidr: {{ $cidr }}
++        {{- end }}
+       {{- end }}
+-    {{- end }}
+ 
+ ---
+ apiVersion: networking.k8s.io/v1
+@@ -85,21 +82,21 @@ spec:
+     - ports:
+         - port: http-metrics
+           protocol: TCP
+-    {{- if len .Values.networkPolicy.metrics.cidrs }}
++      {{- if len .Values.networkPolicy.metrics.cidrs }}
+       from:
+-      {{- range $cidr := .Values.networkPolicy.metrics.cidrs }}
++        {{- range $cidr := .Values.networkPolicy.metrics.cidrs }}
+         - ipBlock:
+             cidr: {{ $cidr }}
+-      {{- end }}
+-      {{- if .Values.networkPolicy.metrics.namespaceSelector }}
++        {{- end }}
++        {{- if .Values.networkPolicy.metrics.namespaceSelector }}
+         - namespaceSelector:
+-          {{- toYaml .Values.networkPolicy.metrics.namespaceSelector | nindent 12 }}
++            {{- toYaml .Values.networkPolicy.metrics.namespaceSelector | nindent 12 }}
+           {{- if .Values.networkPolicy.metrics.podSelector }}
+           podSelector:
+-          {{- toYaml .Values.networkPolicy.metrics.podSelector | nindent 12 }}
++            {{- toYaml .Values.networkPolicy.metrics.podSelector | nindent 12 }}
+           {{- end }}
++        {{- end }}
+       {{- end }}
+-    {{- end }}
+ 
+ {{- if .Values.extraPorts }}
+ ---
+@@ -118,9 +115,9 @@ spec:
+     - Egress
+   egress:
+     - ports:
+-  {{- range $extraPortConfig := .Values.extraPorts }}
++        {{- range $extraPortConfig := .Values.extraPorts }}
+         - port: {{ $extraPortConfig.containerPort }}
+           protocol: {{ $extraPortConfig.protocol }}
+-  {{- end }}
++        {{- end }}
+ {{- end }}
+ {{- end }}
+diff --git a/charts/promtail/templates/podsecuritypolicy.yaml b/charts/promtail/templates/podsecuritypolicy.yaml
+index f28b7932..a2293882 100644
+--- a/charts/promtail/templates/podsecuritypolicy.yaml
++++ b/charts/promtail/templates/podsecuritypolicy.yaml
+@@ -1,5 +1,4 @@
+-{{- if and .Values.rbac.create .Values.rbac.pspEnabled }}
+-{{- if .Capabilities.APIVersions.Has "policy/v1beta1/PodSecurityPolicy" }}
++{{- if and (.Capabilities.APIVersions.Has "policy/v1beta1/PodSecurityPolicy") .Values.rbac.create .Values.rbac.pspEnabled }}
+ apiVersion: policy/v1beta1
+ kind: PodSecurityPolicy
+ metadata:
+@@ -9,4 +8,3 @@ metadata:
+ spec:
+   {{- toYaml .Values.podSecurityPolicy | nindent 2 }}
+ {{- end }}
+-{{- end }}
+diff --git a/charts/promtail/templates/role.yaml b/charts/promtail/templates/role.yaml
+index 02b4a1a1..89e587b4 100644
+--- a/charts/promtail/templates/role.yaml
++++ b/charts/promtail/templates/role.yaml
+@@ -1,4 +1,4 @@
+-{{- if and .Values.rbac.create .Values.rbac.pspEnabled }}
++{{- if and (.Capabilities.APIVersions.Has "policy/v1beta1/PodSecurityPolicy") .Values.rbac.create .Values.rbac.pspEnabled }}
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: Role
+ metadata:
+diff --git a/charts/promtail/templates/rolebinding.yaml b/charts/promtail/templates/rolebinding.yaml
+index 1fdda969..b2b8e6bb 100644
+--- a/charts/promtail/templates/rolebinding.yaml
++++ b/charts/promtail/templates/rolebinding.yaml
+@@ -1,4 +1,4 @@
+-{{- if and .Values.rbac.create .Values.rbac.pspEnabled }}
++{{- if and (.Capabilities.APIVersions.Has "policy/v1beta1/PodSecurityPolicy") .Values.rbac.create .Values.rbac.pspEnabled }}
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: RoleBinding
+ metadata:
+diff --git a/charts/promtail/templates/service-extra.yaml b/charts/promtail/templates/service-extra.yaml
+index c235a643..045f5809 100644
+--- a/charts/promtail/templates/service-extra.yaml
++++ b/charts/promtail/templates/service-extra.yaml
+@@ -26,7 +26,7 @@ spec:
+   {{- with .loadBalancerSourceRanges }}
+   loadBalancerSourceRanges:
+     {{- toYaml . | nindent 4 }}
+-  {{- end -}}
++  {{- end }}
+   {{- with .externalIPs }}
+   externalIPs:
+     {{- toYaml . | nindent 4 }}
+diff --git a/charts/promtail/templates/servicemonitor.yaml b/charts/promtail/templates/servicemonitor.yaml
+index 0b23d649..3d8bae5c 100644
+--- a/charts/promtail/templates/servicemonitor.yaml
++++ b/charts/promtail/templates/servicemonitor.yaml
+@@ -19,7 +19,7 @@ metadata:
+ spec:
+   {{- with .namespaceSelector }}
+   namespaceSelector:
+-  {{- toYaml . | nindent 4 }}
++    {{- toYaml . | nindent 4 }}
+   {{- end }}
+   selector:
+     matchLabels:

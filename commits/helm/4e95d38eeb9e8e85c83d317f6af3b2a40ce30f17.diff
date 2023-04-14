@@ -1,0 +1,140 @@
+commit 4e95d38eeb9e8e85c83d317f6af3b2a40ce30f17
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Apr 4 14:53:07 2018 +0200
+
+     [stable/dokuwiki] Refactor image property in values.yaml (#4637)
+    
+    * [stable/dokuwiki] Refactor image properties in values.yaml
+    
+    * Update image.pullSecrets property
+    
+    * Refactor pullSecrets
+    
+    * Delete duplicated key
+    
+    * Use rolling tag
+    
+    * Fix lint issue
+    
+    * Set proper tag and appVersion for dokuwiki
+    
+    * Update Chart.yaml
+
+diff --git a/stable/dokuwiki/Chart.yaml b/stable/dokuwiki/Chart.yaml
+index 8efe979b2..cea73277d 100644
+--- a/stable/dokuwiki/Chart.yaml
++++ b/stable/dokuwiki/Chart.yaml
+@@ -1,5 +1,6 @@
+ name: dokuwiki
+-version: 0.2.3
++version: 1.0.0
++appVersion: 0.20170219.201708232029
+ description: DokuWiki is a standards-compliant, simple to use wiki optimized for creating
+   documentation. It is targeted at developer teams, workgroups, and small companies.
+   All data is stored in plain text files, so no database is required.
+diff --git a/stable/dokuwiki/README.md b/stable/dokuwiki/README.md
+index 29b45690c..15ef047b5 100644
+--- a/stable/dokuwiki/README.md
++++ b/stable/dokuwiki/README.md
+@@ -43,24 +43,27 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following table lists the configurable parameters of the DokuWiki chart and their default values.
+ 
+-|              Parameter              |               Description               |                         Default                         |
+-|-------------------------------------|-----------------------------------------|---------------------------------------------------------|
+-| `image`                             | DokuWiki image                          | `bitnami/dokuwiki:{VERSION}`                            |
+-| `imagePullPolicy`                   | Image pull policy                       | `Always` if `imageTag` is `latest`, else `IfNotPresent` |
+-| `dokuwikiUsername`                  | User of the application                 | `user`                                                  |
+-| `dokuwikiFullName`                  | User's full name                        | `Full Name`                                             |
+-| `dokuwikiPassword`                  | Application password                    | _random 10 character alphanumeric string_               |
+-| `dokuwikiEmail`                     | User email                              | `user@example.com`                                      |
+-| `dokuwikiWikiName`                  | Wiki name                               | `My Wiki`                                               |
+-| `serviceType`                       | Kubernetes Service type                 | `LoadBalancer`                                          |
+-| `persistence.enabled`               | Enable persistence using PVC            | `true`                                                  |
+-| `persistence.apache.storageClass`   | PVC Storage Class for apache volume     | `nil`  (uses alpha storage class annotation) |
+-| `persistence.apache.accessMode`     | PVC Access Mode for apache volume       | `ReadWriteOnce`                                         |
+-| `persistence.apache.size`           | PVC Storage Request for apache volume   | `1Gi`                                                   |
+-| `persistence.dokuwiki.storageClass` | PVC Storage Class for DokuWiki volume   | `nil`  (uses alpha storage class annotation) |
+-| `persistence.dokuwiki.accessMode`   | PVC Access Mode for DokuWiki volume     | `ReadWriteOnce`                                         |
+-| `persistence.dokuwiki.size`         | PVC Storage Request for DokuWiki volume | `8Gi`                                                   |
+-| `resources`                         | CPU/Memory resource requests/limits     | Memory: `512Mi`, CPU: `300m`                            |
++|              Parameter              |               Description                   |                         Default                         |
++|-------------------------------------|---------------------------------------------|---------------------------------------------------------|
++| `image.registry`                    | DokuWiki image registry                     | `docker.io`                                             |
++| `image.repository`                  | DokuWiki Image name                         | `bitnami/dokuwiki`                                      |
++| `image.tag`                         | DokuWiki Image tag                          | `{VERSION}`                                             |
++| `image.pullPolicy`                  | Image pull policy                           | `Always` if `imageTag` is `latest`, else `IfNotPresent` |
++| `image.pullSecrets`                 | Specify image pull secrets                  | `nil`                                                   |
++| `dokuwikiUsername`                  | User of the application                     | `user`                                                  |
++| `dokuwikiFullName`                  | User's full name                            | `Full Name`                                             |
++| `dokuwikiPassword`                  | Application password                        | _random 10 character alphanumeric string_               |
++| `dokuwikiEmail`                     | User email                                  | `user@example.com`                                      |
++| `dokuwikiWikiName`                  | Wiki name                                   | `My Wiki`                                               |
++| `serviceType`                       | Kubernetes Service type                     | `LoadBalancer`                                          |
++| `persistence.enabled`               | Enable persistence using PVC                | `true`                                                  |
++| `persistence.apache.storageClass`   | PVC Storage Class for apache volume         | `nil`  (uses alpha storage class annotation)            |
++| `persistence.apache.accessMode`     | PVC Access Mode for apache volume           | `ReadWriteOnce`                                         |
++| `persistence.apache.size`           | PVC Storage Request for apache volume       | `1Gi`                                                   |
++| `persistence.dokuwiki.storageClass` | PVC Storage Class for DokuWiki volume       | `nil`  (uses alpha storage class annotation)            |
++| `persistence.dokuwiki.accessMode`   | PVC Access Mode for DokuWiki volume         | `ReadWriteOnce`                                         |
++| `persistence.dokuwiki.size`         | PVC Storage Request for DokuWiki volume     | `8Gi`                                                   |
++| `resources`                         | CPU/Memory resource requests/limits         | Memory: `512Mi`, CPU: `300m`                            |
+ 
+ The above parameters map to the env variables defined in [bitnami/dokuwiki](http://github.com/bitnami/bitnami-docker-dokuwiki). For more information please refer to the [bitnami/dokuwiki](http://github.com/bitnami/bitnami-docker-dokuwiki) image documentation.
+ 
+diff --git a/stable/dokuwiki/templates/deployment.yaml b/stable/dokuwiki/templates/deployment.yaml
+index 6ad332930..ff1f0af5c 100644
+--- a/stable/dokuwiki/templates/deployment.yaml
++++ b/stable/dokuwiki/templates/deployment.yaml
+@@ -13,10 +13,16 @@ spec:
+       labels:
+         app: {{ template "dokuwiki.fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "dokuwiki.fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: DOKUWIKI_USERNAME
+           value: {{ default "" .Values.dokuwikiUsername | quote }}
+diff --git a/stable/dokuwiki/values.yaml b/stable/dokuwiki/values.yaml
+index 27bd62f79..700824af5 100644
+--- a/stable/dokuwiki/values.yaml
++++ b/stable/dokuwiki/values.yaml
+@@ -1,13 +1,21 @@
+ ## Bitnami DokuWiki image version
+ ## ref: https://hub.docker.com/r/bitnami/dokuwiki/tags/
+ ##
+-image: bitnami/dokuwiki:20160626a-r9
+-
+-## Specify a imagePullPolicy
+-## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-# imagePullPolicy:
++image:
++  registry: docker.io
++  repository: bitnami/dokuwiki
++  tag: 0.20170219.201708232029
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
+ 
+ ## User of the application
+ ## ref: https://github.com/bitnami/bitnami-docker-dokuwiki#environment-variables

@@ -1,0 +1,736 @@
+commit 1b724a195f31be3e548574c8326071167eb8ea21
+Author: Travis Groth <travisgroth@users.noreply.github.com>
+Date:   Mon Sep 30 03:03:37 2019 -0400
+
+    [stable/pomerium] Refactor TLS secrets (#17347)
+    
+    - Support native TLS type secrets directly
+    
+    Signed-off-by: Travis Groth <tgroth@gmail.com>
+
+diff --git a/stable/pomerium/Chart.yaml b/stable/pomerium/Chart.yaml
+index e38e3d9db..ac0bd86e5 100644
+--- a/stable/pomerium/Chart.yaml
++++ b/stable/pomerium/Chart.yaml
+@@ -1,6 +1,6 @@
+ apiVersion: v1
+ name: pomerium
+-version: 2.0.3
++version: 3.0.0
+ appVersion: 0.3.1
+ home: http://www.pomerium.io/
+ icon: https://www.pomerium.io/logo.svg
+diff --git a/stable/pomerium/README.md b/stable/pomerium/README.md
+index 03b96e0cd..052922e42 100644
+--- a/stable/pomerium/README.md
++++ b/stable/pomerium/README.md
+@@ -6,10 +6,15 @@
+   - [TL;DR;](#tldr)
+   - [Install the chart](#install-the-chart)
+   - [Uninstalling the Chart](#uninstalling-the-chart)
++  - [TLS Certificates](#tls-certificates)
++    - [Auto Generation](#auto-generation)
++    - [Self Provisioned](#self-provisioned)
+   - [Configuration](#configuration)
+   - [Changelog](#changelog)
++    - [3.0.0](#300)
+     - [2.0.0](#200)
+   - [Upgrading](#upgrading)
++    - [3.0.0](#300-1)
+     - [2.0.0](#200-1)
+   - [Metrics Discovery Configuration](#metrics-discovery-configuration)
+     - [Prometheus Operator](#prometheus-operator)
+@@ -56,14 +61,38 @@ helm delete --purge my-release
+ 
+ The command removes nearly all the Kubernetes components associated with the chart and deletes the release.
+ 
++## TLS Certificates
++
++### Auto Generation
++
++In default configuration, this chart will automatically generate TLS certificates in a helm `pre-install` hook for the Pomerium services to communicate with.
++
++Upon delete, you will need to manually delete the generated secrets.  Example:
++
++```console
++kubectl delete secret -l app.kubernetes.io/name=pomerium
++```
++
++You may force recreation of your TLS certificates by setting `config.forceGenerateTLS` to `true`.  Delete any existing TLS secrets first to prevent errors, and  make sure you set back to `false` for your next helm upgrade command or your deployment will fail due to existing Secrets.
++
++### Self Provisioned
++If you wish to provide your own TLS certificates in secrets, you should:
++1) turn `generateTLS` to `false`
++2) specify `authenticate.existingTLSSecret`, `authorize.existingTLSSecret`, and `proxy.existingTLSSecret`, pointing at the appropriate TLS certificate for each service.  
++
++All services can share the secret if appropriate.
++
+ ## Configuration
+ 
+ A full listing of Pomerium's configuration variables can be found on the [config reference page](https://www.pomerium.io/docs/config-reference.html).
+ 
+-| Parameter                           | Description                                                                                                                                                                                                | Default                                                                            |
+-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+-| `config.rootDomain`                 | Root Domain specifies the sub-domain handled by pomerium. [See more](https://www.pomerium.io/docs/config-reference.html#proxy-root-domains).                                                               | `corp.pomerium.io`                                                                 |
+-| `config.generateTLS`                | Generate a dummy Certificate Authority and certs for service communication. Manual CA and certs can be set in values.                                                                                      | `true`                                                                             |
++| Parameter                        | Description                                                                                                                                  | Default            |
++| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
++| `config.rootDomain`              | Root Domain specifies the sub-domain handled by pomerium. [See more](https://www.pomerium.io/docs/config-reference.html#proxy-root-domains). | `corp.pomerium.io` |
++| `config.existingLegacyTLSSecret` | Use a Pre-3.0.0 secret for the service TLS data.  Only use if upgrading from <= 2.0.0                                                        | `false`            |
++| `config.generateTLS`             | Generate a dummy Certificate Authority and certs for service communication. Manual CA and certs can be set in values.                        | `true`             |
++| `config.forceGenerateTLS`        | Force recreation of generated TLS certificates.  You will need to restart your deployments after running                                     | `false`            |
++
+ | `config.sharedSecret`               | 256 bit key to secure service communication. [See more](https://www.pomerium.io/docs/config-reference.html#shared-secret).                                                                                 | 32 [random ascii chars](http://masterminds.github.io/sprig/strings.html)           |
+ | `config.cookieSecret`               | Cookie secret is a 32 byte key used to encrypt user sessions.                                                                                                                                              | 32 [random ascii chars](http://masterminds.github.io/sprig/strings.html)           |
+ | `config.policy`                     | Base64 encoded string containing the routes, and their access policies.                                                                                                                                    |
+@@ -77,14 +106,17 @@ A full listing of Pomerium's configuration variables can be found on the [config
+ | `authenticate.idp.url`              | Identity [Provider URL](https://www.pomerium.io/docs/config-reference.html#identity-provider-url).                                                                                                         | Optional                                                                           |
+ | `authenticate.idp.serviceAccount`   | Identity Provider [service account](https://www.pomerium.io/docs/config-reference.html#identity-provider-service-account).                                                                                 | Optional                                                                           |
+ | `authenticate.replicaCount`         | Number of Authenticate pods to run                                                                                                                                                                         |                                                                                    | `1` |
++| `authenticate.existingTLSSecret`    | Name of existing TLS Secret for authenticate service                                                                                                                                                       |                                                                                    |
+ | `proxy.nameOverride`                | Name of the proxy service.                                                                                                                                                                                 |
+ | `proxy.fullnameOverride`            | Full name of the proxy service.                                                                                                                                                                            |
+ | `proxy.authenticateServiceUrl`      | The externally accessible url for the authenticate service.                                                                                                                                                | `https://{{authenticate.name}}.{{config.rootDomain}}`                              |
+ | `proxy.authorizeServiceUrl`         | The externally accessible url for the authorize service.                                                                                                                                                   | `https://{{authorize.name}}.{{config.rootDomain}}`                                 |
+ | `proxy.replicaCount`                | Number of Proxy pods to run                                                                                                                                                                                |                                                                                    | `1` |
++| `proxy.existingTLSSecret`           | Name of existing TLS Secret for proxy service                                                                                                                                                              |                                                                                    |
+ | `authorize.nameOverride`            | Name of the authorize service.                                                                                                                                                                             |
+ | `authorize.fullnameOverride`        | Full name of the authorize service.                                                                                                                                                                        |
+ | `authorize.replicaCount`            | Number of Authorize pods to run                                                                                                                                                                            |                                                                                    | `1` |
++| `authorize.existingTLSSecret`       | Name of existing TLS Secret for authorize service                                                                                                                                                          |                                                                                    |
+ | `images.server.repository`          | Pomerium image                                                                                                                                                                                             | `pomerium/pomerium`                                                                |
+ | `images.server.tag`                 | Pomerium image tag                                                                                                                                                                                         | `latest`                                                                           |
+ | `images.server.pullPolicy`          | Pomerium image pull policy                                                                                                                                                                                 | `Always`                                                                           |
+@@ -107,8 +139,13 @@ A full listing of Pomerium's configuration variables can be found on the [config
+ | `metrics.enabled`                   | Enable prometheus metrics endpoint                                                                                                                                                                         | `false`                                                                            |
+ | `metrics.port`                      | Prometheus metrics endpoint port                                                                                                                                                                           | `9090`                                                                             |
+ 
++
+ ## Changelog
+ 
++### 3.0.0
++- Refactor TLS certificates to use Kubernetes TLS secrets
++- Generate TLS certificates in a hook to prevent certificate churn
++
+ ### 2.0.0
+ 
+ - Expose replica count for individual services
+@@ -117,6 +154,25 @@ A full listing of Pomerium's configuration variables can be found on the [config
+   
+ ## Upgrading
+ 
++### 3.0.0
++
++- This version moves all certificates to TLS secrets.  
++  - If you have existing generated certificates:
++    - Let pomerium regenerate your certificates during upgrade
++      - set `config.forceGenerateTLS` to `true`
++      - upgrade
++      - set `config.forceGenerateTLS` to `false`
++    - **OR:** To retain your certificates
++      - save your existing pomerium secret
++      - set `config.existingLegacyTLSSecret` to `true` 
++      - set `config.existingConfig` to point to your configuration secret
++      - upgrade
++      - re-create pomerium secret from saved yaml
++  - If you have externally sourced certificates in your pomerium secret:
++    - [Move and convert your certificates](scripts/upgrade-v3.0.0.sh) to type TLS Secrets and configure `[service].existingTLSSecret` to point to your secrets
++    - **OR:** To continue using your certificates from the existing config, set `config.existingLegacyTLSSecret` to `true`
++    
++****
+ ### 2.0.0
+ 
+ - You will need to run `helm upgrade --force` to recreate the authorize service correctly
+diff --git a/stable/pomerium/scripts/upgrade-v3.0.0.sh b/stable/pomerium/scripts/upgrade-v3.0.0.sh
+new file mode 100755
+index 000000000..ab0672d7b
+--- /dev/null
++++ b/stable/pomerium/scripts/upgrade-v3.0.0.sh
+@@ -0,0 +1,23 @@
++#!/bin/bash -e
++
++if [ "${1}" == "" ] || [ "${2}" == "" ]; then
++    echo "Usage: $0 [secret name] [namespace]"
++fi
++
++DIR=$(mktemp -d)
++NAME=${1:-pomerium}
++NAMESPACE=${2:-default}
++for service in authenticate authorize proxy; do
++    kubectl get secrets "${NAME}" -n "${NAMESPACE}" -o jsonpath="{.data.${service}-key}" | base64 -D | base64 -D >"${DIR}/${service}.key"
++    kubectl get secrets "${NAME}" -n "${NAMESPACE}" -o jsonpath="{.data.${service}-cert}" | base64 -D | base64 -D >"${DIR}/${service}.crt"
++
++    kubectl create secret tls "${NAME}-${service}-tls" \
++        --cert="${DIR}/${service}.crt" \
++        --key="${DIR}/${service}.key"
++done
++
++kubectl get secrets "${NAME}" -n "${NAMESPACE}" -o jsonpath="{.data.ca-cert}" | base64 -D | base64 -D >"${DIR}/ca.crt"
++kubectl create secret generic "${NAME}-ca-tls" \
++    --from-file=ca.crt="${DIR}/ca.crt"
++echo "Please delete ${DIR} to clean up temporary certificate storage"
++echo "# rm ${DIR}/*.{key,crt} && rmdir ${DIR}"
+diff --git a/stable/pomerium/templates/_helpers.tpl b/stable/pomerium/templates/_helpers.tpl
+index 8df31f115..57297761e 100644
+--- a/stable/pomerium/templates/_helpers.tpl
++++ b/stable/pomerium/templates/_helpers.tpl
+@@ -113,3 +113,105 @@ Adapted from : https://github.com/helm/charts/blob/master/stable/drone/templates
+   {{- end -}}
+ {{- end -}}
+ {{- end -}}
++
++{{/* Determine secret name for Authenticate TLS Cert */}}
++{{- define "pomerium.authenticate.tlsSecret.name" -}}
++{{- if .Values.authenticate.existingTLSSecret -}}
++{{- .Values.authenticate.existingTLSSecret | trunc 63 | trimSuffix "-" -}}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- else if .Values.config.existingLegacyTLSSecret -}}
++{{ template "pomerium.fullname" . }}
++{{- else -}}
++{{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- printf "%s-authenticate-tls" .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- printf "%s-%s-authenticate-tls" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{/* Determine secret name for Authorize TLS Cert */}}
++{{- define "pomerium.authorize.tlsSecret.name" -}}
++{{- if .Values.authorize.existingTLSSecret -}}
++{{- .Values.authorize.existingTLSSecret | trunc 63 | trimSuffix "-" -}}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- else if .Values.config.existingLegacyTLSSecret -}}
++{{ template "pomerium.fullname" . }}
++{{- else -}}
++{{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- printf "%s-authorize-tls" .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- printf "%s-%s-authorize-tls" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{/* Determine secret name for Proxy TLS Cert */}}
++{{- define "pomerium.proxy.tlsSecret.name" -}}
++{{- if .Values.proxy.existingTLSSecret -}}
++{{- .Values.proxy.existingTLSSecret | trunc 63 | trimSuffix "-" -}}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- else if .Values.config.existingLegacyTLSSecret -}}
++{{ template "pomerium.fullname" . }}
++{{- else -}}
++{{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- printf "%s-proxy-tls" .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- printf "%s-%s-proxy-tls" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{/* Set up secret data field names for each service */}}
++{{- define "pomerium.proxy.tlsSecret.certName" -}}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- printf "%s" (ternary "tls.crt" "proxy-cert" (empty .Values.config.existingLegacyTLSSecret)) -}}
++{{- end -}}
++{{- define "pomerium.proxy.tlsSecret.keyName" -}}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- printf "%s" (ternary "tls.key" "proxy-key" (empty .Values.config.existingLegacyTLSSecret)) -}}
++{{- end -}}
++
++{{- define "pomerium.authenticate.tlsSecret.certName" -}}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- printf "%s" (ternary "tls.crt" "authenticate-cert" (empty .Values.config.existingLegacyTLSSecret)) -}}
++{{- end -}}
++{{- define "pomerium.authenticate.tlsSecret.keyName" -}}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- printf "%s" (ternary "tls.key" "authenticate-key" (empty .Values.config.existingLegacyTLSSecret)) -}}
++{{- end -}}
++
++{{- define "pomerium.authorize.tlsSecret.certName" -}}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- printf "%s" (ternary "tls.crt" "authorize-cert" (empty .Values.config.existingLegacyTLSSecret)) -}}
++{{- end -}}
++{{- define "pomerium.authorize.tlsSecret.keyName" -}}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- printf "%s" (ternary "tls.key" "authorize-key" (empty .Values.config.existingLegacyTLSSecret)) -}}
++{{- end -}}
++
++{{- define "pomerium.caSecret.name" -}}
++{{if .Values.config.existingCASecret }}
++{{- .Values.proxy.existingCASecret | trunc 63 | trimSuffix "-" -}}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- else if .Values.config.existingLegacyTLSSecret -}}
++{{- template "pomerium.fullname" . -}}
++{{- else -}}
++{{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- printf "%s-ca-tls" .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- printf "%s-%s-ca-tls" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{- define "pomerium.caSecret.certName" -}}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- printf "%s" (ternary "ca.crt" "ca-cert" (empty .Values.config.existingLegacyTLSSecret)) -}}
++{{- end -}}
++
++
+diff --git a/stable/pomerium/templates/authenticate-deployment.yaml b/stable/pomerium/templates/authenticate-deployment.yaml
+index 9d4cec61b..a23600d20 100644
+--- a/stable/pomerium/templates/authenticate-deployment.yaml
++++ b/stable/pomerium/templates/authenticate-deployment.yaml
+@@ -92,21 +92,27 @@ spec:
+               name:  {{ $secretName }}
+               key: idp-service-account
+ {{- end }}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- if .Values.config.existingLegacyTLSSecret }}
+         - name: CERTIFICATE
+           valueFrom:
+             secretKeyRef:
+-              name:  {{ $secretName }}
+-              key:  authenticate-cert
++              name:  {{ template "pomerium.authenticate.tlsSecret.name" . }}
++              key:  {{ template "pomerium.authenticate.tlsSecret.certName" . }}
+         - name: CERTIFICATE_KEY
+           valueFrom:
+             secretKeyRef:
+-              name:  {{ $secretName }}
+-              key:  authenticate-key
++              name:  {{ template "pomerium.authenticate.tlsSecret.name" . }}
++              key:  {{ template "pomerium.authenticate.tlsSecret.keyName" . }}
+         - name: CERTIFICATE_AUTHORITY
+           valueFrom:
+             secretKeyRef:
+-              name:  {{ $secretName }}
+-              key:  ca-cert
++              name:  {{ template "pomerium.caSecret.name" . }}
++              key:  {{ template "pomerium.caSecret.certName" . }}
++{{- else }}
++        - name: CERTIFICATE_AUTHORITY_FILE
++          value: "/pomerium/ca.pem"
++{{- end }}
+ {{- range $name, $value := .Values.extraEnv }}
+         - name: {{ $name }}
+           value: {{ quote $value }}
+@@ -130,17 +136,39 @@ spec:
+             scheme: HTTPS
+         resources:
+ {{ toYaml .Values.resources | indent 10 }}
+-{{- if or .Values.config.existingConfig .Values.config.policy }}
+         volumeMounts:
++{{- if or .Values.config.existingConfig .Values.config.policy }}
+         - mountPath: /etc/pomerium/
+           name: config
++{{- end }}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- if not .Values.config.existingLegacyTLSSecret }}
++        - mountPath: /pomerium/cert.pem
++          name: service-tls
++          subPath: {{ template "pomerium.authenticate.tlsSecret.certName" . }}
++        - mountPath: /pomerium/privkey.pem
++          name: service-tls
++          subPath: {{ template "pomerium.authenticate.tlsSecret.keyName" . }}
++        - mountPath: /pomerium/ca.pem
++          name: ca-tls
++          subPath: {{ template "pomerium.caSecret.certName" . }}
++{{- end }}
+       volumes:
++{{- if or .Values.config.existingConfig .Values.config.policy }}
+       - name: config
+         configMap:
+           name: {{ $configName }}
+ {{- end }}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- if not .Values.config.existingLegacyTLSSecret }}
++      - name: service-tls
++        secret:
++          secretName: {{ template "pomerium.authenticate.tlsSecret.name" . }}
++      - name: ca-tls
++        secret:
++          secretName: {{ template "pomerium.caSecret.name" . }}
++{{- end }}
+ {{- if .Values.extraVolumes }}
+-      volumes:
+ {{- toYaml .Values.extraVolumes | indent 8 }}
+ {{- end }}
+ {{- if .Values.imagePullSecrets }}
+diff --git a/stable/pomerium/templates/authorize-deployment.yaml b/stable/pomerium/templates/authorize-deployment.yaml
+index f4889f636..d8b5b6c26 100644
+--- a/stable/pomerium/templates/authorize-deployment.yaml
++++ b/stable/pomerium/templates/authorize-deployment.yaml
+@@ -64,21 +64,27 @@ spec:
+             secretKeyRef:
+               name: {{ $secretName }}
+               key: shared-secret
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- if .Values.config.existingLegacyTLSSecret }}
+         - name: CERTIFICATE
+           valueFrom:
+             secretKeyRef:
+-              name: {{ $secretName }}
+-              key: authorize-cert
++              name:  {{ template "pomerium.authorize.tlsSecret.name" . }}
++              key:  {{ template "pomerium.authorize.tlsSecret.certName" . }}
+         - name: CERTIFICATE_KEY
+           valueFrom:
+             secretKeyRef:
+-              name: {{ $secretName }}
+-              key: authorize-key
++              name:  {{ template "pomerium.authorize.tlsSecret.name" . }}
++              key:  {{ template "pomerium.authorize.tlsSecret.keyName" . }}
+         - name: CERTIFICATE_AUTHORITY
+           valueFrom:
+             secretKeyRef:
+-              name: {{ $secretName }}
+-              key: ca-cert
++              name:  {{ template "pomerium.caSecret.name" . }}
++              key:  {{ template "pomerium.caSecret.certName" . }}
++{{- else }}
++        - name: CERTIFICATE_AUTHORITY_FILE
++          value: "/pomerium/ca.pem"
++{{- end }}
+ {{- range $name, $value := .Values.extraEnv }}
+         - name: {{ $name }}
+           value: {{ quote $value }}
+@@ -102,15 +108,38 @@ spec:
+             scheme: HTTPS
+         resources:
+ {{ toYaml .Values.resources | indent 10 }}
+-{{- if or .Values.config.existingConfig .Values.config.policy }}
+         volumeMounts:
++{{- if or .Values.config.existingConfig .Values.config.policy }}
+         - mountPath: /etc/pomerium/
+           name: config
++{{- end }}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- if not .Values.config.existingLegacyTLSSecret }}
++        - mountPath: /pomerium/cert.pem
++          name: service-tls
++          subPath: {{ template "pomerium.authorize.tlsSecret.certName" . }}
++        - mountPath: /pomerium/privkey.pem
++          name: service-tls
++          subPath: {{ template "pomerium.authorize.tlsSecret.keyName" . }}
++        - mountPath: /pomerium/ca.pem
++          name: ca-tls
++          subPath: {{ template "pomerium.caSecret.certName" . }}
++{{- end }}
+       volumes:
++{{- if or .Values.config.existingConfig .Values.config.policy }}
+       - name: config
+         configMap:
+           name: {{ $configName }}
+ {{- end }}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- if not .Values.config.existingLegacyTLSSecret }}
++      - name: service-tls
++        secret:
++          secretName: {{ template "pomerium.authorize.tlsSecret.name" . }}
++      - name: ca-tls
++        secret:
++          secretName: {{ template "pomerium.caSecret.name" . }}
++{{- end }}
+ {{- if .Values.extraVolumes }}
+       volumes:
+ {{- toYaml .Values.extraVolumes | indent 8 }}
+diff --git a/stable/pomerium/templates/proxy-deployment.yaml b/stable/pomerium/templates/proxy-deployment.yaml
+index a5165a7aa..781e8e49f 100644
+--- a/stable/pomerium/templates/proxy-deployment.yaml
++++ b/stable/pomerium/templates/proxy-deployment.yaml
+@@ -75,21 +75,27 @@ spec:
+           value: {{ default (printf "https://%s.%s.svc.cluster.local" (include "pomerium.authorize.fullname" .) .Release.Namespace ) .Values.proxy.authorizeInternalUrl}}
+         - name: AUTHENTICATE_INTERNAL_URL
+           value: {{ default (printf "https://%s.%s.svc.cluster.local" (include "pomerium.authenticate.fullname" .) .Release.Namespace ) .Values.proxy.authenticateInternalUrl}}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- if .Values.config.existingLegacyTLSSecret }}
+         - name: CERTIFICATE
+           valueFrom:
+             secretKeyRef:
+-              name: {{ $secretName }}
+-              key: proxy-cert
++              name:  {{ template "pomerium.proxy.tlsSecret.name" . }}
++              key:  {{ template "pomerium.proxy.tlsSecret.certName" . }}
+         - name: CERTIFICATE_KEY
+           valueFrom:
+             secretKeyRef:
+-              name: {{ $secretName }}
+-              key: proxy-key
++              name:  {{ template "pomerium.proxy.tlsSecret.name" . }}
++              key:  {{ template "pomerium.proxy.tlsSecret.keyName" . }}
+         - name: CERTIFICATE_AUTHORITY
+           valueFrom:
+             secretKeyRef:
+-              name: {{ $secretName }}
+-              key:  ca-cert
++              name:  {{ template "pomerium.caSecret.name" . }}
++              key:  {{ template "pomerium.caSecret.certName" . }}
++{{- else }}
++        - name: CERTIFICATE_AUTHORITY_FILE
++          value: "/pomerium/ca.pem"
++{{- end }}
+ {{- range $name, $value := .Values.extraEnv }}
+         - name: {{ $name }}
+           value: {{ quote $value }}
+@@ -113,15 +119,38 @@ spec:
+             scheme: HTTPS
+         resources:
+ {{ toYaml .Values.resources | indent 10 }}
+-{{- if or .Values.config.existingConfig .Values.config.policy }}
+         volumeMounts:
++{{- if or .Values.config.existingConfig .Values.config.policy }}
+         - mountPath: /etc/pomerium/
+           name: config
++{{- end }}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- if not .Values.config.existingLegacyTLSSecret }}
++        - mountPath: /pomerium/cert.pem
++          name: service-tls
++          subPath: {{ template "pomerium.proxy.tlsSecret.certName" . }}
++        - mountPath: /pomerium/privkey.pem
++          name: service-tls
++          subPath: {{ template "pomerium.proxy.tlsSecret.keyName" . }}
++        - mountPath: /pomerium/ca.pem
++          name: ca-tls
++          subPath: {{ template "pomerium.caSecret.certName" . }}
++{{- end }}
+       volumes:
++{{- if or .Values.config.existingConfig .Values.config.policy }}
+       - name: config
+         configMap:
+           name: {{ $configName }}
+ {{- end }}
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- if not .Values.config.existingLegacyTLSSecret }}
++      - name: service-tls
++        secret:
++          secretName: {{ template "pomerium.proxy.tlsSecret.name" . }}
++      - name: ca-tls
++        secret:
++          secretName: {{ template "pomerium.caSecret.name" . }}
++{{- end }}
+ {{- if .Values.extraVolumes }}
+       volumes:
+ {{- toYaml .Values.extraVolumes | indent 8 }}
+diff --git a/stable/pomerium/templates/secret.yaml b/stable/pomerium/templates/secret.yaml
+index 51a43cb5d..0800f172d 100644
+--- a/stable/pomerium/templates/secret.yaml
++++ b/stable/pomerium/templates/secret.yaml
+@@ -18,29 +18,5 @@ data:
+ {{- if .Values.authenticate.idp.serviceAccount }}
+   idp-service-account: {{ .Values.authenticate.idp.serviceAccount | b64enc }}
+ {{- end }}
+-{{- if .Values.config.generateTLS }}
+-{{- $ca := genCA "default-ca" 3650 }}
+-{{- $authenticateSN:= list (printf "authenticate.%s" .Values.config.rootDomain) (printf "%s.%s.svc.cluster.local" (include "pomerium.authenticate.fullname" .) .Release.Namespace )}}
+-{{- $authorizeSN:= list (printf "authorize.%s" .Values.config.rootDomain) (printf "%s.%s.svc.cluster.local" (include "pomerium.authorize.fullname" .) .Release.Namespace )}}
+-{{- $cn := default "example.com" .Values.config.rootDomain }}
+-  ca-cert: {{ $ca.Cert | b64enc | b64enc }}
+-  ca-key: {{ $ca.Key | b64enc | b64enc }}
+-{{- $kp := genSignedCert $cn ( default nil .Values.authenticate.tls.defaultIPList ) ( default $authenticateSN .Values.authenticate.tls.defaultSANList ) 3650 $ca }}
+-  authenticate-cert: {{ $kp.Cert | b64enc | b64enc }}
+-  authenticate-key: {{ $kp.Key | b64enc | b64enc }}
+-{{- $kp := genSignedCert $cn ( default nil .Values.authorize.tls.defaultIPList ) ( default $authorizeSN .Values.authorize.tls.defaultSANList ) 3650 $ca }}
+-  authorize-cert: {{ $kp.Cert | b64enc | b64enc }}
+-  authorize-key: {{ $kp.Key | b64enc | b64enc }}
+-{{- $kp := genSignedCert $cn ( default nil .Values.proxy.tls.defaultIPList ) ( default nil .Values.proxy.tls.defaultSANList ) 3650 $ca }}
+-  proxy-cert: {{ $kp.Cert | b64enc | b64enc }}
+-  proxy-key: {{ $kp.Key | b64enc | b64enc }}
+-{{- else }}
+-  ca-cert: {{ .Values.config.ca | b64enc }}
+-  proxy-cert: {{ .Values.proxy.tls.cert | b64enc }}
+-  proxy-key: {{ .Values.proxy.tls.key | b64enc }}
+-  authenticate-cert: {{ .Values.authenticate.tls.cert | b64enc }}
+-  authenticate-key: {{ .Values.authenticate.tls.key | b64enc }}
+-  authorize-cert: {{ .Values.authorize.tls.cert | b64enc }}
+-  authorize-key: {{ .Values.authorize.tls.key | b64enc }}
+-{{- end }}
+ {{- end }}
++
+diff --git a/stable/pomerium/templates/tls-secrets.yaml b/stable/pomerium/templates/tls-secrets.yaml
+index 93bee98c0..1fa34c35f 100644
+--- a/stable/pomerium/templates/tls-secrets.yaml
++++ b/stable/pomerium/templates/tls-secrets.yaml
+@@ -16,3 +16,138 @@ data:
+ ---
+ {{- end }}
+ {{- end }}
++
++{{- define "pomerium.authenticate.tlsSecretObject" -}}
++apiVersion: v1
++kind: Secret
++metadata:
++  labels:
++    app.kubernetes.io/name: {{ template "pomerium.name" . }}
++    helm.sh/chart: {{ template "pomerium.chart" . }}
++    app.kubernetes.io/managed-by: {{ .Release.Service }}
++    app.kubernetes.io/instance: {{ .Release.Name }}
++  annotations:
++{{- if .Values.config.forceGenerateTLS }}
++    helm.sh/hook: pre-upgrade
++{{- else if .Values.config.generateTLS }}
++    helm.sh/hook: pre-install
++{{- end }}
++  name: {{ template "pomerium.authenticate.tlsSecret.name" . }}
++  namespace: {{ .Release.Namespace }}
++type: kubernetes.io/tls
++data:
++{{- end -}}
++
++{{- define "pomerium.authorize.tlsSecretObject" -}}
++apiVersion: v1
++kind: Secret
++metadata:
++  labels:
++    app.kubernetes.io/name: {{ template "pomerium.name" . }}
++    helm.sh/chart: {{ template "pomerium.chart" . }}
++    app.kubernetes.io/managed-by: {{ .Release.Service }}
++    app.kubernetes.io/instance: {{ .Release.Name }}
++  annotations:
++{{- if .Values.config.forceGenerateTLS }}
++    helm.sh/hook: pre-upgrade
++{{- else if .Values.config.generateTLS }}
++    helm.sh/hook: pre-install
++{{- end }}
++  name: {{ template "pomerium.authorize.tlsSecret.name" . }}
++  namespace: {{ .Release.Namespace }}
++type: kubernetes.io/tls
++data:
++{{- end -}}
++
++{{- define "pomerium.proxy.tlsSecretObject" -}}
++apiVersion: v1
++kind: Secret
++metadata:
++  labels:
++    app.kubernetes.io/name: {{ template "pomerium.name" . }}
++    helm.sh/chart: {{ template "pomerium.chart" . }}
++    app.kubernetes.io/managed-by: {{ .Release.Service }}
++    app.kubernetes.io/instance: {{ .Release.Name }}
++  annotations:
++{{- if .Values.config.forceGenerateTLS }}
++    helm.sh/hook: pre-upgrade
++{{- else if .Values.config.generateTLS }}
++    helm.sh/hook: pre-install
++{{- end }}
++  name: {{ template "pomerium.proxy.tlsSecret.name" . }}
++  namespace: {{ .Release.Namespace }}
++type: kubernetes.io/tls
++data:
++{{- end -}}
++
++{{- define "pomerium.ca.tlsSecretObject" -}}
++apiVersion: v1
++kind: Secret
++metadata:
++  labels:
++    app.kubernetes.io/name: {{ template "pomerium.name" . }}
++    helm.sh/chart: {{ template "pomerium.chart" . }}
++    app.kubernetes.io/managed-by: {{ .Release.Service }}
++    app.kubernetes.io/instance: {{ .Release.Name }}
++  annotations:
++{{- if .Values.config.forceGenerateTLS }}
++    helm.sh/hook: pre-upgrade
++{{- else if .Values.config.generateTLS }}
++    helm.sh/hook: pre-install
++{{- end }}
++  name: {{ template "pomerium.caSecret.name" . }}
++  namespace: {{ .Release.Namespace }}
++type: Opaque
++data:
++{{- end -}}
++
++{{- /* TODO in future: Remove legacy logic */ -}}
++{{- if not .Values.config.existingLegacyTLSSecret }}
++{{-   if and .Values.config.generateTLS (or .Release.IsInstall .Values.config.forceGenerateTLS) }}
++{{- $ca := genCA "default-ca" 3650 }}
++{{- $authenticateSN:= list (printf "authenticate.%s" .Values.config.rootDomain) (printf "%s.%s.svc.cluster.local" (include "pomerium.authenticate.fullname" .) .Release.Namespace )}}
++{{- $authorizeSN:= list (printf "authorize.%s" .Values.config.rootDomain) (printf "%s.%s.svc.cluster.local" (include "pomerium.authorize.fullname" .) .Release.Namespace )}}
++{{- $cn := default "example.com" .Values.config.rootDomain }}
++{{ template "pomerium.ca.tlsSecretObject" . }}
++  {{ template "pomerium.caSecret.certName" . }}: {{ $ca.Cert | b64enc }}
++  ca.key: {{ $ca.Key | b64enc }}
++---
++{{- $kp := genSignedCert $cn ( default nil .Values.authenticate.tls.defaultIPList ) ( default $authenticateSN .Values.authenticate.tls.defaultSANList ) 3650 $ca }}
++{{ template "pomerium.authenticate.tlsSecretObject" . }}
++  {{ template "pomerium.authenticate.tlsSecret.certName" . }}: {{ $kp.Cert | b64enc }}
++  {{ template "pomerium.authenticate.tlsSecret.keyName" . }}: {{ $kp.Key | b64enc }}
++---
++{{- $kp := genSignedCert $cn ( default nil .Values.authorize.tls.defaultIPList ) ( default $authorizeSN .Values.authorize.tls.defaultSANList ) 3650 $ca }}
++{{ template "pomerium.authorize.tlsSecretObject" . }}
++  {{ template "pomerium.authorize.tlsSecret.certName" . }}: {{ $kp.Cert | b64enc }}
++  {{ template "pomerium.authorize.tlsSecret.keyName" . }}: {{ $kp.Key | b64enc }}
++---
++{{- $kp := genSignedCert $cn ( default nil .Values.proxy.tls.defaultIPList ) ( default nil .Values.proxy.tls.defaultSANList ) 3650 $ca }}
++{{ template "pomerium.proxy.tlsSecretObject" . }}
++  {{ template "pomerium.proxy.tlsSecret.certName" . }}: {{ $kp.Cert | b64enc }}
++  {{ template "pomerium.proxy.tlsSecret.keyName" . }}: {{ $kp.Key | b64enc }}
++{{-   else if not .Values.config.generateTLS }}
++{{-     if and (not .Values.config.existingCASecret) .Values.config.ca }}
++{{ template "pomerium.ca.tlsSecretObject" . }}
++  {{ template "pomerium.caSecret.certName" . }}: {{ .Values.config.ca | b64enc }}
++{{-     end }}
++{{-     if and (not .Values.authenticate.existingTLSSecret) .Values.authenticate.tls.cert .Values.authenticate.tls.key }}
++---
++{{ template "pomerium.authenticate.tlsSecretObject" . }}
++  {{ template "pomerium.authenticate.tlsSecret.certName" . }}: {{ .Values.authenticate.tls.cert | b64enc }}
++  {{ template "pomerium.authenticate.tlsSecret.keyName" . }}: {{ .Values.authenticate.tls.key | b64enc }}
++{{-     end }}
++{{-     if and (not .Values.authorize.existingTLSSecret) .Values.authorize.tls.cert .Values.authorize.tls.key }}
++---
++{{ template "pomerium.authorize.tlsSecretObject" . }}
++  {{ template "pomerium.authorize.tlsSecret.certName" . }}: {{ .Values.authorize.tls.cert | b64enc }}
++  {{ template "pomerium.authorize.tlsSecret.keyName" . }}: {{ .Values.authorize.tls.key | b64enc }}
++{{-     end }}
++{{-     if and (not .Values.proxy.existingTLSSecret) .Values.proxy.tls.cert .Values.proxy.tls.key }}
++---
++{{ template "pomerium.proxy.tlsSecretObject" . }}
++  {{ template "pomerium.proxy.tlsSecret.certName" . }}: {{ .Values.proxy.tls.cert | b64enc }}
++  {{ template "pomerium.proxy.tlsSecret.keyName" . }}: {{ .Values.proxy.tls.key | b64enc }}
++{{-     end }}
++{{-   end }}
++{{- end }}
+diff --git a/stable/pomerium/values.yaml b/stable/pomerium/values.yaml
+index b2048f59c..59c9edc5c 100644
+--- a/stable/pomerium/values.yaml
++++ b/stable/pomerium/values.yaml
+@@ -7,9 +7,11 @@ config:
+   rootDomain: corp.beyondperimeter.com
+   # existingSecret:
+   # existingConfig:
++  existingLegacyTLSSecret: false
+   sharedSecret: ""
+   cookieSecret: ""
+   generateTLS: true
++  forceGenerateTLS: false
+   extraOpts: {}
+   existingPolicy: ""
+   policy: {}
+@@ -17,6 +19,7 @@ config:
+ authenticate:
+   # fullnameOverride: authenticate
+   # nameOverride: authenticate
++  existingTLSSecret: ""
+   redirectUrl: ""
+   # see https://www.pomerium.io/docs/identity-providers.html
+   idp:
+@@ -36,6 +39,7 @@ authenticate:
+ authorize:
+   # fullnameOverride: authorize
+   # nameOverride: authorize
++  existingTLSSecret: ""
+   tls:
+     cert: ""
+     key: ""
+@@ -47,6 +51,7 @@ authorize:
+ proxy:
+   # fullnameOverride: proxy
+   # nameOverride: proxy
++  existingTLSSecret: ""
+   tls:
+     cert: ""
+     key: ""

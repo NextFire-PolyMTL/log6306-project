@@ -1,0 +1,957 @@
+commit f9826507a13abc719ca7240f9eb40ad9be984b17
+Author: Joshua Dotson <josdotso@cisco.com>
+Date:   Mon Feb 26 02:35:43 2018 -0500
+
+    [incubator/logstash] Revamp logstash from Deployment to StatefulSet to support Persisted Queues (#3844)
+    
+    * [incubator/logstash] Revamp logstash as scraped StatefulSet
+    
+    * Give boilerplate for kafka input and output.
+    * Default to no functional dependency on elasticsearch.
+    * Prepare for persisted queues use case by default.
+    * Configure logstash via env var instead of configmap.
+    * Prepare for real HTTP ingress.
+    * Disable legacy syslog protocols by default, keep boilerplate.
+    * Nominate `beats` as the only non-HTTP default input.
+    * Support exposing non-HTTP TCP ports via internal-to-VPC ELB.
+    * Parameterize many prod-centric settings.
+    * Support easy Prometheus scraping of logstash_exporter running in each pod.
+      * https://github.com/BonnierNews/logstash_exporter
+    * Upgrade to logstash-oss:6.2.2
+    * Use logstash health API for logstash health checks
+    
+    * [incubator/logstash] Fix missing backquotes in README
+    
+    * [incubator/logstash] Apply more logstash best practices
+    
+    - Set default pipeline to beats->ES
+    - Include official boilerplate for ES output (when beats input)
+    - Give example of private zone dns record for internal ELB.
+    - Disable HTTP input by default, RE: beats as default input.
+    - Describe multi-pipeline usage recommendations.
+    - Show NOTES.txt for HTTP only when applicable.
+    
+    * [incubator/logstash] Refining PR #3844 per review comments
+    
+    - Reverse erroneous addition of josdotso as maintainer.
+    - Add notes on best practice of loading beats-generated.
+      index-template into elasticsearch.
+    - Refactored AWS-specific annotations as examples at values file.
+    - Reworked `serviceAwsLoadBalancerInternal` as agnostic `serviceLoadBalancer`.
+    - Simplified name of serviceLoadBalancer template and resource.
+    - Implemented storageClass best practices at values and statefulset.
+    
+    * [incubator/logstash] Fix minor typos at README
+    
+    * [incubator/logstash] Remove service-lb; Support service annotations.
+
+diff --git a/incubator/logstash/Chart.yaml b/incubator/logstash/Chart.yaml
+index b5d321f42..1ec1c6b10 100644
+--- a/incubator/logstash/Chart.yaml
++++ b/incubator/logstash/Chart.yaml
+@@ -3,8 +3,8 @@ description: Logstash is an open source, server-side data processing pipeline
+ icon: https://www.elastic.co/assets/blt86e4472872eed314/logo-elastic-logstash-lt.svg
+ home: https://www.elastic.co/products/logstash
+ name: logstash
+-version: 0.5.1
+-appVersion: 6.2.1
++version: 0.6.0
++appVersion: 6.2.2
+ sources:
+ - https://www.docker.elastic.co
+ - https://www.elastic.co/guide/en/logstash/current/index.html
+diff --git a/incubator/logstash/README.md b/incubator/logstash/README.md
+index cd3ed20d1..a4acd7ded 100644
+--- a/incubator/logstash/README.md
++++ b/incubator/logstash/README.md
+@@ -27,35 +27,84 @@ $ helm delete my-release
+ The command removes nearly all the Kubernetes components associated with the
+ chart and deletes the release.
+ 
++## Best Practices
++
++### Release and tune this chart once per Logstash pipeline
++
++To achieve multiple pipelines with this chart, current best practice is to
++maintain one pipeline per chart release. In this way configuration is
++simplified and pipelines are more isolated from one another.
++
++### Default Pipeline: Beats Input -> Elasticsearch Output
++
++Current best practice for ELK logging is to ship logs from hosts using Filebeat
++to logstash where persistent queues are enabled. Filebeat supports structured
++(e.g. JSON) and unstructured (e.g. log lines) log shipment.
++
++### Load Beats-generated index template into Elasticsearch
++
++To best utilize the combination of Beats, Logstash and Elasticsearch,
++load Beats-generated index templates into Elasticsearch as described [here](
++https://www.elastic.co/guide/en/beats/filebeat/current/filebeat-template.html).
++
++On a remote-to-Kubernetes Linux instance you might run the following ommand to
++load that instance's Beats-generated index template into Elasticsearch
++(Elasticsearch hostname will vary).
++
++```
++filebeat setup --template -E output.logstash.enabled=false \
++  -E 'output.elasticsearch.hosts=["elasticsearch.cluster.local:9200"]'
++```
++
++### Links
++
++Please review the following links that expound on current best practices.
++
++- https://www.elastic.co/blog/structured-logging-filebeat
++- https://www.elastic.co/guide/en/beats/filebeat/current/filebeat-template.html
++- https://www.elastic.co/guide/en/logstash/current/deploying-and-scaling.html
++- https://www.elastic.co/guide/en/logstash/current/persistent-queues.html
++
+ ## Configuration
+ 
+-The following tables lists the configurable parameters of the drone charts and their default values.
+-
+-|              Parameter               |                    Description                     |                     Default                      |
+-| -----------------------------------  | -------------------------------------------------- | ------------------------------------------------ |
+-| `replicaCount`                       | Number of replicas                                 | `1`                                              |
+-| `nodeSelector`                       | Node selectors                                     | `{}`                                             |
+-| `livenessProbe.initialDelaySeconds`  | initialDelaySeconds of Pod livenessProbe           | `60`                                             |
+-| `livenessProbe.periodSeconds`        | periodSeconds of Pod livenessProbe                 | `20`                                             |
+-| `readinessProbe.initialDelaySeconds` | initialDelaySeconds of Pod readinessProbe          | `60`                                             |
+-| `nodeSelector`                       | Node selectors                                     | `{}`                                             |
+-| `image.repository`                   | Container image name                               | `docker.elastic.co/logstash/logstash-oss`        |
+-| `image.tag`                          | Container image tag                                | `6.2.1`                                          |
+-| `image.pullPolicy`                   | Container image pull policy                        | `IfNotPresent`                                   |
+-| `service.type`                       | Service type (ClusterIP, NodePort or LoadBalancer) | `ClusterIP`                                      |
+-| `service.internalPort`               | Logstash internal port                             | `1514`                                           |
+-| `service.ports`                      | Service open ports                                 | `[TCP/1514, UDP/1514, TCP/5044]`                 |
+-| `ingress.enabled`                    | Enables Ingress                                    | `false`                                          |
+-| `ingress.annotations`                | Ingress annotations                                | `{}`                                             |
+-| `ingress.hosts`                      | Ingress accepted hostnames                         | `[]`                                             |
+-| `ingress.tls`                        | Ingress TLS configuration                          | `nil`                                            |
+-| `resources`                          | Pod resource requests & limits                     | `{}`                                             |
+-| `podAnnotations`                     | Pod annotations                                    | `{}`                                             |
+-| `podLabels`                          | Pod labels                                         | `{}`                                             |
+-| `elasticsearch.host`                 | ElasticSearch hostname                             | `elasticsearch-client.default.svc.cluster.local` |
+-| `elasticsearch.port`                 | ElasticSearch port                                 | `9200`                                           |
+-| `configData`                         | Extra logstash config                              | `{}`                                             |
+-| `patterns`                           | Logstash patterns configuration                    | `nil`                                            |
+-| `inputs`                             | Logstash inputs configuration                      | `(basic)`                                        |
+-| `filters`                            | Logstash filters configuration                     | `nil`                                            |
+-| `outputs`                            | Logstash outputs configuration                     | `(basic)`                                        |
++The following tables lists the configurable parameters of the chart and its default values.
++
++|              Parameter      |                    Description                     |                     Default                      |
++| --------------------------- | -------------------------------------------------- | ------------------------------------------------ |
++| `replicaCount`              | Number of replicas                                 | `1`                                              |
++| `podDisruptionBudget`       | Pod disruption budget                              | `maxUnavailable: 1`                              |
++| `updateStrategy`            | Update strategy                                    | `type: RollingUpdate`                            |
++| `image.repository`          | Container image name                               | `docker.elastic.co/logstash/logstash-oss`        |
++| `image.tag`                 | Container image tag                                | `6.2.2`                                          |
++| `image.pullPolicy`          | Container image pull policy                        | `IfNotPresent`                                   |
++| `service.type`              | Service type (ClusterIP, NodePort or LoadBalancer) | `ClusterIP`                                      |
++| `service.annotations`       | Service annotations                                | `{}`                                             |
++| `service.ports`             | Ports exposed by service                           | beats                                            |
++| `ports`                     | Ports exposed by logstash container                | beats                                            |
++| `ingress.enabled`           | Enables Ingress                                    | `false`                                          |
++| `ingress.annotations`       | Ingress annotations                                | `{}`                                             |
++| `ingress.path`              | Ingress path                                       | `/`                                              |
++| `ingress.hosts`             | Ingress accepted hostnames                         | `["logstash.cluster.local"]`                     |
++| `ingress.tls`               | Ingress TLS configuration                          | `[]`                                             |
++| `resources`                 | Pod resource requests & limits                     | `{}`                                             |
++| `nodeSelector`              | Node selector                                      | `{}`                                             |
++| `tolerations`               | Tolerations                                        | `[]`                                             |
++| `affinity`                  | Affinity or Anti-Affinity                          | `{}`                                             |
++| `podAnnotations`            | Pod annotations                                    | `{}`                                             |
++| `podLabels`                 | Pod labels                                         | `{}`                                             |
++| `livenessProbe`             | Liveness probe settings for logstash container     | (see `values.yaml`)                              |
++| `readinessProbe`            | Readiness probe settings for logstash container    | (see `values.yaml`)                              |
++| `persistence.enabled`       | Enable persistence                                 | `true`                                           |
++| `persistence.storageClass`  | Storage class for PVCs                             | unset                                            |
++| `persistence.accessMode`    | Access mode for PVCs                               | `ReadWriteOnce`                                  |
++| `persistence.size`          | Size for PVCs                                      | `2Gi`                                            |
++| `volumeMounts`              | Volume mounts to configure for logstash container  | (see `values.yaml`)                              |
++| `exporter.logstash`         | Prometheus logstash-exporter settings              | (see `values.yaml`)                              |
++| `exporter.logstash.enabled` | Enables Prometheus logstash-exporter               | `false`                                          |
++| `elasticsearch.host`        | ElasticSearch hostname                             | `elasticsearch-client.default.svc.cluster.local` |
++| `elasticsearch.port`        | ElasticSearch port                                 | `9200`                                           |
++| `config`                    | Logstash configuration key-values                  | (see `values.yaml`)                              |
++| `patterns`                  | Logstash patterns configuration                    | `nil`                                            |
++| `inputs`                    | Logstash inputs configuration                      | beats                                            |
++| `filters`                   | Logstash filters configuration                     | `nil`                                            |
++| `outputs`                   | Logstash outputs configuration                     | elasticsearch                                    |
+diff --git a/incubator/logstash/templates/NOTES.txt b/incubator/logstash/templates/NOTES.txt
+index 8d494c1bd..6fc698888 100644
+--- a/incubator/logstash/templates/NOTES.txt
++++ b/incubator/logstash/templates/NOTES.txt
+@@ -1,19 +1,21 @@
+-1. Get the application URL by running these commands:
+-{{- if .Values.ingress.enabled }}
+-{{- range .Values.ingress.hosts }}
+-  http://{{ . }}
+-{{- end }}
+-{{- else if contains "NodePort" .Values.service.type }}
++{{- if .Values.service.ports.http }}
++Get the Logstash HTTP Input URL by running these commands:
++  {{- if .Values.ingress.enabled }}
++    {{- range .Values.ingress.hosts }}
++  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ . }}{{ $.Values.ingress.path }}
++    {{- end }}
++  {{- else if contains "NodePort" .Values.service.type }}
+   export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ template "logstash.fullname" . }})
+   export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+   echo http://$NODE_IP:$NODE_PORT
+-{{- else if contains "LoadBalancer" .Values.service.type }}
++  {{- else if contains "LoadBalancer" .Values.service.type }}
+      NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+            You can watch the status of by running 'kubectl get svc -w {{ template "logstash.fullname" . }}'
+   export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "logstash.fullname" . }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+-  echo http://$SERVICE_IP:{{ .Values.service.externalPort }}
+-{{- else if contains "ClusterIP" .Values.service.type }}
++  echo http://$SERVICE_IP:{{ .Values.service.ports.http.port }}
++  {{- else if contains "ClusterIP" .Values.service.type }}
+   export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app={{ template "logstash.name" . }},release={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+   echo "Visit http://127.0.0.1:8080 to use your application"
+-  kubectl port-forward $POD_NAME 8080:{{ .Values.service.internalPort }}
++  kubectl port-forward $POD_NAME 8080:{{ .Values.service.ports.http.port }}
++  {{- end }}
+ {{- end }}
+diff --git a/incubator/logstash/templates/_helpers.tpl b/incubator/logstash/templates/_helpers.tpl
+index c8bebdf71..d88fb24b2 100644
+--- a/incubator/logstash/templates/_helpers.tpl
++++ b/incubator/logstash/templates/_helpers.tpl
+@@ -9,8 +9,24 @@ Expand the name of the chart.
+ {{/*
+ Create a default fully qualified app name.
+ We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
++If release name contains chart name it will be used as a full name.
+ */}}
+ {{- define "logstash.fullname" -}}
++{{- if .Values.fullnameOverride -}}
++{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
+ {{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
+ {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Create chart name and version as used by the chart label.
++*/}}
++{{- define "logstash.chart" -}}
++{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
+diff --git a/incubator/logstash/templates/configmap.yaml b/incubator/logstash/templates/configmap.yaml
+deleted file mode 100644
+index 053067e23..000000000
+--- a/incubator/logstash/templates/configmap.yaml
++++ /dev/null
+@@ -1,17 +0,0 @@
+----
+-apiVersion: v1
+-kind: ConfigMap
+-metadata:
+-  name: {{ template "logstash.fullname" . }}
+-  labels:
+-    app: {{ template "logstash.name" . }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+-    release: {{ .Release.Name }}
+-    heritage: {{ .Release.Service }}
+-data:
+-  logstash.yml: |-
+-    http.host: "0.0.0.0"
+-    path.config: /usr/share/logstash/pipeline
+-{{- if .Values.configData }}
+-{{ toYaml .Values.configData | indent 4 }}
+-{{- end }}
+diff --git a/incubator/logstash/templates/deployment.yaml b/incubator/logstash/templates/deployment.yaml
+deleted file mode 100644
+index ecd71fc4f..000000000
+--- a/incubator/logstash/templates/deployment.yaml
++++ /dev/null
+@@ -1,80 +0,0 @@
+-apiVersion: apps/v1beta1
+-kind: Deployment
+-metadata:
+-  name: {{ template "logstash.fullname" . }}
+-  labels:
+-    app: {{ template "logstash.name" . }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+-    release: {{ .Release.Name }}
+-    heritage: {{ .Release.Service }}
+-spec:
+-  replicas: {{ .Values.replicaCount }}
+-  template:
+-    metadata:
+-      labels:
+-        app: {{ template "logstash.name" . }}
+-        release: {{ .Release.Name }}
+-      {{- if .Values.podLabels }}
+-        # Allows custom labels to be specified
+-        {{- range $key, $val := .Values.podLabels }}
+-        {{ $key }}: {{ $val | quote }}
+-        {{- end }}
+-      {{- end }}
+-      annotations:
+-      {{- if .Values.podAnnotations }}
+-        # Allows custom annotations to be specified
+-        {{- range $key, $val := .Values.podAnnotations }}
+-        {{ $key }}: {{ $val | quote }}
+-        {{- end }}
+-      {{- end }}
+-    spec:
+-      containers:
+-        - name: {{ .Chart.Name }}
+-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+-          ports:
+-    {{- range $port := .Values.service.ports }}
+-            - name: {{ $port.serviceName }}
+-              containerPort: {{ $port.containerPort }}
+-              protocol: {{ $port.protocol }}
+-    {{- end }}
+-          livenessProbe:
+-            tcpSocket:
+-              port: {{ .Values.service.internalPort }}
+-            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+-            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+-          readinessProbe:
+-            tcpSocket:
+-              port: {{ .Values.service.internalPort }}
+-            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+-          env:
+-            - name: ELASTICSEARCH_HOST
+-              value: {{ .Values.elasticsearch.host | quote }}
+-            - name: ELASTICSEARCH_PORT
+-              value: {{ .Values.elasticsearch.port | quote }}
+-            - name: SYSLOG_PORT
+-              value: {{ .Values.service.internalPort | quote }}
+-          volumeMounts:
+-            - name: config
+-              mountPath: /usr/share/logstash/config/logstash.yml
+-              subPath: logstash.yml
+-            - name: pipeline
+-              mountPath: /usr/share/logstash/pipeline
+-            - name: patterns
+-              mountPath: /usr/share/logstash/patterns
+-          resources:
+-{{ toYaml .Values.resources | indent 12 }}
+-      volumes:
+-        - name: config
+-          configMap:
+-            name: {{ template "logstash.fullname" . }}
+-        - name: pipeline
+-          configMap:
+-            name: {{ template "logstash.fullname" . }}-pipeline
+-        - name: patterns
+-          configMap:
+-            name: {{ template "logstash.fullname" . }}-patterns
+-    {{- if .Values.nodeSelector }}
+-      nodeSelector:
+-{{ toYaml .Values.nodeSelector | indent 8 }}
+-    {{- end }}
+diff --git a/incubator/logstash/templates/ingress.yaml b/incubator/logstash/templates/ingress.yaml
+index 2ea4f683f..d92450440 100644
+--- a/incubator/logstash/templates/ingress.yaml
++++ b/incubator/logstash/templates/ingress.yaml
+@@ -1,32 +1,38 @@
+ {{- if .Values.ingress.enabled -}}
+-{{- $serviceName := include "logstash.fullname" . -}}
+-{{- $servicePort := .Values.service.externalPort -}}
++{{- $fullName := include "logstash.fullname" . -}}
++{{- $ingressPath := .Values.ingress.path -}}
+ apiVersion: extensions/v1beta1
+ kind: Ingress
+ metadata:
+-  name: {{ template "logstash.fullname" . }}
++  name: {{ $fullName }}
+   labels:
+     app: {{ template "logstash.name" . }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
++    chart: {{ template "logstash.chart" . }}
+     release: {{ .Release.Name }}
+     heritage: {{ .Release.Service }}
++{{- with .Values.ingress.annotations }}
+   annotations:
+-    {{- range $key, $value := .Values.ingress.annotations }}
+-      {{ $key }}: {{ $value | quote }}
+-    {{- end }}
++{{ toYaml . | indent 4 }}
++{{- end }}
+ spec:
++{{- if .Values.ingress.tls }}
++  tls:
++  {{- range .Values.ingress.tls }}
++    - hosts:
++      {{- range .hosts }}
++        - {{ . }}
++      {{- end }}
++      secretName: {{ .secretName }}
++  {{- end }}
++{{- end }}
+   rules:
+-    {{- range $host := .Values.ingress.hosts }}
+-    - host: {{ $host.name }}
++  {{- range .Values.ingress.hosts }}
++    - host: {{ . }}
+       http:
+         paths:
+-          - path: /
++          - path: {{ $ingressPath }}
+             backend:
+-              serviceName: {{ $host.serviceName }}
+-              servicePort: {{ $host.servicePort }}
+-    {{- end -}}
+-  {{- if .Values.ingress.tls }}
+-  tls:
+-{{ toYaml .Values.ingress.tls | indent 4 }}
+-  {{- end -}}
+-{{- end -}}
++              serviceName: {{ $fullName }}
++              servicePort: http
++  {{- end }}
++{{- end }}
+diff --git a/incubator/logstash/templates/patterns-cm.yaml b/incubator/logstash/templates/patterns-config.yaml
+similarity index 81%
+rename from incubator/logstash/templates/patterns-cm.yaml
+rename to incubator/logstash/templates/patterns-config.yaml
+index 1a88d014f..5149ffa17 100644
+--- a/incubator/logstash/templates/patterns-cm.yaml
++++ b/incubator/logstash/templates/patterns-config.yaml
+@@ -1,11 +1,10 @@
+----
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+   name: {{ template "logstash.fullname" . }}-patterns
+   labels:
+     app: {{ template "logstash.name" . }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
++    chart: {{ template "logstash.chart" . }}
+     release: {{ .Release.Name }}
+     heritage: {{ .Release.Service }}
+ data:
+diff --git a/incubator/logstash/templates/pipeline-cm.yaml b/incubator/logstash/templates/pipeline-config.yaml
+similarity index 88%
+rename from incubator/logstash/templates/pipeline-cm.yaml
+rename to incubator/logstash/templates/pipeline-config.yaml
+index d4de32f6b..2aea32297 100644
+--- a/incubator/logstash/templates/pipeline-cm.yaml
++++ b/incubator/logstash/templates/pipeline-config.yaml
+@@ -1,11 +1,10 @@
+----
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+   name: {{ template "logstash.fullname" . }}-pipeline
+   labels:
+     app: {{ template "logstash.name" . }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
++    chart: {{ template "logstash.chart" . }}
+     release: {{ .Release.Name }}
+     heritage: {{ .Release.Service }}
+ data:
+diff --git a/incubator/logstash/templates/poddisruptionbudget.yaml b/incubator/logstash/templates/poddisruptionbudget.yaml
+new file mode 100644
+index 000000000..f3c37ebd6
+--- /dev/null
++++ b/incubator/logstash/templates/poddisruptionbudget.yaml
+@@ -0,0 +1,15 @@
++apiVersion: policy/v1beta1
++kind: PodDisruptionBudget
++metadata:
++  name: {{ template "logstash.fullname" . }}
++  labels:
++    app: {{ template "logstash.name" . }}
++    chart: {{ template "logstash.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++spec:
++  selector:
++    matchLabels:
++      app: {{ template "logstash.name" . }}
++      release: {{ .Release.Name }}
++{{ toYaml .Values.podDisruptionBudget | indent 2 }}
+diff --git a/incubator/logstash/templates/service.yaml b/incubator/logstash/templates/service.yaml
+index ea40368e3..f94be2cbe 100644
+--- a/incubator/logstash/templates/service.yaml
++++ b/incubator/logstash/templates/service.yaml
+@@ -4,17 +4,19 @@ metadata:
+   name: {{ template "logstash.fullname" . }}
+   labels:
+     app: {{ template "logstash.name" . }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
++    chart: {{ template "logstash.chart" . }}
+     release: {{ .Release.Name }}
+     heritage: {{ .Release.Service }}
++  annotations:
++{{- with .Values.service.annotations }}
++{{ toYaml . | indent 4 }}
++{{- end }}
+ spec:
+   type: {{ .Values.service.type }}
+   ports:
+-  {{- range $port := .Values.service.ports }}
+-    - name: {{ $port.name }}
+-      port: {{ $port.containerPort }}
+-      protocol: {{ $port.protocol }}
+-      targetPort: {{ $port.containerPort }}
++  {{- range $key, $value := .Values.service.ports }}
++    - name: {{ $key }}
++{{ toYaml $value | indent 6 }}
+   {{- end }}
+   selector:
+     app: {{ template "logstash.name" . }}
+diff --git a/incubator/logstash/templates/statefulset.yaml b/incubator/logstash/templates/statefulset.yaml
+new file mode 100644
+index 000000000..32b15614e
+--- /dev/null
++++ b/incubator/logstash/templates/statefulset.yaml
+@@ -0,0 +1,144 @@
++apiVersion: apps/v1beta2
++kind: StatefulSet
++metadata:
++  name: {{ template "logstash.fullname" . }}
++  labels:
++    app: {{ template "logstash.name" . }}
++    chart: {{ template "logstash.chart" . }}
++    release: {{ .Release.Name }}
++    heritage: {{ .Release.Service }}
++spec:
++  serviceName: {{ template "logstash.fullname" . }}
++  replicas: {{ .Values.replicaCount }}
++  selector:
++    matchLabels:
++      app: {{ template "logstash.name" . }}
++      release: {{ .Release.Name }}
++  template:
++    metadata:
++      labels:
++        app: {{ template "logstash.name" . }}
++        release: {{ .Release.Name }}
++      {{- if .Values.podLabels }}
++        ## Custom pod labels
++        {{- range $key, $value := .Values.podLabels }}
++        {{ $key }}: {{ $value | quote }}
++        {{- end }}
++      {{- end }}
++      annotations:
++        checksum/patterns: {{ include (print $.Template.BasePath "/patterns-config.yaml") . | sha256sum }}
++        checksum/pipeline: {{ include (print $.Template.BasePath "/pipeline-config.yaml") . | sha256sum }}
++      {{- if .Values.podAnnotations }}
++        ## Custom pod annotations
++        {{- range $key, $value := .Values.podAnnotations }}
++        {{ $key }}: {{ $value | quote }}
++        {{- end }}
++      {{- end }}
++    spec:
++      securityContext:
++        runAsUser: 1000
++        fsGroup: 1000
++      containers:
++
++        ## logstash
++        - name: {{ .Chart.Name }}
++          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++          imagePullPolicy: {{ .Values.image.pullPolicy }}
++          ports:
++            - name: monitor
++              containerPort: {{ .Values.exporter.logstash.target.port }}
++              protocol: TCP
++{{ toYaml .Values.ports | indent 12 }}
++          livenessProbe:
++{{ toYaml .Values.livenessProbe | indent 12 }}
++          readinessProbe:
++{{ toYaml .Values.readinessProbe | indent 12 }}
++          env:
++            ## Logstash monitoring API host and port env vars
++            - name: HTTP_HOST
++              value: "0.0.0.0"
++            - name: HTTP_PORT
++              value: {{ .Values.exporter.logstash.target.port | quote }}
++            ## Elasticsearch output
++            - name: ELASTICSEARCH_HOST
++              value: {{ .Values.elasticsearch.host | quote }}
++            - name: ELASTICSEARCH_PORT
++              value: {{ .Values.elasticsearch.port | quote }}
++            ## Additional env vars
++          {{- range $key, $value := .Values.config }}
++            - name: {{ $key | upper | replace "." "_" }}
++              value: {{ $value | quote }}
++          {{- end }}
++          resources:
++{{ toYaml .Values.resources | indent 12 }}
++          volumeMounts:
++{{ toYaml .Values.volumeMounts | indent 12 }}
++
++{{- if .Values.exporter.logstash.enabled }}
++        ## logstash-exporter
++        - name: {{ .Chart.Name }}-exporter
++          image: "{{ .Values.exporter.logstash.image.repository }}:{{ .Values.exporter.logstash.image.tag }}"
++          imagePullPolicy: {{ .Values.exporter.logstash.image.pullPolicy }}
++          command: ["/bin/sh", "-c"]
++          ## Delay start of logstash-exporter to give logstash more time to come online.
++          args:
++            - >-
++              sleep 60;
++              exec /logstash_exporter
++                --logstash.endpoint=http://localhost:{{ .Values.exporter.logstash.target.port }}
++                --web.listen-address=:{{ .Values.exporter.logstash.port }}
++          ports:
++            - name: ls-exporter
++              containerPort: {{ .Values.exporter.logstash.port }}
++              protocol: TCP
++          livenessProbe:
++{{ toYaml .Values.exporter.logstash.livenessProbe | indent 12 }}
++          readinessProbe:
++{{ toYaml .Values.exporter.logstash.readinessProbe | indent 12 }}
++          {{- with .Values.exporter.logstash.config }}
++          env:
++            {{- range $key, $value := . }}
++            - name: {{ $key | upper | replace "." "_" }}
++              value: {{ $value | quote }}
++            {{- end }}
++          {{- end }}
++          resources:
++{{ toYaml .Values.exporter.logstash.resources | indent 12 }}
++{{- end }}
++
++    {{- with .Values.nodeSelector }}
++      nodeSelector:
++{{ toYaml . | indent 8 }}
++    {{- end }}
++    {{- with .Values.affinity }}
++      affinity:
++{{ toYaml . | indent 8 }}
++    {{- end }}
++    {{- with .Values.tolerations }}
++      tolerations:
++{{ toYaml . | indent 8 }}
++    {{- end }}
++      volumes:
++        - name: patterns
++          configMap:
++            name: {{ template "logstash.fullname" . }}-patterns
++        - name: pipeline
++          configMap:
++            name: {{ template "logstash.fullname" . }}-pipeline
++
++  volumeClaimTemplates:
++    - metadata:
++        name: data
++      spec:
++        accessModes:
++          - {{ .Values.persistence.accessMode | quote }}
++        resources:
++          requests:
++            storage: {{ .Values.persistence.size | quote }}
++      {{- if .Values.persistence.storageClass }}
++        {{- if (eq "-" .Values.persistence.storageClass) }}
++        storageClassName: ""
++        {{- else }}
++        storageClassName: "{{ .Values.persistence.storageClass }}"
++        {{- end }}
++      {{- end }}
+diff --git a/incubator/logstash/values.yaml b/incubator/logstash/values.yaml
+index cd7d386a1..9fe40e479 100644
+--- a/incubator/logstash/values.yaml
++++ b/incubator/logstash/values.yaml
+@@ -1,60 +1,68 @@
+-# Default values for logstash.
+-# This is a YAML-formatted file.
+-# Declare variables to be passed into your templates.
+ replicaCount: 1
+-nodeSelector: {}
++
++podDisruptionBudget:
++  maxUnavailable: 1
++
++updateStrategy:
++  type: RollingUpdate
++
+ image:
+   repository: docker.elastic.co/logstash/logstash-oss
+-  tag: 6.2.1
++  tag: 6.2.2
+   pullPolicy: IfNotPresent
++
+ service:
+   type: ClusterIP
+-  internalPort: 1514
++  annotations: {}
++    ## AWS example for use with LoadBalancer service type.
++    # external-dns.alpha.kubernetes.io/hostname: logstash.cluster.local
++    # service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
++    # service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+   ports:
+-    - name: "syslog-tcp"
++    # syslog-udp:
++    #   port: 1514
++    #   targetPort: syslog-udp
++    #   protocol: UDP
++    # syslog-tcp:
++    #   port: 1514
++    #   targetPort: syslog-tcp
++    #   protocol: TCP
++    beats:
++      port: 5044
++      targetPort: beats
+       protocol: TCP
+-      containerPort: 1514
+-    - name: "syslog-udp"
+-      protocol: UDP
+-      containerPort: 1514
+-    - name: "filebeat-tcp"
+-      protocol: TCP
+-      containerPort: 5044
+-
+-# Extra config options
+-configData: {}
+-
+-podAnnotations: {}
+-  # Add custom annotations to pods
+-  # iam.amazonaws.com/role: "example-role"
+-
+-podLabels: {}
+-  # Add custom labels to pods
+-  # team: "developers"
+-  # service: "logstash"
++    # http:
++    #  port: 8080
++    #  targetPort: http
++    #  protocol: TCP
+ 
+-livenessProbe:
+-  initialDelaySeconds: 60
+-  periodSeconds: 20
+-readinessProbe:
+-  initialDelaySeconds: 120
++ports:
++  # - name: syslog-udp
++  #   containerPort: 1514
++  #   protocol: UDP
++  # - name: syslog-tcp
++  #   containerPort: 1514
++  #   protocol: TCP
++  - name: beats
++    containerPort: 5044
++    protocol: TCP
++  # - name: http
++  #   containerPort: 8080
++  #   protocol: TCP
+ 
+ ingress:
+   enabled: false
+-  # Used to create an Ingress and Service record.
+-  # hosts:
+-  #   - name: "logstash-udp.local"
+-  #     protocol: UDP
+-  #     serviceName: logstash-udp
+-  #     servicePort: 514
+-  annotations:
++  annotations: {}
+     # kubernetes.io/ingress.class: nginx
+     # kubernetes.io/tls-acme: "true"
+-  tls:
+-    # Secrets must be manually created in the namespace.
+-    # - secretName: chart-example-tls
+-    #   hosts:
+-    #     - chart-example.local
++  path: /
++  hosts:
++    - logstash.cluster.local
++  tls: []
++  #  - secretName: logstash-tls
++  #    hosts:
++  #      - logstash.cluster.local
++
+ resources: {}
+   # We usually recommend not to specify default resources and to leave this as a conscious
+   # choice for the user. This also increases chances charts run on environments with little
+@@ -67,30 +75,151 @@ resources: {}
+   #  cpu: 100m
+   #  memory: 128Mi
+ 
++nodeSelector: {}
++
++tolerations: []
++
++affinity: {}
++  # podAntiAffinity:
++  #   requiredDuringSchedulingIgnoredDuringExecution:
++  #     - topologyKey: "kubernetes.io/hostname"
++  #       labelSelector:
++  #         matchLabels:
++  #           release: logstash
++
++podAnnotations: {}
++  # iam.amazonaws.com/role: "logstash-role"
++  # prometheus.io/scrape: "true"
++  # prometheus.io/path: "/metrics"
++  # prometheus.io/port: "9198"
++
++podLabels: {}
++  # team: "developers"
++  # service: "logstash"
++
++livenessProbe:
++  httpGet:
++    path: /
++    port: monitor
++  initialDelaySeconds: 20
++  # periodSeconds: 30
++  # timeoutSeconds: 30
++  # failureThreshold: 6
++  # successThreshold: 1
++
++readinessProbe:
++  httpGet:
++    path: /
++    port: monitor
++  initialDelaySeconds: 20
++  # periodSeconds: 30
++  # timeoutSeconds: 30
++  # failureThreshold: 6
++  # successThreshold: 1
++
++persistence:
++  enabled: true
++  ## logstash data Persistent Volume Storage Class
++  ## If defined, storageClassName: <storageClass>
++  ## If set to "-", storageClassName: "", which disables dynamic provisioning
++  ## If undefined (the default) or set to null, no storageClassName spec is
++  ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
++  ##   GKE, AWS & OpenStack)
++  ##
++  # storageClass: "-"
++  accessMode: ReadWriteOnce
++  size: 2Gi
++
++volumeMounts:
++  - name: data
++    mountPath: /usr/share/logstash/data
++  - name: patterns
++    mountPath: /usr/share/logstash/patterns
++  - name: pipeline
++    mountPath: /usr/share/logstash/pipeline
++
++exporter:
++  logstash:
++    enabled: false
++    image:
++      repository: bonniernews/logstash_exporter
++      tag: v0.1.2
++      pullPolicy: IfNotPresent
++    env: {}
++    resources: {}
++    path: /metrics
++    port: 9198
++    target:
++      port: 9600
++      path: /metrics
++    livenessProbe:
++      httpGet:
++        path: /metrics
++        port: ls-exporter
++      periodSeconds: 15
++      timeoutSeconds: 60
++      failureThreshold: 8
++      successThreshold: 1
++    readinessProbe:
++      httpGet:
++        path: /metrics
++        port: ls-exporter
++      periodSeconds: 15
++      timeoutSeconds: 60
++      failureThreshold: 8
++      successThreshold: 1
++
+ elasticsearch:
+-  host: "elasticsearch-client.default.svc.cluster.local"
++  host: elasticsearch-client.default.svc.cluster.local
+   port: 9200
+ 
+-# patterns for filters
+-# each element will be turned into it's own pattern file
++## ref: https://github.com/elastic/logstash-docker/blob/master/build/logstash/env2yaml/env2yaml.go
++config:
++  config.reload.automatic: "true"
++  path.config: /usr/share/logstash/pipeline
++  path.data: /usr/share/logstash/data
++
++  ## ref: https://www.elastic.co/guide/en/logstash/current/persistent-queues.html
++  queue.checkpoint.writes: 1
++  queue.drain: "true"
++  queue.max_bytes: 1gb  # disk capacity must be greater than the value of `queue.max_bytes`
++  queue.type: persisted
++
++## Patterns for filters.
++## Each YAML heredoc will become a separate pattern file.
+ patterns:
+-  # testpattern: |-
+-  #     TESTING {"foo":.*}$
++  # main: |-
++  #   TESTING {"foo":.*}$
++
++## NOTE: To achieve multiple pipelines with this chart, current best practice
++## is to maintain one pipeline per chart release. In this way configuration is
++## simplified and pipelines are more isolated from one another.
+ 
+ inputs:
+   main: |-
+     input {
+-      tcp {
+-        port => "${SYSLOG_PORT}"
+-        type => syslog
+-      }
+-      udp {
+-        port => 1514
+-        type => syslog
+-      }
++      # udp {
++      #   port => 1514
++      #   type => syslog
++      # }
++      # tcp {
++      #   port => 1514
++      #   type => syslog
++      # }
+       beats {
+         port => 5044
+       }
++      # http {
++      #   port => 8080
++      # }
++      # kafka {
++      #   ## ref: https://www.elastic.co/guide/en/logstash/current/plugins-inputs-kafka.html
++      #   bootstrap_servers => "kafka-input:9092"
++      #   codec => json { charset => "UTF-8" }
++      #   consumer_threads => 1
++      #   topics => ["source"]
++      #   type => "example"
++      # }
+     }
+ 
+ filters:
+@@ -101,7 +230,18 @@ filters:
+ outputs:
+   main: |-
+     output {
++      # stdout { codec => rubydebug }
+       elasticsearch {
+         hosts => ["${ELASTICSEARCH_HOST}:${ELASTICSEARCH_PORT}"]
++        manage_template => false
++        index => "%{[@metadata][beat]}-%{+YYYY.MM.dd}"
++        document_type => "%{[@metadata][type]}"
+       }
++      # kafka {
++      #   ## ref: https://www.elastic.co/guide/en/logstash/current/plugins-outputs-kafka.html
++      #   bootstrap_servers => "kafka-output:9092"
++      #   codec => json { charset => "UTF-8" }
++      #   compression_type => "lz4"
++      #   topic_id => "destination"
++      # }
+     }

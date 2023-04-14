@@ -10,14 +10,14 @@
 
 ### Artifact Hub most viewed charts
 
-From https://artifacthub.io/stats, as of 2023-03-30, excluding bitnami ones.
+From https://artifacthub.io/stats, as of 2023-03-30
 
 1. [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts)
 2. [ingress-nginx](https://github.com/kubernetes/ingress-nginx)
-3. (bitnami/postgresql)
+3. bitnami/postgresql
 4. [cert-manager](https://github.com/cert-manager/cert-manager)
 5. [argo-cd](https://github.com/argoproj/argo-helm)
-6. (bitnami/redis)
+6. bitnami/redis
 7. [prometheus](https://github.com/prometheus-community/helm-charts)
 8. [grafana](https://github.com/grafana/helm-charts)
 9. [kubernetes-dashboard](https://github.com/kubernetes/dashboard)

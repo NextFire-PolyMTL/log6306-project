@@ -1,0 +1,1741 @@
+commit ca74711aaf6000a2f9154d74b9904e66605f22d0
+Author: Juan Ariza Toledano <juan@bitnami.com>
+Date:   Tue Jun 2 09:02:23 2020 +0200
+
+    [bitnami/kafka] Refactor listeners and authentication configuration (#2708)
+    
+    * [bitnami/kafka] Refactor listeners and authentication configuration
+    
+    Signed-off-by: juan131 <juanariza@vmware.com>
+
+diff --git a/bitnami/kafka/Chart.yaml b/bitnami/kafka/Chart.yaml
+index 72060b4e23..6f8a424b7b 100644
+--- a/bitnami/kafka/Chart.yaml
++++ b/bitnami/kafka/Chart.yaml
+@@ -1,6 +1,6 @@
+ apiVersion: v1
+ name: kafka
+-version: 10.3.3
++version: 11.0.0
+ appVersion: 2.5.0
+ description: Apache Kafka is a distributed streaming platform.
+ keywords:
+diff --git a/bitnami/kafka/README.md b/bitnami/kafka/README.md
+index 4a3660c08a..e43165ec26 100644
+--- a/bitnami/kafka/README.md
++++ b/bitnami/kafka/README.md
+@@ -76,11 +76,8 @@ The following tables lists the configurable parameters of the Kafka chart and th
+ | `image.debug`                                     | Set to true if you would like to see extra information on logs                                                                    | `false`                                                 |
+ | `config`                                          | Configuration file for Kafka. Auto-generated based on other parameters when not specified                                         | `nil`                                                   |
+ | `existingConfigmap`                               | Name of existing ConfigMap with Kafka configuration                                                                               | `nil`                                                   |
+-| `allowPlaintextListener`                          | Allow to use the PLAINTEXT listener                                                                                               | `true`                                                  |
+-| `listeners`                                       | The address(es) the socket server listens on                                                                                      | `[]`                                                    |
+-| `advertisedListeners`                             | The address(es) (hostname:port) the broker will advertise to producers and consumers                                              | `[]`                                                    |
+-| `listenerSecurityProtocolMap`                     | The protocol->listener mapping                                                                                                    | `nil`                                                   |
+-| `interBrokerListenerName`                         | The listener that the brokers should communicate on                                                                               | `nil`                                                   |
++| `log4j`                                           | An optional log4j.properties file to overwrite the default of the Kafka brokers.                                                  | `nil`                                                   |
++| `existingLog4jConfigMap`                          | The name of an existing ConfigMap containing a log4j.properties file.                                                             | `nil`                                                   |
+ | `brokerId`                                        | ID of the Kafka node                                                                                                              | `nil`                                                   |
+ | `heapOpts`                                        | Kafka's Java Heap size                                                                                                            | `-Xmx1024m -Xms1024m`                                   |
+ | `deleteTopicEnable`                               | Switch to enable topic deletion or not                                                                                            | `false`                                                 |
+@@ -105,22 +102,26 @@ The following tables lists the configurable parameters of the Kafka chart and th
+ | `socketRequestMaxBytes`                           | The maximum size of a request that the socket server will accept (protection against OOM)                                         | `_104857600`                                            |
+ | `socketSendBufferBytes`                           | The send buffer (SO_SNDBUF) used by the socket server                                                                             | `102400`                                                |
+ | `zookeeperConnectionTimeoutMs`                    | Timeout in ms for connecting to Zookeeper                                                                                         | `6000`                                                  |
+-| `sslEndpointIdentificationAlgorithm`              | The endpoint identification algorithm to validate server hostname using server certificate                                        | `https`                                                 |
+ | `extraEnvVars`                                    | Extra environment variables to add to kafka pods                                                                                  | `[]`                                                    |
+ | `extraVolumes`                                    | Extra volume(s) to add to Kafka statefulset                                                                                       | `[]`                                                    |
+ | `extraVolumeMounts`                               | Extra volumeMount(s) to add to Kafka containers                                                                                   | `[]`                                                    |
+-| `auth.enabled`                                    | Switch to enable the kafka authentication                                                                                         | `false`                                                 |
+-| `auth.certificatesSecret`                         | Name of the existing secret containing the certificate files that will be used by Kafka                                           | `nil`                                                   |
+-| `auth.certificatesPassword`                       | Password for the above certificates if they are password protected                                                                | `nil`                                                   |
+-| `auth.brokerUser`                                 | Kafka client user                                                                                                                 | `user`                                                  |
+-| `auth.brokerPassword`                             | Kafka client password                                                                                                             | `nil`                                                   |
+-| `auth.interBrokerUser`                            | Kafka inter broker communication user                                                                                             | `admin`                                                 |
+-| `auth.interBrokerPassword`                        | Kafka inter broker communication password                                                                                         | `nil`                                                   |
+-| `auth.zookeeperUser`                              | Kafka Zookeeper user                                                                                                              | `nil`                                                   |
+-| `auth.zookeeperPassword`                          | Kafka Zookeeper password                                                                                                          | `nil`                                                   |
+-| `auth.existingSecret`                             | Name of the existing secret containing credentials for brokerUser, interBrokerUser and zookeeperUser                              | `nil`                                                   |
+-| `log4j`                                           | An optional log4j.properties file to overwrite the default of the Kafka brokers.                                                  | `nil`                                                   |
+-| `existingLog4jConfigMap`                          | The name of an existing ConfigMap containing a log4j.properties file.                                                             | `nil`                                                   |
++| `auth.clientProtocol`                             | Authentication protocol for communications with clients. Allowed protocols: `plaintext`, `tls`, `mtls`, `sasl` and `sasl_tls`     | `plaintext`                                             |
++| `auth.interBrokerProtocol`                        | Authentication protocol for inter-broker communications. Allowed protocols: `plaintext`, `tls`, `mtls`, `sasl` and `sasl_tls`     | `plaintext`                                             |
++| `auth.jksSecret`                                  | Name of the existing secret containing the truststore and one keystore per Kafka broker you have in the cluster                   | `nil`                                                   |
++| `auth.jksPassword`                                | Password to access the JKS files when they are password-protected                                                                 | `nil`                                                   |
++| `auth.tlsEndpointIdentificationAlgorithm`         | The endpoint identification algorithm to validate server hostname using server certificate                                        | `https`                                                 |
++| `auth.jaas.brokerUser`                            | Kafka client user for SASL authentication                                                                                         | `user`                                                  |
++| `auth.jaas.brokerPassword`                        | Kafka client password for SASL authentication                                                                                     | `nil`                                                   |
++| `auth.jaas.interBrokerUser`                       | Kafka inter broker communication user for SASL authentication                                                                     | `admin`                                                 |
++| `auth.jaas.interBrokerPassword`                   | Kafka inter broker communication password for SASL authentication                                                                 | `nil`                                                   |
++| `auth.jaas.zookeeperUser`                         | Kafka Zookeeper user for SASL authentication                                                                                      | `nil`                                                   |
++| `auth.jaas.zookeeperPassword`                     | Kafka Zookeeper password for SASL authentication                                                                                  | `nil`                                                   |
++| `auth.jaas.existingSecret`                        | Name of the existing secret containing credentials for brokerUser, interBrokerUser and zookeeperUser                              | `nil`                                                   |
++| `listeners`                                       | The address(es) the socket server listens on. Auto-calculated it's set to an empty array                                          | `[]`                                                    |
++| `advertisedListeners`                             | The address(es) (hostname:port) the broker will advertise to producers and consumers. Auto-calculated it's set to an empty array  | `[]`                                                    |
++| `listenerSecurityProtocolMap`                     | The protocol->listener mapping. Auto-calculated it's set to nil                                                                   | `nil`                                                   |
++| `allowPlaintextListener`                          | Allow to use the PLAINTEXT listener                                                                                               | `true`                                                  |
++| `interBrokerListenerName`                         | The listener that the brokers should communicate on                                                                               | `INTERNAL`                                              |
+ 
+ ### Statefulset parameters
+ 
+@@ -150,10 +151,9 @@ The following tables lists the configurable parameters of the Kafka chart and th
+ | Parameter                                         | Description                                                                                                                       | Default                                                 |
+ |---------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------|
+ | `service.type`                                    | Kubernetes Service type                                                                                                           | `ClusterIP`                                             |
+-| `service.port`                                    | Kafka port                                                                                                                        | `9092`                                                  |
+-| `service.sslPort`                                 | Kafka SSL port                                                                                                                    | `9093`                                                  |
+-| `service.nodePorts.kafka`                         | Kubernetes Kafka node port                                                                                                        | `""`                                                    |
+-| `service.nodePorts.ssl`                           | Kubernetes Kafka SSL node port                                                                                                    | `""`                                                    |
++| `service.port`                                    | Kafka port for client connections                                                                                                 | `9092`                                                  |
++| `service.internalPort`                            | Kafka port for inter-broker connectionsKafka port for inter-broker connections                                                    | `9093`                                                  |
++| `service.nodePort`                                | Nodeport for client connections                                                                                                   | `""`                                                    |
+ | `service.loadBalancerIP`                          | loadBalancerIP for Kafka Service                                                                                                  | `nil`                                                   |
+ | `service.loadBalancerSourceRanges`                | Address(es) that are allowed when service is LoadBalancer                                                                         | `[]`                                                    |
+ | `service.annotations`                             | Service annotations                                                                                                               | `{}`(evaluated as a template)                           |
+@@ -166,7 +166,7 @@ The following tables lists the configurable parameters of the Kafka chart and th
+ | `externalAccess.autoDiscovery.resources.limits`   | Init container auto-discovery resource limits                                                                                     | `{}`                                                    |
+ | `externalAccess.autoDiscovery.resources.requests` | Init container auto-discovery resource requests                                                                                   | `{}`                                                    |
+ | `externalAccess.service.type`                     | Kubernetes Servive type for external access. It can be NodePort or LoadBalancer                                                   | `LoadBalancer`                                          |
+-| `externalAccess.service.port`                     | Kafka port used for external access when service type is LoadBalancer                                                             | `19092`                                                 |
++| `externalAccess.service.port`                     | Kafka port used for external access when service type is LoadBalancer                                                             | `9094`                                                  |
+ | `externalAccess.service.loadBalancerIPs`          | Array of load balancer IPs for Kafka brokers                                                                                      | `[]`                                                    |
+ | `externalAccess.service.loadBalancerSourceRanges` | Address(es) that are allowed when service is LoadBalancer                                                                         | `[]`                                                    |
+ | `externalAccess.service.domain`                   | Domain or external ip used to configure Kafka external listener when service type is NodePort                                     | `nil`                                                   |
+@@ -215,6 +215,8 @@ The following tables lists the configurable parameters of the Kafka chart and th
+ | `metrics.kafka.image.tag`                         | Kafka exporter image tag                                                                                                          | `{TAG_NAME}`                                            |
+ | `metrics.kafka.image.pullPolicy`                  | Kafka exporter image pull policy                                                                                                  | `IfNotPresent`                                          |
+ | `metrics.kafka.image.pullSecrets`                 | Specify docker-registry secret names as an array                                                                                  | `[]` (does not add image pull secrets to deployed pods) |
++| `metrics.kafka.extraFlags`                        | Extra flags to be passed to Kafka exporter                                                                                        | `{}`                                                    |
++| `metrics.kafka.certificatesSecret`                | Name of the existing secret containing the optional certificate and key files                                                     | `nil`                                                   |
+ | `metrics.kafka.resources.limits`                  | Kafka Exporter container resource limits                                                                                          | `{}`                                                    |
+ | `metrics.kafka.resources.requests`                | Kafka Exporter container resource requests                                                                                        | `{}`                                                    |
+ | `metrics.kafka.service.type`                      | Kubernetes service type (`ClusterIP`, `NodePort` or `LoadBalancer`) for Kafka Exporter                                            | `ClusterIP`                                             |
+@@ -333,69 +335,118 @@ This chart includes a `values-production.yaml` file where you can find some para
+ + transactionStateLogMinIsr: 3
+ ```
+ 
+-- Switch to enable the kafka authentication:
++- Switch to enable the Kafka SASAL authentication on client and inter-broker communications:
+ 
+ ```diff
+-- auth.enabled: false
+-+ auth.enabled: true
++- auth.clientProtocol: plaintext
+++ auth.clientProtocol: sasl
++- auth.interBrokerProtocol: plaintext
+++ auth.interBrokerProtocol: sasl
+ ```
+ 
+-- Whether or not to create a separate Kafka exporter:
++- Enable Zookeeper authentication:
++
++```diff
+++ auth.jaas.zookeeperUser: zookeeperUser
+++ auth.jaas.zookeeperPassword: zookeeperPassword
++- zookeeper.auth.enabled: false
+++ zookeeper.auth.enabled: true
+++ zookeeper.auth.clientUser: zookeeperUser
+++ zookeeper.auth.clientPassword: zookeeperPassword
+++ zookeeper.auth.serverUsers: zookeeperUser
+++ zookeeper.auth.serverPasswords: zookeeperPassword
++```
++
++- Create a separate Kafka metrics exporter:
+ 
+ ```diff
+ - metrics.kafka.enabled: false
+ + metrics.kafka.enabled: true
+ ```
+ 
+-- Whether or not to expose JMX metrics to Prometheus:
++- Expose JMX metrics to Prometheus:
+ 
+ ```diff
+ - metrics.jmx.enabled: false
+ + metrics.jmx.enabled: true
+ ```
+ 
+-- Zookeeper chart metrics configuration:
++- Enable Zookeeper metrics:
+ 
+ ```diff
+ + zookeeper.metrics.enabled: true
+ ```
+ 
+-To horizontally scale this chart once it has been deployed, you can upgrade the deployment using a new value for the `replicaCount` parameter.
++To horizontally scale this chart once it has been deployed, you can upgrade the statefulset using a new value for the `replicaCount` parameter. Please note that, when enabling TLS encryption, you must update your JKS secret including the keystore for the new replicas.
+ 
+ ### Setting custom parameters
+ 
+-Any environment variable beginning with `KAFKA_CFG_` will be mapped to its corresponding Kafka key. For example, use `KAFKA_CFG_BACKGROUND_THREADS` in order to set `background.threads`.
+-In order to pass custom environment variables use the `extraEnvVars` property.
++Any environment variable beginning with `KAFKA_CFG_` will be mapped to its corresponding Kafka key. For example, use `KAFKA_CFG_BACKGROUND_THREADS` in order to set `background.threads`. In order to pass custom environment variables use the `extraEnvVars` property.
++
++### Listeners configuration
++
++This chart allows you to automatically configure Kafka with 3 listeners:
++
++- One for inter-broker communications.
++- A second one for communications with clients within the K8s cluster.
++- (optional) a third listener for communications with clients outside the K8s cluster. Check [this section](#accessing-kafka-brokers-from-outside-the-clusters) for more information.
++
++For more complex configurations, set the `listeners`, `advertisedListeners` and `listenerSecurityProtocolMap` parameters as needed.
+ 
+ ### Enable security for Kafka and Zookeeper
+ 
+-If you enabled the authentication for Kafka, the SASL_SSL listener will be configured with your provided inputs. In particular you can set the following pair of credentials:
++You can configure different authentication protocols for each listener you configure in Kafka. For instance, you can use `sasl_tls` authentication for client communications, while using `tls` for inter-broker communications. This table shows the available protocols and the security they provide:
++
++| Method    | Authentication                | Encryption via TLS |
++|-----------|-------------------------------|--------------------|
++| plaintext | None                          | No                 |
++| tls       | None                          | Yes                |
++| mtls      | Yes (two-way authentication)  | Yes                |
++| sasl      | Yes (via SASL)                | No                 |
++| sasl_tls  | Yes (via SASL)                | Yes                |
++
++If you enabled SASL authentication on any listener, you can set the SASL credentials using the parameters below:
++
++- `auth.jaas.clientUser`/`auth.jaas.clientPassword`: when enabling SASL authentication for communications with clients.
++- `auth.jaas.interBrokerUser`/`auth.jaas.interBrokerPassword`:  when enabling SASL authentication for inter-broker communications.
++- `auth.jaas.zookeeperUser`/`auth.jaas.zookeeperPassword`: In the case that the Zookeeper chart is deployed with SASL authentication enabled.
++
++In order to configure TLS authentication/encryption, you **must** create a secret containing the Java Key Stores (JKS) files: the truststore (`kafka.truststore.jks`) and one keystore (`kafka.keystore.jks`) per Kafka broker you have in the cluster. Then, you need pass the secret name with the `--auth.jksSecret` parameter when deploying the chart.
++
++> **Note**: If the JKS files are password protected (recommended), you will need to provide the password to get access to the keystores. To do so, use the `auth.jksPassword` parameter to provide your password.
+ 
+-- brokerUser/brokerPassword: To authenticate kafka clients against kafka brokers
+-- interBrokerUser/interBrokerPassword: To authenticate kafka brokers between them.
+-- zookeeperUser/zookeeperPassword: In the case that the Zookeeper chart is deployed with SASL authentication enabled.
++For instance, to configure TLS authentication on a Kafka cluster with 2 Kafka brokers use the command below to create the secret:
+ 
+-In order to configure the authentication, you **must** create a secret containing the *kafka.keystore.jks* and *kafka.truststore.jks* certificates and pass the secret name with the `--auth.certificatesSecret` option when deploying the chart.
++```console
++kubectl create secret generic kafka-jks --from-file=./kafka.truststore.jks --from-file=./kafka-0.keystore.jks --from-file=./kafka-1.keystore.jks
++```
++
++> **Note**: the command above assumes you already created the trustore and keystores files. This [script](https://raw.githubusercontent.com/confluentinc/confluent-platform-security-tools/master/kafka-generate-ssl.sh) can help you with the JKS files generation.
+ 
+ You can create the secret and deploy the chart with authentication using the following parameters:
+ 
+ ```console
+-auth.enabled=true
+-auth.brokerUser=brokerUser
+-auth.brokerPassword=brokerPassword
+-auth.interBrokerUser=interBrokerUser
+-auth.interBrokerPassword=interBrokerPassword
+-auth.zookeeperUser=zookeeperUser
+-auth.zookeeperPassword=zookeeperPassword
++replicaCount=2
++auth.clientProtocol=sasl
++auth.interBrokerProtocol=tls
++auth.certificatesSecret=kafka-jks
++auth.certificatesPassword=jksPassword
++auth.jaas.clientUser=brokerUser
++auth.jaas.clientPassword=brokerPassword
++auth.jaas.zookeeperUser=zookeeperUser
++auth.jaas.zookeeperPassword=zookeeperPassword
+ zookeeper.auth.enabled=true
+ zookeeper.auth.serverUsers=zookeeperUser
+ zookeeper.auth.serverPasswords=zookeeperPassword
+ zookeeper.auth.clientUser=zookeeperUser
+ zookeeper.auth.clientPassword=zookeeperPassword
+-auth.certificatesSecret=kafka-certificates
+ ```
+ 
+-> **Note**: If the JKS files are password protected (recommended), you will need to provide the password to get access to the keystores. To do so, use the `auth.certificatesPassword` option to provide your password.
++If you also enable exposing metrics using the Kafka expoter, and you are using `sasl_tls`, `tls`, or `mtls` authentication protocols, you need to mount the CA certificated used to sign the brokers certificates in the exporter so it can validate the Kafka brokers. To do so, create a secret containing the CA, and set the `metrics.certificatesSecret` parameter. As an alternative, you can skip TLS validation using extra flags:
++
++```console
++metrics.kafka.extraFlags={tls.insecure-skip-tls-verify: ""}
++```
+ 
+ ### Accessing Kafka brokers from outside the cluster
+ 
+@@ -412,7 +463,7 @@ You have two alternatives to use LoadBalancer services:
+ ```console
+ externalAccess.enabled=true
+ externalAccess.service.type=LoadBalancer
+-externalAccess.service.port=19092
++externalAccess.service.port=9094
+ externalAccess.autoDiscovery.enabled=true
+ serviceAccount.create=true
+ rbac.create=true
+@@ -425,7 +476,7 @@ Note: This option requires creating RBAC rules on clusters where RBAC policies a
+ ```console
+ externalAccess.enabled=true
+ externalAccess.service.type=LoadBalancer
+-externalAccess.service.port=19092
++externalAccess.service.port=9094
+ externalAccess.service.loadBalancerIPs[0]='external-ip-1'
+ externalAccess.service.loadBalancerIPs[1]='external-ip-2'}
+ ```
+@@ -479,8 +530,7 @@ sidecars:
+ 
+ The [Bitnami Kafka](https://github.com/bitnami/bitnami-docker-kafka) image stores the Kafka data at the `/bitnami/kafka` path of the container.
+ 
+-Persistent Volume Claims are used to keep the data across deployments. This is known to work in GCE, AWS, and minikube.
+-See the [Parameters](#parameters) section to configure the PVC or to disable persistence.
++Persistent Volume Claims are used to keep the data across deployments. This is known to work in GCE, AWS, and minikube. See the [Parameters](#persistence-parameters) section to configure the PVC or to disable persistence.
+ 
+ ### Adjust permissions of persistent volume mountpoint
+ 
+@@ -493,6 +543,29 @@ You can enable this initContainer by setting `volumePermissions.enabled` to `tru
+ 
+ ## Upgrading
+ 
++### To 11.0.0
++
++The way to configure listeners and athentication on Kafka is totally refactored allowing users to configure different authentication protocols on different listeners. Please check the sections [Listeners Configuration](listeners-configuration) and [Listeners Configuration](enable-kafka-for-kafka-and-zookeeper) for more information.
++
++Backwards compatibility is not guaranteed you adapt your values.yaml to the new format. Here you can find some parameters that were renamed or dissapeared in favor of new ones on this major version:
++
++- `auth.enabled` -> deprecated in favor of `auth.clientProtocol` and `auth.interBrokerProtocol` parameters.
++- `auth.ssl` -> deprecated in favor of `auth.clientProtocol` and `auth.interBrokerProtocol` parameters.
++- `auth.certificatesSecret` -> renamed to `auth.jksSecret`.
++- `auth.certificatesPassword` -> renamed to `auth.jksPassword`.
++- `sslEndpointIdentificationAlgorithm` -> renamedo to `auth.tlsEndpointIdentificationAlgorithm`.
++- `auth.brokerUser` -> renamed to `auth.jaas.clientUser`
++- `auth.brokePassword` -> renamed to `auth.jaas.clientPassword`
++- `auth.interBrokerUser` -> renamed to `auth.jaas.interBrokerUser`
++- `auth.interBrokerPassword` -> renamed to `auth.jaas.interBrokerPassword`
++- `auth.zookeeperUser` -> renamed to `auth.jaas.zookeeperUser`
++- `auth.zookeeperPassword` -> renamed to `auth.jaas.zookeeperPassword`
++- `auth.existingSecret` -> renamed to `auth.jaas.existingSecret`
++- `service.sslPort` -> deprecated in favor of `service.internalPort`
++- `service.nodePorts.kafka` and ``service.nodePorts.ssl` -> deprecated in favor of `service.nodePort`
++- `metrics.kafka.extraFlag` -> new parameter
++- `metrics.kafka.certificatesSecret` -> new parameter
++  
+ ### To 10.0.0
+ 
+ If you are setting the `config` or `log4j` parameter, backwards compatibility is not guaranteed, because the `KAFKA_MOUNTED_CONFDIR` has moved from `/opt/bitnami/kafka/conf` to `/bitnami/kafka/config`. In order to continue using these parameters, you must also upgrade your image to `docker.io/bitnami/kafka:2.4.1-debian-10-r38` or later.
+diff --git a/bitnami/kafka/requirements.lock b/bitnami/kafka/requirements.lock
+index 3dd73c0f7b..cdf0370bc3 100644
+--- a/bitnami/kafka/requirements.lock
++++ b/bitnami/kafka/requirements.lock
+@@ -1,6 +1,6 @@
+ dependencies:
+ - name: zookeeper
+   repository: https://charts.bitnami.com/bitnami
+-  version: 5.14.3
+-digest: sha256:563e1c6fbeb0482558723b70b54816d4df5dfc44b80dee0c3d3b668e4c21e33d
+-generated: "2020-05-11T06:49:20.470057127Z"
++  version: 5.14.5
++digest: sha256:f8cd5aa25edbf081a5d73179074e1e15f23f906c16fd7e659452007cb3f72c87
++generated: "2020-06-02T06:05:08.819633821Z"
+diff --git a/bitnami/kafka/templates/NOTES.txt b/bitnami/kafka/templates/NOTES.txt
+index 2c173a7506..6454f27671 100644
+--- a/bitnami/kafka/templates/NOTES.txt
++++ b/bitnami/kafka/templates/NOTES.txt
+@@ -1,7 +1,10 @@
+-{{- $replicaCount := int .Values.replicaCount }}
+-{{- $releaseNamespace := .Release.Namespace }}
+-{{- $fullName := include "kafka.fullname" . }}
+-{{- $loadBalancerIPListLength := len .Values.externalAccess.service.loadBalancerIPs }}
++{{- $replicaCount := int .Values.replicaCount -}}
++{{- $releaseNamespace := .Release.Namespace -}}
++{{- $clusterDomain := .Values.clusterDomain -}}
++{{- $fullname := include "kafka.fullname" . -}}
++{{- $clientProtocol := include "kafka.listenerType" ( dict "protocol" .Values.auth.clientProtocol ) -}}
++{{- $servicePort := int .Values.service.port -}}
++{{- $loadBalancerIPListLength := len .Values.externalAccess.service.loadBalancerIPs -}}
+ {{- if and .Values.externalAccess.enabled (not .Values.externalAccess.autoDiscovery.enabled) (not (eq $replicaCount $loadBalancerIPListLength )) (eq .Values.externalAccess.service.type "LoadBalancer") }}
+ 
+ ###############################################################################
+@@ -19,7 +22,7 @@ IPs for Kafka brokers. To complete your deployment follow the steps below:
+ 2. Obtain the load balancer IPs and upgrade your chart:
+ .
+     {{- range $i, $e := until $replicaCount }}
+-    LOAD_BALANCER_IP_{{ add $i 1 }}="$(kubectl get svc --namespace {{ $releaseNamespace }} {{ $fullName }}-{{ $i }}-external -o jsonpath='{.status.loadBalancer.ingress[0].ip}')"
++    LOAD_BALANCER_IP_{{ add $i 1 }}="$(kubectl get svc --namespace {{ $releaseNamespace }} {{ $fullname }}-{{ $i }}-external -o jsonpath='{.status.loadBalancer.ingress[0].ip}')"
+     {{- end }}
+ .
+ 3. Upgrade you chart:
+@@ -34,7 +37,7 @@ IPs for Kafka brokers. To complete your deployment follow the steps below:
+ .
+ {{- else }}
+ 
+-{{- if and (or (eq .Values.service.type "LoadBalancer") .Values.externalAccess.enabled) (not .Values.auth.enabled) }}
++{{- if and (or (eq .Values.service.type "LoadBalancer") .Values.externalAccess.enabled) (eq .Values.auth.clientProtocol "plaintext") }}
+ ---------------------------------------------------------------------------------------------
+  WARNING
+ 
+@@ -50,13 +53,68 @@ IPs for Kafka brokers. To complete your deployment follow the steps below:
+ 
+ ** Please be patient while the chart is being deployed **
+ 
+-Kafka can be accessed via port {{ .Values.service.port }} on the following DNS name from within your cluster:
++Kafka can be accessed by consumers via port {{ $servicePort }} on the following DNS name from within your cluster:
+ 
+-    {{ template "kafka.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
++    {{ $fullname }}.{{ $releaseNamespace }}.svc.{{ $clusterDomain }}
+ 
+-To create a a pod that you can use as a Kafka client run the following command:
++Each Kafka broker can be accessed by producers via port {{ $servicePort }} on the following DNS name(s) from within your cluster:
+ 
+-    kubectl run {{ template "kafka.fullname" . }}-client --rm --tty -i --restart='Never' --image {{ template "kafka.image" . }} --namespace {{ .Release.Namespace }} --command -- bash
++    {{- range $i, $e := until $replicaCount }}
++    {{ $fullname }}-{{ $i }}.{{ $fullname }}-headless.{{ $releaseNamespace }}.svc.{{ $clusterDomain }}
++    {{- end }}
++
++{{- if (include "kafka.client.saslAuthentication" .) }}
++
++You need to configure your Kafka client to access using SASL authentication. To do so, you need to create the 'kafka_jaas.conf' and 'client.properties' configuration files with the content below:
++
++    - kafka_jaas.conf:
++
++        KafkaClient {
++            org.apache.kafka.common.security.plain.PlainLoginModule required
++            username="{{ .Values.auth.jaas.clientUser }}"
++            password="$(kubectl get secret {{ $fullname }}-jaas -n {{ $releaseNamespace }} -o jsonpath='{.data.client-password}' | base64 --decode)";
++        };
++
++    - client.properties:
++
++        {{- if eq .Values.auth.clientProtocol "sasl_tls" }}
++        ssl.truststore.location=/tmp/kafka.truststore.jks
++        {{- if .Values.auth.jksPassword }}
++        ssl.truststore.password={{ .Values.auth.jksPassword }}
++        {{- end }}
++        {{- end }}
++        security.protocol={{ $clientProtocol }}
++        sasl.mechanism=PLAIN
++
++{{- end }}
++
++To create a pod that you can use as a Kafka client run the following commands:
++
++    kubectl run {{ $fullname }}-client --restart='Never' --image {{ template "kafka.image" . }} --namespace {{ $releaseNamespace }} --command -- sleep infinity
++    {{- if (include "kafka.client.saslAuthentication" .) }}
++    kubectl cp --namespace {{ $releaseNamespace }} /path/to/client.properties {{ $fullname }}-client:/tmp/client.properties
++    kubectl cp --namespace {{ $releaseNamespace }} /path/to/kafka_jaas.conf {{ $fullname }}-client:/tmp/kafka_jaas.conf
++    {{- if eq .Values.auth.clientProtocol "sasl_tls" }}
++    kubectl cp --namespace {{ $releaseNamespace }} ./kafka.truststore.jks kafka-client:/tmp/kafka.truststore.jks
++    {{- end }}
++    {{- end }}
++    kubectl exec --tty -i {{ $fullname }}-client --namespace {{ $releaseNamespace }} -- bash
++    {{- if (include "kafka.client.saslAuthentication" .) }}
++    export KAFKA_OPTS="-Djava.security.auth.login.config=/tmp/kafka_jaas.conf"
++    {{- end }}
++
++    PRODUCER:
++        kafka-console-producer.sh \
++            {{ if (include "kafka.client.saslAuthentication" .) }}--producer.config /tmp/client.properties \{{ end }}
++            --broker-list {{ range $i, $e := until $replicaCount }}{{ $fullname }}-{{ $i }}.{{ $fullname }}-headless.{{ $releaseNamespace }}.svc.{{ $clusterDomain }}:{{ $servicePort }},{{ end }} \
++            --topic test
++
++    CONSUMER:
++        kafka-console-consumer.sh \
++            {{ if (include "kafka.client.saslAuthentication" .) }}--consumer.config /tmp/client.properties \{{ end }}
++            --bootstrap-server {{ $fullname }}.{{ $releaseNamespace }}.svc.{{ $clusterDomain }}:{{ .Values.service.port }} \
++            --topic test \
++            --from-beginning
+ 
+ {{- if .Values.externalAccess.enabled }}
+ 
+@@ -97,28 +155,6 @@ To connect to your Kafka server from outside the cluster, follow the instruction
+     Kafka Brokers port: {{ .Values.externalAccess.service.port }}
+ 
+ {{- end }}
+-
+-{{- end }}
+-{{- if .Values.auth.enabled }}
+-    PRODUCER:
+-        kafka-console-producer.sh --broker-list 127.0.0.1:9092 --topic test --producer.config /opt/bitnami/kafka/config/producer.properties
+-    CONSUMER:
+-        kafka-console-consumer.sh --bootstrap-server 127.0.0.1:9092 --topic test --from-beginning --consumer.config /opt/bitnami/kafka/config/consumer.properties
+-
+-  NOTE: In order to connect to the cluster with an external client you need to properly specify the credentials stored in the JAAS file generated in the Kafka image.
+-        You should get the content of that file and write it in your host machine:
+-
+-        export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ template "kafka.name" . }},app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=kafka" -o jsonpath="{.items[0].metadata.name}")
+-        kubectl --namespace {{ .Release.Namespace }} exec -it $POD_NAME -- cat /opt/bitnami/kafka/config/kafka_jaas.conf >> kafka_jaas.conf
+-
+-        Finally, before using your client you need to export the following env var:
+-
+-        export KAFKA_OPTS="-Djava.security.auth.login.config=/path/to/kafka_jaas.conf"
+-{{- else }}
+-    PRODUCER:
+-        kafka-console-producer.sh --broker-list 127.0.0.1:9092 --topic test
+-    CONSUMER:
+-        kafka-console-consumer.sh --bootstrap-server 127.0.0.1:9092 --topic test --from-beginning
+ {{- end }}
+ {{- end }}
+ 
+diff --git a/bitnami/kafka/templates/_helpers.tpl b/bitnami/kafka/templates/_helpers.tpl
+index 48b7a071b1..6e0f3e5303 100644
+--- a/bitnami/kafka/templates/_helpers.tpl
++++ b/bitnami/kafka/templates/_helpers.tpl
+@@ -277,21 +277,68 @@ but Helm 2.9 and 2.10 does not support it, so we need to implement this if-else
+ {{- end -}}
+ 
+ {{/*
+-Return the Kafka auth credentials secret
++Return true if authentication via SASL should be configured for client communications
+ */}}
+-{{- define "kafka.secretName" -}}
+-{{- if .Values.auth.existingSecret -}}
+-    {{- printf "%s" (tpl .Values.auth.existingSecret $) -}}
++{{- define "kafka.client.saslAuthentication" -}}
++{{- $saslProtocols := list "sasl" "sasl_tls" -}}
++{{- if has .Values.auth.clientProtocol $saslProtocols -}}
++    {{- true -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Return true if authentication via SASL should be configured for inter-broker communications
++*/}}
++{{- define "kafka.interBroker.saslAuthentication" -}}
++{{- $saslProtocols := list "sasl" "sasl_tls" -}}
++{{- if has .Values.auth.interBrokerProtocol $saslProtocols -}}
++    {{- true -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Return true if encryption via TLS should be configured
++*/}}
++{{- define "kafka.tlsEncryption" -}}
++{{- $tlsProtocols := list "tls" "mtls" "sasl_tls" -}}
++{{- if or (has .Values.auth.clientProtocol $tlsProtocols) (has .Values.auth.interBrokerProtocol $tlsProtocols) -}}
++    {{- true -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Return the type of listener
++Usage:
++{{ include "kafka.listenerType" ( dict "protocol" .Values.path.to.the.Value ) }}
++*/}}
++{{- define "kafka.listenerType" -}}
++{{- if eq .protocol "plaintext" -}}
++PLAINTEXT
++{{- else if or (eq .protocol "tls") (eq .protocol "mtls") -}}
++SSL
++{{- else if eq .protocol "sasl_tls" -}}
++SASL_SSL
++{{- else if eq .protocol "sasl" -}}
++SASL_PLAINTEXT
++{{- end -}}
++{{- end -}}
++
++{{/*
++Return the Kafka JAAS credentials secret
++*/}}
++{{- define "kafka.jaasSecretName" -}}
++{{- if .Values.auth.jaas.existingSecret -}}
++    {{- printf "%s" (tpl .Values.auth.jaas.existingSecret $) -}}
+ {{- else -}}
+-    {{- printf "%s" (include "kafka.fullname" .) -}}
++    {{- printf "%s-jaas" (include "kafka.fullname" .) -}}
+ {{- end -}}
+ {{- end -}}
+ 
+ {{/*
+-Return true if a secret object should be created
++Return true if a JAAS credentials secret object should be created
+ */}}
+-{{- define "kafka.createSecret" -}}
+-{{- if and .Values.auth.enabled (not .Values.auth.existingSecret) }}
++{{- define "kafka.createJaasSecret" -}}
++{{- if and (or (include "kafka.client.saslAuthentication" .) (include "kafka.interBroker.saslAuthentication" .) .Values.auth.jaas.zookeeperUser) (not .Values.auth.jaas.existingSecret) -}}
+     {{- true -}}
+ {{- end -}}
+ {{- end -}}
+@@ -396,6 +443,7 @@ Compile all warnings into a single message, and call fail.
+ */}}
+ {{- define "kafka.validateValues" -}}
+ {{- $messages := list -}}
++{{- $messages := append $messages (include "kafka.validateValues.authProtocols" .) -}}
+ {{- $messages := append $messages (include "kafka.validateValues.nodePortListLength" .) -}}
+ {{- $messages := append $messages (include "kafka.validateValues.externalAccessServiceType" .) -}}
+ {{- $messages := append $messages (include "kafka.validateValues.externalAccessAutoDiscoveryRBAC" .) -}}
+@@ -407,6 +455,15 @@ Compile all warnings into a single message, and call fail.
+ {{- end -}}
+ {{- end -}}
+ 
++{{/* Validate values of Kafka - Authentication protocols for Kafka */}}
++{{- define "kafka.validateValues.authProtocols" -}}
++{{- $authProtocols := list "plaintext" "tls" "mtls" "sasl" "sasl_tls" -}}
++{{- if or (not (has .Values.auth.clientProtocol $authProtocols)) (not (has .Values.auth.interBrokerProtocol $authProtocols)) -}}
++kafka: auth.clientProtocol auth.interBrokerProtocol
++    Available authentication protocols are "plaintext", "tls", "mtls", "sasl" and "sasl_tls"
++{{- end -}}
++{{- end -}}
++
+ {{/* Validate values of Kafka - number of replicas must be the same than NodePort list */}}
+ {{- define "kafka.validateValues.nodePortListLength" -}}
+ {{- $replicaCount := int .Values.replicaCount }}
+diff --git a/bitnami/kafka/templates/jaas-secret.yaml b/bitnami/kafka/templates/jaas-secret.yaml
+new file mode 100644
+index 0000000000..7d43a07cdd
+--- /dev/null
++++ b/bitnami/kafka/templates/jaas-secret.yaml
+@@ -0,0 +1,18 @@
++{{- if (include "kafka.createJaasSecret" .) }}
++apiVersion: v1
++kind: Secret
++metadata:
++  name: {{ template "kafka.fullname" . }}-jaas
++  labels: {{- include "kafka.labels" . | nindent 4 }}
++type: Opaque
++data:
++  {{- if (include "kafka.client.saslAuthentication" .) }}
++  client-password: {{ ternary (randAlphaNum 10) .Values.auth.jaas.clientPassword (empty .Values.auth.jaas.clientPassword) | b64enc | quote }}
++  {{- end }}
++  {{- if .Values.auth.jaas.zookeeperUser }}
++  zookeeper-password: {{ ternary (randAlphaNum 10) .Values.auth.jaas.zookeeperPassword (empty .Values.auth.jaas.zookeeperPassword) | b64enc | quote }}
++  {{- end }}
++  {{- if (include "kafka.interBroker.saslAuthentication" .) }}
++  inter-broker-password: {{ ternary (randAlphaNum 10) .Values.auth.jaas.interBrokerPassword (empty .Values.auth.jaas.interBrokerPassword) | b64enc | quote }}
++  {{- end }}
++{{- end }}
+diff --git a/bitnami/kafka/templates/kafka-metrics-deployment.yaml b/bitnami/kafka/templates/kafka-metrics-deployment.yaml
+index dcd6e0fdcf..eef85da973 100644
+--- a/bitnami/kafka/templates/kafka-metrics-deployment.yaml
++++ b/bitnami/kafka/templates/kafka-metrics-deployment.yaml
+@@ -1,4 +1,9 @@
+ {{- if .Values.metrics.kafka.enabled }}
++{{- $replicaCount := int .Values.replicaCount -}}
++{{- $releaseNamespace := .Release.Namespace -}}
++{{- $clusterDomain := .Values.clusterDomain -}}
++{{- $fullname := include "kafka.fullname" . -}}
++{{- $servicePort := int .Values.service.port -}}
+ apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+@@ -20,13 +25,51 @@ spec:
+         - name: kafka-exporter
+           image: {{ include  "kafka.metrics.kafka.image" . }}
+           imagePullPolicy: {{ .Values.metrics.kafka.image.pullPolicy | quote }}
+-          args:
+-            - --kafka.server={{ template "kafka.fullname" . }}:{{ .Values.service.port }}
+-            - --web.listen-address=:9308
++          command:
++            - /bin/bash
++            - -ec
++            - |
++              kafka_exporter \
++              {{- range $i, $e := until $replicaCount }}
++              --kafka.server={{ $fullname }}-{{ $i }}.{{ $fullname }}-headless.{{ $releaseNamespace }}.svc.{{ $clusterDomain }}:{{ $servicePort }} \
++              {{- end }}
++              {{- if (include "kafka.client.saslAuthentication" .) }}
++              --sasl.enabled \
++              --sasl.username={{ .Values.auth.jaas.clientUser | quote }} \
++              --sasl.password="$SASL_USER_PASSWORD" \
++              {{- end }}
++              {{- if (include "kafka.tlsEncryption" .) }}
++              --tls.enabled \
++              {{- if .Values.metrics.kafka.certificatesSecret }}
++              --tls.ca-file="/opt/bitnami/kafka-exporter/certs/ca-file" \
++              --tls.cert-file="/opt/bitnami/kafka-exporter/certs/cert-file" \
++              --tls.key-file="/opt/bitnami/kafka-exporter/certs/key-file" \
++              {{- end }}
++              {{- end }}
++              {{- range $key, $value := .Values.metrics.kafka.extraFlags }}
++              --{{ $key }}{{ if $value }}={{ $value }}{{ end }} \
++              {{- end }}
++              --web.listen-address=:9308
++          env:
++            - name: SASL_USER_PASSWORD
++              valueFrom:
++                secretKeyRef:
++                  name: {{ include "kafka.jaasSecretName" . }}
++                  key: client-password
+           ports:
+             - name: metrics
+               containerPort: 9308
+           {{- if .Values.metrics.kafka.resources }}
+           resources: {{ toYaml .Values.metrics.kafka.resources | nindent 12 }}
+           {{- end }}
++      {{- if and (include "kafka.tlsEncryption" .) .Values.metrics.kafka.certificatesSecret }}
++          volumeMounts:
++            - name: kafka-exporter-certificates
++              mountPath: /opt/bitnami/kafka-exporter/certs/
++              readOnly: true
++      volumes:
++        - name: kafka-exporter-certificates
++          secretName: {{ .Values.metrics.kafka.certificatesSecret }}
++          defaultMode: 256
++      {{- end }}
+ {{- end }}
+diff --git a/bitnami/kafka/templates/role.yaml b/bitnami/kafka/templates/role.yaml
+index ac9ab1d52e..83e18afbc9 100644
+--- a/bitnami/kafka/templates/role.yaml
++++ b/bitnami/kafka/templates/role.yaml
+@@ -14,5 +14,4 @@ rules:
+       - get
+       - list
+       - watch
+-      - patch
+ {{- end -}}
+diff --git a/bitnami/kafka/templates/scripts-configmap.yaml b/bitnami/kafka/templates/scripts-configmap.yaml
+index 69d0ad895c..382e262f78 100644
+--- a/bitnami/kafka/templates/scripts-configmap.yaml
++++ b/bitnami/kafka/templates/scripts-configmap.yaml
+@@ -6,6 +6,9 @@ metadata:
+ data:
+   {{- $fullname := include "kafka.fullname" . }}
+   {{- $releaseNamespace := .Release.Namespace }}
++  {{- $clusterDomain := .Values.clusterDomain }}
++  {{- $interBrokerPort := .Values.service.internalPort }}
++  {{- $clientPort := .Values.service.port }}
+   {{- if .Values.externalAccess.autoDiscovery.enabled }}
+   auto-discovery.sh: |-
+     #!/bin/bash
+@@ -54,7 +57,6 @@ data:
+         local service=${2:?service is missing}
+         local index=${3:-0}
+         local node_port="$(kubectl get svc "$service" -n "$namespace" -o jsonpath="{.spec.ports[$index].nodePort}")"
+-        kubectl patch svc "$service" -n "$namespace" --type='json' -p="[{\"op\": \"replace\", \"path\": \"/spec/ports/0/targetPort\", \"value\": $node_port}]" >/dev/null 2>&1
+         echo "$node_port"
+     }
+     k8s_svc_node_port "{{ $releaseNamespace }}" "$SVC_NAME" | tee "$SHARED_FILE"
+@@ -88,13 +90,24 @@ data:
+     {{- end }}
+     {{- end }}
+ 
+-    # Configure Kafka internal and external listeners
+-    export KAFKA_CFG_LISTENERS=INTERNAL://:{{ .Values.service.port }},EXTERNAL://:${EXTERNAL_ACCESS_PORT}
++    # Configure Kafka advertised listeners
+     {{- if .Values.advertisedListeners }}
+     export KAFKA_CFG_ADVERTISED_LISTENERS={{ .Values.advertisedListeners }}
+     {{- else }}
+-    export KAFKA_CFG_ADVERTISED_LISTENERS="INTERNAL://${MY_POD_NAME}.{{ template "kafka.fullname" . }}-headless.{{.Release.Namespace}}.svc.{{ .Values.clusterDomain }}:{{ .Values.service.port }},EXTERNAL://${EXTERNAL_ACCESS_IP}:${EXTERNAL_ACCESS_PORT}"
++    export KAFKA_CFG_ADVERTISED_LISTENERS="INTERNAL://${MY_POD_NAME}.{{ $fullname }}-headless.{{ $releaseNamespace }}.svc.{{ $clusterDomain }}:{{ $interBrokerPort }},CLIENT://${MY_POD_NAME}.{{ $fullname }}-headless.{{ $releaseNamespace }}.svc.{{ $clusterDomain }}:{{ $clientPort }},EXTERNAL://${EXTERNAL_ACCESS_IP}:${EXTERNAL_ACCESS_PORT}"
+     {{- end }}
+     {{- end }}
+ 
++    {{- if (include "kafka.tlsEncryption" .) }}
++    if [[ -f "/certs/kafka.truststore.jks" ]] && [[ -f "/certs/kafka-${ID}.keystore.jks" ]]; then
++        mkdir -p /bitnami/kafka/config/certs
++        cp "/certs/kafka.truststore.jks" "/bitnami/kafka/config/certs/kafka.truststore.jks"
++        cp "/certs/kafka-${ID}.keystore.jks" "/bitnami/kafka/config/certs/kafka.keystore.jks"
++        ls /bitnami/kafka/config/certs/
++    else
++        echo "Couldn't find the expected Java Key Stores (JKS) files! They are mandatory when encryption via TLS is enabled."
++        exit 1
++    fi
++    {{- end }}
++
+     exec /entrypoint.sh /run.sh
+diff --git a/bitnami/kafka/templates/secrets.yaml b/bitnami/kafka/templates/secrets.yaml
+deleted file mode 100644
+index 1b5fdd5ded..0000000000
+--- a/bitnami/kafka/templates/secrets.yaml
++++ /dev/null
+@@ -1,14 +0,0 @@
+-{{- if (include "kafka.createSecret" .) }}
+-apiVersion: v1
+-kind: Secret
+-metadata:
+-  name: {{ template "kafka.fullname" . }}
+-  labels: {{- include "kafka.labels" . | nindent 4 }}
+-type: Opaque
+-data:
+-  kafka-broker-password: {{ ternary (randAlphaNum 10) .Values.auth.brokerPassword (empty .Values.auth.brokerPassword) | b64enc | quote }}
+-  kafka-inter-broker-password: {{ ternary (randAlphaNum 10) .Values.auth.interBrokerPassword (empty .Values.auth.interBrokerPassword) | b64enc | quote }}
+-  {{- if .Values.auth.zookeeperUser }}
+-  kafka-zookeeper-password: {{ ternary (randAlphaNum 10) .Values.auth.zookeeperPassword (empty .Values.auth.zookeeperPassword) | b64enc | quote }}
+-  {{- end }}
+-{{- end }}
+diff --git a/bitnami/kafka/templates/statefulset.yaml b/bitnami/kafka/templates/statefulset.yaml
+index 73cb201ea2..5bfef6edbb 100644
+--- a/bitnami/kafka/templates/statefulset.yaml
++++ b/bitnami/kafka/templates/statefulset.yaml
+@@ -1,4 +1,11 @@
+ {{- $replicaCount := int .Values.replicaCount }}
++{{- $fullname := include "kafka.fullname" . }}
++{{- $releaseNamespace := .Release.Namespace }}
++{{- $clusterDomain := .Values.clusterDomain }}
++{{- $interBrokerPort := .Values.service.internalPort }}
++{{- $clientPort := .Values.service.port }}
++{{- $interBrokerProtocol := include "kafka.listenerType" ( dict "protocol" .Values.auth.interBrokerProtocol ) -}}
++{{- $clientProtocol := include "kafka.listenerType" ( dict "protocol" .Values.auth.clientProtocol ) -}}
+ {{- $loadBalancerIPListLength := len .Values.externalAccess.service.loadBalancerIPs }}
+ {{- if not (and .Values.externalAccess.enabled (not .Values.externalAccess.autoDiscovery.enabled) (not (eq $replicaCount $loadBalancerIPListLength )) (eq .Values.externalAccess.service.type "LoadBalancer")) }}
+ apiVersion: apps/v1
+@@ -29,13 +36,13 @@ spec:
+         {{- if .Values.podLabels }}
+         {{- include "kafka.tplValue" (dict "value" .Values.podLabels "context" $) | nindent 8 }}
+         {{- end }}
+-      {{- if or (include "kafka.createConfigmap" .) (include "kafka.createSecret" .) .Values.externalAccess.enabled (include "kafka.metrics.jmx.createConfigmap" .) .Values.podAnnotations }}
++      {{- if or (include "kafka.createConfigmap" .) (include "kafka.createJaasSecret" .) .Values.externalAccess.enabled (include "kafka.metrics.jmx.createConfigmap" .) .Values.podAnnotations }}
+       annotations:
+         {{- if (include "kafka.createConfigmap" .) }}
+         checksum/configuration: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+         {{- end }}
+-        {{- if (include "kafka.createSecret" .) }}
+-        checksum/secret: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
++        {{- if (include "kafka.createJaasSecret" .) }}
++        checksum/secret: {{ include (print $.Template.BasePath "/jaas-secret.yaml") . | sha256sum }}
+         {{- end }}
+         {{- if .Values.externalAccess.enabled }}
+         checksum/scripts: {{ include (print $.Template.BasePath "/scripts-configmap.yaml") . | sha256sum }}
+@@ -133,100 +140,84 @@ spec:
+               {{- else }}
+               value: {{ .Values.externalZookeeper.servers | quote }}
+               {{- end }}
+-            - name: KAFKA_PORT_NUMBER
+-              value: {{ .Values.service.port | quote }}
+-            {{- if and .Values.externalAccess.enabled .Values.externalAccess.autoDiscovery.enabled }}
+-            - name: SHARED_FILE
+-              value: "/shared/info.txt"
+-            {{- end }}
+-            {{- if .Values.externalAccess.enabled }}
+             - name: KAFKA_INTER_BROKER_LISTENER_NAME
+-              value: "INTERNAL"
++              value: {{ .Values.interBrokerListenerName | quote }}
+             - name: KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP
+-              {{- if and .Values.auth.enabled .Values.auth.ssl }}
+-              value: "INTERNAL:SASL_SSL,EXTERNAL:SASL_SSL"
+-              {{- else if and .Values.auth.ssl (not .Values.auth.enabled) }}
+-              value: "INTERNAL:SSL,EXTERNAL:SSL"
+-              {{- else if and .Values.auth.enabled (not .Values.auth.ssl) }}
+-              value: "INTERNAL:SASL_PLAINTEXT,EXTERNAL:SASL_PLAINTEXT"
++              {{- if .Values.listenerSecurityProtocolMap }}
++              value: {{ .Values.listenerSecurityProtocolMap | quote }}
++              {{- else if .Values.externalAccess.enabled }}
++              value: "INTERNAL:{{ $interBrokerProtocol }},CLIENT:{{ $clientProtocol }},EXTERNAL:{{ $clientProtocol }}"
+               {{- else }}
+-              value: "INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT"
++              value: "INTERNAL:{{ $interBrokerProtocol }},CLIENT:{{ $clientProtocol }}"
+               {{- end }}
+-            {{- else }}
+             - name: KAFKA_CFG_LISTENERS
+               {{- if .Values.listeners }}
+               value: {{ .Values.listeners }}
+-              {{- else if and .Values.auth.ssl .Values.auth.enabled }}
+-              value: "SASL_SSL://:$(KAFKA_PORT_NUMBER),SSL://:9093"
+-              {{- else if and .Values.auth.ssl (not .Values.auth.enabled) }}
+-              value: "SSL://:9093"
+-              {{- else if and .Values.auth.enabled (not .Values.auth.ssl) }}
+-              value: "SASL_PLAINTEXT://:$(KAFKA_PORT_NUMBER)"
++              {{- else if .Values.externalAccess.enabled }}
++              value: "INTERNAL://:9093,CLIENT://:9092,EXTERNAL://:9094"
+               {{- else }}
+-              value: "PLAINTEXT://:$(KAFKA_PORT_NUMBER)"
++              value: "INTERNAL://:9093,CLIENT://:9092"
+               {{- end }}
++            {{- if .Values.externalAccess.enabled }}
++            {{- if .Values.externalAccess.autoDiscovery.enabled }}
++            - name: SHARED_FILE
++              value: "/shared/info.txt"
++            {{- end }}
++            {{- else }}
+             - name: KAFKA_CFG_ADVERTISED_LISTENERS
+               {{- if .Values.advertisedListeners }}
+               value: {{ .Values.advertisedListeners }}
+-              {{- else if and .Values.auth.ssl .Values.auth.enabled }}
+-              value: "SASL_SSL://$(MY_POD_NAME).{{ template "kafka.fullname" . }}-headless.{{.Release.Namespace}}.svc.{{ .Values.clusterDomain }}:$(KAFKA_PORT_NUMBER),SSL://$(MY_POD_NAME).{{ template "kafka.fullname" . }}-headless.{{.Release.Namespace}}.svc.{{ .Values.clusterDomain }}:9093"
+-              {{- else if and .Values.auth.ssl (not .Values.auth.enabled) }}
+-              value: "SSL://$(MY_POD_NAME).{{ template "kafka.fullname" . }}-headless.{{.Release.Namespace}}.svc.{{ .Values.clusterDomain }}:9093"
+-              {{- else if and .Values.auth.enabled (not .Values.auth.ssl) }}
+-              value: "SASL_PLAINTEXT://$(MY_POD_NAME).{{ template "kafka.fullname" . }}-headless.{{.Release.Namespace}}.svc.{{ .Values.clusterDomain }}:$(KAFKA_PORT_NUMBER)"
+               {{- else }}
+-              value: "PLAINTEXT://$(MY_POD_NAME).{{ template "kafka.fullname" . }}-headless.{{.Release.Namespace}}.svc.{{ .Values.clusterDomain }}:$(KAFKA_PORT_NUMBER)"
++              value: "INTERNAL://$(MY_POD_NAME).{{ $fullname }}-headless.{{ $releaseNamespace }}.svc.{{ $clusterDomain }}:{{ $interBrokerPort }},CLIENT://$(MY_POD_NAME).{{ $fullname }}-headless.{{ $releaseNamespace }}.svc.{{ $clusterDomain }}:{{ $clientPort }}"
+               {{- end }}
+             {{- end }}
+-            {{- if .Values.listenerSecurityProtocolMap }}
+-            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+-              value: {{ .Values.listenerSecurityProtocolMap }}
+-            {{- end }}
+-            {{- if .Values.interBrokerListenerName }}
+-            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+-              value: {{ .Values.interBrokerListenerName }}
+-            {{- end }}
+-            {{- if .Values.metrics.jmx.enabled }}
+-            - name: JMX_PORT
+-              value: "5555"
+-            {{- end }}
+-            {{- if .Values.auth.enabled }}
++            - name: ALLOW_PLAINTEXT_LISTENER
++              value: {{ ternary "yes" "no" (or .Values.auth.enabled .Values.allowPlaintextListener) | quote }}
++            - name: KAFKA_CFG_BROKER_ID
++              value: {{ .Values.brokerId | quote }}
++            {{- if or (include "kafka.client.saslAuthentication" .) (include "kafka.interBroker.saslAuthentication" .) }}
+             - name: KAFKA_OPTS
+               value: "-Djava.security.auth.login.config=/opt/bitnami/kafka/conf/kafka_jaas.conf"
+-            - name: KAFKA_BROKER_USER
+-              value: {{ .Values.auth.brokerUser | quote }}
+-            - name: KAFKA_BROKER_PASSWORD
++            {{- if (include "kafka.client.saslAuthentication" .) }}
++            - name: KAFKA_CLIENT_USER
++              value: {{ .Values.auth.jaas.clientUser | quote }}
++            - name: KAFKA_CLIENT_PASSWORD
+               valueFrom:
+                 secretKeyRef:
+-                  name: {{ include "kafka.secretName" . }}
+-                  key: kafka-broker-password
+-            - name: KAFKA_INTER_BROKER_USER
+-              value: {{ .Values.auth.interBrokerUser | quote }}
+-            - name: KAFKA_INTER_BROKER_PASSWORD
++                  name: {{ include "kafka.jaasSecretName" . }}
++                  key: client-password
++            {{- end }}
++            {{- if .Values.auth.jaas.zookeeperUser }}
++            - name: KAFKA_ZOOKEEPER_USER
++              value: {{ .Values.auth.jaas.zookeeperUser | quote }}
++            - name: KAFKA_ZOOKEEPER_PASSWORD
+               valueFrom:
+                 secretKeyRef:
+-                  name: {{ include "kafka.secretName" . }}
+-                  key: kafka-inter-broker-password
+-            {{- if .Values.auth.zookeeperUser }}
+-            - name: KAFKA_ZOOKEEPER_USER
+-              value: {{ .Values.auth.zookeeperUser | quote }}
++                  name: {{ include "kafka.jaasSecretName" . }}
++                  key: zookeeper-password
+             {{- end }}
+-            {{- if .Values.auth.zookeeperPassword }}
+-            - name: KAFKA_ZOOKEEPER_PASSWORD
++            {{- if (include "kafka.interBroker.saslAuthentication" .) }}
++            - name: KAFKA_INTER_BROKER_USER
++              value: {{ .Values.auth.jaas.interBrokerUser | quote }}
++            - name: KAFKA_INTER_BROKER_PASSWORD
+               valueFrom:
+                 secretKeyRef:
+-                  name: {{ include "kafka.secretName" . }}
+-                  key: kafka-zookeeper-password
++                  name: {{ include "kafka.jaasSecretName" . }}
++                  key: inter-broker-password
+             {{- end }}
+             {{- end }}
+-            {{- if .Values.auth.certificatesPassword }}
++            {{- if (include "kafka.tlsEncryption" .) }}
++            - name: KAFKA_CFG_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM
++              value: {{ .Values.auth.tlsEndpointIdentificationAlgorithm | quote }}
++            {{- if .Values.auth.jksPassword }}
+             - name: KAFKA_CERTIFICATE_PASSWORD
+-              value: {{ .Values.auth.certificatesPassword | quote }}
++              value: {{ .Values.auth.jksPassword | quote }}
++            {{- end }}
++            {{- end }}
++            {{- if .Values.metrics.jmx.enabled }}
++            - name: JMX_PORT
++              value: "5555"
+             {{- end }}
+-            - name: ALLOW_PLAINTEXT_LISTENER
+-              value: {{ ternary "yes" "no" (or .Values.auth.enabled .Values.allowPlaintextListener) | quote }}
+-            - name: KAFKA_CFG_BROKER_ID
+-              value: {{ .Values.brokerId | quote }}
+             - name: KAFKA_CFG_DELETE_TOPIC_ENABLE
+               value: {{ .Values.deleteTopicEnable | quote }}
+             - name: KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE
+@@ -255,8 +246,6 @@ spec:
+               value: {{ .Values.offsetsTopicReplicationFactor | quote }}
+             - name: KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+               value: {{ .Values.transactionStateLogReplicationFactor | quote }}
+-            - name: KAFKA_CFG_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM
+-              value: {{ .Values.sslEndpointIdentificationAlgorithm | quote }}
+             - name: KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR
+               value: {{ .Values.transactionStateLogMinIsr | quote }}
+             - name: KAFKA_CFG_NUM_IO_THREADS
+@@ -279,15 +268,13 @@ spec:
+             {{ include "kafka.tplValue" ( dict "value" .Values.extraEnvVars "context" $) | nindent 12 }}
+             {{- end }}
+           ports:
+-            - name: kafka
++            - name: kafka-client
+               containerPort: 9092
+-            {{- if .Values.auth.ssl }}
+-            - name: kafka-ssl
++            - name: kafka-internal
+               containerPort: 9093
+-            {{- end }}
+-            {{- if and .Values.externalAccess.enabled (eq .Values.externalAccess.service.type "LoadBalancer") }}
++            {{- if .Values.externalAccess.enabled }}
+             - name: kafka-external
+-              containerPort: 19092
++              containerPort: 9094
+             {{- end }}
+           {{- if .Values.livenessProbe }}
+           livenessProbe: {{- include "kafka.tplValue" (dict "value" .Values.livenessProbe "context" $) | nindent 12 }}
+@@ -318,9 +305,9 @@ spec:
+             - name: shared
+               mountPath: /shared
+             {{- end }}
+-            {{- if .Values.auth.ssl }}
++            {{- if (include "kafka.tlsEncryption" .) }}
+             - name: kafka-certificates
+-              mountPath: /opt/bitnami/kafka/conf/certs/
++              mountPath: /certs
+               readOnly: true
+             {{- end }}
+             {{- if .Values.extraVolumeMounts }}
+@@ -377,10 +364,10 @@ spec:
+           configMap:
+             name: {{ include "kafka.metrics.jmx.configmapName" . }}
+         {{- end }}
+-        {{- if .Values.auth.ssl }}
++        {{- if (include "kafka.tlsEncryption" .) }}
+         - name: kafka-certificates
+           secret:
+-            secretName: {{ required "A secret containing the Kafka JKS certificates is required when SSL in enabled" .Values.auth.certificatesSecret }}
++            secretName: {{ required "A secret containing the Kafka JKS files is required when TLS encryption in enabled" .Values.auth.jksSecret }}
+             defaultMode: 256
+         {{- end }}
+         {{- if .Values.extraVolumes }}
+diff --git a/bitnami/kafka/templates/svc-headless.yaml b/bitnami/kafka/templates/svc-headless.yaml
+index de6524f648..7d7429e002 100644
+--- a/bitnami/kafka/templates/svc-headless.yaml
++++ b/bitnami/kafka/templates/svc-headless.yaml
+@@ -8,15 +8,13 @@ spec:
+   type: ClusterIP
+   clusterIP: None
+   ports:
+-    - name: tcp-kafka
++    - name: tcp-client
+       port: {{ .Values.service.port }}
+       protocol: TCP
+-      targetPort: kafka
+-    {{- if .Values.auth.ssl }}
+-    - name: tls-kafka
+-      port: {{ .Values.service.sslPort }}
++      targetPort: kafka-client
++    - name: tcp-internal
++      port: {{ .Values.service.internalPort }}
+       protocol: TCP
+-      targetPort: kafka-ssl
+-    {{- end }}
++      targetPort: kafka-internal
+   selector: {{- include "kafka.matchLabels" . | nindent 4 }}
+     app.kubernetes.io/component: kafka
+diff --git a/bitnami/kafka/templates/svc.yaml b/bitnami/kafka/templates/svc.yaml
+index 12a48c3fdb..cea49634ff 100644
+--- a/bitnami/kafka/templates/svc.yaml
++++ b/bitnami/kafka/templates/svc.yaml
+@@ -18,25 +18,14 @@ spec:
+   {{- end }}
+   {{- end }}
+   ports:
+-    - name: tcp-kafka
++    - name: tcp-client
+       port: {{ .Values.service.port }}
+       protocol: TCP
+-      targetPort: kafka
+-      {{- if and (or (eq .Values.service.type "NodePort") (eq .Values.service.type "LoadBalancer")) (not (empty .Values.service.nodePorts.kafka)) }}
+-      nodePort: {{ .Values.service.nodePorts.kafka }}
++      targetPort: kafka-client
++      {{- if and (or (eq .Values.service.type "NodePort") (eq .Values.service.type "LoadBalancer")) (not (empty .Values.service.nodePort)) }}
++      nodePort: {{ .Values.service.nodePort }}
+       {{- else if eq .Values.service.type "ClusterIP" }}
+       nodePort: null
+       {{- end }}
+-    {{- if .Values.auth.ssl }}
+-    - name: tls-kafka
+-      port: {{ .Values.service.sslPort }}
+-      protocol: TCP
+-      targetPort: kafka-ssl
+-      {{- if and (or (eq .Values.service.type "NodePort") (eq .Values.service.type "LoadBalancer")) (not (empty .Values.service.nodePorts.ssl)) }}
+-      nodePort: {{ .Values.service.nodePorts.ssl }}
+-      {{- else if eq .Values.service.type "ClusterIP" }}
+-      nodePort: null
+-      {{- end }}
+-    {{- end }}
+   selector: {{- include "kafka.matchLabels" . | nindent 4 }}
+     app.kubernetes.io/component: kafka
+diff --git a/bitnami/kafka/values-production.yaml b/bitnami/kafka/values-production.yaml
+index ff5372ea53..fbd5d0bb78 100644
+--- a/bitnami/kafka/values-production.yaml
++++ b/bitnami/kafka/values-production.yaml
+@@ -14,7 +14,7 @@
+ image:
+   registry: docker.io
+   repository: bitnami/kafka
+-  tag: 2.5.0-debian-10-r29
++  tag: 2.5.0-debian-10-r54
+   ## Specify a imagePullPolicy
+   ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+   ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+@@ -81,32 +81,23 @@ clusterDomain: cluster.local
+ ##
+ # existingConfigmap:
+ 
+-## Allow to use the PLAINTEXT listener.
+-##
+-allowPlaintextListener: false
+-
+-## The address(es) the socket server listens on.
+-##
+-listeners: []
+-
+-## The address(es) (hostname:port) the broker will advertise to producers and consumers.
+-##
+-advertisedListeners: []
+-
+-## The protocol->listener mapping
+-## Example:
+-## listenerSecurityProtocolMap: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
++## Kafka Log4J Configuration
++## An optional log4j.properties file to overwrite the default of the Kafka brokers.
++## See an example log4j.properties at:
++## https://github.com/apache/kafka/blob/trunk/config/log4j.properties
+ ##
+-# listenerSecurityProtocolMap:
++# log4j:
+ 
+-## Name of listener used for communication between brokers.
++## Kafka Log4j ConfigMap
++## The name of an existing ConfigMap containing a log4j.properties file.
++## NOTE: this will override log4j.
+ ##
+-# interBrokerListenerName:
++# existingLog4jConfigMap:
+ 
+ ## Kafka broker ID.
+ ## If unset, a unique broker id will be generated.
+ ##
+-# brokerId: -1
++brokerId: -1
+ 
+ ## Kafka's Java Heap size
+ ##
+@@ -201,12 +192,6 @@ socketSendBufferBytes: 102400
+ ##
+ zookeeperConnectionTimeoutMs: 6000
+ 
+-## The endpoint identification algorithm to validate server hostname using server certificate.
+-## Disable server host name verification by setting it to an empty string
+-## See: https://docs.confluent.io/current/kafka/authentication_ssl.html#optional-settings
+-##
+-sslEndpointIdentificationAlgorithm: https
+-
+ ## All the parameters from the configuration file can be overwritten by using environment variables with this format: KAFKA_CFG_{KEY}
+ ## ref: https://github.com/bitnami/bitnami-docker-kafka#configuration
+ ## Example:
+@@ -233,46 +218,100 @@ extraVolumeMounts: []
+ ## https://github.com/bitnami/bitnami-docker-kafka#security
+ ##
+ auth:
+-  ## Switch to enable the kafka authentication.
+-  enabled: true
++  ## Authentication protocol for client and inter-broker communications
++  ## Supported values: 'plaintext', 'tls', 'mtls', 'sasl' and 'sasl_tls'
++  ## This table shows the security provided on each protocol:
++  ## | Method    | Authentication                | Encryption via TLS |
++  ## | plaintext | None                          | No                 |
++  ## | tls       | None                          | Yes                |
++  ## | mtls      | Yes (two-way authentication)  | Yes                |
++  ## | sasl      | Yes (via SASL)                | No                 |
++  ## | sasl_tls  | Yes (via SASL)                | Yes                |
++  ##
++  clientProtocol: sasl
++  interBrokerProtocol: sasl
++
++  ## Name of the existing secret containing the truststore and
++  ## one keystore per Kafka broker you have in the Kafka cluster.
++  ## MANDATORY when 'tls', 'mtls', or 'sasl_tls' authentication protocols are used.
++  ## Create this secret following the steps below:
++  ## 1) Generate your trustore and keystore files. Helpful script: https://raw.githubusercontent.com/confluentinc/confluent-platform-security-tools/master/kafka-generate-ssl.sh
++  ## 2) Rename your truststore to `kafka.truststore.jks`.
++  ## 3) Rename your keystores to `kafka-X.keystore.jks` where X is the ID of each Kafka broker.
++  ## 4) Run the command below where SECRET_NAME is the name of the secret you want to create:
++  ##       kubectl create secret generic SECRET_NAME --from-file=./kafka.truststore.jks --from-file=./kafka-0.keystore.jks --from-file=./kafka-1.keystore.jks ...
++  ##
++  # jksSecret:
++
++  ## Password to access the JKS files when they are password-protected.
++  ##
++  # jksPassword:
++
++  ## The endpoint identification algorithm used by clients to validate server host name.
++  ## Disable server host name verification by setting it to an empty string
++  ## See: https://docs.confluent.io/current/kafka/authentication_ssl.html#optional-settings
++  ##
++  tlsEndpointIdentificationAlgorithm: https
++
++  ## JAAS configuration for SASL authentication
++  ## MANDATORY when method is 'sasl', or 'sasl_tls'
++  ##
++  jaas:
++    ## Kafka client user
++    ##
++    clientUser: user
+ 
+-  ## Enable SSL to be used with brokers and consumers
+-  ##
+-  # ssl: false
++    ## Kafka client password
++    ##
++    clientPassword: ""
+ 
+-  ## Name of the existing secret containing the certificate files that will be used by Kafka.
+-  ##
+-  # certificatesSecret:
++    ## Kafka inter broker communication user
++    ##
++    interBrokerUser: admin
+ 
+-  ## Password for the above certificates if they are password protected.
+-  ##
+-  # certificatesPassword:
++    ## Kafka inter broker communication password
++    ##
++    interBrokerPassword: ""
+ 
+-  ## Kafka client user.
+-  ##
+-  brokerUser: user
++    ## Kafka Zookeeper user
++    ##
++    zookeeperUser: zookeeperUser
+ 
+-  ## Kafka client password
+-  ##
+-  # brokerPassword:
++    ## Kafka Zookeeper password
++    ##
++    zookeeperPassword: zookeeperPassword
+ 
+-  ## Kafka inter broker communication user
+-  ##
+-  interBrokerUser: admin
++    ## Name of the existing secret containing credentials for clientUser, interBrokerUser and zookeeperUser.
++    ## Create this secret running the command below where SECRET_NAME is the name of the secret you want to create:
++    ##       kubectl create secret generic SECRET_NAME --from-literal=client-password=CLIENT_PASSWORD --from-literal=inter-broker-password=INTER_BROKER_PASSWORD --from-literal=zookeeper-password=ZOOKEEPER_PASSWORD
++    ##
++    # existingSecret:
+ 
+-  ## Kafka inter broker communication password
+-  ##
+-  # interBrokerPassword:
+-  ## Kafka Zookeeper user.
+-  ##
+-  # zookeeperUser:
+-  ## Kafka Zookeeper password.
+-  ##
+-  # zookeeperPassword:
++## The address(es) the socket server listens on.
++## When it's set to an empty array, the listeners will be configured
++## based on the authentication protocols (auth.clientProtocol and auth.interBrokerProtocol parameters)
++##
++listeners: []
+ 
+-  ## Name of the existing secret containing credentials for brokerUser, interBrokerUser and zookeeperUser.
+-  ##
+-  # existingSecret:
++## The address(es) (hostname:port) the brokers will advertise to producers and consumers.
++## When it's set to an empty array, the advertised listeners will be configured
++## based on the authentication protocols (auth.clientProtocol and auth.interBrokerProtocol parameters)
++##
++advertisedListeners: []
++
++## The listener->protocol mapping
++## When it's nil, the listeners will be configured
++## based on the authentication protocols (auth.clientProtocol and auth.interBrokerProtocol parameters)
++##
++# listenerSecurityProtocolMap:
++
++## Allow to use the PLAINTEXT listener.
++##
++allowPlaintextListener: false
++
++## Name of listener used for communication between brokers.
++##
++interBrokerListenerName: INTERNAL
+ 
+ ## Number of Kafka brokers to deploy
+ ##
+@@ -349,7 +388,7 @@ resources:
+ ##
+ livenessProbe:
+   tcpSocket:
+-    port: kafka
++    port: kafka-client
+   initialDelaySeconds: 10
+   timeoutSeconds: 5
+   # failureThreshold: 3
+@@ -357,7 +396,7 @@ livenessProbe:
+   # successThreshold: 1
+ readinessProbe:
+   tcpSocket:
+-    port: kafka
++    port: kafka-client
+   initialDelaySeconds: 5
+   failureThreshold: 6
+   timeoutSeconds: 5
+@@ -395,18 +434,16 @@ service:
+   ## Service type
+   ##
+   type: ClusterIP
+-  ## Kafka port
++  ## Kafka port for client connections
+   ##
+   port: 9092
+-  ## Kafka SSL port
++  ## Kafka port for inter-broker connections
+   ##
+-  sslPort: 9093
+-  ## Specify the nodePort(s) value for the LoadBalancer and NodePort service types.
++  internalPort: 9093
++  ## Specify the nodePort value for the LoadBalancer and NodePort service types.
+   ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
+   ##
+-  nodePorts:
+-    kafka: ""
+-    ssl: ""
++  nodePort: ""
+   ## Set the LoadBalancer service type to internal only.
+   ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
+   ##
+@@ -434,7 +471,7 @@ externalAccess:
+   ## Note: RBAC might be required
+   ##
+   autoDiscovery:
+-    ## Enable external IPs auto-discovery
++    ## Enable external IP/ports auto-discovery
+     ##
+     enabled: false
+     ## Bitnami Kubectl image
+@@ -443,7 +480,7 @@ externalAccess:
+     image:
+       registry: docker.io
+       repository: bitnami/kubectl
+-      tag: 1.17.4-debian-10-r41
++      tag: 1.17.4-debian-10-r82
+       ## Specify a imagePullPolicy
+       ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+       ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+@@ -480,7 +517,7 @@ externalAccess:
+     type: LoadBalancer
+     ## Port used when service type is LoadBalancer
+     ##
+-    port: 19092
++    port: 9094
+     ## Array of load balancer IPs for each Kafka broker. Length must be the same as replicaCount
+     ## Example:
+     ## loadBalancerIPs:
+@@ -613,7 +650,7 @@ metrics:
+     image:
+       registry: docker.io
+       repository: bitnami/kafka-exporter
+-      tag: 1.2.0-debian-10-r109
++      tag: 1.2.0-debian-10-r131
+       ## Specify a imagePullPolicy
+       ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+       ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+@@ -627,6 +664,19 @@ metrics:
+       ##
+       pullSecrets: []
+ 
++    ## Extra flags to be passed to Kafka exporter
++    ## Example:
++    ## extraFlags:
++    ##   tls.insecure-skip-tls-verify: ""
++    ##   web.telemetry-path: "/metrics"
++    ##
++    extraFlags: {}
++
++    ## Name of the existing secret containing the optional certificate and key files
++    ## for Kafka Exporter client authentication
++    ##
++    # certificatesSecret:
++
+     ## Prometheus Kafka Exporter' resource requests and limits
+     ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+     ##
+@@ -688,7 +738,7 @@ metrics:
+     image:
+       registry: docker.io
+       repository: bitnami/jmx-exporter
+-      tag: 0.12.0-debian-10-r108
++      tag: 0.13.0-debian-10-r20
+       ## Specify a imagePullPolicy
+       ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+       ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+@@ -791,14 +841,17 @@ metrics:
+     ## Namespace in which Prometheus is running
+     ##
+     # namespace: monitoring
++
+     ## Interval at which metrics should be scraped.
+     ## ref: https://github.com/coreos/prometheus-operator/blob/master/Documentation/api.md#endpoint
+     ##
+     # interval: 10s
++
+     ## Timeout after which the scrape is ended
+     ## ref: https://github.com/coreos/prometheus-operator/blob/master/Documentation/api.md#endpoint
+     ##
+     # scrapeTimeout: 10s
++
+     ## ServiceMonitor selector labels
+     ## ref: https://github.com/bitnami/charts/tree/master/bitnami/prometheus-operator#prometheus-configuration
+     ##
+@@ -812,6 +865,22 @@ metrics:
+ ##
+ zookeeper:
+   enabled: true
++  auth:
++    ## Enable Zookeeper auth
++    ##
++    enabled: true
++    ## User that will use Zookeeper clients to auth
++    ##
++    clientUser: zookeeperUser
++    ## Password that will use Zookeeper clients to auth
++    ##
++    clientPassword: zookeeperPassword
++    ## Comma, semicolon or whitespace separated list of user to be created. Specify them as a string, for example: "user1,user2,admin"
++    ##
++    serverUsers: zookeeperUser
++    ## Comma, semicolon or whitespace separated list of passwords to assign to users when created. Specify them as a string, for example: "pass4user1, pass4user2, pass4admin"
++    ##
++    serverPasswords: zookeeperPassword
+   metrics:
+     enabled: true
+ 
+@@ -821,16 +890,3 @@ externalZookeeper:
+   ## Server or list of external zookeeper servers to use.
+   ##
+   servers: []
+-
+-## Kafka Log4J Configuration
+-## An optional log4j.properties file to overwrite the default of the Kafka brokers.
+-## See an example log4j.properties at:
+-## https://github.com/apache/kafka/blob/trunk/config/log4j.properties
+-##
+-# log4j:
+-
+-## Kafka Log4j ConfigMap
+-## The name of an existing ConfigMap containing a log4j.properties file.
+-## NOTE: this will override log4j.
+-##
+-# existingLog4jConfigMap:
+diff --git a/bitnami/kafka/values.yaml b/bitnami/kafka/values.yaml
+index 90dfbe3b98..4b5458f99b 100644
+--- a/bitnami/kafka/values.yaml
++++ b/bitnami/kafka/values.yaml
+@@ -14,7 +14,7 @@
+ image:
+   registry: docker.io
+   repository: bitnami/kafka
+-  tag: 2.5.0-debian-10-r29
++  tag: 2.5.0-debian-10-r54
+   ## Specify a imagePullPolicy
+   ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+   ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+@@ -81,27 +81,18 @@ clusterDomain: cluster.local
+ ##
+ # existingConfigmap:
+ 
+-## Allow to use the PLAINTEXT listener.
+-##
+-allowPlaintextListener: true
+-
+-## The address(es) the socket server listens on.
+-##
+-listeners: []
+-
+-## The address(es) (hostname:port) the broker will advertise to producers and consumers.
+-##
+-advertisedListeners: []
+-
+-## The protocol->listener mapping
+-## Example:
+-## listenerSecurityProtocolMap: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
++## Kafka Log4J Configuration
++## An optional log4j.properties file to overwrite the default of the Kafka brokers.
++## See an example log4j.properties at:
++## https://github.com/apache/kafka/blob/trunk/config/log4j.properties
+ ##
+-# listenerSecurityProtocolMap:
++# log4j:
+ 
+-## Name of listener used for communication between brokers.
++## Kafka Log4j ConfigMap
++## The name of an existing ConfigMap containing a log4j.properties file.
++## NOTE: this will override log4j.
+ ##
+-# interBrokerListenerName:
++# existingLog4jConfigMap:
+ 
+ ## Kafka broker ID.
+ ## If unset, a unique broker id will be generated.
+@@ -201,12 +192,6 @@ socketSendBufferBytes: 102400
+ ##
+ zookeeperConnectionTimeoutMs: 6000
+ 
+-## The endpoint identification algorithm to validate server hostname using server certificate.
+-## Disable server host name verification by setting it to an empty string
+-## See: https://docs.confluent.io/current/kafka/authentication_ssl.html#optional-settings
+-##
+-sslEndpointIdentificationAlgorithm: https
+-
+ ## All the parameters from the configuration file can be overwritten by using environment variables with this format: KAFKA_CFG_{KEY}
+ ## ref: https://github.com/bitnami/bitnami-docker-kafka#configuration
+ ## Example:
+@@ -233,48 +218,100 @@ extraVolumeMounts: []
+ ## https://github.com/bitnami/bitnami-docker-kafka#security
+ ##
+ auth:
+-  ## Switch to enable the kafka authentication.
+-  enabled: false
++  ## Authentication protocol for client and inter-broker communications
++  ## Supported values: 'plaintext', 'tls', 'mtls', 'sasl' and 'sasl_tls'
++  ## This table shows the security provided on each protocol:
++  ## | Method    | Authentication                | Encryption via TLS |
++  ## | plaintext | None                          | No                 |
++  ## | tls       | None                          | Yes                |
++  ## | mtls      | Yes (two-way authentication)  | Yes                |
++  ## | sasl      | Yes (via SASL)                | No                 |
++  ## | sasl_tls  | Yes (via SASL)                | Yes                |
++  ##
++  clientProtocol: plaintext
++  interBrokerProtocol: plaintext
++
++  ## Name of the existing secret containing the truststore and
++  ## one keystore per Kafka broker you have in the Kafka cluster.
++  ## MANDATORY when 'tls', 'mtls', or 'sasl_tls' authentication protocols are used.
++  ## Create this secret following the steps below:
++  ## 1) Generate your trustore and keystore files. Helpful script: https://raw.githubusercontent.com/confluentinc/confluent-platform-security-tools/master/kafka-generate-ssl.sh
++  ## 2) Rename your truststore to `kafka.truststore.jks`.
++  ## 3) Rename your keystores to `kafka-X.keystore.jks` where X is the ID of each Kafka broker.
++  ## 4) Run the command below where SECRET_NAME is the name of the secret you want to create:
++  ##       kubectl create secret generic SECRET_NAME --from-file=./kafka.truststore.jks --from-file=./kafka-0.keystore.jks --from-file=./kafka-1.keystore.jks ...
++  ##
++  # jksSecret:
++
++  ## Password to access the JKS files when they are password-protected.
++  ##
++  # jksPassword:
++
++  ## The endpoint identification algorithm used by clients to validate server host name.
++  ## Disable server host name verification by setting it to an empty string
++  ## See: https://docs.confluent.io/current/kafka/authentication_ssl.html#optional-settings
++  ##
++  tlsEndpointIdentificationAlgorithm: https
++
++  ## JAAS configuration for SASL authentication
++  ## MANDATORY when method is 'sasl', or 'sasl_tls'
++  ##
++  jaas:
++    ## Kafka client user
++    ##
++    clientUser: user
+ 
+-  ## Enable SSL to be used with brokers and consumers
+-  ##
+-  # ssl: false
++    ## Kafka client password
++    ##
++    clientPassword: ""
+ 
+-  ## Name of the existing secret containing the certificate files that will be used by Kafka.
+-  ##
+-  # certificatesSecret:
++    ## Kafka inter broker communication user
++    ##
++    interBrokerUser: admin
+ 
+-  ## Password for the above certificates if they are password protected.
+-  ##
+-  # certificatesPassword:
++    ## Kafka inter broker communication password
++    ##
++    interBrokerPassword: ""
+ 
+-  ## Kafka client user.
+-  ##
+-  brokerUser: user
++    ## Kafka Zookeeper user
++    ##
++    # zookeeperUser:
+ 
+-  ## Kafka client password
+-  ##
+-  # brokerPassword:
++    ## Kafka Zookeeper password
++    ##
++    # zookeeperPassword:
+ 
+-  ## Kafka inter broker communication user
+-  ##
+-  interBrokerUser: admin
++    ## Name of the existing secret containing credentials for clientUser, interBrokerUser and zookeeperUser.
++    ## Create this secret running the command below where SECRET_NAME is the name of the secret you want to create:
++    ##       kubectl create secret generic SECRET_NAME --from-literal=client-password=CLIENT_PASSWORD --from-literal=inter-broker-password=INTER_BROKER_PASSWORD --from-literal=zookeeper-password=ZOOKEEPER_PASSWORD
++    ##
++    # existingSecret:
+ 
+-  ## Kafka inter broker communication password
+-  ##
+-  # interBrokerPassword:
++## The address(es) the socket server listens on.
++## When it's set to an empty array, the listeners will be configured
++## based on the authentication protocols (auth.clientProtocol and auth.interBrokerProtocol parameters)
++##
++listeners: []
+ 
+-  ## Kafka Zookeeper user.
+-  ##
+-  # zookeeperUser:
++## The address(es) (hostname:port) the brokers will advertise to producers and consumers.
++## When it's set to an empty array, the advertised listeners will be configured
++## based on the authentication protocols (auth.clientProtocol and auth.interBrokerProtocol parameters)
++##
++advertisedListeners: []
+ 
+-  ## Kafka Zookeeper password.
+-  ##
+-  # zookeeperPassword:
++## The listener->protocol mapping
++## When it's nil, the listeners will be configured
++## based on the authentication protocols (auth.clientProtocol and auth.interBrokerProtocol parameters)
++##
++# listenerSecurityProtocolMap:
+ 
+-  ## Name of the existing secret containing credentials for brokerUser, interBrokerUser and zookeeperUser.
+-  ##
+-  # existingSecret:
++## Allow to use the PLAINTEXT listener.
++##
++allowPlaintextListener: true
++
++## Name of listener used for communication between brokers.
++##
++interBrokerListenerName: INTERNAL
+ 
+ ## Number of Kafka brokers to deploy
+ ##
+@@ -351,7 +388,7 @@ resources:
+ ##
+ livenessProbe:
+   tcpSocket:
+-    port: kafka
++    port: kafka-client
+   initialDelaySeconds: 10
+   timeoutSeconds: 5
+   # failureThreshold: 3
+@@ -359,7 +396,7 @@ livenessProbe:
+   # successThreshold: 1
+ readinessProbe:
+   tcpSocket:
+-    port: kafka
++    port: kafka-client
+   initialDelaySeconds: 5
+   failureThreshold: 6
+   timeoutSeconds: 5
+@@ -397,18 +434,16 @@ service:
+   ## Service type
+   ##
+   type: ClusterIP
+-  ## Kafka port
++  ## Kafka port for client connections
+   ##
+   port: 9092
+-  ## Kafka SSL port
++  ## Kafka port for inter-broker connections
+   ##
+-  sslPort: 9093
+-  ## Specify the nodePort(s) value for the LoadBalancer and NodePort service types.
++  internalPort: 9093
++  ## Specify the nodePort value for the LoadBalancer and NodePort service types.
+   ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
+   ##
+-  nodePorts:
+-    kafka: ""
+-    ssl: ""
++  nodePort: ""
+   ## Set the LoadBalancer service type to internal only.
+   ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
+   ##
+@@ -445,7 +480,7 @@ externalAccess:
+     image:
+       registry: docker.io
+       repository: bitnami/kubectl
+-      tag: 1.17.4-debian-10-r41
++      tag: 1.17.4-debian-10-r82
+       ## Specify a imagePullPolicy
+       ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+       ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+@@ -482,7 +517,7 @@ externalAccess:
+     type: LoadBalancer
+     ## Port used when service type is LoadBalancer
+     ##
+-    port: 19092
++    port: 9094
+     ## Array of load balancer IPs for each Kafka broker. Length must be the same as replicaCount
+     ## Example:
+     ## loadBalancerIPs:
+@@ -615,7 +650,7 @@ metrics:
+     image:
+       registry: docker.io
+       repository: bitnami/kafka-exporter
+-      tag: 1.2.0-debian-10-r109
++      tag: 1.2.0-debian-10-r131
+       ## Specify a imagePullPolicy
+       ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+       ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+@@ -629,6 +664,19 @@ metrics:
+       ##
+       pullSecrets: []
+ 
++    ## Extra flags to be passed to Kafka exporter
++    ## Example:
++    ## extraFlags:
++    ##   tls.insecure-skip-tls-verify: ""
++    ##   web.telemetry-path: "/metrics"
++    ##
++    extraFlags: {}
++
++    ## Name of the existing secret containing the optional certificate and key files
++    ## for Kafka Exporter client authentication
++    ##
++    # certificatesSecret:
++
+     ## Prometheus Kafka Exporter' resource requests and limits
+     ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+     ##
+@@ -690,7 +738,7 @@ metrics:
+     image:
+       registry: docker.io
+       repository: bitnami/jmx-exporter
+-      tag: 0.12.0-debian-10-r108
++      tag: 0.13.0-debian-10-r20
+       ## Specify a imagePullPolicy
+       ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+       ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+@@ -817,6 +865,22 @@ metrics:
+ ##
+ zookeeper:
+   enabled: true
++  auth:
++    ## Enable Zookeeper auth
++    ##
++    enabled: false
++    ## User that will use Zookeeper clients to auth
++    ##
++    # clientUser:
++    ## Password that will use Zookeeper clients to auth
++    ##
++    # clientPassword:
++    ## Comma, semicolon or whitespace separated list of user to be created. Specify them as a string, for example: "user1,user2,admin"
++    ##
++    # serverUsers:
++    ## Comma, semicolon or whitespace separated list of passwords to assign to users when created. Specify them as a string, for example: "pass4user1, pass4user2, pass4admin"
++    ##
++    # serverPasswords:
+ 
+ ## This value is only used when zookeeper.enabled is set to false
+ ##
+@@ -824,16 +888,3 @@ externalZookeeper:
+   ## Server or list of external zookeeper servers to use.
+   ##
+   servers: []
+-
+-## Kafka Log4J Configuration
+-## An optional log4j.properties file to overwrite the default of the Kafka brokers.
+-## See an example log4j.properties at:
+-## https://github.com/apache/kafka/blob/trunk/config/log4j.properties
+-##
+-# log4j:
+-
+-## Kafka Log4j ConfigMap
+-## The name of an existing ConfigMap containing a log4j.properties file.
+-## NOTE: this will override log4j.
+-##
+-# existingLog4jConfigMap:

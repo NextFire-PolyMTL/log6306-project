@@ -1,0 +1,109 @@
+commit b19d6cd354e7d51ad680935c7bd7b38c75123af4
+Author: Ioan <ioanowen@gmail.com>
+Date:   Mon May 15 09:56:29 2017 +0100
+
+    [stable/kube-ops-view] Add ingress support & enhance service template metadata (#915)
+    
+    * Add optional ingress for kube-ops-view and add annotations and labels elements to service template
+    
+    * Refactor ingress to match conventions depicted in drupal & wordpress. Add all values created/used to values.yaml
+    
+    * bump chart version
+
+diff --git a/stable/kube-ops-view/Chart.yaml b/stable/kube-ops-view/Chart.yaml
+index c863ddacc..6da4e4eed 100644
+--- a/stable/kube-ops-view/Chart.yaml
++++ b/stable/kube-ops-view/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: kube-ops-view
+-version: 0.2.0
++version: 0.3.0
+ description: Kubernetes Operational View - read-only system dashboard for multiple K8s clusters
+ keywords:
+   - kubernetes
+diff --git a/stable/kube-ops-view/templates/ingress.yaml b/stable/kube-ops-view/templates/ingress.yaml
+new file mode 100644
+index 000000000..a054ab71f
+--- /dev/null
++++ b/stable/kube-ops-view/templates/ingress.yaml
+@@ -0,0 +1,28 @@
++{{- if .Values.ingress.enabled -}}
++apiVersion: extensions/v1beta1
++kind: Ingress
++metadata:
++  name: {{ template "fullname" . }}
++  labels:
++    app: {{ template "fullname" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++{{- if .Values.ingress.annotations }}
++  annotations:
++{{ toYaml .Values.ingress.annotations | indent 4}}
++{{- end }}
++spec:
++  rules:
++    - host: {{ .Values.ingress.hostname }}
++      http:
++        paths:
++          - path: /
++            backend:
++              serviceName: {{ template "fullname" . }}
++              servicePort: {{ .Values.service.externalPort }}
++{{- if .Values.ingress.tls }}
++  tls:
++{{ toYaml .Values.ingress.tls | indent 4 }}
++{{- end -}}
++{{- end -}}
+\ No newline at end of file
+diff --git a/stable/kube-ops-view/templates/service.yaml b/stable/kube-ops-view/templates/service.yaml
+index 4c6e20ea9..1faf14123 100644
+--- a/stable/kube-ops-view/templates/service.yaml
++++ b/stable/kube-ops-view/templates/service.yaml
+@@ -2,8 +2,15 @@ apiVersion: v1
+ kind: Service
+ metadata:
+   name: {{ template "fullname" . }}
++{{- if .Values.service.annotations }}
++  annotations:
++{{ toYaml .Values.service.annotations | indent 4}}
++{{- end }}
+   labels:
+     chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++{{- if .Values.service.labels }}
++{{ toYaml .Values.service.labels | indent 4}}
++{{- end }}
+ spec:
+   type: {{ .Values.service.type }}
+   ports:
+diff --git a/stable/kube-ops-view/values.yaml b/stable/kube-ops-view/values.yaml
+index 97bce74af..42c5ef39d 100644
+--- a/stable/kube-ops-view/values.yaml
++++ b/stable/kube-ops-view/values.yaml
+@@ -5,6 +5,10 @@ image:
+   tag: latest
+   pullPolicy: IfNotPresent
+ service:
++  # annotations:
++  #   service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
++  # labels:
++  #   key: value
+   type: ClusterIP
+   externalPort: 80
+   internalPort: 8080
+@@ -15,4 +19,13 @@ resources:
+   requests:
+     cpu: 80m
+     memory: 64Mi
+-
++ingress:
++  enabled: false
++  # hostname: kube-ops-view.local
++  # annotations:
++  #   kubernetes.io/ingress.class: nginx
++  # tls:
++  ## Secrets must be manually created in the namespace
++  #   - secretName: kube-ops-view.local-tls
++  #     hosts:
++  #       - kube-ops-view.local
+\ No newline at end of file

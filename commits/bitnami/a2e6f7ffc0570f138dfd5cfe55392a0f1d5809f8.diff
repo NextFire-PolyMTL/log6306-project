@@ -1,0 +1,1470 @@
+commit a2e6f7ffc0570f138dfd5cfe55392a0f1d5809f8 (from 2fcc9c617c1cdd49be9c0cd996730416e274a6d9)
+Merge: 2fcc9c617c b1c85dcca2
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Tue Apr 3 16:33:23 2018 +0200
+
+    Merge pull request #638 from tompizmor/use_rolling_tag
+    
+    Refactor image property and start using rolling tag
+
+diff --git a/incubator/apache/Chart.yaml b/incubator/apache/Chart.yaml
+index aa152e9406..5d6d2235df 100644
+--- a/incubator/apache/Chart.yaml
++++ b/incubator/apache/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: apache
+-version: 0.3.9
++version: 0.3.10
+ appVersion: 2.4.33
+ description: Chart for Apache HTTP Server
+ keywords:
+diff --git a/incubator/apache/README.md b/incubator/apache/README.md
+index 474ff474cc..17a1e4433b 100644
+--- a/incubator/apache/README.md
++++ b/incubator/apache/README.md
+@@ -54,10 +54,13 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following tables lists the configurable parameters of the Apache chart and their default values.
+ 
+-|     Parameter     |         Description         |       Default        |
+-|-------------------|-----------------------------|----------------------|
+-| `imageTag`        | `bitnami/apache` image tag. | Apache image version |
+-| `imagePullPolicy` | Image pull policy.          | `IfNotPresent`       |
++| Parameter                         | Description                           | Default                                                   |
++| --------------------------------- | ------------------------------------- | --------------------------------------------------------- |
++| `image.registry`                  | Apache image registry                 | `docker.io`                                               |
++| `image.repository`                | Apache Image name                     | `bitnami/apache`                                          |
++| `image.tag`                       | Apache Image tag                      | `{VERSION}`                                               |
++| `image.pullPolicy`                | Apache image pull policy              | `Always` if `imageTag` is `latest`, else `IfNotPresent`   |
++| `image.pullSecrets`               | Specify image pull secrets            | `nil` (does not add image pull secrets to deployed pods)  |
+ 
+ Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
+ 
+diff --git a/incubator/apache/templates/deployment.yaml b/incubator/apache/templates/deployment.yaml
+index da88f93bcb..5ddd442ad7 100644
+--- a/incubator/apache/templates/deployment.yaml
++++ b/incubator/apache/templates/deployment.yaml
+@@ -17,10 +17,16 @@ spec:
+         release: "{{ .Release.Name }}"
+         heritage: "{{ .Release.Service }}"
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         ports:
+         - name: http
+           containerPort: 80
+diff --git a/incubator/apache/values.yaml b/incubator/apache/values.yaml
+index 9bef62d6c3..e45d762940 100644
+--- a/incubator/apache/values.yaml
++++ b/incubator/apache/values.yaml
+@@ -1,9 +1,18 @@
+ ## Bitnami Apache image version
+ ## ref: https://hub.docker.com/r/bitnami/apache/tags/
+ ##
+-image: bitnami/apache:2.4.33-r0
+-
+-## Specify a imagePullPolicy
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-imagePullPolicy: IfNotPresent
++image:
++  registry: docker.io
++  repository: bitnami/apache
++  tag: 2.4.33
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName 
+\ No newline at end of file
+diff --git a/incubator/elasticsearch/Chart.yaml b/incubator/elasticsearch/Chart.yaml
+index 47661f110e..ea9ff75fbd 100644
+--- a/incubator/elasticsearch/Chart.yaml
++++ b/incubator/elasticsearch/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: elasticsearch
+-version: 0.1.2
++version: 0.1.3
+ appVersion: 5.5.2
+ description: A highly scalable open-source full-text search and analytics engine
+ keywords:
+diff --git a/incubator/elasticsearch/README.md b/incubator/elasticsearch/README.md
+index c54a483f66..15016a44ea 100644
+--- a/incubator/elasticsearch/README.md
++++ b/incubator/elasticsearch/README.md
+@@ -45,9 +45,11 @@ The following tables lists the configurable parameters of the Elasticsearch char
+ 
+ |            Parameter            |                      Description                      |                               Default                               |
+ |---------------------------------|-------------------------------------------------------|---------------------------------------------------------------------|
+-| `image.name`                    | Elasticsearch image name                              | `bitnami/elasticsearch`                                             |
+-| `image.tag`                     | Elasticsearch image tag                               | `{VERSION}`                                                         |
+-| `image.pullPolicy`              | Image pull policy                                     | `IfNotPresent`                                                      |
++| `image.registry`                | ElasticSearch image registry                          | `docker.io`                                                         |
++| `image.repository`              | ElasticSearch Image name                              | `bitnami/elasticsearch`                                             |
++| `image.tag`                     | ElasticSearch Image tag                               | `{VERSION}`                                                         |
++| `image.pullPolicy`              | ElasticSearch image pull policy                       | `Always` if `imageTag` is `latest`, else `IfNotPresent`             |
++| `image.pullSecrets`             | Specify image pull secrets                            | `nil` (does not add image pull secrets to deployed pods)            |
+ | `name`                          | Elasticsearch cluster name                            | `elastic`                                                           |
+ | `serviceAccountName`            | Kubernetes service account                            | `default`                                                           |
+ | `plugins`                       | Elasticsearch node plugins                            | `io.fabric8:elasticsearch-cloud-kubernetes:5.5.2` (required plugin) |
+diff --git a/incubator/elasticsearch/templates/client-deploy.yaml b/incubator/elasticsearch/templates/client-deploy.yaml
+index 788c1b9965..5d1303db66 100644
+--- a/incubator/elasticsearch/templates/client-deploy.yaml
++++ b/incubator/elasticsearch/templates/client-deploy.yaml
+@@ -41,10 +41,16 @@ spec:
+                   component: "client"
+                   release: "{{ .Release.Name }}"
+       {{- end }}
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       initContainers:
+       - name: sysctl
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: "{{ .Values.pullPolicy }}"
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         command: ["sysctl", "-w", "vm.max_map_count=262144"]
+         securityContext:
+           privileged: true
+diff --git a/incubator/elasticsearch/templates/master-deploy.yaml b/incubator/elasticsearch/templates/master-deploy.yaml
+index cebd146750..182f5ec618 100644
+--- a/incubator/elasticsearch/templates/master-deploy.yaml
++++ b/incubator/elasticsearch/templates/master-deploy.yaml
+@@ -41,6 +41,12 @@ spec:
+                   component: "master"
+                   release: "{{ .Release.Name }}"
+       {{- end }}
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       initContainers:
+       - name: sysctl
+         image: "{{ .Values.image }}"
+@@ -50,8 +56,8 @@ spec:
+           privileged: true
+       containers:
+       - name: "elasticsearch"
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: "{{ .Values.pullPolicy }}"
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: SERVICE
+           value: "{{ template "master.fullname" . }}"
+diff --git a/incubator/elasticsearch/templates/metrics-deploy.yaml b/incubator/elasticsearch/templates/metrics-deploy.yaml
+index 952479e729..5bcba8f6df 100644
+--- a/incubator/elasticsearch/templates/metrics-deploy.yaml
++++ b/incubator/elasticsearch/templates/metrics-deploy.yaml
+@@ -18,10 +18,16 @@ spec:
+         component: "metrics"
+         release: "{{ .Release.Name }}"
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: "metrics"
+-        image: "{{ .Values.metrics.image.name }}:{{ .Values.metrics.image.tag }}"
+-        imagePullPolicy: "{{ .Values.metrics.image.pullPolicy }}"
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         args: [ "-es.uri=http://{{ template "client.fullname" . }}:{{ .Values.client.service.port }}", "-es.all=true" ]
+         ports:
+         - name: "metrics"
+diff --git a/incubator/elasticsearch/values.yaml b/incubator/elasticsearch/values.yaml
+index 63376ba047..de15a834d6 100644
+--- a/incubator/elasticsearch/values.yaml
++++ b/incubator/elasticsearch/values.yaml
+@@ -5,13 +5,21 @@ name: elastic
+ 
+ ## Elasticsearch image
+ ## ref: https://hub.docker.com/r/bitnami/elasticsearch/tags/
+-image: bitnami/elasticsearch:5.5.2-r1
+- 
+-## Specify a imagePullPolicy
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-pullPolicy: IfNotPresent
+-
++image:
++  registry: docker.io
++  repository: bitnami/elasticsearch
++  tag: 5.5.2
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName 
+ 
+ ## The serviceAccountName to be used, required by the elasticsearch-cloud-kubernetes plugin
+ serviceAccountName: default
+diff --git a/incubator/jenkins/Chart.yaml b/incubator/jenkins/Chart.yaml
+index 1aefb9177f..36aed2214e 100644
+--- a/incubator/jenkins/Chart.yaml
++++ b/incubator/jenkins/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: jenkins
+-version: 0.4.65
++version: 0.4.66
+ appVersion: 2.109.0
+ description: The leading open source automation server
+ keywords:
+diff --git a/incubator/jenkins/README.md b/incubator/jenkins/README.md
+index 215aea0b78..1fc638f804 100644
+--- a/incubator/jenkins/README.md
++++ b/incubator/jenkins/README.md
+@@ -43,18 +43,21 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following tables lists the configurable parameters of the Jenkins chart and their default values.
+ 
+-|         Parameter          |              Description               |                   Default                   |
+-|----------------------------|----------------------------------------|---------------------------------------------|
+-| `image`                    | Jenkins image                          | `bitnami/jenkins:{VERSION}`                 |
+-| `imagePullPolicy`          | Image pull policy                      | `IfNotPresent`                              |
+-| `jenkinsUser`              | User of the application                | `user`                                      |
+-| `jenkinsPassword`          | Application password                   | _random 10 character alphanumeric string_   |
+-| `serviceType`              | Kubernetes Service type                | `LoadBalancer`                              |
+-| `persistence.enabled`      | Enable persistence using PVC           | `true`                                      |
+-| `persistence.storageClass` | PVC Storage Class for Jenkins volume   | `nil` (uses alpha storage class annotation) |
+-| `persistence.accessMode`   | PVC Access Mode for Jenkins volume     | `ReadWriteOnce`                             |
+-| `persistence.size`         | PVC Storage Request for Jenkins volume | `8Gi`                                       |
+-| `resources`                | CPU/Memory resource requests/limits    | Memory: `512Mi`, CPU: `300m`                |
++|         Parameter          |              Description               |                               Default                     |
++|----------------------------|----------------------------------------|---------------------------------------------------------- |
++| `image.registry`           | Jenkins image registry                 | `docker.io`                                               |
++| `image.repository`         | Jenkins Image name                     | `bitnami/jenkins`                                         |
++| `image.tag`                | Jenkins Image tag                      | `{VERSION}`                                               |
++| `image.pullPolicy`         | Jenkins image pull policy              | `Always` if `imageTag` is `latest`, else `IfNotPresent`   |
++| `image.pullSecrets`        | Specify image pull secrets             | `nil` (does not add image pull secrets to deployed pods)  |
++| `jenkinsUser`              | User of the application                | `user`                                                    |
++| `jenkinsPassword`          | Application password                   | _random 10 character alphanumeric string_                 |
++| `serviceType`              | Kubernetes Service type                | `LoadBalancer`                                            |
++| `persistence.enabled`      | Enable persistence using PVC           | `true`                                                    |
++| `persistence.storageClass` | PVC Storage Class for Jenkins volume   | `nil` (uses alpha storage class annotation)               |
++| `persistence.accessMode`   | PVC Access Mode for Jenkins volume     | `ReadWriteOnce`                                           |
++| `persistence.size`         | PVC Storage Request for Jenkins volume | `8Gi`                                                     |
++| `resources`                | CPU/Memory resource requests/limits    | Memory: `512Mi`, CPU: `300m`                              |
+ 
+ The above parameters map to the env variables defined in [bitnami/jenkins](http://github.com/bitnami/bitnami-docker-jenkins). For more information please refer to the [bitnami/jenkins](http://github.com/bitnami/bitnami-docker-jenkins) image documentation.
+ 
+diff --git a/incubator/jenkins/templates/deployment.yaml b/incubator/jenkins/templates/deployment.yaml
+index fd38acc011..01867441db 100644
+--- a/incubator/jenkins/templates/deployment.yaml
++++ b/incubator/jenkins/templates/deployment.yaml
+@@ -13,10 +13,16 @@ spec:
+       labels:
+         app: {{ template "fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: JENKINS_USERNAME
+           value: {{ default "" .Values.jenkinsUser | quote }}
+diff --git a/incubator/jenkins/values.yaml b/incubator/jenkins/values.yaml
+index c5cd42a845..e049a68690 100644
+--- a/incubator/jenkins/values.yaml
++++ b/incubator/jenkins/values.yaml
+@@ -1,12 +1,21 @@
+ ## Bitnami Jenkins image version
+ ## ref: https://hub.docker.com/r/bitnami/jenkins/tags/
+ ##
+-image: bitnami/jenkins:2.109.0-r0
+-
+-## Specify a imagePullPolicy
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-imagePullPolicy: IfNotPresent
++image:
++  registry: docker.io
++  repository: bitnami/jenkins
++  tag: 2.109.0
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName 
+ 
+ ## User of the application
+ ## ref: https://github.com/bitnami/bitnami-docker-jenkins#configuration
+diff --git a/incubator/mariadb-cluster/Chart.yaml b/incubator/mariadb-cluster/Chart.yaml
+index 8ee75f759c..94291330f0 100644
+--- a/incubator/mariadb-cluster/Chart.yaml
++++ b/incubator/mariadb-cluster/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: mariadb-cluster
+-version: 0.5.1
++version: 0.5.2
+ appVersion: 10.1.28
+ description: Chart to create a Highly available MariaDB cluster
+ keywords:
+diff --git a/incubator/mariadb-cluster/README.md b/incubator/mariadb-cluster/README.md
+index 619efb815b..f2bd51b24f 100644
+--- a/incubator/mariadb-cluster/README.md
++++ b/incubator/mariadb-cluster/README.md
+@@ -47,9 +47,11 @@ The following tables lists the configurable parameters of the MariaDB chart and
+ 
+ |             Parameter             |                     Description                     |                              Default                              |
+ |-----------------------------------|-----------------------------------------------------|-------------------------------------------------------------------|
+-| `image.name`                      | MariaDB image name                                  | `bitnami/mariadb`                                                 |
+-| `image.tag`                       | MariaDB image tag                                   | _current version_                                                 |
+-| `image.pullPolicy`                | MariaDB image pull policy                           | `IfNotPresent`                                                    |
++| `image.registry`                  | MariaDB image registry                              | `docker.io`                                                       |
++| `image.repository`                | MariaDB Image name                                  | `bitnami/mariadb`                                                 |
++| `image.tag`                       | MariaDB Image tag                                   | `{VERSION}`                                                       |
++| `image.pullPolicy`                | MariaDB image pull policy                           | `Always` if `imageTag` is `latest`, else `IfNotPresent`           |
++| `image.pullSecrets`               | Specify image pull secrets                          | `nil` (does not add image pull secrets to deployed pods)          |
+ | `service.type`                    | Kubernetes service type                             | `ClusterIP`                                                       |
+ | `service.port`                    | MySQL service port                                  | `3306`                                                            |
+ | `root.password`                   | Password for the `root` user                        | _random 10 character alphanumeric string_                         |
+diff --git a/incubator/mariadb-cluster/templates/master-deploy.yaml b/incubator/mariadb-cluster/templates/master-deploy.yaml
+index abe88f7831..f42d56e5c4 100644
+--- a/incubator/mariadb-cluster/templates/master-deploy.yaml
++++ b/incubator/mariadb-cluster/templates/master-deploy.yaml
+@@ -41,10 +41,16 @@ spec:
+                   app: "{{ template "name" . }}"
+                   release: "{{ .Release.Name }}"
+       {{- end }}
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: "mariadb"
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: "{{ .Values.pullPolicy }}"
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: MARIADB_ROOT_PASSWORD
+           valueFrom:
+diff --git a/incubator/mariadb-cluster/templates/slave-deploy.yaml b/incubator/mariadb-cluster/templates/slave-deploy.yaml
+index f91bad3768..f33e60a763 100644
+--- a/incubator/mariadb-cluster/templates/slave-deploy.yaml
++++ b/incubator/mariadb-cluster/templates/slave-deploy.yaml
+@@ -41,10 +41,16 @@ spec:
+                   app: "{{ template "name" . }}"
+                   release: "{{ .Release.Name }}"
+       {{- end }}
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: "mariadb"
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: "{{ .Values.pullPolicy }}"
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: MARIADB_ROOT_PASSWORD
+           valueFrom:
+diff --git a/incubator/mariadb-cluster/values.yaml b/incubator/mariadb-cluster/values.yaml
+index 4325913579..7d15b8b8ca 100644
+--- a/incubator/mariadb-cluster/values.yaml
++++ b/incubator/mariadb-cluster/values.yaml
+@@ -1,6 +1,21 @@
+-## Bitnami MariaDB image
+-image: bitnami/mariadb:10.1.28-r2
+-pullPolicy: IfNotPresent
++## Bitnami MariaDB image version
++## ref: https://hub.docker.com/r/bitnami/mariadb/tags/
++##
++image:
++  registry: docker.io
++  repository: bitnami/mariadb
++  tag: 10.1.28
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName 
+ 
+ service:
+   ## Kubernetes service type
+diff --git a/incubator/mean/Chart.yaml b/incubator/mean/Chart.yaml
+index 9c37b1a7cb..3b85b2aeaa 100644
+--- a/incubator/mean/Chart.yaml
++++ b/incubator/mean/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: mean
+-version: 0.1.3
++version: 0.1.4
+ description: MEAN is a free and open-source JavaScript software stack for building dynamic web sites and web applications. The MEAN stack is MongoDB, Express.js, Angular, and Node.js. Because all components of the MEAN stack support programs written in JavaScript, MEAN applications can be written in one language for both server-side and client-side execution environments.
+ keywords:
+ - node
+diff --git a/incubator/mean/README.md b/incubator/mean/README.md
+index 3df023b775..a6635d53dd 100644
+--- a/incubator/mean/README.md
++++ b/incubator/mean/README.md
+@@ -49,8 +49,11 @@ The following tables lists the configurable parameters of the NodeJS chart and t
+ 
+ |           Parameter                |             Description             |                        Default                            |
+ |------------------------------------|-------------------------------------|-----------------------------------------------------------|
+-| `image`                            | NodeJS image                        | `bitnami/node:{VERSION}`                                  |
+-| `imagePullPolicy`                  | Image pull policy                   | `IfNotPresent`                                            |
++| `image.registry`                   | NodeJs image registry               | `docker.io`                                               |
++| `image.repository`                 | NodeJs Image name                   | `bitnami/node`                                            |
++| `image.tag`                        | NodeJs Image tag                    | `{VERSION}`                                               |
++| `image.pullPolicy`                 | NodeJs image pull policy            | `Always` if `imageTag` is `latest`, else `IfNotPresent`   |
++| `image.pullSecrets`                | Specify image pull secrets          | `nil` (does not add image pull secrets to deployed pods)  |
+ | `repository`                       | Repo of the application             | `https://github.com/scotch-io/node-todo.git`              |
+ | `revision`                         | Revision  to checkout               | `master`                                                  |
+ | `config`                           | Contents of the config file for app | `See repo file config/database.js`                        |
+diff --git a/incubator/mean/templates/deployment.yaml b/incubator/mean/templates/deployment.yaml
+index 4673fbd88d..20acb6259b 100644
+--- a/incubator/mean/templates/deployment.yaml
++++ b/incubator/mean/templates/deployment.yaml
+@@ -63,12 +63,18 @@ spec:
+           }
+         ]'
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "fullname" . }}
+         securityContext:
+           readOnlyRootFilesystem: true
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: MONGODB_HOST
+           value: {{ template "mongodb.fullname" . }}
+diff --git a/incubator/mean/values.yaml b/incubator/mean/values.yaml
+index ddf17839ae..5fd179fa6a 100644
+--- a/incubator/mean/values.yaml
++++ b/incubator/mean/values.yaml
+@@ -1,7 +1,21 @@
+ ## Bitnami node image version
+ ## ref: https://hub.docker.com/r/bitnami/node/tags/
+ ##
+-image: bitnami/node:7.5.0-r0
++image:
++  registry: docker.io
++  repository: bitnami/node
++  tag: 7.5.0
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName 
+ 
+ ## Git repository http/https
+ ##
+diff --git a/incubator/memcached/Chart.yaml b/incubator/memcached/Chart.yaml
+index a2e67e9cee..2dc8d8378e 100644
+--- a/incubator/memcached/Chart.yaml
++++ b/incubator/memcached/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: memcached
+-version: 0.4.26
++version: 0.4.27
+ appVersion: 1.5.6
+ description: Chart for Memcached
+ keywords:
+diff --git a/incubator/memcached/README.md b/incubator/memcached/README.md
+index 179a8c8ab2..8e26e50d36 100644
+--- a/incubator/memcached/README.md
++++ b/incubator/memcached/README.md
+@@ -43,14 +43,17 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following tables lists the configurable parameters of the Memcached chart and their default values.
+ 
+-|      Parameter      |             Description             |            Default            |
+-|---------------------|-------------------------------------|-------------------------------|
+-| `image`             | Memcached image                     | `bitnami/memcached:{VERSION}` |
+-| `imagePullPolicy`   | Image pull policy                   | `IfNotPresent`                |
+-| `memcachedUsername` | Memcached admin user                | `nil`                         |
+-| `memcachedPassword` | Memcached admin password            | `nil`                         |
+-| `serviceType`       | Kubernetes Service type             | `ClusterIP`                   |
+-| `resources`         | CPU/Memory resource requests/limits | Memory: `256Mi`, CPU: `250m`  |
++|      Parameter      |             Description             |                          Default                          |
++|---------------------|-------------------------------------|---------------------------------------------------------- |
++| `image.registry`    | Memcached image registry            | `docker.io`                                               |
++| `image.repository`  | Memcached Image name                | `bitnami/memcached`                                       |
++| `image.tag`         | Memcached Image tag                 | `{VERSION}`                                               |
++| `image.pullPolicy`  | Memcached image pull policy         | `Always` if `imageTag` is `latest`, else `IfNotPresent`   |
++| `image.pullSecrets` | Specify image pull secrets          | `nil` (does not add image pull secrets to deployed pods)  |
++| `memcachedUsername` | Memcached admin user                | `nil`                                                     |
++| `memcachedPassword` | Memcached admin password            | `nil`                                                     |
++| `serviceType`       | Kubernetes Service type             | `ClusterIP`                                               |
++| `resources`         | CPU/Memory resource requests/limits | Memory: `256Mi`, CPU: `250m`                              |
+ 
+ The above parameters map to the env variables defined in [bitnami/memcached](http://github.com/bitnami/bitnami-docker-memcached). For more information please refer to the [bitnami/memcached](http://github.com/bitnami/bitnami-docker-memcached) image documentation.
+ 
+diff --git a/incubator/memcached/templates/deployment.yaml b/incubator/memcached/templates/deployment.yaml
+index 1300cb7592..f131613473 100644
+--- a/incubator/memcached/templates/deployment.yaml
++++ b/incubator/memcached/templates/deployment.yaml
+@@ -13,10 +13,16 @@ spec:
+       labels:
+         app: {{ template "fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: MEMCACHED_USERNAME
+           value: {{ default "" .Values.memcachedUsername | quote }}
+diff --git a/incubator/memcached/values.yaml b/incubator/memcached/values.yaml
+index dd71712c37..5fe13dfc94 100644
+--- a/incubator/memcached/values.yaml
++++ b/incubator/memcached/values.yaml
+@@ -1,7 +1,21 @@
+ ## Bitnami Memcached image version
+ ## ref: https://hub.docker.com/r/bitnami/memcached/tags/
+ ##
+-image: bitnami/memcached:1.5.6-r1
++image:
++  registry: docker.io
++  repository: bitnami/memcached
++  tag: 1.5.6
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName 
+ 
+ ## Specify a imagePullPolicy
+ ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+diff --git a/incubator/mysql/Chart.yaml b/incubator/mysql/Chart.yaml
+index 4d1d9a93b7..27bea274a6 100644
+--- a/incubator/mysql/Chart.yaml
++++ b/incubator/mysql/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: mysql
+-version: 0.1.11
++version: 0.1.12
+ description: MySQL is a fast, reliable, scalable, and easy to use open-source relational database system. MySQL Server is intended for mission-critical, heavy-load production systems as well as for embedding into mass-deployed software.
+ keywords:
+ - mysql
+diff --git a/incubator/mysql/README.md b/incubator/mysql/README.md
+index f1535d52bf..981ba9c07c 100644
+--- a/incubator/mysql/README.md
++++ b/incubator/mysql/README.md
+@@ -44,20 +44,23 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following tables lists the configurable parameters of the MySQL chart and their default values.
+ 
+-|         Parameter          |                Description                 |                   Default                   |
+-|----------------------------|--------------------------------------------|---------------------------------------------|
+-| `image`                    | MySQL image                                | `bitnami/mysql:{VERSION}`                   |
+-| `imagePullPolicy`          | Image pull policy.                         | `IfNotPresent`                              |
+-| `mysqlRootPassword`        | Password for the `root` user.              | `nil`                                       |
+-| `mysqlUser`                | Username of new user to create.            | `nil`                                       |
+-| `mysqlPassword`            | Password for the new user.                 | `nil`                                       |
+-| `mysqlDatabase`            | Name for new database to create.           | `nil`                                       |
+-| `persistence.enabled`      | Use a PVC to persist data                  | `true`                                      |
+-| `persistence.storageClass` | Storage class of backing PVC               | `nil` (uses alpha storage class annotation) |
+-| `persistence.accessMode`   | Use volume as ReadOnly or ReadWrite        | `ReadWriteOnce`                             |
+-| `persistence.size`         | Size of data volume                        | `8Gi`                                       |
+-| `resources`                | CPU/Memory resource requests/limits        | Memory: `256Mi`, CPU: `250m`                |
+-| `config`                   | Multi-line string for my.cnf configuration | `nil`                                       |
++|         Parameter          |                Description                 |                         Default                           |
++|----------------------------|--------------------------------------------|-----------------------------------------------------------|
++| `image.registry`           | MySQL image registry                       | `docker.io`                                               |
++| `image.repository`         | MySQL Image name                           | `bitnami/mysql`                                           |
++| `image.tag`                | MySQL Image tag                            | `{VERSION}`                                               |
++| `image.pullPolicy`         | MySQL image pull policy                    | `Always` if `imageTag` is `latest`, else `IfNotPresent`   |
++| `image.pullSecrets`        | Specify image pull secrets                 | `nil` (does not add image pull secrets to deployed pods)  |
++| `mysqlRootPassword`        | Password for the `root` user.              | `nil`                                                     |
++| `mysqlUser`                | Username of new user to create.            | `nil`                                                     |
++| `mysqlPassword`            | Password for the new user.                 | `nil`                                                     |
++| `mysqlDatabase`            | Name for new database to create.           | `nil`                                                     |
++| `persistence.enabled`      | Use a PVC to persist data                  | `true`                                                    |
++| `persistence.storageClass` | Storage class of backing PVC               | `nil` (uses alpha storage class annotation)               |
++| `persistence.accessMode`   | Use volume as ReadOnly or ReadWrite        | `ReadWriteOnce`                                           |
++| `persistence.size`         | Size of data volume                        | `8Gi`                                                     |
++| `resources`                | CPU/Memory resource requests/limits        | Memory: `256Mi`, CPU: `250m`                              |
++| `config`                   | Multi-line string for my.cnf configuration | `nil`                                                     |
+ 
+ The above parameters map to the env variables defined in [bitnami/mysql](http://github.com/bitnami/bitnami-docker-mysql). For more information please refer to the [bitnami/mysql](http://github.com/bitnami/bitnami-docker-mysql) image documentation.
+ 
+diff --git a/incubator/mysql/templates/deployment.yaml b/incubator/mysql/templates/deployment.yaml
+index 48a0486ab4..ffc9fec05f 100644
+--- a/incubator/mysql/templates/deployment.yaml
++++ b/incubator/mysql/templates/deployment.yaml
+@@ -33,10 +33,16 @@ spec:
+             }
+           ]'
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: MYSQL_ROOT_PASSWORD
+           valueFrom:
+diff --git a/incubator/mysql/values.yaml b/incubator/mysql/values.yaml
+index 6a070f8606..7a202dcb84 100644
+--- a/incubator/mysql/values.yaml
++++ b/incubator/mysql/values.yaml
+@@ -2,7 +2,21 @@
+ ## ref: https://hub.docker.com/r/bitnami/mysql/tags/
+ ##
+ ## Default: none
+-image: bitnami/mysql:5.7.18-r4
++image:
++  registry: docker.io
++  repository: bitnami/mysql
++  tag: 5.7.18
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName 
+ 
+ ## Specify an imagePullPolicy (Required)
+ ## It's recommended to change this to 'Always' if the image tag is 'latest'
+diff --git a/incubator/nginx/Chart.yaml b/incubator/nginx/Chart.yaml
+index 83da292351..3e7e2c9564 100644
+--- a/incubator/nginx/Chart.yaml
++++ b/incubator/nginx/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: nginx
+-version: 0.4.1
++version: 0.4.2
+ appVersion: 1.10.2
+ description: Chart for the nginx server
+ keywords:
+diff --git a/incubator/nginx/README.md b/incubator/nginx/README.md
+index 9be4dc1706..eb23125791 100644
+--- a/incubator/nginx/README.md
++++ b/incubator/nginx/README.md
+@@ -52,11 +52,14 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following tables lists the configurable parameters of the NGINX chart and their default values.
+ 
+-|     Parameter     |        Description        |       Default       |
+-| ----------------- | ------------------------- | ------------------- |
+-| `imageTag`        | `bitnami/nginx` image tag | NGINX image version |
+-| `imagePullPolicy` | Image pull policy         | `IfNotPresent`      |
+-| `vhost`           | Custom nginx virtual host | `nil`               |
++|          Parameter        |             Description        |                        Default                            |
++| ------------------------- | ------------------------------ | --------------------------------------------------------- |
++| `image.registry`          | Nginx image registry           | `docker.io`                                               |
++| `image.repository`        | Nginx Image name               | `bitnami/nginx`                                           |
++| `image.tag`               | Nginx Image tag                | `{VERSION}`                                               |
++| `image.pullPolicy`        | Nginx image pull policy        | `Always` if `imageTag` is `latest`, else `IfNotPresent`   |
++| `image.pullSecrets`       | Specify image pull secrets     | `nil` (does not add image pull secrets to deployed pods)  |
++| `vhost`                   | Custom nginx virtual host      | `nil`                                                     |
+ 
+ Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
+ 
+diff --git a/incubator/nginx/templates/deployment.yaml b/incubator/nginx/templates/deployment.yaml
+index f965215c38..198629278a 100644
+--- a/incubator/nginx/templates/deployment.yaml
++++ b/incubator/nginx/templates/deployment.yaml
+@@ -17,10 +17,16 @@ spec:
+         release: "{{ .Release.Name }}"
+         heritage: "{{ .Release.Service }}"
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         ports:
+         - name: http
+           containerPort: 80
+diff --git a/incubator/nginx/values.yaml b/incubator/nginx/values.yaml
+index 18f1334b22..af66ce03b2 100644
+--- a/incubator/nginx/values.yaml
++++ b/incubator/nginx/values.yaml
+@@ -1,7 +1,21 @@
+ ## Bitnami NGINX image version
+ ## ref: https://hub.docker.com/r/bitnami/nginx/tags/
+ ##
+-image: bitnami/nginx:1.10.2-r3
++image:
++  registry: docker.io
++  repository: bitnami/nginx
++  tag: 1.10.2
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName 
+ 
+ ## Specify a imagePullPolicy
+ ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+diff --git a/incubator/node/Chart.yaml b/incubator/node/Chart.yaml
+index c8a6884856..5d8ae6a1c5 100644
+--- a/incubator/node/Chart.yaml
++++ b/incubator/node/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: node
+-version: 0.2.14
++version: 0.2.15
+ appVersion: 6.14.1
+ description: Event-driven I/O server-side JavaScript environment based on V8
+ keywords:
+diff --git a/incubator/node/README.md b/incubator/node/README.md
+index bea09118a0..7bb2fc65fd 100644
+--- a/incubator/node/README.md
++++ b/incubator/node/README.md
+@@ -47,15 +47,18 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following tables lists the configurable parameters of the Node chart and their default values.
+ 
+-|           Parameter           |             Description             |                        Default                        |
+-|-------------------------------|-------------------------------------|-------------------------------------------------------|
+-| `image`                       | Node image                          | `bitnami/node:{VERSION}`                              |
+-| `imagePullPolicy`             | Image pull policy                   | `IfNotPresent`                                        |
+-| `repository`                  | Repo of the application             | `git@github.com:jbianquetti-nami/simple-node-app.git` |
+-| `revision`                    | Revision  to checkout               | `master`                                              |
+-| `mariadb.mariadbRootPassword` | MariaDB admin password              | `nil`                                                 |
+-| `serviceType`                 | Kubernetes Service type             | `LoadBalancer`                                        |
+-| `resources`                   | CPU/Memory resource requests/limits | Memory: `512Mi`, CPU: `300m`                          |
++|           Parameter           |             Description             |                          Default                          |
++|-------------------------------|-------------------------------------|---------------------------------------------------------- |
++| `image.registry`              | NodeJS image registry               | `docker.io`                                               |
++| `image.repository`            | NodeJS Image name                   | `bitnami/node`                                            |
++| `image.tag`                   | NodeJS Image tag                    | `{VERSION}`                                               |
++| `image.pullPolicy`            | NodeJS image pull policy            | `Always` if `imageTag` is `latest`, else `IfNotPresent`   |
++| `image.pullSecrets`           | Specify image pull secrets          | `nil` (does not add image pull secrets to deployed pods)  |
++| `repository`                  | Repo of the application             | `git@github.com:jbianquetti-nami/simple-node-app.git`     |
++| `revision`                    | Revision  to checkout               | `master`                                                  |
++| `mariadb.mariadbRootPassword` | MariaDB admin password              | `nil`                                                     |
++| `serviceType`                 | Kubernetes Service type             | `LoadBalancer`                                            |
++| `resources`                   | CPU/Memory resource requests/limits | Memory: `512Mi`, CPU: `300m`                              |
+ 
+ The above parameters map to the env variables defined in [bitnami/node](http://github.com/bitnami/bitnami-docker-node). For more information please refer to the [bitnami/node](http://github.com/bitnami/bitnami-docker-node) image documentation.
+ 
+diff --git a/incubator/node/templates/deployment.yaml b/incubator/node/templates/deployment.yaml
+index e88f5ccbff..ca1d1f494d 100644
+--- a/incubator/node/templates/deployment.yaml
++++ b/incubator/node/templates/deployment.yaml
+@@ -14,6 +14,12 @@ spec:
+       labels:
+         app: {{ template "fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       initContainers:
+       - name: git-clone-app
+         image: {{ .Values.image }}
+@@ -32,10 +38,10 @@ spec:
+           mountPath: /app
+       containers:
+       - name: {{ template "fullname" . }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         securityContext:
+           readOnlyRootFilesystem: true
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
+         env:
+         - name: GIT_REPO
+           value: {{ .Values.repository }}
+diff --git a/incubator/node/values.yaml b/incubator/node/values.yaml
+index 1e00c5cf8a..08d633b814 100644
+--- a/incubator/node/values.yaml
++++ b/incubator/node/values.yaml
+@@ -1,7 +1,21 @@
+ ## Bitnami node image version
+ ## ref: https://hub.docker.com/r/bitnami/node/tags/
+ ##
+-image: bitnami/node:6.14.1-r0
++image:
++  registry: docker.io
++  repository: bitnami/node
++  tag: 6.14.1
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName 
+ 
+ ## Git repository http/https
+ ##
+diff --git a/incubator/postgresql/Chart.yaml b/incubator/postgresql/Chart.yaml
+index d7543a9147..b02c975f36 100644
+--- a/incubator/postgresql/Chart.yaml
++++ b/incubator/postgresql/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: postgresql
+-version: 0.4.22
++version: 0.4.23
+ appVersion: 10.3.0
+ description: Chart for PostgreSQL
+ keywords:
+diff --git a/incubator/postgresql/README.md b/incubator/postgresql/README.md
+index 9837319d68..1fb9a0d55d 100644
+--- a/incubator/postgresql/README.md
++++ b/incubator/postgresql/README.md
+@@ -43,19 +43,22 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following tables lists the configurable parameters of the PostgreSQL chart and their default values.
+ 
+-|         Parameter          |                Description                |                  Default                  |
+-|----------------------------|-------------------------------------------|-------------------------------------------|
+-| `image`                    | PostgreSQL image                          | `bitnami/postgresql:{VERSION}`            |
+-| `imagePullPolicy`          | Image pull policy                         | `IfNotPresent`                            |
+-| `postgresqlUsername`       | PostgreSQL admin user                     | `postgres`                                |
+-| `postgresqlPassword`       | PostgreSQL admin password                 | _random 10 character alphanumeric string_ |
+-| `postgresqlDatabase`       | PostgreSQL database                       | `nil`_                                    |
+-| `serviceType`              | Kubernetes Service type                   | `ClusterIP`                               |
+-| `persistence.enabled`      | Enable persistence using PVC              | `true`                                    |
+-| `persistence.storageClass` | PVC Storage Class for PostgreSQL volume   | `generic`                                 |
+-| `persistence.accessMode`   | PVC Access Mode for PostgreSQL volume     | `ReadWriteOnce`                           |
+-| `persistence.size`         | PVC Storage Request for PostgreSQL volume | `8Gi`                                     |
+-| `resources`                | CPU/Memory resource requests/limits       | Memory: `256Mi`, CPU: `250m`              |
++|         Parameter          |                Description                |                            Default                        |
++|----------------------------|-------------------------------------------|---------------------------------------------------------- |
++| `image.registry`           | PostgreSQL image registry                 | `docker.io`                                               |
++| `image.repository`         | PostgreSQL Image name                     | `bitnami/postgresql`                                      |
++| `image.tag`                | PostgreSQL Image tag                      | `{VERSION}`                                               |
++| `image.pullPolicy`         | PostgreSQL image pull policy              | `Always` if `imageTag` is `latest`, else `IfNotPresent`   |
++| `image.pullSecrets`        | Specify image pull secrets                | `nil` (does not add image pull secrets to deployed pods)  |
++| `postgresqlUsername`       | PostgreSQL admin user                     | `postgres`                                                |
++| `postgresqlPassword`       | PostgreSQL admin password                 | _random 10 character alphanumeric string_                 |
++| `postgresqlDatabase`       | PostgreSQL database                       | `nil`_                                                    |
++| `serviceType`              | Kubernetes Service type                   | `ClusterIP`                                               |
++| `persistence.enabled`      | Enable persistence using PVC              | `true`                                                    |
++| `persistence.storageClass` | PVC Storage Class for PostgreSQL volume   | `generic`                                                 |
++| `persistence.accessMode`   | PVC Access Mode for PostgreSQL volume     | `ReadWriteOnce`                                           |
++| `persistence.size`         | PVC Storage Request for PostgreSQL volume | `8Gi`                                                     |
++| `resources`                | CPU/Memory resource requests/limits       | Memory: `256Mi`, CPU: `250m`                              |
+ 
+ The above parameters map to the env variables defined in [bitnami/postgresql](http://github.com/bitnami/bitnami-docker-postgresql). For more information please refer to the [bitnami/postgresql](http://github.com/bitnami/bitnami-docker-postgresql) image documentation.
+ 
+diff --git a/incubator/postgresql/templates/deployment.yaml b/incubator/postgresql/templates/deployment.yaml
+index 7c8b3821fc..d0d0ab1d06 100644
+--- a/incubator/postgresql/templates/deployment.yaml
++++ b/incubator/postgresql/templates/deployment.yaml
+@@ -13,10 +13,16 @@ spec:
+       labels:
+         app: {{ template "fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: POSTGRESQL_USERNAME
+           value: {{ default "" .Values.postgresqlUsername | quote }}
+diff --git a/incubator/postgresql/values.yaml b/incubator/postgresql/values.yaml
+index daadbfb07b..4eff8fe872 100644
+--- a/incubator/postgresql/values.yaml
++++ b/incubator/postgresql/values.yaml
+@@ -1,7 +1,21 @@
+ ## Bitnami PostgreSQL image version
+ ## ref: https://hub.docker.com/r/bitnami/postgresql/tags/
+ ##
+-image: bitnami/postgresql:10.3.0-r2
++image:
++  registry: docker.io
++  repository: bitnami/postgresql
++  tag: 10.3.0
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName 
+ 
+ ## Specify a imagePullPolicy
+ ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+diff --git a/incubator/tensorflow-inception/README.md b/incubator/tensorflow-inception/README.md
+index 9076bd7c07..46d96d1196 100755
+--- a/incubator/tensorflow-inception/README.md
++++ b/incubator/tensorflow-inception/README.md
+@@ -58,16 +58,24 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following tables lists the configurable parameters of the TensorFlow Inception chart and their default values.
+ 
+-| Parameter                       | Description                         | Default                                                    |
+-| ------------------------------- | -------------------------------     | ---------------------------------------------------------- |
+-| `server.image`                  | Tensorflow server image             | `bitnami/tensorflow-serving:{VERSION}`                     |
+-| `server.port`                   | Tensorflow server port              | `9000`                                                     |
+-| `client.image`                  | Tensorflow client image             | `bitnami/tensorflow-inception:{VERSION}`                   |
+-| `imagePullPolicy`               | Image pull policy                   | `Always` if `image` tag is `latest`, else `IfNotPresent`   |
+-| `persistence.enabled`           | Use a PVC to persist data           | `true`                                                     |
+-| `persistence.storageClass`      | Storage class of backing PVC        | `nil` (uses alpha storage class annotation)                |
+-| `persistence.accessMode`        | Use volume as ReadOnly or ReadWrite | `ReadWriteOnce`                                            |
+-| `persistence.size`              | Size of data volume                 | `500Mi`                                                    |
++| Parameter                       | Description                            | Default                                                    |
++| ------------------------------- | -------------------------------------- | ---------------------------------------------------------- |
++| `server.image.registry`         | TensorFlow Serving image registry      | `docker.io`                                                |
++| `server.image.repository`       | TensorFlow Serving Image name          | `bitnami/tensorflow-serving`                               |
++| `server.image.tag`              | TensorFlow Serving Image tag           | `{VERSION}`                                                |
++| `server.image.pullPolicy`       | TensorFlow Serving image pull policy   | `Always` if `imageTag` is `latest`, else `IfNotPresent`    |
++| `server.image.pullSecrets`      | Specify image pull secrets             | `nil` (does not add image pull secrets to deployed pods)   |
++| `server.port`                   | Tensorflow server port                 | `9000`                                                     |
++| `client.image.registry`         | TensorFlow Inception image registry    | `docker.io`                                                |
++| `client.image.repository`       | TensorFlow Inception Image name        | `bitnami/tensorflow-inception`                             |
++| `client.image.tag`              | TensorFlow Inception Image tag         | `{VERSION}`                                                |
++| `client.image.pullPolicy`       | TensorFlow Inception image pull policy | `Always` if `imageTag` is `latest`, else `IfNotPresent`    |
++| `client.image.pullSecrets`      | Specify image pull secrets             | `nil` (does not add image pull secrets to deployed pods)   |
++| `imagePullPolicy`               | Image pull policy                      | `Always` if `image` tag is `latest`, else `IfNotPresent`   |
++| `persistence.enabled`           | Use a PVC to persist data              | `true`                                                     |
++| `persistence.storageClass`      | Storage class of backing PVC           | `nil` (uses alpha storage class annotation)                |
++| `persistence.accessMode`        | Use volume as ReadOnly or ReadWrite    | `ReadWriteOnce`                                            |
++| `persistence.size`              | Size of data volume                    | `500Mi`                                                    |
+ 
+ Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
+ 
+diff --git a/incubator/tensorflow-inception/templates/deployment.yaml b/incubator/tensorflow-inception/templates/deployment.yaml
+index ac745b2292..a807134a37 100644
+--- a/incubator/tensorflow-inception/templates/deployment.yaml
++++ b/incubator/tensorflow-inception/templates/deployment.yaml
+@@ -14,9 +14,16 @@ spec:
+       labels:
+         app: tensorflow-serving
+     spec:
++      {{- if .Values.server.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.server.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "fullname" . }}
+-        image: {{ .Values.server.image }}
++        image: "{{ .Values.server.image.registry }}/{{ .Values.server.image.repository }}:{{ .Values.server.image.tag }}"
++        imagePullPolicy: {{ .Values.server.image.pullPolicy | quote }}
+         readinessProbe:
+           tcpSocket:
+             port: {{ .Values.server.port }}
+diff --git a/incubator/tensorflow-inception/templates/inception-job.yaml b/incubator/tensorflow-inception/templates/inception-job.yaml
+index 613ad5c540..114c2236ab 100644
+--- a/incubator/tensorflow-inception/templates/inception-job.yaml
++++ b/incubator/tensorflow-inception/templates/inception-job.yaml
+@@ -13,8 +13,15 @@ spec:
+       name: seed-inception
+     spec:
+       containers:
++      {{- if .Values.client.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.client.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       - name: seed
+-        image: {{ .Values.client.image }}
++        image: "{{ .Values.client.image.registry }}/{{ .Values.client.image.repository }}:{{ .Values.client.image.tag }}"
++        imagePullPolicy: {{ .Values.client.image.pullPolicy | quote }}
+         command:
+           - "/bin/sh"
+           - "-c"
+diff --git a/incubator/tensorflow-inception/values.yaml b/incubator/tensorflow-inception/values.yaml
+index d43bf8c243..2d8be586f6 100755
+--- a/incubator/tensorflow-inception/values.yaml
++++ b/incubator/tensorflow-inception/values.yaml
+@@ -2,14 +2,42 @@
+ ## ref: https://hub.docker.com/r/bitnami/tensorflow-serving/tags/
+ ##
+ server:
+-  image: bitnami/tensorflow-serving:0.6.0-r0
++  image:
++    registry: docker.io
++    repository: bitnami/tensorflow-serving
++    tag: 0.6.0
++    ## Specify a imagePullPolicy
++    ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++    ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++    ##
++    pullPolicy: IfNotPresent
++    ## Optionally specify an array of imagePullSecrets.
++    ## Secrets must be manually created in the namespace.
++    ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++    ##
++    # pullSecrets:
++    #   - myRegistrKeySecretName 
+   port: 9000
+ 
+ ## TensorFlow Inception image version
+ ## ref: https://hub.docker.com/r/bitnami/tensorflow-inception/tags/
+ ##
+ client:
+-  image: bitnami/tensorflow-inception:1.5.0-r2
++  image:
++    registry: docker.io
++    repository: bitnami/tensorflow-inception
++    tag: 1.5.0
++    ## Specify a imagePullPolicy
++    ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++    ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++    ##
++    pullPolicy: IfNotPresent
++    ## Optionally specify an array of imagePullSecrets.
++    ## Secrets must be manually created in the namespace.
++    ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++    ##
++    # pullSecrets:
++    #   - myRegistrKeySecretName 
+ 
+ ## Specify a imagePullPolicy
+ ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+diff --git a/incubator/tomcat/Chart.yaml b/incubator/tomcat/Chart.yaml
+index a199749665..c3b79e5d9a 100644
+--- a/incubator/tomcat/Chart.yaml
++++ b/incubator/tomcat/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: tomcat
+-version: 0.4.21
++version: 0.4.22
+ appVersion: 8.5.29
+ description: Chart for Apache Tomcat
+ keywords:
+diff --git a/incubator/tomcat/README.md b/incubator/tomcat/README.md
+index 6965330bb4..a7d0ec2f5b 100644
+--- a/incubator/tomcat/README.md
++++ b/incubator/tomcat/README.md
+@@ -43,19 +43,22 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following tables lists the configurable parameters of the Tomcat chart and their default values.
+ 
+-|           Parameter           |                 Description                  |                   Default                   |
+-|-------------------------------|----------------------------------------------|---------------------------------------------|
+-| `image`                       | Tomcat image                                 | `bitnami/tomcat:{VERSION}`                  |
+-| `imagePullPolicy`             | Image pull policy                            | `IfNotPresent`                              |
+-| `tomcatUsername`              | Tomcat admin user                            | `user`                                      |
+-| `tomcatPassword`              | Tomcat admin password                        | _random 10 character alphanumeric string_   |
+-| `tomcatAllowRemoteManagement` | Enable remote access to management interface | `0` (disabled)                              |
+-| `serviceType`                 | Kubernetes Service type                      | `LoadBalancer`                              |
+-| `persistence.enabled`         | Enable persistence using PVC                 | `true`                                      |
+-| `persistence.storageClass`    | PVC Storage Class for Tomcat volume          | `nil` (uses alpha storage class annotation) |
+-| `persistence.accessMode`      | PVC Access Mode for Tomcat volume            | `ReadWriteOnce`                             |
+-| `persistence.size`            | PVC Storage Request for Tomcat volume        | `8Gi`                                       |
+-| `resources`                   | CPU/Memory resource requests/limits          | Memory: `512Mi`, CPU: `300m`                |
++|           Parameter           |                 Description                  |                           Default                         |
++|-------------------------------|----------------------------------------------|---------------------------------------------------------- |
++| `image.registry`              | Tomcat image registry                        | `docker.io`                                               |
++| `image.repository`            | Tomcat Image name                            | `bitnami/tomcat`                                          |
++| `image.tag`                   | Tomcat Image tag                             | `{VERSION}`                                               |
++| `image.pullPolicy`            | Tomcat image pull policy                     | `Always` if `imageTag` is `latest`, else `IfNotPresent`   |
++| `image.pullSecrets`           | Specify image pull secrets                   | `nil` (does not add image pull secrets to deployed pods)  |
++| `tomcatUsername`              | Tomcat admin user                            | `user`                                                    |
++| `tomcatPassword`              | Tomcat admin password                        | _random 10 character alphanumeric string_                 |
++| `tomcatAllowRemoteManagement` | Enable remote access to management interface | `0` (disabled)                                            |
++| `serviceType`                 | Kubernetes Service type                      | `LoadBalancer`                                            |
++| `persistence.enabled`         | Enable persistence using PVC                 | `true`                                                    |
++| `persistence.storageClass`    | PVC Storage Class for Tomcat volume          | `nil` (uses alpha storage class annotation)               |
++| `persistence.accessMode`      | PVC Access Mode for Tomcat volume            | `ReadWriteOnce`                                           |
++| `persistence.size`            | PVC Storage Request for Tomcat volume        | `8Gi`                                                     |
++| `resources`                   | CPU/Memory resource requests/limits          | Memory: `512Mi`, CPU: `300m`                              |
+ 
+ The above parameters map to the env variables defined in [bitnami/tomcat](http://github.com/bitnami/bitnami-docker-tomcat). For more information please refer to the [bitnami/tomcat](http://github.com/bitnami/bitnami-docker-tomcat) image documentation.
+ 
+diff --git a/incubator/tomcat/templates/deployment.yaml b/incubator/tomcat/templates/deployment.yaml
+index acda1560da..ef4ea3635a 100644
+--- a/incubator/tomcat/templates/deployment.yaml
++++ b/incubator/tomcat/templates/deployment.yaml
+@@ -13,10 +13,16 @@ spec:
+       labels:
+         app: {{ template "fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: TOMCAT_USERNAME
+           value: {{ default "" .Values.tomcatUsername | quote }}
+diff --git a/incubator/tomcat/values.yaml b/incubator/tomcat/values.yaml
+index 74175d923a..5ef308ca19 100644
+--- a/incubator/tomcat/values.yaml
++++ b/incubator/tomcat/values.yaml
+@@ -1,7 +1,21 @@
+ ## Bitnami Tomcat image version
+ ## ref: https://hub.docker.com/r/bitnami/tomcat/tags/
+ ##
+-image: bitnami/tomcat:8.5.29-r0
++image:
++  registry: docker.io
++  repository: bitnami/tomcat
++  tag: 8.5.29
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName 
+ 
+ ## Specify a imagePullPolicy
+ ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+diff --git a/incubator/wildfly/Chart.yaml b/incubator/wildfly/Chart.yaml
+index bfd7f51ed2..6527c9e7ff 100644
+--- a/incubator/wildfly/Chart.yaml
++++ b/incubator/wildfly/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: wildfly
+-version: 0.4.11
++version: 0.4.12
+ appVersion: 11.0.0
+ description: Chart for Wildfly
+ keywords:
+diff --git a/incubator/wildfly/README.md b/incubator/wildfly/README.md
+index 49b56fdabf..286efb7f01 100644
+--- a/incubator/wildfly/README.md
++++ b/incubator/wildfly/README.md
+@@ -43,18 +43,21 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following tables lists the configurable parameters of the WildFly chart and their default values.
+ 
+-|         Parameter          |              Description               |                   Default                   |
+-|----------------------------|----------------------------------------|---------------------------------------------|
+-| `image`                    | WildFly image                          | `bitnami/wildfly:{VERSION}`                 |
+-| `imagePullPolicy`          | Image pull policy                      | `IfNotPresent`                              |
+-| `wildflyUsername`          | WildFly admin user                     | `user`                                      |
+-| `wildflyPassword`          | WildFly admin password                 | _random 10 character alphanumeric string_   |
+-| `serviceType`              | Kubernetes Service type                | `LoadBalancer`                              |
+-| `persistence.enabled`      | Enable persistence using PVC           | `true`                                      |
+-| `persistence.storageClass` | PVC Storage Class for WildFly volume   | `nil` (uses alpha storage class annotation) |
+-| `persistence.accessMode`   | PVC Access Mode for WildFly volume     | `ReadWriteOnce`                             |
+-| `persistence.size`         | PVC Storage Request for WildFly volume | `8Gi`                                       |
+-| `resources`                | CPU/Memory resource requests/limits    | Memory: `512Mi`, CPU: `300m`                |
++|         Parameter          |              Description               |                           Default                          |
++|----------------------------|----------------------------------------|------------------------------------------------------------|
++| `image.registry`           | WildFly image registry                 | `docker.io`                                                |
++| `image.repository`         | WildFly Image name                     | `bitnami/wildfly`                                          |
++| `image.tag`                | WildFly Image tag                      | `{VERSION}`                                                |
++| `image.pullPolicy`         | WildFly image pull policy              | `Always` if `imageTag` is `latest`, else `IfNotPresent`    |
++| `image.pullSecrets`        | Specify image pull secrets             | `nil` (does not add image pull secrets to deployed pods)   |
++| `wildflyUsername`          | WildFly admin user                     | `user`                                                     |
++| `wildflyPassword`          | WildFly admin password                 | _random 10 character alphanumeric string_                  |
++| `serviceType`              | Kubernetes Service type                | `LoadBalancer`                                             |
++| `persistence.enabled`      | Enable persistence using PVC           | `true`                                                     |
++| `persistence.storageClass` | PVC Storage Class for WildFly volume   | `nil` (uses alpha storage class annotation)                |
++| `persistence.accessMode`   | PVC Access Mode for WildFly volume     | `ReadWriteOnce`                                            |
++| `persistence.size`         | PVC Storage Request for WildFly volume | `8Gi`                                                      |
++| `resources`                | CPU/Memory resource requests/limits    | Memory: `512Mi`, CPU: `300m`                               |
+ 
+ The above parameters map to the env variables defined in [bitnami/wildfly](http://github.com/bitnami/bitnami-docker-wildfly). For more information please refer to the [bitnami/wildfly](http://github.com/bitnami/bitnami-docker-wildfly) image documentation.
+ 
+diff --git a/incubator/wildfly/templates/deployment.yaml b/incubator/wildfly/templates/deployment.yaml
+index 50892018bd..0ee0247151 100644
+--- a/incubator/wildfly/templates/deployment.yaml
++++ b/incubator/wildfly/templates/deployment.yaml
+@@ -13,10 +13,16 @@ spec:
+       labels:
+         app: {{ template "fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: WILDFLY_USERNAME
+           value: {{ default "" .Values.wildflyUsername | quote }}
+diff --git a/incubator/wildfly/values.yaml b/incubator/wildfly/values.yaml
+index 980bf0cbc1..1eeab1b3dd 100644
+--- a/incubator/wildfly/values.yaml
++++ b/incubator/wildfly/values.yaml
+@@ -1,7 +1,21 @@
+ ## Bitnami WildFly image version
+ ## ref: https://hub.docker.com/r/bitnami/wildfly/tags/
+ ##
+-image: bitnami/wildfly:11.0.0-r6
++image:
++  registry: docker.io
++  repository: bitnami/wildfly
++  tag: 11.0.0
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName 
+ 
+ ## Specify a imagePullPolicy
+ ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+diff --git a/stable/ghost/templates/deployment.yaml b/stable/ghost/templates/deployment.yaml
+index 955d4fbb72..a53d083bf9 100644
+--- a/stable/ghost/templates/deployment.yaml
++++ b/stable/ghost/templates/deployment.yaml
+@@ -25,8 +25,8 @@ spec:
+           name: ghost-data
+       containers:
+       - name: {{ template "ghost.fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ default "" .Values.image.pullPolicy | quote }}
+         env:
+         - name: ALLOW_EMPTY_PASSWORD
+         {{- if .Values.allowEmptyPassword }}
+diff --git a/stable/ghost/values.yaml b/stable/ghost/values.yaml
+index 2ff94da71f..d8cf9fdce4 100644
+--- a/stable/ghost/values.yaml
++++ b/stable/ghost/values.yaml
+@@ -1,7 +1,11 @@
+ ## Bitnami Ghost image version
+ ## ref: https://hub.docker.com/r/bitnami/ghost/tags/
+ ##
+-image: bitnami/ghost:1.22.1-r0
++image:
++  registry: docker.io
++  repository: tompizmor/ghost
++  tag: 1.22.1
++  pullPolicy: IfNotPresent
+ 
+ ## Busybox image used to configure volume permissions
+ ##
+@@ -11,12 +15,6 @@ volumePermissions:
+     tag: 1.27.1
+ #    pullPolicy:
+ 
+-## Specify a imagePullPolicy
+-## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-# imagePullPolicy:
+-
+ ## Ghost host to create application URLs
+ ## ref: https://github.com/bitnami/bitnami-docker-ghost#configuration
+ ##
+diff --git a/stable/joomla/templates/deployment.yaml b/stable/joomla/templates/deployment.yaml
+index 5fb5db44ac..dbfb4875fa 100644
+--- a/stable/joomla/templates/deployment.yaml
++++ b/stable/joomla/templates/deployment.yaml
+@@ -16,8 +16,8 @@ spec:
+     spec:
+       containers:
+       - name: {{ template "joomla.fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ default .Values.image.pullPolicy | quote }}
+         env:
+         - name: ALLOW_EMPTY_PASSWORD
+           value: {{ .Values.allowEmptyPassword | quote }}
+diff --git a/stable/joomla/values.yaml b/stable/joomla/values.yaml
+index 5b4f5b3d14..ee3c36af70 100644
+--- a/stable/joomla/values.yaml
++++ b/stable/joomla/values.yaml
+@@ -1,7 +1,11 @@
+ ## Bitnami Joomla! image version
+ ## ref: https://hub.docker.com/r/bitnami/joomla/tags/
+ ##
+-image: bitnami/joomla:3.8.6-r1
++image:
++  registry: docker.io
++  repository: bitnami/joomla
++  tag: 3.8.6-r1
++  pullPolicy: IfNotPresent
+ 
+ ## Specify a imagePullPolicy
+ ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+diff --git a/stable/parse/templates/dashboard-deployment.yaml b/stable/parse/templates/dashboard-deployment.yaml
+index 7d719a724c..abe28a61ef 100644
+--- a/stable/parse/templates/dashboard-deployment.yaml
++++ b/stable/parse/templates/dashboard-deployment.yaml
+@@ -20,8 +20,8 @@ spec:
+     spec:
+       containers:
+       - name: {{ template "parse.fullname" . }}
+-        image: "{{ .Values.dashboard.image }}"
+-        imagePullPolicy: {{ .Values.dashboard.imagePullPolicy | quote }}
++        image: "{{ .Values.dashboard.image.registry }}/{{ .Values.dashboard.image.repository }}:{{ .Values.dashboard.image.tag }}"
++        imagePullPolicy: {{ default .Values.dashboard.image.pullPolicy | quote }}
+         env:
+         - name: PARSE_DASHBOARD_USER
+           value: {{ .Values.dashboard.username }}
+diff --git a/stable/parse/templates/server-deployment.yaml b/stable/parse/templates/server-deployment.yaml
+index 63de2f25d2..c2bddaece1 100644
+--- a/stable/parse/templates/server-deployment.yaml
++++ b/stable/parse/templates/server-deployment.yaml
+@@ -19,8 +19,8 @@ spec:
+     spec:
+       containers:
+       - name: {{ template "parse.fullname" . }}
+-        image: "{{ .Values.server.image }}"
+-        imagePullPolicy: {{ .Values.server.imagePullPolicy | quote }}
++        image: "{{ .Values.server.image.registry }}/{{ .Values.server.image.repository }}:{{ .Values.server.image.tag }}"
++        imagePullPolicy: {{ default .Values.server.image.pullPolicy | quote }}
+         env:
+         - name: PARSE_HOST
+           value: "0.0.0.0"
+diff --git a/stable/parse/values.yaml b/stable/parse/values.yaml
+index c9a486245b..5c25516c8e 100644
+--- a/stable/parse/values.yaml
++++ b/stable/parse/values.yaml
+@@ -12,7 +12,11 @@ server:
+   ## Bitnami Parse image version
+   ## ref: https://hub.docker.com/r/bitnami/parse/tags/
+   ##
+-  image: bitnami/parse:2.7.4-r0
++  image:
++    registry: docker.io
++    repository: bitnami/parse
++    tag: 2.7.4-r0
++    pullPolicy: IfNotPresent
+ 
+   ## Specify a imagePullPolicy
+   ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+@@ -55,7 +59,11 @@ dashboard:
+   ## Bitnami Parse Dashboard image version
+   ## ref: https://hub.docker.com/r/bitnami/parse-dashboard/tags/
+   ##
+-  image: bitnami/parse-dashboard:1.1.2-r2
++  image:
++    registry: docker.io
++    repository: bitnami/parse-dashboard
++    tag: 1.1.2-r2
++    pullPolicy: IfNotPresent
+ 
+   ## Specify a imagePullPolicy
+   ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images

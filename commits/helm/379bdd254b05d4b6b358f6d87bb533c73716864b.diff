@@ -1,0 +1,301 @@
+commit 379bdd254b05d4b6b358f6d87bb533c73716864b
+Author: tompizmor <tompizmor@users.noreply.github.com>
+Date:   Tue Dec 26 08:18:35 2017 +0100
+
+    [stable/mediawiki] allow use of external database (#2814)
+    
+    * Allow MediaWiki helm chart to use an existing database
+    
+    * Add missing env var
+    
+    * Fix typo
+    
+    * Refactor properties to configure external database
+    
+    * Update dependencies
+    
+    * Avoid exposing the database password for external database setup
+    
+    * Add Sameer feedback
+    
+    * More feedback
+    
+    * Fix lint error
+
+diff --git a/stable/mediawiki/Chart.yaml b/stable/mediawiki/Chart.yaml
+index 3098b2a25..43f6209db 100644
+--- a/stable/mediawiki/Chart.yaml
++++ b/stable/mediawiki/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: mediawiki
+-version: 0.5.2
++version: 0.6.0
+ appVersion: 1.29.2
+ description: Extremely powerful, scalable software and a feature-rich wiki implementation
+   that uses PHP to process and display data stored in a database.
+diff --git a/stable/mediawiki/README.md b/stable/mediawiki/README.md
+index 6f6f96e08..61fd24162 100644
+--- a/stable/mediawiki/README.md
++++ b/stable/mediawiki/README.md
+@@ -53,15 +53,24 @@ The following tables lists the configurable parameters of the MediaWiki chart an
+ | `mediawikiPassword`                  | Application password                     | _random 10 character long alphanumeric string_          |
+ | `mediawikiEmail`                     | Admin email                              | `user@example.com`                                      |
+ | `mediawikiName`                      | Name for the wiki                        | `My Wiki`                                               |
++| `allowEmptyPassword`                 | Allow DB blank passwords                 | `yes`                                                   |
+ | `smtpHost`                           | SMTP host                                | `nil`                                                   |
+ | `smtpPort`                           | SMTP port                                | `nil`                                                   |
+ | `smtpHostID`                         | SMTP host ID                             | `nil`                                                   |
+ | `smtpUser`                           | SMTP user                                | `nil`                                                   |
+ | `smtpPassword`                       | SMTP password                            | `nil`                                                   |
++| `externalDatabase.host`              | Host of the external database            | `nil`                                                   |
++| `externalDatabase.user`              | Existing username in the external db     | `bn_mediawiki`                                          |
++| `externalDatabase.password`          | Password for the above username          | `nil`                                                   |
++| `externalDatabase.database`          | Name of the existing databse             | `bitnami_mediawiki`                                     |
++| `mariadb.enabled`                    | Use or not the mariadb chart             | `true`                                                  |
+ | `mariadb.mariadbRootPassword`        | MariaDB admin password                   | `nil`                                                   |
++| `mariadb.mariadbDatabase`            | Database name to create                  | `bitnami_mediawiki`                                     |
++| `mariadb.mariadbUser`                | Database user to create                  | `bn_mediawiki`                                          |
++| `mariadb.mariadbPassword`            | Password for the database                | _random 10 character long alphanumeric string_          |
+ | `serviceType`                        | Kubernetes Service type                  | `LoadBalancer`                                          |
+ | `persistence.enabled`                | Enable persistence using PVC             | `true`                                                  |
+-| `persistence.apache.storageClass`    | PVC Storage Class for Apache volume      | `nil` (uses alpha storage class annotation)  |
++| `persistence.apache.storageClass`    | PVC Storage Class for Apache volume      | `nil` (uses alpha storage class annotation)             |
+ | `persistence.apache.accessMode`      | PVC Access Mode for Apache volume        | `ReadWriteOnce`                                         |
+ | `persistence.apache.size`            | PVC Storage Request for Apache volume    | `1Gi`                                                   |
+ | `persistence.mediawiki.storageClass` | PVC Storage Class for MediaWiki volume   | `nil` (uses alpha storage class annotation)   |
+diff --git a/stable/mediawiki/requirements.lock b/stable/mediawiki/requirements.lock
+index c5a693d3e..76502649f 100644
+--- a/stable/mediawiki/requirements.lock
++++ b/stable/mediawiki/requirements.lock
+@@ -2,5 +2,5 @@ dependencies:
+ - name: mariadb
+   repository: https://kubernetes-charts.storage.googleapis.com/
+   version: 0.7.0
+-digest: sha256:e1af13ac4ac21f67582006f12d2b4eb78a1a2a59b34338fac850f2bec0b08b41
+-generated: 2017-08-09T22:52:52.151221478-04:00
++digest: sha256:f59f68030aa5c50b9e776b813804875fac911f91c2aa384e991f37a795c5ae34
++generated: 2017-12-05T17:16:36.715765+01:00
+diff --git a/stable/mediawiki/requirements.yaml b/stable/mediawiki/requirements.yaml
+index 4896aa89d..7c0c6a88a 100644
+--- a/stable/mediawiki/requirements.yaml
++++ b/stable/mediawiki/requirements.yaml
+@@ -2,3 +2,4 @@ dependencies:
+ - name: mariadb
+   version: 0.7.0
+   repository: https://kubernetes-charts.storage.googleapis.com/
++  condition: mariadb.enabled
+diff --git a/stable/mediawiki/templates/NOTES.txt b/stable/mediawiki/templates/NOTES.txt
+index 241c272a7..14bd76f2b 100644
+--- a/stable/mediawiki/templates/NOTES.txt
++++ b/stable/mediawiki/templates/NOTES.txt
+@@ -1,3 +1,4 @@
++{{- if or .Values.mariadb.enabled .Values.externalDatabase.host -}}
+ 
+ 1. Get the MediaWiki URL by running:
+ 
+@@ -25,3 +26,19 @@
+ 
+     echo Username: {{ .Values.mediawikiUser }}
+     echo Password: $(kubectl get secret --namespace {{ .Release.Namespace }} {{ template "mediawiki.fullname" . }} -o jsonpath="{.data.mediawiki-password}" | base64 --decode)
++
++{{- else -}}
++
++########################################################################################
++### ERROR: You did not provide an external database host in your 'helm install' call ###
++########################################################################################
++
++This deployment will be incomplete until you configure MediaWiki with a resolvable database
++host. To configure MediaWiki to use and external database host:
++
++
++1. Complete your MediaWiki deployment by running:
++
++  helm upgrade {{ .Release.Name }} --set serviceType={{ .Values.serviceType }},mariadb.enabled=false,externalDatabase.host=YOUR_EXTERNAL_DATABASE_HOST stable/mediawiki
++
++{{- end}}
+diff --git a/stable/mediawiki/templates/deployment.yaml b/stable/mediawiki/templates/deployment.yaml
+index d6d20dd39..ff24016f0 100644
+--- a/stable/mediawiki/templates/deployment.yaml
++++ b/stable/mediawiki/templates/deployment.yaml
+@@ -1,3 +1,4 @@
++{{- if or .Values.mariadb.enabled .Values.externalDatabase.host -}}
+ apiVersion: extensions/v1beta1
+ kind: Deployment
+ metadata:
+@@ -17,36 +18,63 @@ spec:
+       containers:
+       - name: {{ template "mediawiki.fullname" . }}
+         image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
+         env:
++        - name: ALLOW_EMPTY_PASSWORD
++          value: {{ .Values.allowEmptyPassword | quote }}
+         - name: MARIADB_HOST
++        {{- if .Values.mariadb.enabled }}
+           value: {{ template "mediawiki.mariadb.fullname" . }}
++        {{- else }}
++          value: {{ .Values.externalDatabase.host | quote }}
++        {{- end }}
+         - name: MARIADB_PORT_NUMBER
++        {{- if .Values.mariadb.enabled }}
+           value: "3306"
+-        - name: MARIADB_PASSWORD
++        {{ else }}
++          value: {{ .Values.externalDatabase.port | quote }}
++        {{ end }}
++        - name: MEDIAWIKI_DATABASE_NAME
++        {{- if .Values.mariadb.enabled }}
++          value: {{ .Values.mariadb.mariadbDatabase | quote }}
++        {{- else }}
++          value: {{ .Values.externalDatabase.database | quote }}
++        {{- end }}
++        - name: MEDIAWIKI_DATABASE_USER
++        {{- if .Values.mariadb.enabled }}
++          value: {{ .Values.mariadb.mariadbUser | quote }}
++        {{- else }}
++          value: {{ .Values.externalDatabase.user | quote }}
++        {{- end }}
++        - name: MEDIAWIKI_DATABASE_PASSWORD
+           valueFrom:
+             secretKeyRef:
++            {{- if .Values.mariadb.enabled }}
+               name: {{ template "mediawiki.mariadb.fullname" . }}
+-              key: mariadb-root-password
++              key: mariadb-password
++            {{- else }}
++              name: {{ printf "%s-%s" .Release.Name "externaldb" }}
++              key: db-password
++            {{- end }}
+         - name: MEDIAWIKI_USERNAME
+-          value: {{ default "" .Values.mediawikiUser | quote }}
++          value: {{ .Values.mediawikiUser | quote }}
+         - name: MEDIAWIKI_PASSWORD
+           valueFrom:
+             secretKeyRef:
+               name: {{ template "mediawiki.fullname" . }}
+               key: mediawiki-password
+         - name: MEDIAWIKI_EMAIL
+-          value: {{ default "" .Values.mediawikiEmail | quote }}
++          value: {{ .Values.mediawikiEmail | quote }}
+         - name: MEDIAWIKI_WIKI_NAME
+-          value: {{ default "" .Values.mediawikiName | quote }}
++          value: {{ .Values.mediawikiName | quote }}
+         - name: SMTP_HOST_ID
+-          value: {{ default "" .Values.smtpHostID | quote }}
++          value: {{ .Values.smtpHostID | quote }}
+         - name: SMTP_HOST
+-          value: {{ default "" .Values.smtpHost | quote }}
++          value: {{ .Values.smtpHost | quote }}
+         - name: SMTP_PORT
+-          value: {{ default "" .Values.smtpPort | quote }}
++          value: {{ .Values.smtpPort | quote }}
+         - name: SMTP_USER
+-          value: {{ default "" .Values.smtpUser | quote }}
++          value: {{ .Values.smtpUser | quote }}
+         - name: SMTP_PASSWORD
+           valueFrom:
+             secretKeyRef:
+@@ -89,3 +117,4 @@ spec:
+       {{- else }}
+         emptyDir: {}
+       {{- end }}
++{{- end }}
+diff --git a/stable/mediawiki/templates/externaldb-secrets.yaml b/stable/mediawiki/templates/externaldb-secrets.yaml
+new file mode 100644
+index 000000000..b189c7648
+--- /dev/null
++++ b/stable/mediawiki/templates/externaldb-secrets.yaml
+@@ -0,0 +1,14 @@
++{{- if not .Values.mariadb.enabled }}
++apiVersion: v1
++kind: Secret
++metadata:
++  name: {{ printf "%s-%s" .Release.Name "externaldb"  }}
++  labels:
++    app: {{ printf "%s-%s" .Release.Name "externaldb"  }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++type: Opaque
++data:
++  db-password: {{ default "" .Values.externalDatabase.password | b64enc | quote }}
++{{- end }}
+diff --git a/stable/mediawiki/values.yaml b/stable/mediawiki/values.yaml
+index 7648c7176..6b2cc06ba 100644
+--- a/stable/mediawiki/values.yaml
++++ b/stable/mediawiki/values.yaml
+@@ -1,7 +1,7 @@
+ ## Bitnami MediaWiki image version
+ ## ref: https://hub.docker.com/r/bitnami/mediawiki/tags/
+ ##
+-image: bitnami/mediawiki:1.29.2-r0
++image: bitnami/mediawiki:1.29.2-r1
+ 
+ ## Specify a imagePullPolicy
+ ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+@@ -30,6 +30,10 @@ mediawikiEmail: user@example.com
+ ##
+ mediawikiName: My Wiki
+ 
++## Set to `yes` to allow the container to be started with blank passwords
++## ref: https://github.com/bitnami/bitnami-docker-mediawiki#environment-variables
++allowEmptyPassword: "yes"
++
+ ## SMTP mail delivery configuration
+ ## ref: https://github.com/bitnami/bitnami-docker-mediawiki#smtp-configuration
+ ##
+@@ -39,15 +43,53 @@ mediawikiName: My Wiki
+ # smtpUser:
+ # smtpPassword:
+ 
++##
++## External database configuration
++##
++externalDatabase:
++  ## Database host
++  host:
++
++  ## Database port
++  port: 3306
++
++  ## Database user
++  user: bn_mediawiki
++
++  ## Database password
++  password:
++
++  ## Database name
++  database: bitnami_mediawiki
++
++
+ ##
+ ## MariaDB chart configuration
+ ##
+ mariadb:
++  ## Whether to deploy a mariadb server to satisfy the applications database requirements. To use an external database set this to false and configure the externalDatabase parameters
++  enabled: true
++
+   ## MariaDB admin password
+   ## ref: https://github.com/bitnami/bitnami-docker-mariadb/blob/master/README.md#setting-the-root-password-on-first-run
+   ##
+   # mariadbRootPassword:
+ 
++  ## Create a database
++  ## ref: https://github.com/bitnami/bitnami-docker-mariadb/blob/master/README.md#creating-a-database-on-first-run
++  ##
++  mariadbDatabase: bitnami_mediawiki
++
++  ## Create a database user
++  ## ref: https://github.com/bitnami/bitnami-docker-mariadb/blob/master/README.md#creating-a-database-user-on-first-run
++  ##
++  mariadbUser: bn_mediawiki
++
++  ## Password for mariadbUser
++  ## ref: https://github.com/bitnami/bitnami-docker-mariadb/blob/master/README.md#creating-a-database-user-on-first-run
++  ##
++  # mariadbPassword:
++
+   ## Enable persistence using Persistent Volume Claims
+   ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+   ##

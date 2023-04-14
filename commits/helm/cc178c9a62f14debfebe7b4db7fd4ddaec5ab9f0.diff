@@ -1,0 +1,148 @@
+commit cc178c9a62f14debfebe7b4db7fd4ddaec5ab9f0
+Author: pradithya aria <pradithya.aria@gmail.com>
+Date:   Tue Oct 22 22:07:23 2019 +0800
+
+    [stable/redis] Add loadBalancerSourceRanges to redis master and slave (#18064)
+    
+    * [stable/redis] Add loadBalancerSourceRanges to master and slave service
+    
+    Signed-off-by: Pradithya Aria <pradithya.pura@go-jek.com>
+    
+    * [stable/redis] Include example in values-production.yaml
+    
+    Signed-off-by: pradithya aria <pradithya.pura@go-jek.com>
+    
+    * [stable/redis] Refactor templating for master and slave service
+    
+    Signed-off-by: pradithya aria <pradithya.pura@go-jek.com>
+    
+    * [stable/redis] Undo previous version bump and bump minor version
+    
+    Signed-off-by: pradithya aria <pradithya.pura@go-jek.com>
+    
+    * [stable/redis] Bump minor version after rebase
+    
+    Signed-off-by: pradithya aria <pradithya.pura@go-jek.com>
+    
+    * [stable/redis] Bump minor version after rebase
+    
+    Signed-off-by: pradithya aria <pradithya.pura@go-jek.com>
+
+diff --git a/stable/redis/Chart.yaml b/stable/redis/Chart.yaml
+index 22d54c7c2..c48454931 100644
+--- a/stable/redis/Chart.yaml
++++ b/stable/redis/Chart.yaml
+@@ -1,6 +1,6 @@
+ apiVersion: v1
+ name: redis
+-version: 9.3.3
++version: 9.4.1
+ appVersion: 5.0.5
+ description: Open source, advanced key-value store. It is often referred to as a data structure server since keys can contain strings, hashes, lists, sets and sorted sets.
+ keywords:
+diff --git a/stable/redis/README.md b/stable/redis/README.md
+index f7aa40b58..37ffae380 100644
+--- a/stable/redis/README.md
++++ b/stable/redis/README.md
+@@ -199,6 +199,7 @@ The following table lists the configurable parameters of the Redis chart and the
+ | `master.service.annotations`                  | annotations for redis master service                                                                                                                | {}                                                      |
+ | `master.service.labels`                       | Additional labels for redis master service                                                                                                          | {}                                                      |
+ | `master.service.loadBalancerIP`               | loadBalancerIP if redis master service type is `LoadBalancer`                                                                                       | `nil`                                                   |
++| `master.service.loadBalancerSourceRanges`     | loadBalancerSourceRanges if redis master service type is `LoadBalancer`                                                                                       | `nil`                                                   |
+ | `master.resources`                            | Redis master CPU/Memory resource requests/limits                                                                                                    | Memory: `256Mi`, CPU: `100m`                            |
+ | `master.livenessProbe.enabled`                | Turn on and off liveness probe (redis master pod)                                                                                                   | `true`                                                  |
+ | `master.livenessProbe.initialDelaySeconds`    | Delay before liveness probe is initiated (redis master pod)                                                                                         | `30`                                                    |
+@@ -225,6 +226,7 @@ The following table lists the configurable parameters of the Redis chart and the
+ | `slave.service.labels`                        | Additional labels for redis slave service                                                                                                           | {}                                                      |
+ | `slave.service.port`                          | Kubernetes Service port (redis slave)                                                                                                               | `6379`                                                  |
+ | `slave.service.loadBalancerIP`                | LoadBalancerIP if Redis slave service type is `LoadBalancer`                                                                                        | `nil`                                                   |
++| `slave.service.loadBalancerSourceRanges`      | loadBalancerSourceRanges if Redis slave service type is `LoadBalancer`                                                                              | `nil`                                                   |
+ | `slave.command`                               | Redis slave entrypoint array. The docker image's ENTRYPOINT is used if this is not provided.                                                        | `/run.sh`                                               |
+ | `slave.configmap`                             | Additional Redis configuration for the slave nodes (this value is evaluated as a template)                                                          | `nil`                                                   |
+ | `slave.disableCommands`                       | Array of Redis commands to disable (slave)                                                                                                          | `[FLUSHDB, FLUSHALL]`                                   |
+diff --git a/stable/redis/templates/redis-master-svc.yaml b/stable/redis/templates/redis-master-svc.yaml
+index 7af875531..3a98e667f 100644
+--- a/stable/redis/templates/redis-master-svc.yaml
++++ b/stable/redis/templates/redis-master-svc.yaml
+@@ -16,10 +16,15 @@ metadata:
+ {{- end }}
+ spec:
+   type: {{ .Values.master.service.type }}
+-  {{ if eq .Values.master.service.type "LoadBalancer" -}} {{ if .Values.master.service.loadBalancerIP -}}
++  {{- if and (eq .Values.master.service.type "LoadBalancer") .Values.master.service.loadBalancerIP }}
+   loadBalancerIP: {{ .Values.master.service.loadBalancerIP }}
+-  {{ end -}}
+-  {{- end -}}
++  {{- end }}
++  {{- if and (eq .Values.master.service.type "LoadBalancer") .Values.master.service.loadBalancerSourceRanges }}
++  loadBalancerSourceRanges:
++  {{- with .Values.master.service.loadBalancerSourceRanges }}
++{{ toYaml . | indent 4 }}
++{{- end }}
++  {{- end }}
+   ports:
+   - name: redis
+     port: {{ .Values.master.service.port }}
+diff --git a/stable/redis/templates/redis-slave-svc.yaml b/stable/redis/templates/redis-slave-svc.yaml
+index e6db293e2..052ecea17 100644
+--- a/stable/redis/templates/redis-slave-svc.yaml
++++ b/stable/redis/templates/redis-slave-svc.yaml
+@@ -17,10 +17,15 @@ metadata:
+ {{- end }}
+ spec:
+   type: {{ .Values.slave.service.type }}
+-  {{ if eq .Values.slave.service.type "LoadBalancer" -}} {{ if .Values.slave.service.loadBalancerIP -}}
++  {{- if and (eq .Values.slave.service.type "LoadBalancer") .Values.slave.service.loadBalancerIP }}
+   loadBalancerIP: {{ .Values.slave.service.loadBalancerIP }}
+-  {{ end -}}
+-  {{- end -}}
++  {{- end }}
++  {{- if and (eq .Values.slave.service.type "LoadBalancer") .Values.slave.service.loadBalancerSourceRanges }}
++  loadBalancerSourceRanges:
++  {{- with .Values.slave.service.loadBalancerSourceRanges }}
++{{ toYaml . | indent 4 }}
++{{- end }}
++  {{- end }}
+   ports:
+   - name: redis
+     port: {{ .Values.slave.service.port }}
+diff --git a/stable/redis/values-production.yaml b/stable/redis/values-production.yaml
+index 2a867867a..7ab6280ea 100644
+--- a/stable/redis/values-production.yaml
++++ b/stable/redis/values-production.yaml
+@@ -297,6 +297,7 @@ master:
+     annotations: {}
+     labels: {}
+     loadBalancerIP:
++    # loadBalancerSourceRanges: ["10.0.0.0/8"]
+ 
+   ## Enable persistence using Persistent Volume Claims
+   ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+@@ -356,6 +357,7 @@ slave:
+     annotations: {}
+     labels: {}
+     loadBalancerIP:
++    # loadBalancerSourceRanges: ["10.0.0.0/8"]
+ 
+   ## Redis slave port
+   port: 6379
+diff --git a/stable/redis/values.yaml b/stable/redis/values.yaml
+index d3852eac5..9c339feae 100644
+--- a/stable/redis/values.yaml
++++ b/stable/redis/values.yaml
+@@ -297,6 +297,7 @@ master:
+     annotations: {}
+     labels: {}
+     loadBalancerIP:
++    # loadBalancerSourceRanges: ["10.0.0.0/8"]
+ 
+   ## Enable persistence using Persistent Volume Claims
+   ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+@@ -356,6 +357,7 @@ slave:
+     annotations: {}
+     labels: {}
+     loadBalancerIP:
++    # loadBalancerSourceRanges: ["10.0.0.0/8"]
+ 
+   ## Redis slave port
+   port: 6379

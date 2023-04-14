@@ -1,0 +1,130 @@
+commit d746db3f89ddcc6b3bf4571ae1871ee9e8f839a8
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Apr 4 14:23:08 2018 +0200
+
+    [stable/wordpress] Refactor image property and start using rolling tag (#4673)
+    
+    * [stable/wordpress] Refactor image property and start using rolling tag
+    
+    * Update tests
+    
+    * Update Chart.yaml
+
+diff --git a/stable/wordpress/Chart.yaml b/stable/wordpress/Chart.yaml
+index e92d2f017..765127b35 100644
+--- a/stable/wordpress/Chart.yaml
++++ b/stable/wordpress/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: wordpress
+-version: 0.8.18
++version: 1.0.0
+ appVersion: 4.9.4
+ description: Web publishing platform for building blogs and websites.
+ icon: https://bitnami.com/assets/stacks/wordpress/img/wordpress-stack-220x234.png
+diff --git a/stable/wordpress/README.md b/stable/wordpress/README.md
+index 89c717927..12c1c5914 100644
+--- a/stable/wordpress/README.md
++++ b/stable/wordpress/README.md
+@@ -46,9 +46,12 @@ The command removes all the Kubernetes components associated with the chart and
+ The following table lists the configurable parameters of the WordPress chart and their default values.
+ 
+ | Parameter                            | Description                                | Default                                                    |
+-| -------------------------------      | -------------------------------            | ---------------------------------------------------------- |
+-| `image`                              | WordPress image                            | `bitnami/wordpress:{VERSION}`                              |
+-| `imagePullPolicy`                    | Image pull policy                          | `IfNotPresent`                                             |
++| ------------------------------------ | ------------------------------------------ | ---------------------------------------------------------- |
++| `image.registry`                     | WordPress image registry                   | `docker.io`                                                |
++| `image.repository`                   | WordPress Image name                       | `bitnami/wordpress`                                        |
++| `image.tag`                          | WordPress Image tag                        | `{VERSION}`                                                |
++| `image.pullPolicy`                   | Image pull policy                          | `Always` if `imageTag` is `latest`, else `IfNotPresent`    |
++| `image.pullSecrets`                  | Specify image pull secrets                 | `nil`                                                      |
+ | `wordpressUsername`                  | User of the application                    | `user`                                                     |
+ | `wordpressPassword`                  | Application password                       | _random 10 character long alphanumeric string_             |
+ | `wordpressEmail`                     | Admin email                                | `user@example.com`                                         |
+@@ -72,7 +75,7 @@ The following table lists the configurable parameters of the WordPress chart and
+ | `externalDatabase.user`              | Existing username in the external db       | `bn_wordpress`                                             |
+ | `externalDatabase.password`          | Password for the above username            | `nil`                                                      |
+ | `externalDatabase.database`          | Name of the existing database              | `bitnami_wordpress`                                        |
+-| `externalDatabase.port`              | Database port number                       | `3306`                                        |
++| `externalDatabase.port`              | Database port number                       | `3306`                                                     |
+ | `serviceType`                        | Kubernetes Service type                    | `LoadBalancer`                                             |
+ | `nodePorts.http`                     | Kubernetes http node port                  | `""`                                                       |
+ | `nodePorts.https`                    | Kubernetes https node port                 | `""`                                                       |
+diff --git a/stable/wordpress/templates/deployment.yaml b/stable/wordpress/templates/deployment.yaml
+index 516a0363e..7e376b3a6 100644
+--- a/stable/wordpress/templates/deployment.yaml
++++ b/stable/wordpress/templates/deployment.yaml
+@@ -14,10 +14,16 @@ spec:
+       labels:
+         app: {{ template "fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: ALLOW_EMPTY_PASSWORD
+         {{- if .Values.allowEmptyPassword }}
+diff --git a/stable/wordpress/templates/tests/test-mariadb-connection.yaml b/stable/wordpress/templates/tests/test-mariadb-connection.yaml
+index 3607df001..badcb60fc 100644
+--- a/stable/wordpress/templates/tests/test-mariadb-connection.yaml
++++ b/stable/wordpress/templates/tests/test-mariadb-connection.yaml
+@@ -8,7 +8,8 @@ metadata:
+ spec:
+   containers:
+   - name: {{ .Release.Name }}-credentials-test
+-    image: {{ .Values.image }}
++    image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++    imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+     env:
+       - name: MARIADB_HOST
+         value: {{ template "mariadb.fullname" . }}
+diff --git a/stable/wordpress/values.yaml b/stable/wordpress/values.yaml
+index 4b00f57fd..03a0def83 100644
+--- a/stable/wordpress/values.yaml
++++ b/stable/wordpress/values.yaml
+@@ -1,12 +1,21 @@
+ ## Bitnami WordPress image version
+ ## ref: https://hub.docker.com/r/bitnami/wordpress/tags/
+ ##
+-image: bitnami/wordpress:4.9.4-r5
+-
+-## Specify an imagePullPolicy
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-imagePullPolicy: IfNotPresent
++image:
++  registry: docker.io
++  repository: bitnami/wordpress
++  tag: 4.9.4
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
+ 
+ ## User of the application
+ ## ref: https://github.com/bitnami/bitnami-docker-wordpress#environment-variables
+@@ -46,7 +55,7 @@ wordpressTablePrefix: wp_
+ 
+ ## Set to `yes` to allow the container to be started with blank passwords
+ ## ref: https://github.com/bitnami/bitnami-docker-wordpress#environment-variables
+-allowEmptyPassword: yes
++allowEmptyPassword: "yes"
+ 
+ ## SMTP mail delivery configuration
+ ## ref: https://github.com/bitnami/bitnami-docker-wordpress/#smtp-configuration

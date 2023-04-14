@@ -1,0 +1,915 @@
+commit c401bdf4164f15ecbb9b43f59644b3458d444728
+Author: Miguel Ruiz <miruiz@vmware.com>
+Date:   Thu Aug 11 14:29:48 2022 +0200
+
+    [bitnami/geode] Refactor TLS configuration (#11686)
+    
+    * [bitnami/geode] Refactor TLS configuration
+    
+    Signed-off-by: Miguel Ruiz <miruiz@vmware.com>
+    
+    * Update README.md with readme-generator-for-helm
+    
+    Signed-off-by: Bitnami Containers <bitnami-bot@vmware.com>
+    
+    * Fix typo
+    
+    Signed-off-by: Miguel Ruiz <miruiz@vmware.com>
+    
+    * Fix volumeMounts conditional
+    
+    Signed-off-by: Miguel Ruiz <miruiz@vmware.com>
+    
+    * Remove extra whitespace
+    
+    Signed-off-by: Miguel Ruiz <miruiz@vmware.com>
+    
+    * [bitnami/geode] Update components versions
+    
+    Signed-off-by: Bitnami Containers <bitnami-bot@vmware.com>
+    
+    Signed-off-by: Miguel Ruiz <miruiz@vmware.com>
+    Signed-off-by: Bitnami Containers <bitnami-bot@vmware.com>
+    Co-authored-by: Bitnami Containers <bitnami-bot@vmware.com>
+
+diff --git a/bitnami/geode/Chart.yaml b/bitnami/geode/Chart.yaml
+index e332f83525..f9e2d8a4f2 100644
+--- a/bitnami/geode/Chart.yaml
++++ b/bitnami/geode/Chart.yaml
+@@ -22,4 +22,4 @@ name: geode
+ sources:
+   - https://github.com/bitnami/containers/tree/main/bitnami/geode
+   - https://github.com/apache/geode
+-version: 0.6.13
++version: 1.0.0
+diff --git a/bitnami/geode/README.md b/bitnami/geode/README.md
+index d8260bb04b..73edc2adfd 100644
+--- a/bitnami/geode/README.md
++++ b/bitnami/geode/README.md
+@@ -78,27 +78,32 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ ### Apache Geode Common parameters
+ 
+-| Name                                     | Description                                                                            | Value                                                       |
+-| ---------------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+-| `image.registry`                         | Apache Geode image registry                                                            | `docker.io`                                                 |
+-| `image.repository`                       | Apache Geode image repository                                                          | `bitnami/geode`                                             |
+-| `image.tag`                              | Apache Geode image tag (immutable tags are recommended)                                | `1.14.4-debian-10-r21`                                      |
+-| `image.pullPolicy`                       | Apache Geode image pull policy                                                         | `IfNotPresent`                                              |
+-| `image.pullSecrets`                      | Apache Geode image pull secrets                                                        | `[]`                                                        |
+-| `image.debug`                            | Enable Apache Geode image debug mode                                                   | `false`                                                     |
+-| `groups`                                 | List of Apache Geode member groups to belong to                                        | `[]`                                                        |
+-| `auth.enabled`                           | Enable Apache Geode security                                                           | `true`                                                      |
+-| `auth.securityManager`                   | Fully qualified name of the class that implements the SecurityManager interface        | `org.apache.geode.examples.security.ExampleSecurityManager` |
+-| `auth.username`                          | Username credential to use to connect with locators                                    | `admin`                                                     |
+-| `auth.password`                          | Password credential to use to connect with locators                                    | `""`                                                        |
+-| `auth.existingSecret`                    | Name of the existing secret containing to use to connect with locators                 | `""`                                                        |
+-| `auth.tls.enabled`                       | Enable TLS authentication                                                              | `false`                                                     |
+-| `auth.tls.components`                    | List of components for which to enable TLS                                             | `[]`                                                        |
+-| `auth.tls.existingSecret`                | Name of the existing secret containing the TLS certificates for the Apache Geode nodes | `""`                                                        |
+-| `auth.tls.keystorePassword`              | Password to access they key stores when they are password-protected                    | `""`                                                        |
+-| `auth.tls.truststorePassword`            | Password to access they trust store when it is password-protected                      | `""`                                                        |
+-| `auth.tls.requireAuthentication`         | Enable two-way authentication                                                          | `false`                                                     |
+-| `auth.tls.endpointIdentificationEnabled` | Enable server hostname validation using server certificates                            | `false`                                                     |
++| Name                                     | Description                                                                                   | Value                                                       |
++| ---------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
++| `image.registry`                         | Apache Geode image registry                                                                   | `docker.io`                                                 |
++| `image.repository`                       | Apache Geode image repository                                                                 | `bitnami/geode`                                             |
++| `image.tag`                              | Apache Geode image tag (immutable tags are recommended)                                       | `1.15.0-debian-11-r14`                                      |
++| `image.pullPolicy`                       | Apache Geode image pull policy                                                                | `IfNotPresent`                                              |
++| `image.pullSecrets`                      | Apache Geode image pull secrets                                                               | `[]`                                                        |
++| `image.debug`                            | Enable Apache Geode image debug mode                                                          | `false`                                                     |
++| `groups`                                 | List of Apache Geode member groups to belong to                                               | `[]`                                                        |
++| `auth.enabled`                           | Enable Apache Geode security                                                                  | `true`                                                      |
++| `auth.securityManager`                   | Fully qualified name of the class that implements the SecurityManager interface               | `org.apache.geode.examples.security.ExampleSecurityManager` |
++| `auth.username`                          | Username credential to use to connect with locators                                           | `admin`                                                     |
++| `auth.password`                          | Password credential to use to connect with locators                                           | `""`                                                        |
++| `auth.existingSecret`                    | Name of the existing secret containing to use to connect with locators                        | `""`                                                        |
++| `auth.tls.enabled`                       | Enable TLS authentication                                                                     | `false`                                                     |
++| `auth.tls.components`                    | List of components for which to enable TLS                                                    | `[]`                                                        |
++| `auth.tls.autoGenerated`                 | Generate automatically self-signed TLS certificates. Currently only supports PEM certificates | `false`                                                     |
++| `auth.tls.existingSecret`                | Name of the existing secret containing the TLS certificates for the Apache Geode nodes        | `""`                                                        |
++| `auth.tls.usePem`                        | Use PEM certificates as input instead of PKS12/JKS stores                                     | `false`                                                     |
++| `auth.tls.keystorePassword`              | Password to access they key stores when they are password-protected                           | `""`                                                        |
++| `auth.tls.truststorePassword`            | Password to access they trust store when it is password-protected                             | `""`                                                        |
++| `auth.tls.passwordsSecretName`           | Set the name of the secret that contains the passwords for the certificate files              | `""`                                                        |
++| `auth.tls.requireAuthentication`         | Enable two-way authentication                                                                 | `false`                                                     |
++| `auth.tls.endpointIdentificationEnabled` | Enable server hostname validation using server certificates                                   | `false`                                                     |
++| `auth.tls.resources.limits`              | The resources limits for the TLS init container                                               | `{}`                                                        |
++| `auth.tls.resources.requests`            | The requested resources for the TLS init container                                            | `{}`                                                        |
+ 
+ 
+ ### Apache Geode Locator parameters
+@@ -307,7 +312,7 @@ The command removes all the Kubernetes components associated with the chart and
+ | `volumePermissions.enabled`                            | Enable init container that changes the owner/group of the PV mount point to `runAsUser:fsGroup` | `false`                 |
+ | `volumePermissions.image.registry`                     | Bitnami Shell image registry                                                                    | `docker.io`             |
+ | `volumePermissions.image.repository`                   | Bitnami Shell image repository                                                                  | `bitnami/bitnami-shell` |
+-| `volumePermissions.image.tag`                          | Bitnami Shell image tag (immutable tags are recommended)                                        | `10-debian-10-r401`     |
++| `volumePermissions.image.tag`                          | Bitnami Shell image tag (immutable tags are recommended)                                        | `11-debian-11-r22`      |
+ | `volumePermissions.image.pullPolicy`                   | Bitnami Shell image pull policy                                                                 | `IfNotPresent`          |
+ | `volumePermissions.image.pullSecrets`                  | Bitnami Shell image pull secrets                                                                | `[]`                    |
+ | `volumePermissions.resources.limits`                   | The resources limits for the init container                                                     | `{}`                    |
+@@ -318,44 +323,44 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ ### Metrics parameters
+ 
+-| Name                                            | Description                                                                      | Value                 |
+-| ----------------------------------------------- | -------------------------------------------------------------------------------- | --------------------- |
+-| `metrics.enabled`                               | Expose Apache Geode metrics                                                      | `false`               |
+-| `metrics.image.registry`                        | Bitnami HAProxy image registry                                                   | `docker.io`           |
+-| `metrics.image.repository`                      | Bitnami HAProxy image repository                                                 | `bitnami/haproxy`     |
+-| `metrics.image.tag`                             | Bitnami HAProxy image tag (immutable tags are recommended)                       | `2.5.5-debian-10-r35` |
+-| `metrics.image.pullPolicy`                      | Bitnami HAProxy image pull policy                                                | `IfNotPresent`        |
+-| `metrics.image.pullSecrets`                     | Bitnami HAProxy image pull secrets                                               | `[]`                  |
+-| `metrics.containerPort`                         | Metrics container port                                                           | `9914`                |
+-| `metrics.livenessProbe.enabled`                 | Enable livenessProbe on Metrics containers                                       | `true`                |
+-| `metrics.livenessProbe.initialDelaySeconds`     | Initial delay seconds for livenessProbe                                          | `15`                  |
+-| `metrics.livenessProbe.periodSeconds`           | Period seconds for livenessProbe                                                 | `10`                  |
+-| `metrics.livenessProbe.timeoutSeconds`          | Timeout seconds for livenessProbe                                                | `5`                   |
+-| `metrics.livenessProbe.failureThreshold`        | Failure threshold for livenessProbe                                              | `5`                   |
+-| `metrics.livenessProbe.successThreshold`        | Success threshold for livenessProbe                                              | `1`                   |
+-| `metrics.readinessProbe.enabled`                | Enable readinessProbe on Metrics containers                                      | `true`                |
+-| `metrics.readinessProbe.initialDelaySeconds`    | Initial delay seconds for readinessProbe                                         | `15`                  |
+-| `metrics.readinessProbe.periodSeconds`          | Period seconds for readinessProbe                                                | `10`                  |
+-| `metrics.readinessProbe.timeoutSeconds`         | Timeout seconds for readinessProbe                                               | `5`                   |
+-| `metrics.readinessProbe.failureThreshold`       | Failure threshold for readinessProbe                                             | `5`                   |
+-| `metrics.readinessProbe.successThreshold`       | Success threshold for readinessProbe                                             | `1`                   |
+-| `metrics.customLivenessProbe`                   | Custom livenessProbe that overrides the default one                              | `{}`                  |
+-| `metrics.customReadinessProbe`                  | Custom readinessProbe that overrides the default one                             | `{}`                  |
+-| `metrics.containerSecurityContext.enabled`      | Enabled Metrics containers' Security Context                                     | `true`                |
+-| `metrics.containerSecurityContext.runAsUser`    | Set Metrics containers' Security Context runAsUser                               | `1001`                |
+-| `metrics.containerSecurityContext.runAsNonRoot` | Set Metrics containers' Security Context runAsNonRoot                            | `true`                |
+-| `metrics.service.port`                          | Service HTTP management port                                                     | `9914`                |
+-| `metrics.service.annotations`                   | Annotations for enabling prometheus to access the metrics endpoints              | `{}`                  |
+-| `metrics.serviceMonitor.enabled`                | Specify if a ServiceMonitor will be deployed for Prometheus Operator             | `false`               |
+-| `metrics.serviceMonitor.namespace`              | Namespace in which Prometheus is running                                         | `""`                  |
+-| `metrics.serviceMonitor.labels`                 | Extra labels for the ServiceMonitor                                              | `{}`                  |
+-| `metrics.serviceMonitor.jobLabel`               | The name of the label on the target service to use as the job name in Prometheus | `""`                  |
+-| `metrics.serviceMonitor.interval`               | How frequently to scrape metrics                                                 | `""`                  |
+-| `metrics.serviceMonitor.scrapeTimeout`          | Timeout after which the scrape is ended                                          | `""`                  |
+-| `metrics.serviceMonitor.metricRelabelings`      | Specify additional relabeling of metrics                                         | `[]`                  |
+-| `metrics.serviceMonitor.relabelings`            | Specify general relabeling                                                       | `[]`                  |
+-| `metrics.serviceMonitor.selector`               | Prometheus instance selector labels                                              | `{}`                  |
+-| `metrics.serviceMonitor.honorLabels`            | honorLabels chooses the metric's labels on collisions with target labels         | `false`               |
++| Name                                            | Description                                                                      | Value                |
++| ----------------------------------------------- | -------------------------------------------------------------------------------- | -------------------- |
++| `metrics.enabled`                               | Expose Apache Geode metrics                                                      | `false`              |
++| `metrics.image.registry`                        | Bitnami HAProxy image registry                                                   | `docker.io`          |
++| `metrics.image.repository`                      | Bitnami HAProxy image repository                                                 | `bitnami/haproxy`    |
++| `metrics.image.tag`                             | Bitnami HAProxy image tag (immutable tags are recommended)                       | `2.6.2-debian-11-r7` |
++| `metrics.image.pullPolicy`                      | Bitnami HAProxy image pull policy                                                | `IfNotPresent`       |
++| `metrics.image.pullSecrets`                     | Bitnami HAProxy image pull secrets                                               | `[]`                 |
++| `metrics.containerPort`                         | Metrics container port                                                           | `9914`               |
++| `metrics.livenessProbe.enabled`                 | Enable livenessProbe on Metrics containers                                       | `true`               |
++| `metrics.livenessProbe.initialDelaySeconds`     | Initial delay seconds for livenessProbe                                          | `15`                 |
++| `metrics.livenessProbe.periodSeconds`           | Period seconds for livenessProbe                                                 | `10`                 |
++| `metrics.livenessProbe.timeoutSeconds`          | Timeout seconds for livenessProbe                                                | `5`                  |
++| `metrics.livenessProbe.failureThreshold`        | Failure threshold for livenessProbe                                              | `5`                  |
++| `metrics.livenessProbe.successThreshold`        | Success threshold for livenessProbe                                              | `1`                  |
++| `metrics.readinessProbe.enabled`                | Enable readinessProbe on Metrics containers                                      | `true`               |
++| `metrics.readinessProbe.initialDelaySeconds`    | Initial delay seconds for readinessProbe                                         | `15`                 |
++| `metrics.readinessProbe.periodSeconds`          | Period seconds for readinessProbe                                                | `10`                 |
++| `metrics.readinessProbe.timeoutSeconds`         | Timeout seconds for readinessProbe                                               | `5`                  |
++| `metrics.readinessProbe.failureThreshold`       | Failure threshold for readinessProbe                                             | `5`                  |
++| `metrics.readinessProbe.successThreshold`       | Success threshold for readinessProbe                                             | `1`                  |
++| `metrics.customLivenessProbe`                   | Custom livenessProbe that overrides the default one                              | `{}`                 |
++| `metrics.customReadinessProbe`                  | Custom readinessProbe that overrides the default one                             | `{}`                 |
++| `metrics.containerSecurityContext.enabled`      | Enabled Metrics containers' Security Context                                     | `true`               |
++| `metrics.containerSecurityContext.runAsUser`    | Set Metrics containers' Security Context runAsUser                               | `1001`               |
++| `metrics.containerSecurityContext.runAsNonRoot` | Set Metrics containers' Security Context runAsNonRoot                            | `true`               |
++| `metrics.service.port`                          | Service HTTP management port                                                     | `9914`               |
++| `metrics.service.annotations`                   | Annotations for enabling prometheus to access the metrics endpoints              | `{}`                 |
++| `metrics.serviceMonitor.enabled`                | Specify if a ServiceMonitor will be deployed for Prometheus Operator             | `false`              |
++| `metrics.serviceMonitor.namespace`              | Namespace in which Prometheus is running                                         | `""`                 |
++| `metrics.serviceMonitor.labels`                 | Extra labels for the ServiceMonitor                                              | `{}`                 |
++| `metrics.serviceMonitor.jobLabel`               | The name of the label on the target service to use as the job name in Prometheus | `""`                 |
++| `metrics.serviceMonitor.interval`               | How frequently to scrape metrics                                                 | `""`                 |
++| `metrics.serviceMonitor.scrapeTimeout`          | Timeout after which the scrape is ended                                          | `""`                 |
++| `metrics.serviceMonitor.metricRelabelings`      | Specify additional relabeling of metrics                                         | `[]`                 |
++| `metrics.serviceMonitor.relabelings`            | Specify general relabeling                                                       | `[]`                 |
++| `metrics.serviceMonitor.selector`               | Prometheus instance selector labels                                              | `{}`                 |
++| `metrics.serviceMonitor.honorLabels`            | honorLabels chooses the metric's labels on collisions with target labels         | `false`              |
+ 
+ 
+ ### Other Parameters
+diff --git a/bitnami/geode/templates/_helpers.tpl b/bitnami/geode/templates/_helpers.tpl
+index 7ba7f7d1eb..dabbb74e14 100644
+--- a/bitnami/geode/templates/_helpers.tpl
++++ b/bitnami/geode/templates/_helpers.tpl
+@@ -2,7 +2,7 @@
+ Return the proper Apache Geode image name
+ */}}
+ {{- define "geode.image" -}}
+-{{ include "common.images.image" (dict "imageRoot" .Values.image "global" .Values.global) }}
++{{- include "common.images.image" (dict "imageRoot" .Values.image "global" .Values.global) -}}
+ {{- end -}}
+ 
+ {{/*
+@@ -31,9 +31,9 @@ Create the name of the service account to use
+ */}}
+ {{- define "geode.serviceAccountName" -}}
+ {{- if .Values.serviceAccount.create -}}
+-    {{ default (include "common.names.fullname" .) .Values.serviceAccount.name }}
++    {{- default (include "common.names.fullname" .) .Values.serviceAccount.name -}}
+ {{- else -}}
+-    {{ default "default" .Values.serviceAccount.name }}
++    {{- default "default" .Values.serviceAccount.name -}}
+ {{- end -}}
+ {{- end -}}
+ 
+@@ -48,11 +48,51 @@ Return the Apache Geode authentication credentials secret
+ {{- end -}}
+ {{- end -}}
+ 
++{{/*
++Return the secret containing AppName TLS certificates
++*/}}
++{{- define "geode.tlsSecretName" -}}
++{{- if .Values.auth.tls.existingSecret -}}
++    {{- printf "%s" (tpl .Values.auth.tls.existingSecret $) -}}
++{{- else -}}
++    {{- printf "%s-crt" (include "common.names.fullname" .) -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Return true if a TLS credentials secret object should be created
++*/}}
++{{- define "geode.tlsPasswordsSecret" -}}
++{{- if .Values.auth.tls.passwordsSecretName -}}
++    {{- printf "%s" (tpl .Values.auth.tls.passwordsSecretName $) -}}
++{{- else -}}
++    {{- printf "%s-tls-pass" (include "common.names.fullname" .) -}}
++{{- end -}}
++{{- end -}}
++
+ {{/*
+ Return true if a Apache Geode authentication credentials secret object should be created
+ */}}
+ {{- define "geode.createSecret" -}}
+-{{- if or (and .Values.auth.enabled (empty .Values.auth.existingSecret)) (and .Values.auth.tls.enabled (or (not (empty .Values.auth.tls.keystorePassword)) (not (empty .Values.auth.tls.truststorePassword))))  -}}
++{{- if and .Values.auth.enabled (empty .Values.auth.existingSecret) -}}
++    {{- true -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Return true if a TLS secret object should be created
++*/}}
++{{- define "geode.createTlsSecret" -}}
++{{- if and .Values.auth.tls.enabled .Values.auth.tls.autoGenerated (not .Values.auth.tls.existingSecret) -}}
++    {{- true -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Return true if a secret containing the Keystore and Truststore password should be created for Solr client
++*/}}
++{{- define "geode.createTlsPasswordsSecret" -}}
++{{- if and .Values.auth.tls.enabled (or .Values.auth.tls.autoGenerated .Values.auth.tls.usePem .Values.auth.tls.keystorePassword .Values.auth.tls.truststorePassword) (not .Values.auth.tls.passwordsSecretName) -}}
+     {{- true -}}
+ {{- end -}}
+ {{- end -}}
+@@ -72,7 +112,7 @@ Return the Locator configuration ConfigMap name
+ Return true if a ConfigMap object should be created for Locator configuration
+ */}}
+ {{- define "geode.locator.createConfigmap" -}}
+-{{- if and .Values.locator.configuration (not .Values.locator.existingConfigmap) }}
++{{- if and .Values.locator.configuration (not .Values.locator.existingConfigmap) -}}
+     {{- true -}}
+ {{- end -}}
+ {{- end -}}
+@@ -92,7 +132,7 @@ Return the Locator Log4J configuration ConfigMap name
+ Return true if a ConfigMap object should be created for Locator Log4J configuration
+ */}}
+ {{- define "geode.locator.log4j.createConfigmap" -}}
+-{{- if and .Values.locator.log4j (not .Values.locator.existingLog4jConfigMap) }}
++{{- if and .Values.locator.log4j (not .Values.locator.existingLog4jConfigMap) -}}
+     {{- true -}}
+ {{- end -}}
+ {{- end -}}
+@@ -112,7 +152,7 @@ Return the Cache server configuration ConfigMap name
+ Return true if a ConfigMap object should be created for Cache server configuration
+ */}}
+ {{- define "geode.server.createConfigmap" -}}
+-{{- if and .Values.server.configuration (not .Values.server.existingConfigmap) }}
++{{- if and .Values.server.configuration (not .Values.server.existingConfigmap) -}}
+     {{- true -}}
+ {{- end -}}
+ {{- end -}}
+@@ -132,7 +172,7 @@ Return the Cache server Log4J configuration ConfigMap name
+ Return true if a ConfigMap object should be created for Cache server Log4J configuration
+ */}}
+ {{- define "geode.server.log4j.createConfigmap" -}}
+-{{- if and .Values.server.log4j (not .Values.server.existingLog4jConfigMap) }}
++{{- if and .Values.server.log4j (not .Values.server.existingLog4jConfigMap) -}}
+     {{- true -}}
+ {{- end -}}
+ {{- end -}}
+@@ -154,7 +194,7 @@ Compile all warnings into a single message.
+ 
+ {{/* Validate values of Apache Geode - The list of components for which to enable TLS must be provided when TLS authentication is enabled */}}
+ {{- define "geode.validateValues.tls.components" -}}
+-{{- if and .Values.auth.tls.enabled (empty .Values.auth.tls.components) }}
++{{- if and .Values.auth.tls.enabled (empty .Values.auth.tls.components) -}}
+ geode: auth.tls.components
+     A list of components for which to enable TLS is required
+     when TLS authentication is enabled.
+@@ -163,7 +203,7 @@ geode: auth.tls.components
+ 
+ {{/* Validate values of Apache Geode - A secret containing TLS certs must be provided when TLS authentication is enabled */}}
+ {{- define "geode.validateValues.tls.secret" -}}
+-{{- if and .Values.auth.tls.enabled (empty .Values.auth.tls.existingSecret) }}
++{{- if and .Values.auth.tls.enabled (and (empty .Values.auth.tls.existingSecret) (not .Values.auth.tls.autoGenerated)) -}}
+ geode: auth.tls.existingSecret
+     A secret containing the Apache Geode key stores and trust store is required
+     when TLS authentication is enabled.
+diff --git a/bitnami/geode/templates/locator/statefulset.yaml b/bitnami/geode/templates/locator/statefulset.yaml
+index 0a7bea3d60..a21abc01d8 100644
+--- a/bitnami/geode/templates/locator/statefulset.yaml
++++ b/bitnami/geode/templates/locator/statefulset.yaml
+@@ -36,7 +36,7 @@ spec:
+         {{- if .Values.locator.podAnnotations }}
+         {{- include "common.tplvalues.render" (dict "value" .Values.locator.podAnnotations "context" $) | nindent 8 }}
+         {{- end }}
+-        {{- if (include "geode.createSecret" .) }}
++        {{- if or (include "geode.createSecret" .) (include "geode.createTlsPasswordsSecret" .) }}
+         checksum/auth-secret: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+         {{- end }}
+         {{- if (include "geode.locator.createConfigmap" .) }}
+@@ -85,7 +85,6 @@ spec:
+       {{- if .Values.locator.terminationGracePeriodSeconds }}
+       terminationGracePeriodSeconds: {{ .Values.locator.terminationGracePeriodSeconds }}
+       {{- end }}
+-      {{- if or .Values.volumePermissions.enabled .Values.locator.initContainers }}
+       initContainers:
+         {{- if .Values.volumePermissions.enabled }}
+         - name: volume-permissions
+@@ -109,10 +108,86 @@ spec:
+             - name: data
+               mountPath: /bitnami/geode
+         {{- end }}
++        {{- if .Values.auth.tls.enabled }}
++        - name: init-certs
++          image: {{ include "geode.image" . }}
++          imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
++          {{- if .Values.locator.containerSecurityContext.enabled }}
++          securityContext: {{- omit .Values.locator.containerSecurityContext "enabled" | toYaml | nindent 12 }}
++          {{- end }}
++          command:
++          - /bin/bash
++          - -ec
++          - |-
++            . /opt/bitnami/scripts/geode-env.sh
++            ID="${MY_POD_NAME#"{{ $fullname }}-"}"
++            {{- if or .Values.auth.tls.autoGenerated .Values.auth.tls.usePem }}
++            if [[ -f "$GEODE_SECURITY_TLS_KEYSTORE_FILE" ]]; then
++              echo "Removing old geode.keystore.jks file."
++              rm "$GEODE_SECURITY_TLS_KEYSTORE_FILE"
++            fi
++            if [[ -f "$GEODE_SECURITY_TLS_TRUSTSTORE_FILE" ]]; then
++              echo "Removing old geode.truststore.jks file"
++              rm "$GEODE_SECURITY_TLS_TRUSTSTORE_FILE"
++            fi
++            if [[ -f "/certs/geode-${ID}.key" ]] && [[ -f "/certs/geode-${ID}.crt" ]] && [[ -f "/certs/ca.crt" ]]; then
++              openssl pkcs12 -export -in "/certs/geode-${ID}.crt" \
++                  -passout pass:"$GEODE_SECURITY_TLS_KEYSTORE_PASSWORD" \
++                  -inkey "/certs/geode-${ID}.key" \
++                  -out "/tmp/keystore.p12"
++              keytool -importkeystore -srckeystore "/tmp/keystore.p12" \
++                  -srcstoretype PKCS12 \
++                  -srcstorepass "$GEODE_SECURITY_TLS_KEYSTORE_PASSWORD" \
++                  -deststorepass "$GEODE_SECURITY_TLS_KEYSTORE_PASSWORD" \
++                  -destkeystore "$GEODE_SECURITY_TLS_KEYSTORE_FILE"
++              rm "/tmp/keystore.p12"
++              keytool -import -file "/certs/ca.crt" \
++                      -keystore "$GEODE_SECURITY_TLS_TRUSTSTORE_FILE" \
++                      -storepass "$GEODE_SECURITY_TLS_TRUSTSTORE_PASSWORD" \
++                      -noprompt
++            else
++                echo "Couldn't find the expected PEM certificates! They are mandatory when encryption via TLS is enabled."
++                exit 1
++            fi
++            {{- else }}
++            if [[ -f "/certs/geode.truststore.jks" ]] && [[ -f "/certs/geode-${ID}.keystore.jks" ]]; then
++                cp "/certs/geode.truststore.jks" "$GEODE_SECURITY_TLS_TRUSTSTORE_FILE"
++                cp "/certs/geode-${ID}.keystore.jks" "$GEODE_SECURITY_TLS_KEYSTORE_FILE"
++            else
++                echo "Couldn't find the expected Java Key Stores (JKS) files! They are mandatory when encryption via TLS is enabled."
++                exit 1
++            fi
++            {{- end }}
++          env:
++            - name: MY_POD_NAME
++              valueFrom:
++                fieldRef:
++                  apiVersion: v1
++                  fieldPath: metadata.name
++            {{- if or .Values.auth.tls.autoGenerated .Values.auth.tls.usePem }}
++            - name: GEODE_SECURITY_TLS_KEYSTORE_PASSWORD
++              valueFrom:
++                secretKeyRef:
++                  name: {{ include "geode.tlsPasswordsSecret" . }}
++                  key: tls-keystore-password
++            - name: GEODE_SECURITY_TLS_TRUSTSTORE_PASSWORD
++              valueFrom:
++                secretKeyRef:
++                  name: {{ include "geode.tlsPasswordsSecret" . }}
++                  key: tls-truststore-password
++            {{- end }}
++          {{- if .Values.auth.tls.resources }}
++          resources: {{- toYaml .Values.auth.tls.resources | nindent 12 }}
++          {{- end }}
++          volumeMounts:
++            - name: certificates
++              mountPath: /certs
++            - name: shared-certs
++              mountPath: /opt/bitnami/geode/config/certs
++        {{- end }}
+         {{- if .Values.locator.initContainers }}
+         {{- include "common.tplvalues.render" (dict "value" .Values.locator.initContainers "context" $) | nindent 8 }}
+         {{- end }}
+-      {{- end }}
+       containers:
+         - name: geode
+           image: {{ include "geode.image" . }}
+@@ -136,17 +211,6 @@ spec:
+           args:
+             - -ec
+             - |
+-              {{- if .Values.auth.tls.enabled }}
+-              ID="${MY_POD_NAME#"{{ $fullname }}-"}"
+-              mkdir -p /opt/bitnami/geode/config/certs
+-              if [[ -f "/certs/geode.truststore.jks" ]] && [[ -f "/certs/geode-locator-${ID}.truststore.jks" ]]; then
+-                  cp "/certs/geode.truststore.jks" "/opt/bitnami/geode/config/certs/geode-truststore.jks
+-                  cp "/certs/geode-locator-${ID}.truststore.jks" "/opt/bitnami/geode/config/certs/geode.keystore.jks"
+-              else
+-                  echo "Couldn't find the expected Java Key Stores (JKS) files! They are mandatory when encryption via TLS is enabled."
+-                  exit 1
+-              fi
+-              {{- end }}
+               /opt/bitnami/scripts/geode/entrypoint.sh /opt/bitnami/scripts/geode/run.sh {{ join " " .Values.locator.extraFlags }}
+           {{- end }}
+           env:
+@@ -215,19 +279,19 @@ spec:
+               value: {{ ternary "yes" "no" .Values.auth.tls.requireAuthentication | quote }}
+             - name: GEODE_SECURITY_TLS_ENDPOINT_IDENTIFICATION_ENABLED
+               value: {{ ternary "yes" "no" .Values.auth.tls.endpointIdentificationEnabled | quote }}
+-            {{- if not (empty .Values.auth.tls.keystorePassword) }}
++            {{- if or .Values.auth.tls.keystorePassword .Values.auth.tls.autoGenerated .Values.auth.tls.usePem }}
+             - name: GEODE_SECURITY_TLS_KEYSTORE_PASSWORD
+               valueFrom:
+                 secretKeyRef:
+-                  name: {{ include "geode.secretName" . }}
+-                  key: keystore-password
++                  name: {{ include "geode.tlsPasswordsSecret" . }}
++                  key: tls-keystore-password
+             {{- end }}
+-            {{- if not (empty .Values.auth.tls.truststorePassword) }}
++            {{- if or .Values.auth.tls.truststorePassword .Values.auth.tls.autoGenerated .Values.auth.tls.usePem}}
+             - name: GEODE_SECURITY_TLS_TRUSTSTORE_PASSWORD
+               valueFrom:
+                 secretKeyRef:
+-                  name: {{ include "geode.secretName" . }}
+-                  key: truststore-password
++                  name: {{ include "geode.tlsPasswordsSecret" . }}
++                  key: tls-truststore-password
+             {{- end }}
+             {{- end }}
+             {{- if .Values.locator.extraEnvVars }}
+@@ -262,7 +326,8 @@ spec:
+                 - /bin/bash
+                 - -ec
+                 - |
+-                  gfsh -e "connect --locator=localhost[$GEODE_LOCATOR_PORT_NUMBER]{{ if .Values.auth.enabled }} --user=$GEODE_SECURITY_USERNAME --password=$GEODE_SECURITY_PASSWORD{{ end }}" || exit 1
++                  . /opt/bitnami/scripts/geode-env.sh
++                  gfsh -e "connect --locator=$GEODE_NODE_NAME[$GEODE_LOCATOR_PORT_NUMBER]{{if .Values.auth.tls.enabled }} --use-ssl{{ end }}{{ if or .Values.auth.enabled .Values.auth.tls.enabled }} --security-properties-file=$GEODE_SEC_CONF_FILE{{ end }}" || exit 1
+           {{- else if .Values.locator.customLivenessProbe }}
+           livenessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.locator.customLivenessProbe "context" $) | nindent 12 }}
+           {{- end }}
+@@ -273,7 +338,8 @@ spec:
+                 - /bin/bash
+                 - -ec
+                 - |
+-                  gfsh -e "connect --locator=localhost[$GEODE_LOCATOR_PORT_NUMBER]{{ if .Values.auth.enabled }} --user=$GEODE_SECURITY_USERNAME --password=$GEODE_SECURITY_PASSWORD{{ end }}" || exit 1
++                  . /opt/bitnami/scripts/geode-env.sh
++                  gfsh -e "connect --locator=$GEODE_NODE_NAME[$GEODE_LOCATOR_PORT_NUMBER]{{if .Values.auth.tls.enabled }} --use-ssl{{ end }}{{ if or .Values.auth.enabled .Values.auth.tls.enabled }} --security-properties-file=$GEODE_SEC_CONF_FILE{{ end }}" || exit 1
+           {{- else if .Values.locator.customReadinessProbe }}
+           readinessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.locator.customReadinessProbe "context" $) | nindent 12 }}
+           {{- end }}
+@@ -302,8 +368,8 @@ spec:
+               subPath: log4j2.xml
+             {{- end }}
+             {{- if .Values.auth.tls.enabled }}
+-            - name: geode-tls-certificates
+-              mountPath: /certs
++            - name: shared-certs
++              mountPath: /opt/bitnami/geode/config/certs
+               readOnly: true
+             {{- end }}
+           {{- if .Values.locator.extraVolumeMounts }}
+@@ -357,10 +423,12 @@ spec:
+             name: {{ include "geode.locator.log4j.configmapName" . }}
+         {{ end }}
+         {{- if .Values.auth.tls.enabled }}
+-        - name: geode-tls-certificates
++        - name: certificates
+           secret:
+-            secretName: {{ printf "%s" (tpl .Values.auth.tls.existingSecret $) }}
+-            defaultMode: 256
++            secretName: {{ include "geode.tlsSecretName" . }}
++            defaultMode: 0400
++        - name: shared-certs
++          emptyDir: {}
+         {{- end }}
+         {{- if .Values.metrics.enabled }}
+         - name: haproxy-configuration
+diff --git a/bitnami/geode/templates/secrets.yaml b/bitnami/geode/templates/secrets.yaml
+index 8b97d43603..5c3dd48475 100644
+--- a/bitnami/geode/templates/secrets.yaml
++++ b/bitnami/geode/templates/secrets.yaml
+@@ -13,14 +13,29 @@ metadata:
+   {{- end }}
+ type: Opaque
+ data:
+-  {{- if and .Values.auth.enabled (empty .Values.auth.existingSecret) }}
+-  username: {{ default (randAlphaNum 10) .Values.auth.username | b64enc | quote }}
+-  password: {{ default (randAlphaNum 10) .Values.auth.password | b64enc | quote }}
++  username: {{ include "common.secrets.passwords.manage" (dict "secret" (printf "%s-auth" (include "common.names.fullname" .)) "key" "username" "length" 10 "providedValues" (list "auth.username") "context" $) }}
++  password: {{ include "common.secrets.passwords.manage" (dict "secret" (printf "%s-auth" (include "common.names.fullname" .)) "key" "password" "length" 10 "providedValues" (list "auth.password") "context" $) }}
++{{- end }}
++{{- if (include "geode.createTlsPasswordsSecret" . ) }}
++---
++apiVersion: v1
++kind: Secret
++metadata:
++  name: {{ printf "%s-tls-pass" (include "common.names.fullname" .) }}
++  namespace: {{ .Release.Namespace | quote }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+   {{- end }}
+-  {{- if and .Values.auth.tls.enabled (not (empty .Values.auth.tls.keystorePassword)) }}
+-  keystore-password: {{ .Values.auth.tls.keystorePassword | b64enc | quote }}
++type: Opaque
++data:
++  {{- if or .Values.auth.tls.keystorePassword .Values.auth.tls.autoGenerated .Values.auth.tls.usePem }}
++  tls-keystore-password: {{ include "common.secrets.passwords.manage" (dict "secret" (printf "%s-tls-pass" (include "common.names.fullname" .)) "key" "tls-keystore-password" "length" 10 "providedValues" (list "auth.tls.keystorePassword") "context" $) }}
+   {{- end }}
+-  {{- if and .Values.auth.tls.enabled (not (empty .Values.auth.tls.truststorePassword)) }}
+-  truststore-password: {{ .Values.auth.tls.truststorePassword | b64enc | quote }}
++  {{- if or .Values.auth.tls.truststorePassword .Values.auth.tls.autoGenerated .Values.auth.tls.usePem }}
++  tls-truststore-password: {{ include "common.secrets.passwords.manage" (dict "secret" (printf "%s-tls-pass" (include "common.names.fullname" .)) "key" "tls-truststore-password" "length" 10 "providedValues" (list "auth.tls.truststorePassword") "context" $) }}
+   {{- end }}
+ {{- end }}
+diff --git a/bitnami/geode/templates/server/statefulset.yaml b/bitnami/geode/templates/server/statefulset.yaml
+index 118b70fbe1..31b3293b08 100644
+--- a/bitnami/geode/templates/server/statefulset.yaml
++++ b/bitnami/geode/templates/server/statefulset.yaml
+@@ -38,7 +38,7 @@ spec:
+         {{- if .Values.server.podAnnotations }}
+         {{- include "common.tplvalues.render" (dict "value" .Values.server.podAnnotations "context" $) | nindent 8 }}
+         {{- end }}
+-        {{- if (include "geode.createSecret" .) }}
++        {{- if or (include "geode.createSecret" .) (include "geode.createTlsPasswordsSecret" .) }}
+         checksum/auth-secret: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+         {{- end }}
+         {{- if (include "geode.server.createConfigmap" .) }}
+@@ -88,6 +88,85 @@ spec:
+       securityContext: {{- omit .Values.server.podSecurityContext "enabled" | toYaml | nindent 8 }}
+       {{- end }}
+       initContainers:
++        {{- if .Values.auth.tls.enabled }}
++        - name: init-certs
++          image: {{ include "geode.image" . }}
++          imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
++          {{- if .Values.server.containerSecurityContext.enabled }}
++          securityContext: {{- omit .Values.server.containerSecurityContext "enabled" | toYaml | nindent 12 }}
++          {{- end }}
++          command:
++          - /bin/bash
++          - -ec
++          - |-
++            . /opt/bitnami/scripts/geode-env.sh
++            ID="${MY_POD_NAME#"{{ $fullname }}-"}"
++            {{- if or .Values.auth.tls.autoGenerated .Values.auth.tls.usePem }}
++            if [[ -f "${GEODE_SECURITY_TLS_KEYSTORE_FILE}" ]]; then
++              echo "Removing old geode.keystore.jks file."
++              rm ${GEODE_SECURITY_TLS_KEYSTORE_FILE}
++            fi
++            if [[ -f "${GEODE_SECURITY_TLS_TRUSTSTORE_FILE}" ]]; then
++              echo "Removing old geode.truststore.jks file"
++              rm ${GEODE_SECURITY_TLS_TRUSTSTORE_FILE}
++            fi
++            if [[ -f "/certs/geode-${ID}.key" ]] && [[ -f "/certs/geode-${ID}.crt" ]] && [[ -f "/certs/ca.crt" ]]; then
++              openssl pkcs12 -export -in "/certs/geode-${ID}.crt" \
++                  -passout pass:"${GEODE_SECURITY_TLS_KEYSTORE_PASSWORD}" \
++                  -inkey "/certs/geode-${ID}.key" \
++                  -out "/tmp/keystore.p12"
++              keytool -importkeystore -srckeystore "/tmp/keystore.p12" \
++                  -srcstoretype PKCS12 \
++                  -srcstorepass "${GEODE_SECURITY_TLS_KEYSTORE_PASSWORD}" \
++                  -deststorepass "${GEODE_SECURITY_TLS_KEYSTORE_PASSWORD}" \
++                  -destkeystore "$GEODE_SECURITY_TLS_KEYSTORE_FILE"
++              rm "/tmp/keystore.p12"
++              keytool -import -file "/certs/ca.crt" \
++                      -keystore "$GEODE_SECURITY_TLS_TRUSTSTORE_FILE" \
++                      -storepass "${GEODE_SECURITY_TLS_TRUSTSTORE_PASSWORD}" \
++                      -noprompt
++            else
++                echo "Couldn't find the expected PEM certificates! They are mandatory when encryption via TLS is enabled."
++                exit 1
++            fi
++            {{- else }}
++            if [[ -f "/certs/geode.truststore.jks" ]] && [[ -f "/certs/geode-${ID}.keystore.jks" ]]; then
++                cp "/certs/geode.truststore.jks" "$GEODE_SECURITY_TLS_TRUSTSTORE_FILE"
++                cp "/certs/geode-${ID}.keystore.jks" "$GEODE_SECURITY_TLS_KEYSTORE_FILE"
++            else
++                echo "Couldn't find the expected Java Key Stores (JKS) files! They are mandatory when encryption via TLS is enabled."
++                exit 1
++            fi
++            {{- end }}
++          env:
++            - name: MY_POD_NAME
++              valueFrom:
++                fieldRef:
++                  apiVersion: v1
++                  fieldPath: metadata.name
++            {{- if or .Values.auth.tls.keystorePassword .Values.auth.tls.autoGenerated .Values.auth.tls.usePem }}
++            - name: GEODE_SECURITY_TLS_KEYSTORE_PASSWORD
++              valueFrom:
++                secretKeyRef:
++                  name: {{ include "geode.tlsPasswordsSecret" . }}
++                  key: tls-keystore-password
++            {{- end }}
++            {{- if or .Values.auth.tls.truststorePassword .Values.auth.tls.autoGenerated .Values.auth.tls.usePem}}
++            - name: GEODE_SECURITY_TLS_TRUSTSTORE_PASSWORD
++              valueFrom:
++                secretKeyRef:
++                  name: {{ include "geode.tlsPasswordsSecret" . }}
++                  key: tls-truststore-password
++            {{- end }}
++          {{- if .Values.auth.tls.resources }}
++          resources: {{- toYaml .Values.auth.tls.resources | nindent 12 }}
++          {{- end }}
++          volumeMounts:
++            - name: certificates
++              mountPath: /certs
++            - name: shared-certs
++              mountPath: /opt/bitnami/geode/config/certs
++        {{- end }}
+         - name: wait-for-locators
+           image: {{ include "geode.image" . }}
+           imagePullPolicy: {{ .Values.image.pullPolicy }}
+@@ -111,11 +190,36 @@ spec:
+                   name: {{ include "geode.secretName" . }}
+                   key: password
+             {{- end }}
++            {{- if .Values.auth.tls.enabled }}
++            - name: GEODE_SECURITY_TLS_COMPONENTS
++              value: {{ join "," .Values.auth.tls.components | quote }}
++            {{- if or .Values.auth.tls.keystorePassword .Values.auth.tls.autoGenerated .Values.auth.tls.usePem }}
++            - name: GEODE_SECURITY_TLS_KEYSTORE_PASSWORD
++              valueFrom:
++                secretKeyRef:
++                  name: {{ include "geode.tlsPasswordsSecret" . }}
++                  key: tls-keystore-password
++            {{- end }}
++            {{- if or .Values.auth.tls.truststorePassword .Values.auth.tls.autoGenerated .Values.auth.tls.usePem}}
++            - name: GEODE_SECURITY_TLS_TRUSTSTORE_PASSWORD
++              valueFrom:
++                secretKeyRef:
++                  name: {{ include "geode.tlsPasswordsSecret" . }}
++                  key: tls-truststore-password
++            {{- end }}
++            {{- end }}
++          volumeMounts:
++            {{- if .Values.auth.tls.enabled }}
++            - name: shared-certs
++              mountPath: /opt/bitnami/geode/config/certs
++              readOnly: true
++            {{- end }}
+           command:
+             - /bin/bash
+           args:
+             - -ec
+             - |
++              . /opt/bitnami/scripts/geode-env.sh
+               . /opt/bitnami/scripts/libgeode.sh
+               declare -a locators
+               read -r -a locators <<< "$(tr ',;' ' ' <<< "${GEODE_LOCATORS/%,/}")"
+@@ -170,17 +274,6 @@ spec:
+           args:
+             - -ec
+             - |
+-              {{- if .Values.auth.tls.enabled }}
+-              ID="${MY_POD_NAME#"{{ $fullname }}-"}"
+-              mkdir -p /opt/bitnami/geode/config/certs
+-              if [[ -f "/certs/geode.truststore.jks" ]] && [[ -f "/certs/geode-server-${ID}.truststore.jks" ]]; then
+-                  cp "/certs/geode.truststore.jks" "/opt/bitnami/geode/config/certs/geode-truststore.jks
+-                  cp "/certs/geode-server-${ID}.truststore.jks" "/opt/bitnami/geode/config/certs/geode.keystore.jks"
+-              else
+-                  echo "Couldn't find the expected Java Key Stores (JKS) files! They are mandatory when encryption via TLS is enabled."
+-                  exit 1
+-              fi
+-              {{- end }}
+               /opt/bitnami/scripts/geode/entrypoint.sh /opt/bitnami/scripts/geode/run.sh {{ join " " .Values.server.extraFlags }}
+           {{- end }}
+           env:
+@@ -247,19 +340,19 @@ spec:
+               value: {{ ternary "yes" "no" .Values.auth.tls.requireAuthentication | quote }}
+             - name: GEODE_SECURITY_TLS_ENDPOINT_IDENTIFICATION_ENABLED
+               value: {{ ternary "yes" "no" .Values.auth.tls.endpointIdentificationEnabled | quote }}
+-            {{- if not (empty .Values.auth.tls.keystorePassword) }}
++            {{- if or .Values.auth.tls.keystorePassword .Values.auth.tls.autoGenerated .Values.auth.tls.usePem }}
+             - name: GEODE_SECURITY_TLS_KEYSTORE_PASSWORD
+               valueFrom:
+                 secretKeyRef:
+-                  name: {{ include "geode.secretName" . }}
+-                  key: keystore-password
++                  name: {{ include "geode.tlsPasswordsSecret" . }}
++                  key: tls-keystore-password
+             {{- end }}
+-            {{- if not (empty .Values.auth.tls.truststorePassword) }}
++            {{- if or .Values.auth.tls.truststorePassword .Values.auth.tls.autoGenerated .Values.auth.tls.usePem}}
+             - name: GEODE_SECURITY_TLS_TRUSTSTORE_PASSWORD
+               valueFrom:
+                 secretKeyRef:
+-                  name: {{ include "geode.secretName" . }}
+-                  key: truststore-password
++                  name: {{ include "geode.tlsPasswordsSecret" . }}
++                  key: tls-truststore-password
+             {{- end }}
+             {{- end }}
+             {{- if .Values.server.extraEnvVars }}
+@@ -343,8 +436,8 @@ spec:
+               subPath: log4j2.xml
+             {{- end }}
+             {{- if .Values.auth.tls.enabled }}
+-            - name: geode-tls-certificates
+-              mountPath: /certs
++            - name: shared-certs
++              mountPath: /opt/bitnami/geode/config/certs
+               readOnly: true
+             {{- end }}
+           {{- if .Values.server.extraVolumeMounts }}
+@@ -398,10 +491,12 @@ spec:
+             name: {{ include "geode.server.log4j.configmapName" . }}
+         {{ end }}
+         {{- if .Values.auth.tls.enabled }}
+-        - name: geode-tls-certificates
++        - name: certificates
+           secret:
+-            secretName: {{ printf "%s" (tpl .Values.auth.tls.existingSecret $) }}
+-            defaultMode: 256
++            secretName: {{ include "geode.tlsSecretName" . }}
++            defaultMode: 0400
++        - name: shared-certs
++          emptyDir: {}
+         {{- end }}
+         {{- if .Values.metrics.enabled }}
+         - name: haproxy-configuration
+diff --git a/bitnami/geode/templates/tls-secrets.yaml b/bitnami/geode/templates/tls-secrets.yaml
+index 35cd3d52a1..aad306e7a5 100644
+--- a/bitnami/geode/templates/tls-secrets.yaml
++++ b/bitnami/geode/templates/tls-secrets.yaml
+@@ -42,3 +42,43 @@ data:
+   ca.crt: {{ $ca.Cert | b64enc | quote }}
+ {{- end }}
+ {{- end }}
++{{- if (include "geode.createTlsSecret" $) }}
++{{- $ca := genCA "geode-ca" 365 }}
++{{- $releaseNamespace := include "common.names.namespace" . }}
++{{- $clusterDomain := .Values.clusterDomain }}
++{{- $fullname := include "common.names.fullname" . }}
++---
++apiVersion: v1
++kind: Secret
++metadata:
++  name: {{ printf "%s-crt" (include "common.names.fullname" .) }}
++  namespace: {{ include "common.names.namespace" . | quote }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
++type: Opaque
++data:
++  {{- $locatorReplicaCount := int .Values.locator.replicaCount }}
++  {{- range $i := until $locatorReplicaCount }}
++  {{- $replicaName := printf "%s-locator-%d" $fullname $i }}
++  {{- $replicaHost := printf "%s.%s-locator-hl" $replicaName $fullname }}
++  {{- $altNames := list (printf "%s.%s.svc.%s" $replicaHost $releaseNamespace $clusterDomain) (printf "%s.%s.svc.%s" $replicaName $releaseNamespace $clusterDomain) (printf "%s.%s" $replicaHost $releaseNamespace) (printf "%s.%s" $replicaName $releaseNamespace) $replicaHost $replicaName }}
++  {{- $crt := genSignedCert $replicaHost nil $altNames 365 $ca }}
++  geode-locator-{{ $i }}.crt: {{ $crt.Cert | b64enc | quote }}
++  geode-locator-{{ $i }}.key: {{ $crt.Key | b64enc | quote }}
++  {{- end }}
++  {{- $serverReplicaCount := int .Values.server.replicaCount }}
++  {{- range $i := until $serverReplicaCount }}
++  {{- $replicaName := printf "%s-server-%d" $fullname $i }}
++  {{- $replicaHost := printf "%s.%s-server-hl" $replicaName $fullname }}
++  {{- $altNames := list (printf "%s.%s.svc.%s" $replicaHost $releaseNamespace $clusterDomain) (printf "%s.%s.svc.%s" $replicaName $releaseNamespace $clusterDomain) (printf "%s.%s" $replicaHost $releaseNamespace) (printf "%s.%s" $replicaName $releaseNamespace) $replicaHost $replicaName }}
++  {{- $crt := genSignedCert $replicaHost nil $altNames 365 $ca }}
++  geode-server-{{ $i }}.crt: {{ $crt.Cert | b64enc | quote }}
++  geode-server-{{ $i }}.key: {{ $crt.Key | b64enc | quote }}
++  {{- end }}
++  ca.crt: {{ $ca.Cert | b64enc | quote }}
++{{- end }}
+diff --git a/bitnami/geode/values.yaml b/bitnami/geode/values.yaml
+index 91905d6641..72580a5649 100644
+--- a/bitnami/geode/values.yaml
++++ b/bitnami/geode/values.yaml
+@@ -65,7 +65,7 @@ diagnosticMode:
+ image:
+   registry: docker.io
+   repository: bitnami/geode
+-  tag: 1.15.0-debian-11-r14
++  tag: 1.15.0-debian-11-r17
+   ## Specify a imagePullPolicy
+   ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+   ## ref: https://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+@@ -119,7 +119,9 @@ auth:
+     ## Allowed values: cluster, gateway, web, jmx, locator, server and all
+     ##
+     components: []
++    ## @param auth.tls.autoGenerated Generate automatically self-signed TLS certificates. Currently only supports PEM certificates
+     ##
++    autoGenerated: false
+     ## @param auth.tls.existingSecret Name of the existing secret containing the TLS certificates for the Apache Geode nodes
+     ## The secret should contain:
+     ##  - A trust store
+@@ -133,18 +135,51 @@ auth:
+     ##       kubectl create secret generic SECRET_NAME --from-file=./geode.truststore.jks --from-file=./geode-locator-0.keystore.jks --from-file=./geode-server-1.keystore.jks ...
+     ##
+     existingSecret: ""
++    ## @param auth.tls.usePem Use PEM certificates as input instead of PKS12/JKS stores
++    ## If "true", the Geode chart will look for the files ca.crt, geode-server-X.key, geode-server-X.crt, geode-locator-X.key, geode-locator-X.crt inside the secret provided with 'existingSecret'.
++    ## If keystorePassword and truststorePassword are not provided, they will be autogenerated.
++    ##
++    usePem: false
+     ## @param auth.tls.keystorePassword Password to access they key stores when they are password-protected
+     ##
+     keystorePassword: ""
+     ## @param auth.tls.truststorePassword Password to access they trust store when it is password-protected
+     ##
+     truststorePassword: ""
++    ## @param auth.tls.passwordsSecretName Set the name of the secret that contains the passwords for the certificate files
++    ## It should contain two keys called "tls-keystore-password" and "tls-truststore-password".
++    ## e.g:
++    ## passwordsSecretName: my-passwords
++    ##
++    passwordsSecretName: ""
+     ## @param auth.tls.requireAuthentication Enable two-way authentication
+     ##
+     requireAuthentication: false
+     ## @param auth.tls.endpointIdentificationEnabled Enable server hostname validation using server certificates
+     ##
+     endpointIdentificationEnabled: false
++    ## Init containers' resource requests and limits
++    ## ref: https://kubernetes.io/docs/user-guide/compute-resources/
++    ## We usually recommend not to specify default resources and to leave this as a conscious
++    ## choice for the user. This also increases chances charts run on environments with little
++    ## resources, such as Minikube. If you do want to specify resources, uncomment the following
++    ## lines, adjust them as necessary, and remove the curly braces after 'resources:'.
++    ## @param auth.tls.resources.limits The resources limits for the TLS init container
++    ## @param auth.tls.resources.requests The requested resources for the TLS init container
++    ##
++    resources:
++      ## Example:
++      ## limits:
++      ##    cpu: 100m
++      ##    memory: 128Mi
++      ##
++      limits: {}
++      ## Examples:
++      ## requests:
++      ##    cpu: 100m
++      ##    memory: 128Mi
++      ##
++      requests: {}
+ 
+ ## @section Apache Geode Locator parameters
+ 
+@@ -932,7 +967,7 @@ volumePermissions:
+   image:
+     registry: docker.io
+     repository: bitnami/bitnami-shell
+-    tag: 11-debian-11-r22
++    tag: 11-debian-11-r24
+     pullPolicy: IfNotPresent
+     ## Optionally specify an array of imagePullSecrets.
+     ## Secrets must be manually created in the namespace.
+@@ -979,7 +1014,7 @@ metrics:
+   image:
+     registry: docker.io
+     repository: bitnami/haproxy
+-    tag: 2.6.2-debian-11-r7
++    tag: 2.6.2-debian-11-r9
+     pullPolicy: IfNotPresent
+     ## Optionally specify an array of imagePullSecrets.
+     ## Secrets must be manually created in the namespace.

@@ -1,0 +1,206 @@
+commit 01875d567cf238cebfca9d7bb49b8aa6ebb1f08f
+Author: manzsolutions-lpr <54273330+manzsolutions-lpr@users.noreply.github.com>
+Date:   Thu Dec 1 18:59:42 2022 +0100
+
+    [prometheus-elasticsearch-exporter] Refactor securityContext configuration (#2694)
+    
+    * Refactor securityContext configuration
+    
+    Signed-off-by: Leonhard Mayr <leonhard.mayr@manz.at>
+    
+    * Remove unnecessary comments
+    
+    Signed-off-by: Leonhard Mayr <leonhard.mayr@manz.at>
+    
+    * Refactor securityContext CI values
+    
+    Signed-off-by: Leonhard Mayr <leonhard.mayr@manz.at>
+    
+    * Add notes for breaking changes to README
+    
+    Signed-off-by: Leonhard Mayr <leonhard.mayr@manz.at>
+    
+    * Fix linter errors
+    
+    Signed-off-by: Leonhard Mayr <leonhard.mayr@manz.at>
+    
+    * Reword sentence to avoid linting error
+    
+    Signed-off-by: Leonhard Mayr <leonhard.mayr@manz.at>
+    
+    * Align README style
+    
+    Signed-off-by: Leonhard Mayr <leonhard.mayr@manz.at>
+    
+    Signed-off-by: Leonhard Mayr <leonhard.mayr@manz.at>
+
+diff --git a/charts/prometheus-elasticsearch-exporter/Chart.yaml b/charts/prometheus-elasticsearch-exporter/Chart.yaml
+index 06b9072e..3a544378 100644
+--- a/charts/prometheus-elasticsearch-exporter/Chart.yaml
++++ b/charts/prometheus-elasticsearch-exporter/Chart.yaml
+@@ -1,7 +1,7 @@
+ apiVersion: v1
+ description: Elasticsearch stats exporter for Prometheus
+ name: prometheus-elasticsearch-exporter
+-version: 4.15.1
++version: 5.0.0
+ kubeVersion: ">=1.10.0-0"
+ appVersion: 1.5.0
+ home: https://github.com/prometheus-community/elasticsearch_exporter
+diff --git a/charts/prometheus-elasticsearch-exporter/README.md b/charts/prometheus-elasticsearch-exporter/README.md
+index f262aa58..f28a6c51 100644
+--- a/charts/prometheus-elasticsearch-exporter/README.md
++++ b/charts/prometheus-elasticsearch-exporter/README.md
+@@ -11,16 +11,16 @@ cluster using the [Helm](https://helm.sh) package manager.
+ 
+ - Kubernetes 1.10+
+ 
+-## Get Repo Info
++## Get Helm Repository Info
+ 
+ ```console
+ helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+ helm repo update
+ ```
+ 
+-_See [helm repo](https://helm.sh/docs/helm/helm_repo/) for command documentation._
++_See [`helm repo`](https://helm.sh/docs/helm/helm_repo/) for command documentation._
+ 
+-## Install Chart
++## Install Helm Chart
+ 
+ ```console
+ # Helm 3
+@@ -36,7 +36,7 @@ _See [configuration](#configuration) below._
+ 
+ _See [helm install](https://helm.sh/docs/helm/helm_install/) for command documentation._
+ 
+-## Uninstall Chart
++## Uninstall Helm Chart
+ 
+ ```console
+ # Helm 3
+@@ -50,7 +50,7 @@ This removes all the Kubernetes components associated with the chart and deletes
+ 
+ _See [helm uninstall](https://helm.sh/docs/helm/helm_uninstall/) for command documentation._
+ 
+-## Upgrading Chart
++## Upgrading Helm Chart
+ 
+ ```console
+ # Helm 3 or 2
+@@ -59,6 +59,18 @@ $ helm upgrade [RELEASE_NAME] [CHART] --install
+ 
+ _See [helm upgrade](https://helm.sh/docs/helm/helm_upgrade/) for command documentation._
+ 
++### To 5.0.0
++
++`securityContext` has been renamed to `podSecurityContext` and `securityContext.enabled` has no effect anymore. To mirror the behaviour of `securityContext.enabled=false` of 4.x unset `podSecurityContext`.
++
++```console
++helm install --set podSecurityContext=null my-exporter stable/elasticsearch-exporter
++```
++
++In 5.0.0 `securityContext` refers to the container's securityContext instead which was not configurable in earlier versions. The naming is aligned with the base charts created by Helm.
++
++Default values for `podSecurityContext` and `securityContext` have been updated to be compatible with the Pod Security Standard level "restricted". Most notably `seccompProfile.type` is set to `RuntimeDefault`.
++
+ ### To 4.0.0
+ 
+ While migrating the chart from `stable/elasticsearch-exporter` it was renamed to `prometheus-elasticsearch-exporter`.
+@@ -80,7 +92,7 @@ You now need to escape the rules (see `values.yaml`) for examples.
+ 
+ ### To 2.0.0
+ 
+-Some Kubernetes apis used from 1.x have been deprecated. You need to update your cluster to Kubernetes 1.10+ to support new definitions used in 2.x.
++Some Kubernetes APIs used from 1.x have been deprecated. You need to update your cluster to Kubernetes 1.10+ to support new definitions used in 2.x.
+ 
+ ## Configuration
+ 
+diff --git a/charts/prometheus-elasticsearch-exporter/ci/security-context.yaml b/charts/prometheus-elasticsearch-exporter/ci/security-context.yaml
+index c33dc9f2..019b2222 100644
+--- a/charts/prometheus-elasticsearch-exporter/ci/security-context.yaml
++++ b/charts/prometheus-elasticsearch-exporter/ci/security-context.yaml
+@@ -1,5 +1,4 @@
+ ---
+-# Set default security context for kubernetes
++# Unset pod level securityContext
+ 
+-securityContext:
+-  disable: true
++podSecurityContext: null
+\ No newline at end of file
+diff --git a/charts/prometheus-elasticsearch-exporter/templates/deployment.yaml b/charts/prometheus-elasticsearch-exporter/templates/deployment.yaml
+index 6d61e5ce..b42a534d 100644
+--- a/charts/prometheus-elasticsearch-exporter/templates/deployment.yaml
++++ b/charts/prometheus-elasticsearch-exporter/templates/deployment.yaml
+@@ -48,10 +48,9 @@ spec:
+ {{- end }}
+       {{- include "elasticsearch-exporter.image.pullSecret.name" (dict "images" (list .Values.image) "context" $) | nindent 6 }}
+       restartPolicy: {{ .Values.restartPolicy }}
+-      {{- if .Values.securityContext.enabled }}
++      {{- with .Values.podSecurityContext }}
+       securityContext:
+-        runAsNonRoot: true
+-        runAsUser: {{ .Values.securityContext.runAsUser }}
++        {{- toYaml . | nindent 8 }}
+       {{- end }}
+       {{- with .Values.dnsConfig }}
+       dnsConfig:
+@@ -125,24 +124,10 @@ spec:
+                     {{- end }}
+                     "--web.listen-address=:{{ .Values.service.httpPort }}",
+                     "--web.telemetry-path={{ .Values.web.path }}"]
++          {{- with .Values.securityContext }}
+           securityContext:
+-            capabilities:
+-              drop:
+-                - SETPCAP
+-                - MKNOD
+-                - AUDIT_WRITE
+-                - CHOWN
+-                - NET_RAW
+-                - DAC_OVERRIDE
+-                - FOWNER
+-                - FSETID
+-                - KILL
+-                - SETGID
+-                - SETUID
+-                - NET_BIND_SERVICE
+-                - SYS_CHROOT
+-                - SETFCAP
+-            readOnlyRootFilesystem: true
++            {{- toYaml . | nindent 12 }}
++          {{- end }}
+           {{- with .Values.resources }}
+           resources:
+             {{- toYaml . | nindent 12 }}
+diff --git a/charts/prometheus-elasticsearch-exporter/values.yaml b/charts/prometheus-elasticsearch-exporter/values.yaml
+index 3a2c918a..4821a2e8 100644
+--- a/charts/prometheus-elasticsearch-exporter/values.yaml
++++ b/charts/prometheus-elasticsearch-exporter/values.yaml
+@@ -18,13 +18,18 @@ image:
+   pullPolicy: IfNotPresent
+   pullSecret: ""
+ 
+-## Set enabled to false if you don't want securityContext
+-## in your Deployment.
+-## The below values are the default for kubernetes.
+-## Openshift won't deploy with runAsUser: 1000 without additional permissions.
+-securityContext:
+-  enabled: true  # Should be set to false when running on OpenShift
++podSecurityContext:
++  runAsNonRoot: true
+   runAsUser: 1000
++  seccompProfile:
++    type: "RuntimeDefault"
++
++securityContext:
++  allowPrivilegeEscalation: false
++  capabilities:
++    drop:
++      - ALL
++  readOnlyRootFilesystem: true
+ 
+ # Custom DNS configuration to be added to prometheus-elasticsearch-exporter pods
+ dnsConfig: {}

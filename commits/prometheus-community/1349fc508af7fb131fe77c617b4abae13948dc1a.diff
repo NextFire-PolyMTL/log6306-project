@@ -1,0 +1,955 @@
+commit 1349fc508af7fb131fe77c617b4abae13948dc1a
+Author: MH <80083951+zanac1986@users.noreply.github.com>
+Date:   Fri Dec 2 17:51:46 2022 +0800
+
+    [prometheus-pushgateway] Refactor (#2746)
+    
+    * [prometheus-pushgateway] Refactor
+    
+    Signed-off-by: zanac1986 <zanhsieh@protonmail.com>
+    
+    Update _helpers.tpl
+    
+    Signed-off-by: zanac1986 <zanhsieh@protonmail.com>
+    
+    * Update README.md
+    
+    Signed-off-by: zanac1986 <zanhsieh@protonmail.com>
+    
+    Update README.md
+    
+    Signed-off-by: zanac1986 <zanhsieh@protonmail.com>
+    
+    * Update README.md
+    
+    Signed-off-by: zanac1986 <zanhsieh@protonmail.com>
+    
+    Update README.md
+    
+    Signed-off-by: zanac1986 <zanhsieh@protonmail.com>
+    
+    Bump to major version
+    
+    Signed-off-by: zanac1986 <zanhsieh@protonmail.com>
+    
+    * Update README.md
+    
+    Signed-off-by: zanac1986 <zanhsieh@protonmail.com>
+    
+    * Merge branch 'main' of https://github.com/zanac1986/prometheus-helm-charts
+    
+    Signed-off-by: zanac1986 <zanhsieh@protonmail.com>
+    
+    * Update README.md
+    
+    Signed-off-by: zanac1986 <zanhsieh@protonmail.com>
+    
+    * remove helm 2, image tag handling  & change upgrading doc
+    
+    Signed-off-by: zanac1986 <zanhsieh@protonmail.com>
+    Signed-off-by: André Bauer <andre.bauer@staffbase.com>
+    
+    * update readme
+    
+    Signed-off-by: André Bauer <andre.bauer@staffbase.com>
+    
+    * fix wrong command
+    
+    Signed-off-by: André Bauer <andre.bauer@staffbase.com>
+    
+    Signed-off-by: zanac1986 <zanhsieh@protonmail.com>
+    Signed-off-by: MH <zanhsieh@gmail.com>
+    Signed-off-by: André Bauer <andre.bauer@staffbase.com>
+    Co-authored-by: MH <zanhsieh@gmail.com>
+    Co-authored-by: André Bauer <andre.bauer@staffbase.com>
+
+diff --git a/charts/prometheus-pushgateway/Chart.yaml b/charts/prometheus-pushgateway/Chart.yaml
+index 1917d0f6..73639899 100644
+--- a/charts/prometheus-pushgateway/Chart.yaml
++++ b/charts/prometheus-pushgateway/Chart.yaml
+@@ -1,8 +1,8 @@
+-apiVersion: v1
+-appVersion: "1.4.2"
++apiVersion: v2
++appVersion: "v1.5.1"
+ description: A Helm chart for prometheus pushgateway
+ name: prometheus-pushgateway
+-version: 1.21.1
++version: 2.0.0
+ home: https://github.com/prometheus/pushgateway
+ sources:
+ - https://github.com/prometheus/pushgateway
+diff --git a/charts/prometheus-pushgateway/README.md b/charts/prometheus-pushgateway/README.md
+index 9f0ac5e8..1865d471 100644
+--- a/charts/prometheus-pushgateway/README.md
++++ b/charts/prometheus-pushgateway/README.md
+@@ -4,23 +4,19 @@ This chart bootstraps a prometheus [pushgateway](http://github.com/prometheus/pu
+ 
+ An optional prometheus `ServiceMonitor` can be enabled, should you wish to use this gateway with a [Prometheus Operator](https://github.com/coreos/prometheus-operator).
+ 
+-## Get Repo Info
++## Get Repository Info
+ 
+ ```console
+ helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+ helm repo update
+ ```
+ 
+-_See [helm repo](https://helm.sh/docs/helm/helm_repo/) for command documentation._
++_See [`helm repo`](https://helm.sh/docs/helm/helm_repo/) for command documentation._
+ 
+ ## Install Chart
+ 
+ ```console
+-# Helm 3
+-$ helm install [RELEASE_NAME] prometheus-community/prometheus-pushgateway
+-
+-# Helm 2
+-$ helm install --name [RELEASE_NAME] prometheus-community/prometheus-pushgateway
++helm install [RELEASE_NAME] prometheus-community/prometheus-pushgateway
+ ```
+ 
+ _See [configuration](#configuration) below._
+@@ -30,11 +26,7 @@ _See [helm install](https://helm.sh/docs/helm/helm_install/) for command documen
+ ## Uninstall Chart
+ 
+ ```console
+-# Helm 3
+-$ helm uninstall [RELEASE_NAME]
+-
+-# Helm 2
+-# helm delete --purge [RELEASE_NAME]
++helm uninstall [RELEASE_NAME]
+ ```
+ 
+ This removes all the Kubernetes components associated with the chart and deletes the release.
+@@ -44,20 +36,53 @@ _See [helm uninstall](https://helm.sh/docs/helm/helm_uninstall/) for command doc
+ ## Upgrading Chart
+ 
+ ```console
+-# Helm 3 or 2
+-$ helm upgrade [RELEASE_NAME] [CHART] --install
++helm upgrade [RELEASE_NAME] [CHART] --install
+ ```
+ 
+ _See [helm upgrade](https://helm.sh/docs/helm/helm_upgrade/) for command documentation._
+ 
++### To 2.0.0
++
++Chart API version has been upgraded to v2 so Helm 3 is needed from now on.
++
++Docker image tag is used from Chart.yaml appVersion field by default now.
++
++Version 2.0.0 also adapted [Helm label and annotation best practices](https://helm.sh/docs/chart_best_practices/labels/). Specifically, labels mapping is listed below:
++
++```console
++OLD                 => NEW
++----------------------------------------
++heritage            => app.kubernetes.io/managed-by
++chart               => helm.sh/chart
++[container version] => app.kubernetes.io/version
++app                 => app.kubernetes.io/name
++release             => app.kubernetes.io/instance
++```
++
++Therefore, depending on the way you've configured the chart, the previous StatefulSet or Deployment need to be deleted before upgrade.
++
++If `runAsStatefulSet: false` (this is the default):
++
++```console
++kubectl delete deploy -l app=prometheus-pushgateway
++```
++
++If `runAsStatefulSet: true`:
++
++```console
++kubectl delete sts -l app=prometheus-pushgateway
++```
++
++After that do the actual upgrade:
++
++```console
++helm upgrade -i prometheus-pushgateway prometheus-community/prometheus-pushgateway
++```
++
+ ## Configuration
+ 
+ See [Customizing the Chart Before Installing](https://helm.sh/docs/intro/using_helm/#customizing-the-chart-before-installing). To see all configurable options with detailed comments, visit the chart's [values.yaml](./values.yaml), or run these configuration commands:
+ 
+ ```console
+-# Helm 2
+-$ helm inspect values prometheus-community/prometheus-pushgateway
+-
+-# Helm 3
+-$ helm show values prometheus-community/prometheus-pushgateway
++helm show values prometheus-community/prometheus-pushgateway
+ ```
+diff --git a/charts/prometheus-pushgateway/templates/_helpers.tpl b/charts/prometheus-pushgateway/templates/_helpers.tpl
+index 0be67697..ad801192 100644
+--- a/charts/prometheus-pushgateway/templates/_helpers.tpl
++++ b/charts/prometheus-pushgateway/templates/_helpers.tpl
+@@ -3,8 +3,8 @@
+ Expand the name of the chart.
+ */}}
+ {{- define "prometheus-pushgateway.name" -}}
+-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
++{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
++{{- end }}
+ 
+ {{/*
+ Create a default fully qualified app name.
+@@ -12,158 +12,186 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this
+ If release name contains chart name it will be used as a full name.
+ */}}
+ {{- define "prometheus-pushgateway.fullname" -}}
+-{{- if .Values.fullnameOverride -}}
+-{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+-{{- else -}}
+-{{- $name := default .Chart.Name .Values.nameOverride -}}
+-{{- if contains $name .Release.Name -}}
+-{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+-{{- else -}}
+-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
+-{{- end -}}
+-{{- end -}}
++{{- if .Values.fullnameOverride }}
++{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
++{{- else }}
++{{- $name := default .Chart.Name .Values.nameOverride }}
++{{- if contains $name .Release.Name }}
++{{- .Release.Name | trunc 63 | trimSuffix "-" }}
++{{- else }}
++{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
++{{- end }}
++{{- end }}
++{{- end }}
+ 
+ {{/*
+ Create chart name and version as used by the chart label.
+ */}}
+ {{- define "prometheus-pushgateway.chart" -}}
+-{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
+-
++{{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
++{{- end }}
+ 
+ {{/*
+ Create the name of the service account to use
+ */}}
+ {{- define "prometheus-pushgateway.serviceAccountName" -}}
+-{{- if .Values.serviceAccount.create -}}
+-    {{ default (include "prometheus-pushgateway.fullname" .) .Values.serviceAccount.name }}
+-{{- else -}}
+-    {{ default "default" .Values.serviceAccount.name }}
+-{{- end -}}
+-{{- end -}}
++{{- if .Values.serviceAccount.create }}
++{{- default (include "prometheus-pushgateway.fullname" .) .Values.serviceAccount.name }}
++{{- else }}
++{{- default "default" .Values.serviceAccount.name }}
++{{- end }}
++{{- end }}
+ 
+ {{/*
+ Create default labels
+ */}}
+ {{- define "prometheus-pushgateway.defaultLabels" -}}
+-{{- $labelChart := include "prometheus-pushgateway.chart" $ -}}
+-{{- $labelApp := include "prometheus-pushgateway.name" $ -}}
+-{{- $labels := dict "app" $labelApp "chart" $labelChart "release" .Release.Name "heritage" .Release.Service -}}
+-{{- $indent := .indent | default 4 -}}
+-{{ merge .extraLabels $labels | toYaml | indent $indent }}
+-{{- end -}}
++helm.sh/chart: {{ include "prometheus-pushgateway.chart" . }}
++{{ include "prometheus-pushgateway.selectorLabels" . }}
++{{- if .Chart.AppVersion }}
++app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
++{{- end }}
++app.kubernetes.io/managed-by: {{ .Release.Service }}
++{{- with .Values.podLabels }}
++{{ toYaml . }}
++{{- end }}
++{{- end }}
++
++{{/*
++Selector labels
++*/}}
++{{- define "prometheus-pushgateway.selectorLabels" -}}
++app.kubernetes.io/name: {{ include "prometheus-pushgateway.name" . }}
++app.kubernetes.io/instance: {{ .Release.Name }}
++{{- end }}
+ 
+ {{/*
+ Return the appropriate apiVersion for networkpolicy.
+ */}}
+ {{- define "prometheus-pushgateway.networkPolicy.apiVersion" -}}
+-{{- if semverCompare ">=1.4-0, <1.7-0" .Capabilities.KubeVersion.GitVersion -}}
+-{{- print "extensions/v1beta1" -}}
+-{{- else if semverCompare "^1.7-0" .Capabilities.KubeVersion.GitVersion -}}
+-{{- print "networking.k8s.io/v1" -}}
+-{{- end -}}
+-{{- end -}}
++{{- if semverCompare ">=1.4-0, <1.7-0" .Capabilities.KubeVersion.GitVersion }}
++{{ print "extensions/v1beta1" }}
++{{- else if semverCompare "^1.7-0" .Capabilities.KubeVersion.GitVersion }}
++{{ print "networking.k8s.io/v1" }}
++{{- end }}
++{{- end }}
+ 
+ {{/*
+-Selector labels
++Define PDB apiVersion
+ */}}
+-{{- define "prometheus-pushgateway.selectorLabels" -}}
+-app: {{ template "prometheus-pushgateway.name" . }}
+-release: {{ .Release.Name }}
+-{{- end -}}
++{{- define "prometheus-pushgateway.pdb.apiVersion" -}}
++{{- if $.Capabilities.APIVersions.Has "policy/v1/PodDisruptionBudget" }}
++{{ print "policy/v1" }}
++{{- else }}
++{{ print "policy/v1beta" }}
++{{- end }}
++{{- end }}
++
++{{/*
++Define Ingress apiVersion
++*/}}
++{{- define "prometheus-pushgateway.ingress.apiVersion" -}}
++{{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
++{{ print "networking.k8s.io/v1" }}
++{{- else if semverCompare ">=1.14-0" .Capabilities.KubeVersion.GitVersion }}
++{{ print "networking.k8s.io/v1beta1" }}
++{{- else }}
++{{ print "extensions/v1beta1" }}
++{{- end }}
++{{- end }}
+ 
+ {{/*
+ Returns pod spec
+ */}}
+ {{- define "prometheus-pushgateway.podSpec" -}}
+-      serviceAccountName: {{ template "prometheus-pushgateway.serviceAccountName" . }}
+-      {{- if .Values.priorityClassName }}
+-      priorityClassName: {{ .Values.priorityClassName | quote }}
+-      {{- end }}
+-    {{- if .Values.imagePullSecrets }}
+-      imagePullSecrets:
+-{{ toYaml .Values.imagePullSecrets | indent 8 }}
++serviceAccountName: {{ include "prometheus-pushgateway.serviceAccountName" . }}
++{{- with .Values.priorityClassName }}
++priorityClassName: {{ . | quote }}
++{{- end }}
++{{- with .Values.imagePullSecrets }}
++imagePullSecrets:
++  {{- toYaml . | nindent 2 }}
++{{- end }}
++{{- with .Values.extraInitContainers }}
++initContainers:
++  {{- toYaml . | nindent 2 }}
++{{- end }}
++containers:
++  {{- with .Values.extraContainers }}
++  {{- toYaml . | nindent 2 }}
++  {{- end }}
++  - name: pushgateway
++    image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
++    imagePullPolicy: {{ .Values.image.pullPolicy }}
++    {{- with .Values.extraVars }}
++    env:
++      {{- toYaml . | nindent 6 }}
+     {{- end }}
+-      {{- if .Values.extraInitContainers }}
+-      initContainers:
+-        {{ toYaml .Values.extraInitContainers | nindent 8 }}      
+-      {{- end }}
+-      containers:
+-        {{- if .Values.extraContainers }}
+-{{ toYaml .Values.extraContainers | indent 8 }}
+-        {{- end }}
+-        - name: pushgateway
+-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+-        {{- if .Values.extraVars }}
+-          env:
+-{{ toYaml .Values.extraVars | indent 12 }}
+-        {{- end }}
+-        {{- if .Values.extraArgs }}
+-          args:
+-{{ toYaml .Values.extraArgs | indent 12 }}
+-        {{- end }}
+-          ports:
+-            - name: metrics
+-              containerPort: 9091
+-              protocol: TCP
+-{{- if .Values.liveness.enabled }}
+-          livenessProbe:
+-{{ toYaml .Values.liveness.probe | indent 12 }}
+-        {{- end }}
+-{{- if .Values.readiness.enabled }}
+-          readinessProbe:
+-{{ toYaml .Values.readiness.probe | indent 12 }}
+-        {{- end }}
+-          resources:
+-{{ toYaml .Values.resources | indent 12 }}
+-        {{- if .Values.containerSecurityContext }}
+-          securityContext:
+-{{ toYaml .Values.containerSecurityContext | indent 12 }}
+-        {{- end }}
+-          volumeMounts:
+-            - name: storage-volume
+-              mountPath: "{{ .Values.persistentVolume.mountPath }}"
+-              subPath: "{{ .Values.persistentVolume.subPath }}"
+-          {{- if .Values.extraVolumeMounts }}
+-{{ toYaml .Values.extraVolumeMounts | indent 12 }}
+-          {{- end }}
+-    {{- if .Values.nodeSelector }}
+-      nodeSelector:
+-{{ toYaml .Values.nodeSelector | indent 8 }}
++    {{- with .Values.extraArgs }}
++    args:
++      {{- toYaml . | nindent 6 }}
+     {{- end }}
+-    {{- if .Values.tolerations }}
+-      tolerations:
+-{{ toYaml .Values.tolerations | indent 8 }}
++    ports:
++      - name: metrics
++        containerPort: 9091
++        protocol: TCP
++    {{- if .Values.liveness.enabled }}
++    livenessProbe:
++      {{- toYaml .Values.liveness.probe | nindent 6 }}
+     {{- end }}
+-    {{- if .Values.affinity }}
+-      affinity:
+-{{ toYaml .Values.affinity | indent 8 }}
++    {{- if .Values.readiness.enabled }}
++    readinessProbe:
++      {{- toYaml .Values.readiness.probe | nindent 6 }}
+     {{- end }}
+-    {{- if .Values.topologySpreadConstraints }}
+-      topologySpreadConstraints:
+-{{ toYaml .Values.topologySpreadConstraints | indent 8 }}
++    {{- with .Values.resources }}
++    resources:
++      {{- toYaml . | nindent 6 }}
+     {{- end }}
+-    {{- if .Values.securityContext }}
+-      securityContext:
+-{{ toYaml .Values.securityContext | indent 8 }}
++    {{- with .Values.containerSecurityContext }}
++    securityContext:
++      {{- toYaml . | nindent 6 }}
+     {{- end }}
+-      volumes:
+-      {{- $storageVolumeAsPVCTemplate := and .Values.runAsStatefulSet .Values.persistentVolume.enabled -}}
+-      {{- if not $storageVolumeAsPVCTemplate }}
+-        - name: storage-volume
+-        {{- if .Values.persistentVolume.enabled }}
+-          persistentVolumeClaim:
+-            claimName: {{ if .Values.persistentVolume.existingClaim }}{{ .Values.persistentVolume.existingClaim }}{{- else }}{{ template "prometheus-pushgateway.fullname" . }}{{- end }}
+-        {{- else }}
+-          emptyDir: {}
+-        {{- end -}}
+-      {{- end -}}
+-      {{- if .Values.extraVolumes }}
+-{{ toYaml .Values.extraVolumes | indent 8 }}
+-      {{- else if $storageVolumeAsPVCTemplate }}
+-        []
++    volumeMounts:
++      - name: storage-volume
++        mountPath: "{{ .Values.persistentVolume.mountPath }}"
++        subPath: "{{ .Values.persistentVolume.subPath }}"
++      {{- with .Values.extraVolumeMounts }}
++      {{- toYaml . | nindent 6 }}
+       {{- end }}
+-
++{{- with .Values.nodeSelector }}
++nodeSelector:
++  {{- toYaml . | nindent 2 }}
++{{- end }}
++{{- with .Values.tolerations }}
++tolerations:
++  {{- toYaml . | nindent 2 }}
++{{- end }}
++{{- with .Values.affinity }}
++affinity:
++  {{- toYaml . | nindent 2 }}
++{{- end }}
++{{- with .Values.topologySpreadConstraints }}
++topologySpreadConstraints:
++  {{- toYaml . | nindent 2 }}
++{{- end }}
++{{- with .Values.securityContext }}
++securityContext:
++  {{- toYaml . | nindent 2 }}
++{{- end }}
++volumes:
++  {{- $storageVolumeAsPVCTemplate := and .Values.runAsStatefulSet .Values.persistentVolume.enabled -}}
++  {{- if not $storageVolumeAsPVCTemplate }}
++  - name: storage-volume
++  {{- if .Values.persistentVolume.enabled }}
++    persistentVolumeClaim:
++      claimName: {{ if .Values.persistentVolume.existingClaim }}{{ .Values.persistentVolume.existingClaim }}{{- else }}{{ include "prometheus-pushgateway.fullname" . }}{{- end }}
++  {{- else }}
++    emptyDir: {}
++  {{- end }}
++  {{- end }}
++  {{- if .Values.extraVolumes }}
++  {{- toYaml .Values.extraVolumes  | nindent 2 }}
++  {{- else if $storageVolumeAsPVCTemplate }}
++  []
++  {{- end }}
+ {{- end }}
+diff --git a/charts/prometheus-pushgateway/templates/deployment.yaml b/charts/prometheus-pushgateway/templates/deployment.yaml
+index c9c0b260..67e03ff6 100644
+--- a/charts/prometheus-pushgateway/templates/deployment.yaml
++++ b/charts/prometheus-pushgateway/templates/deployment.yaml
+@@ -2,24 +2,29 @@
+ apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+-  name: {{ template "prometheus-pushgateway.fullname" . }}
+   labels:
+-{{ template "prometheus-pushgateway.defaultLabels" merge (dict "extraLabels" .Values.podLabels) .  }}
++    {{- include "prometheus-pushgateway.defaultLabels" . | nindent 4 }}
++  name: {{ include "prometheus-pushgateway.fullname" . }}
+ spec:
+   replicas: {{ .Values.replicaCount }}
+-  {{- if .Values.strategy }}
++  {{- with .Values.strategy }}
+   strategy:
+-    {{ toYaml .Values.strategy | nindent 4 }}
++    {{- toYaml . | nindent 4 }}
+   {{- end }}
+   selector:
+     matchLabels:
+       {{- include "prometheus-pushgateway.selectorLabels" . | nindent 6 }}
+   template:
+     metadata:
+-      labels:
+-{{ template "prometheus-pushgateway.defaultLabels" merge (dict "extraLabels" .Values.podLabels "indent" 8) . }}
++      {{- with .Values.podAnnotations }}
+       annotations:
+-        {{- toYaml .Values.podAnnotations | nindent 8 }}
++        {{- toYaml . | nindent 8 }}
++      {{- end }}
++      labels:
++        {{- include "prometheus-pushgateway.defaultLabels" . | nindent 8 }}
++        {{- with .Values.podLabels }}
++        {{- toYaml . | nindent 8 }}
++        {{- end }}
+     spec:
+-      {{ include "prometheus-pushgateway.podSpec" . }}
+-{{- end -}}
++      {{- include "prometheus-pushgateway.podSpec" . | nindent 6 }}
++{{- end }}
+diff --git a/charts/prometheus-pushgateway/templates/ingress.yaml b/charts/prometheus-pushgateway/templates/ingress.yaml
+index 9a9fb71d..c0f46b4a 100644
+--- a/charts/prometheus-pushgateway/templates/ingress.yaml
++++ b/charts/prometheus-pushgateway/templates/ingress.yaml
+@@ -1,26 +1,20 @@
+-{{- if .Values.ingress.enabled -}}
++{{- if .Values.ingress.enabled }}
+ {{- $serviceName := include "prometheus-pushgateway.fullname" . }}
+ {{- $servicePort := .Values.service.port -}}
+ {{- $ingressPath := .Values.ingress.path -}}
+ {{- $ingressClassName := .Values.ingress.className -}}
+ {{- $ingressPathType := .Values.ingress.pathType -}}
+ {{- $extraPaths := .Values.ingress.extraPaths -}}
+-{{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion -}}
+-apiVersion: networking.k8s.io/v1
+-{{- else if semverCompare ">=1.14-0" .Capabilities.KubeVersion.GitVersion -}}
+-apiVersion: networking.k8s.io/v1beta1
+-{{- else -}}
+-apiVersion: extensions/v1beta1
+-{{- end }}
++apiVersion: {{ include "prometheus-pushgateway.ingress.apiVersion" . }}
+ kind: Ingress
+ metadata:
+-{{- if .Values.ingress.annotations }}
++  {{- with .Values.ingress.annotations }}
+   annotations:
+-{{ toYaml .Values.ingress.annotations | indent 4}}
+-{{- end }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+   labels:
+-{{ template "prometheus-pushgateway.defaultLabels" merge (dict "extraLabels" dict) .  }}
+-  name: {{ template "prometheus-pushgateway.fullname" . }}
++    {{- include "prometheus-pushgateway.defaultLabels" . | nindent 4 }}
++  name: {{ include "prometheus-pushgateway.fullname" . }}
+ spec:
+   {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
+   ingressClassName: {{ $ingressClassName }}
+@@ -30,8 +24,8 @@ spec:
+     - host: {{ $host }}
+       http:
+         paths:
+-          {{- if $extraPaths }}
+-          {{- toYaml $extraPaths | indent 10 }}
++          {{- with $extraPaths }}
++          {{- toYaml . | nindent 10 }}
+           {{- end }}
+           - path: {{ $ingressPath }}
+             {{- if semverCompare ">=1.19-0" $.Capabilities.KubeVersion.GitVersion }}
+@@ -48,8 +42,8 @@ spec:
+               servicePort: {{ $servicePort }}
+               {{- end }}
+     {{- end -}}
+-{{- if .Values.ingress.tls }}
++  {{- with .Values.ingress.tls }}
+   tls:
+-{{ toYaml .Values.ingress.tls | indent 4 }}
+-  {{- end -}}
+-{{- end -}}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++{{- end }}
+diff --git a/charts/prometheus-pushgateway/templates/networkpolicy.yaml b/charts/prometheus-pushgateway/templates/networkpolicy.yaml
+index aa490585..a216f665 100644
+--- a/charts/prometheus-pushgateway/templates/networkpolicy.yaml
++++ b/charts/prometheus-pushgateway/templates/networkpolicy.yaml
+@@ -1,26 +1,25 @@
+-{{ if .Values.networkPolicy }}
+-apiVersion: {{ template "prometheus-pushgateway.networkPolicy.apiVersion" . }}
++{{- if .Values.networkPolicy }}
++apiVersion: {{ include "prometheus-pushgateway.networkPolicy.apiVersion" . }}
+ kind: NetworkPolicy
+ metadata:
+-{{- if .Values.networkPolicy.customSelectors }}
++  labels:
++    {{- include "prometheus-pushgateway.defaultLabels" . | nindent 4 }}
++  {{- if .Values.networkPolicy.customSelectors }}
+   name: ingress-allow-customselector-{{ template "prometheus-pushgateway.name" . }}
+-{{- else if .Values.networkPolicy.allowAll }}
++  {{- else if .Values.networkPolicy.allowAll }}
+   name: ingress-allow-all-{{ template "prometheus-pushgateway.name" . }}
+-{{- else -}}
+-{{- fail "One of `allowAll` or `customSelectors` must be specified." }}
+-{{- end }}
+-  labels:
+-{{ template "prometheus-pushgateway.defaultLabels" merge (dict "extraLabels" .Values.podLabels) .  }}
++  {{- else -}}
++  {{- fail "One of `allowAll` or `customSelectors` must be specified." }}
++  {{- end }}
+ spec:
+   podSelector:
+     matchLabels:
+-      app: {{ template "prometheus-pushgateway.name" .}}
+-      release: {{ .Release.Name }}
++      {{- include "prometheus-pushgateway.selectorLabels" . | nindent 6 }}
+   ingress:
+     - ports:
+       - port: {{ .Values.service.targetPort }}
+-{{- if .Values.networkPolicy.customSelectors }}
++      {{- with .Values.networkPolicy.customSelectors }}
+       from:
+-{{ toYaml .Values.networkPolicy.customSelectors | indent 8 }}
+-{{- end -}}
+-{{- end -}}
++        {{- toYaml . | nindent 8 }}
++      {{- end }}
++{{- end }}
+diff --git a/charts/prometheus-pushgateway/templates/pdb.yaml b/charts/prometheus-pushgateway/templates/pdb.yaml
+index 47621944..3d614112 100644
+--- a/charts/prometheus-pushgateway/templates/pdb.yaml
++++ b/charts/prometheus-pushgateway/templates/pdb.yaml
+@@ -1,17 +1,13 @@
+-{{- if .Values.podDisruptionBudget -}}
+-{{ if $.Capabilities.APIVersions.Has "policy/v1/PodDisruptionBudget" -}}
+-apiVersion: policy/v1
+-{{- else -}}
+-apiVersion: policy/v1beta1
+-{{- end }}
++{{- if .Values.podDisruptionBudget }}
++apiVersion: {{ include "prometheus-pushgateway.pdb.apiVersion" . }}
+ kind: PodDisruptionBudget
+ metadata:
+-  name: {{ template "prometheus-pushgateway.fullname" . }}
+   labels:
+-{{ template "prometheus-pushgateway.defaultLabels" merge (dict "extraLabels" .Values.podLabels) .  }}
++    {{- include "prometheus-pushgateway.defaultLabels" . | nindent 4 }}
++  name: {{ include "prometheus-pushgateway.fullname" . }}
+ spec:
+   selector:
+     matchLabels:
+       {{- include "prometheus-pushgateway.selectorLabels" . | nindent 6 }}
+   {{- toYaml .Values.podDisruptionBudget | nindent 2 }}
+-{{- end -}}
++{{- end }}
+diff --git a/charts/prometheus-pushgateway/templates/pushgateway-pvc.yaml b/charts/prometheus-pushgateway/templates/pushgateway-pvc.yaml
+index b9f92dbe..50929479 100644
+--- a/charts/prometheus-pushgateway/templates/pushgateway-pvc.yaml
++++ b/charts/prometheus-pushgateway/templates/pushgateway-pvc.yaml
+@@ -1,29 +1,28 @@
+-{{- if not .Values.runAsStatefulSet -}}
+-{{- if .Values.persistentVolume.enabled -}}
+-{{- if not .Values.persistentVolume.existingClaim -}}
++{{- if and (not .Values.runAsStatefulSet) .Values.persistentVolume.enabled (not .Values.persistentVolume.existingClaim) }}
+ apiVersion: v1
+ kind: PersistentVolumeClaim
+ metadata:
+-  {{- if .Values.persistentVolume.annotations }}
++  {{- with .Values.persistentVolume.annotations }}
+   annotations:
+-{{ toYaml .Values.persistentVolume.annotations | indent 4 }}
++    {{- toYaml . | nindent 4 }}
+   {{- end }}
+   labels:
+-{{ template "prometheus-pushgateway.defaultLabels" merge (dict "extraLabels" .Values.persistentVolumeLabels) .  }}
+-  name: {{ template "prometheus-pushgateway.fullname" . }}
++    {{- include "prometheus-pushgateway.defaultLabels" . | nindent 4 }}
++    {{- with .Values.persistentVolumeLabels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++  name: {{ include "prometheus-pushgateway.fullname" . }}
+ spec:
+   accessModes:
+-{{ toYaml .Values.persistentVolume.accessModes | indent 4 }}
+-{{- if .Values.persistentVolume.storageClass }}
+-{{- if (eq "-" .Values.persistentVolume.storageClass) }}
++    {{- toYaml .Values.persistentVolume.accessModes | nindent 4 }}
++  {{- if .Values.persistentVolume.storageClass }}
++  {{- if (eq "-" .Values.persistentVolume.storageClass) }}
+   storageClassName: ""
+-{{- else }}
++  {{- else }}
+   storageClassName: "{{ .Values.persistentVolume.storageClass }}"
+-{{- end }}
+-{{- end }}
++  {{- end }}
++  {{- end }}
+   resources:
+     requests:
+       storage: "{{ .Values.persistentVolume.size }}"
+-{{- end -}}
+-{{- end -}}
+-{{- end -}}
++{{- end }}
+diff --git a/charts/prometheus-pushgateway/templates/service.yaml b/charts/prometheus-pushgateway/templates/service.yaml
+index 97346650..761d018b 100644
+--- a/charts/prometheus-pushgateway/templates/service.yaml
++++ b/charts/prometheus-pushgateway/templates/service.yaml
+@@ -1,27 +1,32 @@
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: {{ template "prometheus-pushgateway.fullname" . }}
++  {{- with .Values.serviceAnnotations }}
+   annotations:
+-{{ .Values.serviceAnnotations | toYaml | indent 4 }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+   labels:
+-{{ template "prometheus-pushgateway.defaultLabels" merge (dict "extraLabels" .Values.serviceLabels) .  }}
++    {{- include "prometheus-pushgateway.defaultLabels" . | nindent 4 }}
++    {{- with .Values.serviceLables }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++  name: {{ include "prometheus-pushgateway.fullname" . }}
+ spec:
+-{{- if .Values.service.clusterIP }}
++  {{- if .Values.service.clusterIP }}
+   clusterIP: {{ .Values.service.clusterIP }}
+-{{ else if and .Values.runAsStatefulSet (ne .Values.service.type "LoadBalancer")}}
++  {{ else if and .Values.runAsStatefulSet (ne .Values.service.type "LoadBalancer")}}
+   clusterIP: None # Headless service
+-{{- end }}
++  {{- end }}
+   type: {{ .Values.service.type }}
+-{{- if .Values.service.loadBalancerIP }}
+-  loadBalancerIP: {{ .Values.service.loadBalancerIP }}
+-{{- end }}
+-{{- if .Values.service.loadBalancerSourceRanges }}
++  {{- with .Values.service.loadBalancerIP }}
++  loadBalancerIP: {{ . }}
++  {{- end }}
++  {{- if .Values.service.loadBalancerSourceRanges }}
+   loadBalancerSourceRanges:
+   {{- range $cidr := .Values.service.loadBalancerSourceRanges }}
+     - {{ $cidr }}
+   {{- end }}
+-{{- end }}
++  {{- end }}
+   ports:
+     - port: {{ .Values.service.port }}
+       targetPort: {{ .Values.service.targetPort }}
+@@ -31,5 +36,4 @@ spec:
+       protocol: TCP
+       name: http
+   selector:
+-    app: {{ template "prometheus-pushgateway.name" . }}
+-    release: {{ .Release.Name }}
++    {{- include "prometheus-pushgateway.selectorLabels" . | nindent 4 }}
+diff --git a/charts/prometheus-pushgateway/templates/serviceaccount.yaml b/charts/prometheus-pushgateway/templates/serviceaccount.yaml
+index 952fcc42..1d41f8f9 100644
+--- a/charts/prometheus-pushgateway/templates/serviceaccount.yaml
++++ b/charts/prometheus-pushgateway/templates/serviceaccount.yaml
+@@ -1,12 +1,15 @@
+-{{- if .Values.serviceAccount.create -}}
++{{- if .Values.serviceAccount.create }}
+ apiVersion: v1
+ kind: ServiceAccount
+ metadata:
+-  name: {{ template "prometheus-pushgateway.serviceAccountName" . }}
+-  labels:
+-{{ template "prometheus-pushgateway.defaultLabels" merge (dict "extraLabels" .Values.serviceAccountLabels) .  }}
+-{{- if .Values.serviceAccount.annotations }}
++  {{- with .Values.serviceAccount.annotations }}
+   annotations:
+-{{ toYaml .Values.serviceAccount.annotations | indent 4 }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++  labels:
++    {{- include "prometheus-pushgateway.defaultLabels" . | nindent 4 }}
++    {{- with .Values.serviceAccountLabels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++  name: {{ include "prometheus-pushgateway.serviceAccountName" . }}
+ {{- end }}
+-{{- end -}}
+diff --git a/charts/prometheus-pushgateway/templates/servicemonitor.yaml b/charts/prometheus-pushgateway/templates/servicemonitor.yaml
+index 28e810ca..919a4fc4 100644
+--- a/charts/prometheus-pushgateway/templates/servicemonitor.yaml
++++ b/charts/prometheus-pushgateway/templates/servicemonitor.yaml
+@@ -2,45 +2,46 @@
+ apiVersion: monitoring.coreos.com/v1
+ kind: ServiceMonitor
+ metadata:
+-  name: {{ template "prometheus-pushgateway.fullname" .  }}
+-  {{- if .Values.serviceMonitor.namespace }}
+-  namespace: {{ .Values.serviceMonitor.namespace }}
+-  {{- end }}
+   labels:
+-{{ template "prometheus-pushgateway.defaultLabels" merge (dict "extraLabels" .Values.serviceMonitor.additionalLabels) .  }}
++    {{- include "prometheus-pushgateway.defaultLabels" . | nindent 4 }}
++  name: {{ include "prometheus-pushgateway.fullname" .  }}
++  {{- with .Values.serviceMonitor.namespace }}
++  namespace: {{ . }}
++  {{- end }}
+ spec:
+   endpoints:
+   - port: http
+-    {{- if .Values.serviceMonitor.interval }}
+-    interval: {{ .Values.serviceMonitor.interval }}
++    {{- with .Values.serviceMonitor.interval }}
++    interval: {{ . }}
+     {{- end }}
+-    {{- if .Values.serviceMonitor.scheme }}
+-    scheme: {{ .Values.serviceMonitor.scheme }}
++    {{- with .Values.serviceMonitor.scheme }}
++    scheme: {{ . }}
+     {{- end }}
+-    {{- if .Values.serviceMonitor.bearerTokenFile }}
+-    bearerTokenFile: {{ .Values.serviceMonitor.bearerTokenFile }}
++    {{- with .Values.serviceMonitor.bearerTokenFile }}
++    bearerTokenFile: {{ . }}
+     {{- end }}
+-    {{- if .Values.serviceMonitor.tlsConfig }}
+-    tlsConfig: {{ toYaml .Values.serviceMonitor.tlsConfig | nindent 6 }}
++    {{- with .Values.serviceMonitor.tlsConfig }}
++    tlsConfig:
++      {{- toYaml .| nindent 6 }}
+     {{- end }}
+-    {{- if .Values.serviceMonitor.scrapeTimeout }}
+-    scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
++    {{- with .Values.serviceMonitor.scrapeTimeout }}
++    scrapeTimeout: {{ . }}
+     {{- end }}
+     path: /metrics
+     honorLabels: {{ .Values.serviceMonitor.honorLabels }}
+-    {{- if .Values.serviceMonitor.metricRelabelings }}
++    {{- with .Values.serviceMonitor.metricRelabelings }}
+     metricRelabelings:
+-    {{- tpl (toYaml .Values.serviceMonitor.metricRelabelings | nindent 4) . }}
++      {{- tpl (toYaml . | nindent 6) . }}
+     {{- end }}
+-    {{- if .Values.serviceMonitor.relabelings }}
++    {{- with .Values.serviceMonitor.relabelings }}
+     relabelings:
+-    {{ toYaml .Values.serviceMonitor.relabelings | nindent 4 }}
++      {{- toYaml . | nindent 6 }}
+     {{- end }}
+   namespaceSelector:
+     matchNames:
+       - {{ .Release.Namespace }}
+   selector:
+     matchLabels:
+-      app: {{ template "prometheus-pushgateway.name" . }}
++      app: {{ include "prometheus-pushgateway.name" . }}
+       release: {{ .Release.Name }}
+ {{- end -}}
+diff --git a/charts/prometheus-pushgateway/templates/statefulset.yaml b/charts/prometheus-pushgateway/templates/statefulset.yaml
+index 57de7ce6..b8f7f915 100644
+--- a/charts/prometheus-pushgateway/templates/statefulset.yaml
++++ b/charts/prometheus-pushgateway/templates/statefulset.yaml
+@@ -2,23 +2,28 @@
+ apiVersion: apps/v1
+ kind: StatefulSet
+ metadata:
+-  name: {{ template "prometheus-pushgateway.fullname" . }}
+   labels:
+-{{ template "prometheus-pushgateway.defaultLabels" merge (dict "extraLabels" .Values.podLabels) .  }}
++    {{- include "prometheus-pushgateway.defaultLabels" . | nindent 4 }}
++  name: {{ include "prometheus-pushgateway.fullname" . }}
+ spec:
+   replicas: {{ .Values.replicaCount }}
+-  serviceName: {{ template "prometheus-pushgateway.fullname" . }}
++  serviceName: {{ include "prometheus-pushgateway.fullname" . }}
+   selector:
+     matchLabels:
+       {{- include "prometheus-pushgateway.selectorLabels" . | nindent 6 }}
+   template:
+     metadata:
+-      labels:
+-{{ template "prometheus-pushgateway.defaultLabels" merge (dict "extraLabels" .Values.podLabels "indent" 8) . }}
++      {{- with .Values.podAnnotations }}
+       annotations:
+-{{ toYaml .Values.podAnnotations | indent 8 }}
++        {{- toYaml . | nindent 8 }}
++      {{- end }}
++      labels:
++        {{- include "prometheus-pushgateway.defaultLabels" . | nindent 8 }}
++        {{- with .Values.podLabels }}
++        {{- toYaml . | nindent 8 }}
++        {{- end }}
+     spec:
+-      {{ include "prometheus-pushgateway.podSpec" . }}
++      {{- include "prometheus-pushgateway.podSpec" . | nindent 6 }}
+   {{- if .Values.persistentVolume.enabled }}
+   volumeClaimTemplates:
+     - metadata:
+@@ -27,7 +32,7 @@ spec:
+           {{- toYaml . | nindent 10 }}
+         {{- end }}
+         labels:
+-{{ template "prometheus-pushgateway.defaultLabels" merge (dict "extraLabels" .Values.persistentVolumeLabels "indent" 10) . }}
++          {{- include "prometheus-pushgateway.defaultLabels" . | nindent 10 }}
+         name: storage-volume
+       spec:
+         accessModes:
+@@ -43,4 +48,4 @@ spec:
+           requests:
+             storage: "{{ .Values.persistentVolume.size }}"
+   {{- end }}
+-{{- end -}}
++{{- end }}
+diff --git a/charts/prometheus-pushgateway/values.yaml b/charts/prometheus-pushgateway/values.yaml
+index e2e9ebed..90cee5c8 100644
+--- a/charts/prometheus-pushgateway/values.yaml
++++ b/charts/prometheus-pushgateway/values.yaml
+@@ -10,7 +10,8 @@ fullnameOverride: ""
+ 
+ image:
+   repository: prom/pushgateway
+-  tag: v1.4.2
++  # if not set appVersion field from Chart.yaml is used
++  tag: ""
+   pullPolicy: IfNotPresent
+ 
+ # Optional pod imagePullSecrets

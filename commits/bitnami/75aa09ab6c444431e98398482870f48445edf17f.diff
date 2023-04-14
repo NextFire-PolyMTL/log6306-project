@@ -1,0 +1,145 @@
+commit 75aa09ab6c444431e98398482870f48445edf17f
+Author: thomasgafner <63186831+thomasgafner@users.noreply.github.com>
+Date:   Tue Apr 14 12:36:35 2020 +0200
+
+    [bitnami/mongodb-sharded ]- Add full support of sidecar containers. (#2229)
+    
+    * bitnami/mongodb-sharded - Add full support of sidecar containers.
+    
+    * Refactored to a simple solution just using tplValue.
+    
+    * Bumped chart version.
+    
+    * Bumped chart patch version.
+    
+    * [bitnami/mongodb-sharded] Update components versions
+    
+    Signed-off-by: Bitnami Containers <containers@bitnami.com>
+    
+    Co-authored-by: Javier J. Salmerón-García <jsalmeron@bitnami.com>
+    Co-authored-by: Bitnami Containers <containers@bitnami.com>
+
+diff --git a/bitnami/mongodb-sharded/Chart.yaml b/bitnami/mongodb-sharded/Chart.yaml
+index ca281f5e3d..e4bbd6c668 100644
+--- a/bitnami/mongodb-sharded/Chart.yaml
++++ b/bitnami/mongodb-sharded/Chart.yaml
+@@ -1,6 +1,6 @@
+ apiVersion: v1
+ name: mongodb-sharded
+-version: 1.1.1
++version: 1.1.2
+ appVersion: 4.2.5
+ description: NoSQL document-oriented database that stores JSON-like documents with dynamic schemas, simplifying the integration of data in content-driven applications. Sharded topology.
+ keywords:
+diff --git a/bitnami/mongodb-sharded/templates/config-server/config-server-statefulset.yaml b/bitnami/mongodb-sharded/templates/config-server/config-server-statefulset.yaml
+index f8af6f0a0c..ee78250e6e 100644
+--- a/bitnami/mongodb-sharded/templates/config-server/config-server-statefulset.yaml
++++ b/bitnami/mongodb-sharded/templates/config-server/config-server-statefulset.yaml
+@@ -271,6 +271,12 @@ spec:
+           {{- end }}
+           resources: {{ toYaml .Values.metrics.resources | nindent 12 }}
+         {{- end }}
++        {{- with $.Values.configsvr.sidecars }}
++        {{- include "mongodb-sharded.tplValue" ( dict "value" . "context" $ ) | nindent 8}}
++        {{- end }}
++        {{- with $.Values.common.sidecars }}
++        {{- include "mongodb-sharded.tplValue" ( dict "value" . "context" $ ) | nindent 8}}
++        {{- end }}
+       volumes:
+         - name: replicaset-entrypoint-configmap
+           configMap:
+diff --git a/bitnami/mongodb-sharded/templates/mongos/mongos-deployment.yaml b/bitnami/mongodb-sharded/templates/mongos/mongos-deployment.yaml
+index 8bbf971788..6b19984ef6 100644
+--- a/bitnami/mongodb-sharded/templates/mongos/mongos-deployment.yaml
++++ b/bitnami/mongodb-sharded/templates/mongos/mongos-deployment.yaml
+@@ -259,6 +259,12 @@ spec:
+           {{- end }}
+           resources: {{- toYaml .Values.metrics.resources | nindent 12 }}
+         {{- end }}
++        {{- with $.Values.mongos.sidecars }}
++        {{- include "mongodb-sharded.tplValue" ( dict "value" . "context" $ ) | nindent 8}}
++        {{- end }}
++        {{- with $.Values.common.sidecars }}
++        {{- include "mongodb-sharded.tplValue" ( dict "value" . "context" $ ) | nindent 8}}
++        {{- end }}
+       volumes:
+         {{- if .Values.usePasswordFile }}
+         - name: secrets
+diff --git a/bitnami/mongodb-sharded/templates/shard/shard-arbiter-statefulset.yaml b/bitnami/mongodb-sharded/templates/shard/shard-arbiter-statefulset.yaml
+index db6d5066da..5ed1798b52 100644
+--- a/bitnami/mongodb-sharded/templates/shard/shard-arbiter-statefulset.yaml
++++ b/bitnami/mongodb-sharded/templates/shard/shard-arbiter-statefulset.yaml
+@@ -185,6 +185,12 @@ spec:
+               {{- include "mongodb-sharded.tplValue" ( dict "value" $.Values.shardsvr.arbiter.extraVolumeMounts "context" $ ) | nindent 12 }}
+             {{- end }}
+           resources: {{- toYaml $.Values.shardsvr.arbiter.resources | nindent 12 }}
++        {{- with $.Values.shardsvr.arbiter.sidecars }}
++        {{- include "mongodb-sharded.tplValue" ( dict "value" . "context" $ ) | nindent 8}}
++        {{- end }}
++        {{- with $.Values.common.sidecars }}
++        {{- include "mongodb-sharded.tplValue" ( dict "value" . "context" $ ) | nindent 8}}
++        {{- end }}
+       volumes:
+         {{- if or $.Values.shardsvr.arbiter.config $.Values.shardsvr.arbiter.configCM }}
+         - name: config
+diff --git a/bitnami/mongodb-sharded/templates/shard/shard-data-statefulset.yaml b/bitnami/mongodb-sharded/templates/shard/shard-data-statefulset.yaml
+index da19d8fe8f..73de981c74 100644
+--- a/bitnami/mongodb-sharded/templates/shard/shard-data-statefulset.yaml
++++ b/bitnami/mongodb-sharded/templates/shard/shard-data-statefulset.yaml
+@@ -251,6 +251,12 @@ spec:
+           {{- end }}
+           resources: {{ toYaml $.Values.metrics.resources | nindent 12 }}
+         {{- end }}
++        {{- with $.Values.shardsvr.dataNode.sidecars }}
++        {{- include "mongodb-sharded.tplValue" ( dict "value" . "context" $ ) | nindent 8}}
++        {{- end }}
++        {{- with $.Values.common.sidecars }}
++        {{- include "mongodb-sharded.tplValue" ( dict "value" . "context" $ ) | nindent 8}}
++        {{- end }}
+       volumes:
+         - name: replicaset-entrypoint-configmap
+           configMap:
+diff --git a/bitnami/mongodb-sharded/values-production.yaml b/bitnami/mongodb-sharded/values-production.yaml
+index cd77fe10bb..53222a4f12 100644
+--- a/bitnami/mongodb-sharded/values-production.yaml
++++ b/bitnami/mongodb-sharded/values-production.yaml
+@@ -14,7 +14,7 @@ global: {}
+ image:
+   registry: docker.io
+   repository: bitnami/mongodb-sharded
+-  tag: 4.2.5-debian-10-r21
++  tag: 4.2.5-debian-10-r28
+   ## Specify a imagePullPolicy
+   ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+   ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+@@ -732,7 +732,7 @@ metrics:
+   image:
+     registry: docker.io
+     repository: bitnami/mongodb-exporter
+-    tag: 0.10.0-debian-10-r69
++    tag: 0.10.0-debian-10-r76
+     pullPolicy: Always
+     ## Optionally specify an array of imagePullSecrets.
+     ## Secrets must be manually created in the namespace.
+diff --git a/bitnami/mongodb-sharded/values.yaml b/bitnami/mongodb-sharded/values.yaml
+index 6016eb8f12..fcdeb8466c 100644
+--- a/bitnami/mongodb-sharded/values.yaml
++++ b/bitnami/mongodb-sharded/values.yaml
+@@ -14,7 +14,7 @@ global: {}
+ image:
+   registry: docker.io
+   repository: bitnami/mongodb-sharded
+-  tag: 4.2.5-debian-10-r21
++  tag: 4.2.5-debian-10-r28
+   ## Specify a imagePullPolicy
+   ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+   ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+@@ -716,7 +716,7 @@ metrics:
+   image:
+     registry: docker.io
+     repository: bitnami/mongodb-exporter
+-    tag: 0.10.0-debian-10-r69
++    tag: 0.10.0-debian-10-r76
+     pullPolicy: Always
+     ## Optionally specify an array of imagePullSecrets.
+     ## Secrets must be manually created in the namespace.

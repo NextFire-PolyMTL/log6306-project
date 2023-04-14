@@ -1,0 +1,4065 @@
+commit e152ee3688ef0e9f93dfcb03059d49b7bbc35170 (from d868a4eaaf02cc2356ea194f4726e67701fba531)
+Merge: d868a4eaa f2e5d6f8a
+Author: Kubernetes Prow Robot <k8s-ci-robot@users.noreply.github.com>
+Date:   Tue Mar 10 17:15:35 2020 -0700
+
+    Merge pull request #5175 from whalecold/refactor
+    
+    Migrate the backends handle logic to function
+
+diff --git a/rootfs/etc/nginx/lua/configuration.lua b/rootfs/etc/nginx/lua/configuration.lua
+index 3747c99ad..49ea62dbc 100644
+--- a/rootfs/etc/nginx/lua/configuration.lua
++++ b/rootfs/etc/nginx/lua/configuration.lua
+@@ -155,6 +155,31 @@ local function handle_certs()
+   end
+ end
+ 
++
++local function handle_backends()
++  if ngx.var.request_method == "GET" then
++    ngx.status = ngx.HTTP_OK
++    ngx.print(_M.get_backends_data())
++    return
++  end
++
++  local backends = fetch_request_body()
++  if not backends then
++    ngx.log(ngx.ERR, "dynamic-configuration: unable to read valid request body")
++    ngx.status = ngx.HTTP_BAD_REQUEST
++    return
++  end
++
++  local success, err = configuration_data:set("backends", backends)
++  if not success then
++    ngx.log(ngx.ERR, "dynamic-configuration: error updating configuration: " .. tostring(err))
++    ngx.status = ngx.HTTP_BAD_REQUEST
++    return
++  end
++
++  ngx.status = ngx.HTTP_CREATED
++end
++
+ function _M.call()
+   if ngx.var.request_method ~= "POST" and ngx.var.request_method ~= "GET" then
+     ngx.status = ngx.HTTP_BAD_REQUEST
+@@ -177,33 +202,13 @@ function _M.call()
+     return
+   end
+ 
+-  if ngx.var.request_uri ~= "/configuration/backends" then
+-    ngx.status = ngx.HTTP_NOT_FOUND
+-    ngx.print("Not found!")
+-    return
+-  end
+-
+-  if ngx.var.request_method == "GET" then
+-    ngx.status = ngx.HTTP_OK
+-    ngx.print(_M.get_backends_data())
++  if ngx.var.request_uri == "/configuration/backends" then
++    handle_backends()
+     return
+   end
+ 
+-  local backends = fetch_request_body()
+-  if not backends then
+-    ngx.log(ngx.ERR, "dynamic-configuration: unable to read valid request body")
+-    ngx.status = ngx.HTTP_BAD_REQUEST
+-    return
+-  end
+-
+-  local success, err = configuration_data:set("backends", backends)
+-  if not success then
+-    ngx.log(ngx.ERR, "dynamic-configuration: error updating configuration: " .. tostring(err))
+-    ngx.status = ngx.HTTP_BAD_REQUEST
+-    return
+-  end
+-
+-  ngx.status = ngx.HTTP_CREATED
++  ngx.status = ngx.HTTP_NOT_FOUND
++  ngx.print("Not found!")
+ end
+ 
+ if _TEST then
+
+commit e152ee3688ef0e9f93dfcb03059d49b7bbc35170 (from f2e5d6f8a5f127e4bc617af16e1e278422138c68)
+Merge: d868a4eaa f2e5d6f8a
+Author: Kubernetes Prow Robot <k8s-ci-robot@users.noreply.github.com>
+Date:   Tue Mar 10 17:15:35 2020 -0700
+
+    Merge pull request #5175 from whalecold/refactor
+    
+    Migrate the backends handle logic to function
+
+diff --git a/Makefile b/Makefile
+index d05a36861..2fd29ccd7 100644
+--- a/Makefile
++++ b/Makefile
+@@ -15,6 +15,10 @@
+ # Add the following 'help' target to your Makefile
+ # And add help text after each target name starting with '\#\#'
+ 
++ifeq ($(shell which go >/dev/null 2>&1; echo $$?), 1)
++    $(error Can't find 'go' in PATH, please fix and retry. See http://golang.org/doc/install for installation instructions.)
++endif
++
+ .DEFAULT_GOAL:=help
+ 
+ .EXPORT_ALL_VARIABLES:
+@@ -60,7 +64,7 @@ ARCH ?= $(shell go env GOARCH)
+ REGISTRY ?= quay.io/kubernetes-ingress-controller
+ 
+ BASE_IMAGE ?= quay.io/kubernetes-ingress-controller/nginx
+-BASE_TAG ?= c5db20ace43ada5b4c191df24c480fddceb5d482
++BASE_TAG ?= 7b6e2dd312f1808e43fb39992ea814035557c7f3
+ 
+ GOARCH=$(ARCH)
+ GOBUILD_FLAGS := -v
+diff --git a/build/run-in-docker.sh b/build/run-in-docker.sh
+index 671a2497b..a3676e5b1 100755
+--- a/build/run-in-docker.sh
++++ b/build/run-in-docker.sh
+@@ -34,7 +34,7 @@ function cleanup {
+ }
+ trap cleanup EXIT
+ 
+-E2E_IMAGE=quay.io/kubernetes-ingress-controller/e2e:v02262020-a830e931d
++E2E_IMAGE=quay.io/kubernetes-ingress-controller/e2e:v03062020-7b6e2dd31
+ 
+ DOCKER_OPTS=${DOCKER_OPTS:-}
+ 
+diff --git a/charts/ingress-nginx/.helmignore b/charts/ingress-nginx/.helmignore
+index f0c131944..50af03172 100644
+--- a/charts/ingress-nginx/.helmignore
++++ b/charts/ingress-nginx/.helmignore
+@@ -19,3 +19,4 @@
+ .project
+ .idea/
+ *.tmproj
++.vscode/
+diff --git a/charts/ingress-nginx/Chart.yaml b/charts/ingress-nginx/Chart.yaml
+index fb45bcf1c..92fdcfac7 100644
+--- a/charts/ingress-nginx/Chart.yaml
++++ b/charts/ingress-nginx/Chart.yaml
+@@ -1,6 +1,6 @@
+ apiVersion: v1
+ name: ingress-nginx
+-version: 1.32.0
++version: 2.0.0
+ appVersion: 0.30.0
+ home: https://github.com/kubernetes/ingress-nginx
+ description: An nginx Ingress controller that uses ConfigMap to store the nginx configuration.
+@@ -12,7 +12,5 @@ sources:
+   - https://github.com/kubernetes/ingress-nginx
+ maintainers:
+   - name: ChiefAlexander
+-  - name: taharah
+-    email: Trevor.G.Wood@gmail.com
+ engine: gotpl
+ kubeVersion: ">=1.10.0-0"
+diff --git a/charts/ingress-nginx/OWNERS b/charts/ingress-nginx/OWNERS
+new file mode 100644
+index 000000000..7aadb8dc2
+--- /dev/null
++++ b/charts/ingress-nginx/OWNERS
+@@ -0,0 +1,5 @@
++approvers:
++  - ChiefAlexander
++
++reviewers:
++  - ChiefAlexander
+diff --git a/charts/ingress-nginx/README.md b/charts/ingress-nginx/README.md
+index 1fd9e302c..4a3bbbd48 100644
+--- a/charts/ingress-nginx/README.md
++++ b/charts/ingress-nginx/README.md
+@@ -50,7 +50,6 @@ The following table lists the configurable parameters of the ingress-nginx chart
+ 
+ Parameter | Description | Default
+ --- | --- | ---
+-`controller.name` | name of the controller component | `controller`
+ `controller.image.repository` | controller container image repository | `quay.io/kubernetes-ingress-controller/nginx-ingress-controller`
+ `controller.image.tag` | controller container image tag | `0.30.0`
+ `controller.image.pullPolicy` | controller container image pull policy | `IfNotPresent`
+@@ -184,7 +183,6 @@ Parameter | Description | Default
+ `controller.udp.configMapNamespace` | The udp-services-configmap namespace name | `""`
+ `controller.udp.annotations` | annotations to be added to udp configmap | `{}`
+ `defaultBackend.enabled` | Use default backend component | `true`
+-`defaultBackend.name` | name of the default backend component | `default-backend`
+ `defaultBackend.image.repository` | default backend container image repository | `k8s.gcr.io/defaultbackend-amd64`
+ `defaultBackend.image.tag` | default backend container image tag | `1.5`
+ `defaultBackend.image.pullPolicy` | default backend container image pull policy | `IfNotPresent`
+diff --git a/charts/ingress-nginx/templates/NOTES.txt b/charts/ingress-nginx/templates/NOTES.txt
+index 57bbc9e04..2e5c6e0c2 100644
+--- a/charts/ingress-nginx/templates/NOTES.txt
++++ b/charts/ingress-nginx/templates/NOTES.txt
+@@ -1,4 +1,4 @@
+-The nginx-ingress controller has been installed.
++The ingress-nginx controller has been installed.
+ 
+ {{- if contains "NodePort" .Values.controller.service.type }}
+ Get the application URL by running these commands:
+@@ -6,12 +6,12 @@ Get the application URL by running these commands:
+ {{- if (not (empty .Values.controller.service.nodePorts.http)) }}
+   export HTTP_NODE_PORT={{ .Values.controller.service.nodePorts.http }}
+ {{- else }}
+-  export HTTP_NODE_PORT=$(kubectl --namespace {{ .Release.Namespace }} get services -o jsonpath="{.spec.ports[0].nodePort}" {{ template "nginx-ingress.controller.fullname" . }})
++  export HTTP_NODE_PORT=$(kubectl --namespace {{ .Release.Namespace }} get services -o jsonpath="{.spec.ports[0].nodePort}" {{ include "ingress-nginx.controller.fullname" . }})
+ {{- end }}
+ {{- if (not (empty .Values.controller.service.nodePorts.https)) }}
+   export HTTPS_NODE_PORT={{ .Values.controller.service.nodePorts.https }}
+ {{- else }}
+-  export HTTPS_NODE_PORT=$(kubectl --namespace {{ .Release.Namespace }} get services -o jsonpath="{.spec.ports[1].nodePort}" {{ template "nginx-ingress.controller.fullname" . }})
++  export HTTPS_NODE_PORT=$(kubectl --namespace {{ .Release.Namespace }} get services -o jsonpath="{.spec.ports[1].nodePort}" {{ include "ingress-nginx.controller.fullname" . }})
+ {{- end }}
+   export NODE_IP=$(kubectl --namespace {{ .Release.Namespace }} get nodes -o jsonpath="{.items[0].status.addresses[1].address}")
+ 
+@@ -19,10 +19,10 @@ Get the application URL by running these commands:
+   echo "Visit https://$NODE_IP:$HTTPS_NODE_PORT to access your application via HTTPS."
+ {{- else if contains "LoadBalancer" .Values.controller.service.type }}
+ It may take a few minutes for the LoadBalancer IP to be available.
+-You can watch the status by running 'kubectl --namespace {{ .Release.Namespace }} get services -o wide -w {{ template "nginx-ingress.controller.fullname" . }}'
++You can watch the status by running 'kubectl --namespace {{ .Release.Namespace }} get services -o wide -w {{ include "ingress-nginx.controller.fullname" . }}'
+ {{- else if contains "ClusterIP"  .Values.controller.service.type }}
+ Get the application URL by running these commands:
+-  export POD_NAME=$(kubectl --namespace {{ .Release.Namespace }} get pods -o jsonpath="{.items[0].metadata.name}" -l "app={{ template "nginx-ingress.name" . }},component={{ .Values.controller.name }},release={{ .Release.Name }}")
++  export POD_NAME=$(kubectl --namespace {{ .Release.Namespace }} get pods -o jsonpath="{.items[0].metadata.name}" -l "app={{ template "ingress-nginx.name" . }},component={{ .Values.controller.name }},release={{ .Release.Name }}")
+   kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:80
+   echo "Visit http://127.0.0.1:8080 to access your application."
+ {{- end }}
+diff --git a/charts/ingress-nginx/templates/_helpers.tpl b/charts/ingress-nginx/templates/_helpers.tpl
+index 036025323..716587f9a 100644
+--- a/charts/ingress-nginx/templates/_helpers.tpl
++++ b/charts/ingress-nginx/templates/_helpers.tpl
+@@ -2,14 +2,14 @@
+ {{/*
+ Expand the name of the chart.
+ */}}
+-{{- define "nginx-ingress.name" -}}
++{{- define "ingress-nginx.name" -}}
+ {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
+ 
+ {{/*
+ Create chart name and version as used by the chart label.
+ */}}
+-{{- define "nginx-ingress.chart" -}}
++{{- define "ingress-nginx.chart" -}}
+ {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
+ 
+@@ -17,7 +17,7 @@ Create chart name and version as used by the chart label.
+ Create a default fully qualified app name.
+ We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+ */}}
+-{{- define "nginx-ingress.fullname" -}}
++{{- define "ingress-nginx.fullname" -}}
+ {{- if .Values.fullnameOverride -}}
+ {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+ {{- else -}}
+@@ -34,8 +34,8 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this
+ Create a default fully qualified controller name.
+ We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+ */}}
+-{{- define "nginx-ingress.controller.fullname" -}}
+-{{- printf "%s-%s" (include "nginx-ingress.fullname" .) .Values.controller.name | trunc 63 | trimSuffix "-" -}}
++{{- define "ingress-nginx.controller.fullname" -}}
++{{- printf "%s-%s" (include "ingress-nginx.fullname" .) "controller" | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
+ 
+ {{/*
+@@ -47,8 +47,8 @@ service generated.
+ Users can provide an override for an explicit service they want bound via `.Values.controller.publishService.pathOverride`
+ 
+ */}}
+-{{- define "nginx-ingress.controller.publishServicePath" -}}
+-{{- $defServiceName := printf "%s/%s" .Release.Namespace (include "nginx-ingress.controller.fullname" .) -}}
++{{- define "ingress-nginx.controller.publishServicePath" -}}
++{{- $defServiceName := printf "%s/%s" .Release.Namespace (include "ingress-nginx.controller.fullname" .) -}}
+ {{- $servicePath := default $defServiceName .Values.controller.publishService.pathOverride }}
+ {{- print $servicePath | trimSuffix "-" -}}
+ {{- end -}}
+@@ -57,16 +57,36 @@ Users can provide an override for an explicit service they want bound via `.Valu
+ Create a default fully qualified default backend name.
+ We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+ */}}
+-{{- define "nginx-ingress.defaultBackend.fullname" -}}
+-{{- printf "%s-%s" (include "nginx-ingress.fullname" .) .Values.defaultBackend.name | trunc 63 | trimSuffix "-" -}}
++{{- define "ingress-nginx.defaultBackend.fullname" -}}
++{{- printf "%s-%s" (include "ingress-nginx.fullname" .) .Values.defaultBackend.name | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*
++Common labels
++*/}}
++{{- define "ingress-nginx.labels" -}}
++helm.sh/chart: {{ include "ingress-nginx.chart" . }}
++{{ include "ingress-nginx.selectorLabels" . }}
++{{- if .Chart.AppVersion }}
++app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
++{{- end }}
++app.kubernetes.io/managed-by: {{ .Release.Service }}
++{{- end -}}
++
++{{/*
++Selector labels
++*/}}
++{{- define "ingress-nginx.selectorLabels" -}}
++app.kubernetes.io/name: {{ include "ingress-nginx.name" . }}
++app.kubernetes.io/instance: {{ .Release.Name }}
+ {{- end -}}
+ 
+ {{/*
+ Create the name of the controller service account to use
+ */}}
+-{{- define "nginx-ingress.serviceAccountName" -}}
++{{- define "ingress-nginx.serviceAccountName" -}}
+ {{- if .Values.serviceAccount.create -}}
+-    {{ default (include "nginx-ingress.fullname" .) .Values.serviceAccount.name }}
++    {{ default (include "ingress-nginx.fullname" .) .Values.serviceAccount.name }}
+ {{- else -}}
+     {{ default "default" .Values.serviceAccount.name }}
+ {{- end -}}
+@@ -75,9 +95,9 @@ Create the name of the controller service account to use
+ {{/*
+ Create the name of the backend service account to use - only used when podsecuritypolicy is also enabled
+ */}}
+-{{- define "nginx-ingress.defaultBackend.serviceAccountName" -}}
++{{- define "ingress-nginx.defaultBackend.serviceAccountName" -}}
+ {{- if .Values.defaultBackend.serviceAccount.create -}}
+-    {{ default (printf "%s-backend" (include "nginx-ingress.fullname" .)) .Values.defaultBackend.serviceAccount.name }}
++    {{ default (printf "%s-backend" (include "ingress-nginx.fullname" .)) .Values.defaultBackend.serviceAccount.name }}
+ {{- else -}}
+     {{ default "default-backend" .Values.defaultBackend.serviceAccount.name }}
+ {{- end -}}
+@@ -94,6 +114,17 @@ Return the appropriate apiVersion for deployment.
+ {{- end -}}
+ {{- end -}}
+ 
++{{/*
++Return the appropriate apiVersion for daemonset.
++*/}}
++{{- define "daemonset.apiVersion" -}}
++{{- if semverCompare ">=1.9-0" .Capabilities.KubeVersion.GitVersion -}}
++{{- print "apps/v1" -}}
++{{- else -}}
++{{- print "v1/beta2" -}}
++{{- end -}}
++{{- end -}}
++
+ {{/*
+ Return the appropriate apiGroup for PodSecurityPolicy.
+ */}}
+@@ -114,4 +145,4 @@ Return the appropriate apiVersion for podSecurityPolicy.
+ {{- else -}}
+ {{- print "extensions/v1beta1" -}}
+ {{- end -}}
+-{{- end -}}
+\ No newline at end of file
++{{- end -}}
+diff --git a/charts/ingress-nginx/templates/addheaders-configmap.yaml b/charts/ingress-nginx/templates/addheaders-configmap.yaml
+deleted file mode 100644
+index 04a04aa4e..000000000
+--- a/charts/ingress-nginx/templates/addheaders-configmap.yaml
++++ /dev/null
+@@ -1,14 +0,0 @@
+-{{- if .Values.controller.addHeaders }}
+-apiVersion: v1
+-kind: ConfigMap
+-metadata:
+-  labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.fullname" . }}-custom-add-headers
+-data:
+-{{ toYaml .Values.controller.addHeaders | indent 2 }}
+-{{- end }}
+diff --git a/charts/ingress-nginx/templates/admission-webhooks/job-patch/clusterrole.yaml b/charts/ingress-nginx/templates/admission-webhooks/job-patch/clusterrole.yaml
+index 97d7a2a41..7eb57388d 100644
+--- a/charts/ingress-nginx/templates/admission-webhooks/job-patch/clusterrole.yaml
++++ b/charts/ingress-nginx/templates/admission-webhooks/job-patch/clusterrole.yaml
+@@ -1,17 +1,14 @@
+-{{- if and .Values.controller.admissionWebhooks.enabled .Values.controller.admissionWebhooks.patch.enabled }}
++{{- if and .Values.controller.admissionWebhooks.enabled .Values.controller.admissionWebhooks.patch.enabled -}}
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: ClusterRole
+ metadata:
+-  name:  {{ template "nginx-ingress.fullname" . }}-admission
++  name: {{ include "ingress-nginx.fullname" . }}-admission
+   annotations:
+     "helm.sh/hook": pre-install,pre-upgrade,post-install,post-upgrade
+     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: admission-webhook
+ rules:
+   - apiGroups:
+       - admissionregistration.k8s.io
+@@ -25,6 +22,6 @@ rules:
+     resources: ['podsecuritypolicies']
+     verbs:     ['use']
+     resourceNames:
+-    - {{ template "nginx-ingress.fullname" . }}-admission
++    - {{ include "ingress-nginx.fullname" . }}-admission
+ {{- end }}
+ {{- end }}
+diff --git a/charts/ingress-nginx/templates/admission-webhooks/job-patch/clusterrolebinding.yaml b/charts/ingress-nginx/templates/admission-webhooks/job-patch/clusterrolebinding.yaml
+index 57c21049d..97931250c 100644
+--- a/charts/ingress-nginx/templates/admission-webhooks/job-patch/clusterrolebinding.yaml
++++ b/charts/ingress-nginx/templates/admission-webhooks/job-patch/clusterrolebinding.yaml
+@@ -1,23 +1,20 @@
+-{{- if and .Values.controller.admissionWebhooks.enabled .Values.controller.admissionWebhooks.patch.enabled }}
++{{- if and .Values.controller.admissionWebhooks.enabled .Values.controller.admissionWebhooks.patch.enabled -}}
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: ClusterRoleBinding
+ metadata:
+-  name:  {{ template "nginx-ingress.fullname" . }}-admission
++  name:  {{ include "ingress-nginx.fullname" . }}-admission
+   annotations:
+     "helm.sh/hook": pre-install,pre-upgrade,post-install,post-upgrade
+     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: admission-webhook
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: ClusterRole
+-  name: {{ template "nginx-ingress.fullname" . }}-admission
++  name: {{ include "ingress-nginx.fullname" . }}-admission
+ subjects:
+   - kind: ServiceAccount
+-    name: {{ template "nginx-ingress.fullname" . }}-admission
++    name: {{ include "ingress-nginx.fullname" . }}-admission
+     namespace: {{ .Release.Namespace }}
+ {{- end }}
+diff --git a/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-createSecret.yaml b/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-createSecret.yaml
+index 4e4b6b55b..3e21b7fed 100644
+--- a/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-createSecret.yaml
++++ b/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-createSecret.yaml
+@@ -1,54 +1,46 @@
+-{{- if and .Values.controller.admissionWebhooks.enabled .Values.controller.admissionWebhooks.patch.enabled }}
++{{- if and .Values.controller.admissionWebhooks.enabled .Values.controller.admissionWebhooks.patch.enabled -}}
+ apiVersion: batch/v1
+ kind: Job
+ metadata:
+-  name: {{ template "nginx-ingress.fullname" . }}-admission-create
++  name: {{ include "ingress-nginx.fullname" . }}-admission-create
+   annotations:
+     "helm.sh/hook": pre-install,pre-upgrade
+     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: admission-webhook
+ spec:
+-  {{- if .Capabilities.APIVersions.Has "batch/v1alpha1" }}
++{{- if .Capabilities.APIVersions.Has "batch/v1alpha1" }}
+   # Alpha feature since k8s 1.12
+   ttlSecondsAfterFinished: 0
+-  {{- end }}
++{{- end }}
+   template:
+     metadata:
+-      name: {{ template "nginx-ingress.fullname" . }}-admission-create
+-{{- with .Values.controller.admissionWebhooks.patch.podAnnotations }}
+-      annotations:
+-{{ toYaml .  | indent 8 }}
+-{{- end }}
++      name: {{ include "ingress-nginx.fullname" . }}-admission-create
++    {{- if .Values.controller.admissionWebhooks.patch.podAnnotations }}
++      annotations: {{ toYaml .Values.controller.admissionWebhooks.patch.podAnnotations | nindent 8 }}
++    {{- end }}
+       labels:
+-        app: {{ template "nginx-ingress.name" . }}
+-        chart: {{ template "nginx-ingress.chart" . }}
+-        component: "{{ .Values.controller.name }}"
+-        heritage: {{ .Release.Service }}
+-        release: {{ .Release.Name }}
++        {{- include "ingress-nginx.labels" . | nindent 8 }}
++        app.kubernetes.io/component: admission-webhook
+     spec:
+-      {{- if .Values.controller.admissionWebhooks.patch.priorityClassName }}
++    {{- if .Values.controller.admissionWebhooks.patch.priorityClassName }}
+       priorityClassName: {{ .Values.controller.admissionWebhooks.patch.priorityClassName }}
+-      {{- end }}
++    {{- end }}
+       containers:
+         - name: create
+           image: {{ .Values.controller.admissionWebhooks.patch.image.repository }}:{{ .Values.controller.admissionWebhooks.patch.image.tag }}
+           imagePullPolicy: {{ .Values.controller.admissionWebhooks.patch.image.pullPolicy }}
+           args:
+             - create
+-            - --host={{ template "nginx-ingress.controller.fullname" . }}-admission,{{ template "nginx-ingress.controller.fullname" . }}-admission.{{ .Release.Namespace }}.svc
++            - --host={{ include "ingress-nginx.controller.fullname" . }}-admission,{{ include "ingress-nginx.controller.fullname" . }}-admission.{{ .Release.Namespace }}.svc
+             - --namespace={{ .Release.Namespace }}
+-            - --secret-name={{ template "nginx-ingress.fullname". }}-admission
++            - --secret-name={{ include "ingress-nginx.fullname" . }}-admission
+       restartPolicy: OnFailure
+-      serviceAccountName: {{ template "nginx-ingress.fullname" . }}-admission
+-      {{- with .Values.controller.admissionWebhooks.patch.nodeSelector }}
+-      nodeSelector:
+-{{ toYaml . | indent 8 }}
+-      {{- end }}
++      serviceAccountName: {{ include "ingress-nginx.fullname" . }}-admission
++    {{- if .Values.controller.admissionWebhooks.patch.nodeSelector }}
++      nodeSelector: {{ toYaml .Values.controller.admissionWebhooks.patch.nodeSelector | nindent 8 }}
++    {{- end }}
+       securityContext:
+         runAsNonRoot: true
+         runAsUser: 2000
+diff --git a/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-patchWebhook.yaml b/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-patchWebhook.yaml
+index 2182e534d..79d58a7bd 100644
+--- a/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-patchWebhook.yaml
++++ b/charts/ingress-nginx/templates/admission-webhooks/job-patch/job-patchWebhook.yaml
+@@ -1,56 +1,48 @@
+-{{- if and .Values.controller.admissionWebhooks.enabled .Values.controller.admissionWebhooks.patch.enabled }}
++{{- if and .Values.controller.admissionWebhooks.enabled .Values.controller.admissionWebhooks.patch.enabled -}}
+ apiVersion: batch/v1
+ kind: Job
+ metadata:
+-  name: {{ template "nginx-ingress.fullname" . }}-admission-patch
++  name: {{ include "ingress-nginx.fullname" . }}-admission-patch
+   annotations:
+     "helm.sh/hook": post-install,post-upgrade
+     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: admission-webhook
+ spec:
+-  {{- if .Capabilities.APIVersions.Has "batch/v1alpha1" }}
++{{- if .Capabilities.APIVersions.Has "batch/v1alpha1" }}
+   # Alpha feature since k8s 1.12
+   ttlSecondsAfterFinished: 0
+-  {{- end }}
++{{- end }}
+   template:
+     metadata:
+-      name:   {{ template "nginx-ingress.fullname" . }}-admission-patch
+-{{- with .Values.controller.admissionWebhooks.patch.podAnnotations }}
+-      annotations:
+-{{ toYaml .  | indent 8 }}
+-{{- end }}
++      name: {{ include "ingress-nginx.fullname" . }}-admission-patch
++    {{- if .Values.controller.admissionWebhooks.patch.podAnnotations }}
++      annotations: {{ toYaml .Values.controller.admissionWebhooks.patch.podAnnotations | nindent 8 }}
++    {{- end }}
+       labels:
+-        app: {{ template "nginx-ingress.name" . }}
+-        chart: {{ template "nginx-ingress.chart" . }}
+-        component: "{{ .Values.controller.name }}"
+-        heritage: {{ .Release.Service }}
+-        release: {{ .Release.Name }}
++        {{- include "ingress-nginx.labels" . | nindent 8 }}
++        app.kubernetes.io/component: admission-webhook
+     spec:
+-      {{- if .Values.controller.admissionWebhooks.patch.priorityClassName }}
++    {{- if .Values.controller.admissionWebhooks.patch.priorityClassName }}
+       priorityClassName: {{ .Values.controller.admissionWebhooks.patch.priorityClassName }}
+-      {{- end }}
++    {{- end }}
+       containers:
+         - name: patch
+           image: {{ .Values.controller.admissionWebhooks.patch.image.repository }}:{{ .Values.controller.admissionWebhooks.patch.image.tag }}
+           imagePullPolicy: {{ .Values.controller.admissionWebhooks.patch.pullPolicy }}
+           args:
+             - patch
+-            - --webhook-name={{ template "nginx-ingress.fullname" . }}-admission
++            - --webhook-name={{ include "ingress-nginx.fullname" . }}-admission
+             - --namespace={{ .Release.Namespace }}
+             - --patch-mutating=false
+-            - --secret-name={{ template "nginx-ingress.fullname". }}-admission
++            - --secret-name={{ include "ingress-nginx.fullname" . }}-admission
+             - --patch-failure-policy={{ .Values.controller.admissionWebhooks.failurePolicy }}
+       restartPolicy: OnFailure
+-      serviceAccountName: {{ template "nginx-ingress.fullname" . }}-admission
+-      {{- with .Values.controller.admissionWebhooks.patch.nodeSelector }}
+-      nodeSelector:
+-{{ toYaml . | indent 8 }}
+-      {{- end }}
++      serviceAccountName: {{ include "ingress-nginx.fullname" . }}-admission
++    {{- if .Values.controller.admissionWebhooks.patch.nodeSelector }}
++      nodeSelector: {{ toYaml .Values.controller.admissionWebhooks.patch.nodeSelector | nindent 8 }}
++    {{- end }}
+       securityContext:
+         runAsNonRoot: true
+         runAsUser: 2000
+diff --git a/charts/ingress-nginx/templates/admission-webhooks/job-patch/psp.yaml b/charts/ingress-nginx/templates/admission-webhooks/job-patch/psp.yaml
+index 3b69e00df..e8c8da94b 100644
+--- a/charts/ingress-nginx/templates/admission-webhooks/job-patch/psp.yaml
++++ b/charts/ingress-nginx/templates/admission-webhooks/job-patch/psp.yaml
+@@ -1,17 +1,14 @@
+-{{- if and .Values.controller.admissionWebhooks.enabled .Values.controller.admissionWebhooks.patch.enabled .Values.podSecurityPolicy.enabled }}
++{{- if and .Values.controller.admissionWebhooks.enabled .Values.controller.admissionWebhooks.patch.enabled .Values.podSecurityPolicy.enabled -}}
+ apiVersion: policy/v1beta1
+ kind: PodSecurityPolicy
+ metadata:
+-  name: {{ template "nginx-ingress.fullname" . }}-admission
++  name: {{ include "ingress-nginx.fullname" . }}-admission
+   annotations:
+     "helm.sh/hook": pre-install,pre-upgrade,post-install,post-upgrade
+     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: admission-webhook
+ spec:
+   allowPrivilegeEscalation: false
+   fsGroup:
+diff --git a/charts/ingress-nginx/templates/admission-webhooks/job-patch/role.yaml b/charts/ingress-nginx/templates/admission-webhooks/job-patch/role.yaml
+index 455766296..fe1c2ee7f 100644
+--- a/charts/ingress-nginx/templates/admission-webhooks/job-patch/role.yaml
++++ b/charts/ingress-nginx/templates/admission-webhooks/job-patch/role.yaml
+@@ -1,17 +1,14 @@
+-{{- if and .Values.controller.admissionWebhooks.enabled .Values.controller.admissionWebhooks.patch.enabled }}
++{{- if and .Values.controller.admissionWebhooks.enabled .Values.controller.admissionWebhooks.patch.enabled -}}
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: Role
+ metadata:
+-  name:  {{ template "nginx-ingress.fullname" . }}-admission
++  name:  {{ include "ingress-nginx.fullname" . }}-admission
+   annotations:
+     "helm.sh/hook": pre-install,pre-upgrade,post-install,post-upgrade
+     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: admission-webhook
+ rules:
+   - apiGroups:
+       - ""
+diff --git a/charts/ingress-nginx/templates/admission-webhooks/job-patch/rolebinding.yaml b/charts/ingress-nginx/templates/admission-webhooks/job-patch/rolebinding.yaml
+index 0e0907db8..391e5e9a3 100644
+--- a/charts/ingress-nginx/templates/admission-webhooks/job-patch/rolebinding.yaml
++++ b/charts/ingress-nginx/templates/admission-webhooks/job-patch/rolebinding.yaml
+@@ -1,23 +1,20 @@
+-{{- if and .Values.controller.admissionWebhooks.enabled .Values.controller.admissionWebhooks.patch.enabled }}
++{{- if and .Values.controller.admissionWebhooks.enabled .Values.controller.admissionWebhooks.patch.enabled -}}
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: RoleBinding
+ metadata:
+-  name:  {{ template "nginx-ingress.fullname" . }}-admission
++  name: {{ include "ingress-nginx.fullname" . }}-admission
+   annotations:
+     "helm.sh/hook": pre-install,pre-upgrade,post-install,post-upgrade
+     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: admission-webhook
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: Role
+-  name: {{ template "nginx-ingress.fullname" . }}-admission
++  name: {{ include "ingress-nginx.fullname" . }}-admission
+ subjects:
+   - kind: ServiceAccount
+-    name: {{ template "nginx-ingress.fullname" . }}-admission
++    name: {{ include "ingress-nginx.fullname" . }}-admission
+     namespace: {{ .Release.Namespace }}
+ {{- end }}
+diff --git a/charts/ingress-nginx/templates/admission-webhooks/job-patch/serviceaccount.yaml b/charts/ingress-nginx/templates/admission-webhooks/job-patch/serviceaccount.yaml
+index 11d249c1b..5dfdd345a 100644
+--- a/charts/ingress-nginx/templates/admission-webhooks/job-patch/serviceaccount.yaml
++++ b/charts/ingress-nginx/templates/admission-webhooks/job-patch/serviceaccount.yaml
+@@ -1,15 +1,12 @@
+-{{- if and .Values.controller.admissionWebhooks.enabled .Values.controller.admissionWebhooks.patch.enabled }}
++{{- if and .Values.controller.admissionWebhooks.enabled .Values.controller.admissionWebhooks.patch.enabled -}}
+ apiVersion: v1
+ kind: ServiceAccount
+ metadata:
+-  name:  {{ template "nginx-ingress.fullname" . }}-admission
++  name: {{ include "ingress-nginx.fullname" . }}-admission
+   annotations:
+     "helm.sh/hook": pre-install,pre-upgrade,post-install,post-upgrade
+     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: admission-webhook
+ {{- end }}
+diff --git a/charts/ingress-nginx/templates/admission-webhooks/validating-webhook.yaml b/charts/ingress-nginx/templates/admission-webhooks/validating-webhook.yaml
+index 53f37b273..7ee75f64f 100644
+--- a/charts/ingress-nginx/templates/admission-webhooks/validating-webhook.yaml
++++ b/charts/ingress-nginx/templates/admission-webhooks/validating-webhook.yaml
+@@ -1,14 +1,11 @@
+-{{- if .Values.controller.admissionWebhooks.enabled }}
++{{- if .Values.controller.admissionWebhooks.enabled -}}
+ apiVersion: admissionregistration.k8s.io/v1beta1
+ kind: ValidatingWebhookConfiguration
+ metadata:
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}-admission
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "admission-webhook"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.fullname" . }}-admission
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: admission-webhook
++  name: {{ include "ingress-nginx.fullname" . }}-admission
+ webhooks:
+   - name: validate.nginx.ingress.kubernetes.io
+     rules:
+@@ -26,6 +23,6 @@ webhooks:
+     clientConfig:
+       service:
+         namespace: {{ .Release.Namespace }}
+-        name: {{ template "nginx-ingress.controller.fullname" . }}-admission
++        name: {{ include "ingress-nginx.controller.fullname" . }}-admission
+         path: /extensions/v1beta1/ingresses
+ {{- end }}
+diff --git a/charts/ingress-nginx/templates/clusterrole.yaml b/charts/ingress-nginx/templates/clusterrole.yaml
+index 507260301..fe7c5f511 100644
+--- a/charts/ingress-nginx/templates/clusterrole.yaml
++++ b/charts/ingress-nginx/templates/clusterrole.yaml
+@@ -1,13 +1,10 @@
+-{{- if and (.Values.rbac.create) (not .Values.rbac.scope) -}}
++{{- if and .Values.rbac.create (not .Values.rbac.scope) -}}
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: ClusterRole
+ metadata:
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.fullname" . }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++  name: {{ include "ingress-nginx.fullname" . }}
+ rules:
+   - apiGroups:
+       - ""
+@@ -68,4 +65,4 @@ rules:
+       - ingresses/status
+     verbs:
+       - update
+-{{- end -}}
++{{- end }}
+diff --git a/charts/ingress-nginx/templates/clusterrolebinding.yaml b/charts/ingress-nginx/templates/clusterrolebinding.yaml
+index 1f6976a04..a341f5280 100644
+--- a/charts/ingress-nginx/templates/clusterrolebinding.yaml
++++ b/charts/ingress-nginx/templates/clusterrolebinding.yaml
+@@ -1,19 +1,16 @@
+-{{- if and (.Values.rbac.create) (not .Values.rbac.scope) -}}
++{{- if and .Values.rbac.create (not .Values.rbac.scope) -}}
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: ClusterRoleBinding
+ metadata:
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.fullname" . }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++  name: {{ include "ingress-nginx.fullname" . }}
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: ClusterRole
+-  name: {{ template "nginx-ingress.fullname" . }}
++  name: {{ include "ingress-nginx.fullname" . }}
+ subjects:
+   - kind: ServiceAccount
+-    name: {{ template "nginx-ingress.serviceAccountName" . }}
++    name: {{ template "ingress-nginx.serviceAccountName" . }}
+     namespace: {{ .Release.Namespace }}
+-{{- end -}}
++{{- end }}
+diff --git a/charts/ingress-nginx/templates/controller-configmap-addheaders.yaml b/charts/ingress-nginx/templates/controller-configmap-addheaders.yaml
+new file mode 100644
+index 000000000..c06458958
+--- /dev/null
++++ b/charts/ingress-nginx/templates/controller-configmap-addheaders.yaml
+@@ -0,0 +1,10 @@
++{{- if .Values.controller.addHeaders -}}
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  labels:
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++  name: {{ include "ingress-nginx.fullname" . }}-custom-add-headers
++data: {{ toYaml .Values.controller.addHeaders | nindent 2 }}
++{{- end }}
+diff --git a/charts/ingress-nginx/templates/proxyheaders-configmap.yaml b/charts/ingress-nginx/templates/controller-configmap-proxyheaders.yaml
+similarity index 56%
+rename from charts/ingress-nginx/templates/proxyheaders-configmap.yaml
+rename to charts/ingress-nginx/templates/controller-configmap-proxyheaders.yaml
+index 725e12065..5a1b25229 100644
+--- a/charts/ingress-nginx/templates/proxyheaders-configmap.yaml
++++ b/charts/ingress-nginx/templates/controller-configmap-proxyheaders.yaml
+@@ -1,14 +1,11 @@
+-{{- if or .Values.controller.proxySetHeaders .Values.controller.headers }}
++{{- if or .Values.controller.proxySetHeaders .Values.controller.headers -}}
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.fullname" . }}-custom-proxy-headers
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++  name: {{ include "ingress-nginx.fullname" . }}-custom-proxy-headers
+ data:
+ {{- if .Values.controller.proxySetHeaders }}
+ {{ toYaml .Values.controller.proxySetHeaders | indent 2 }}
+diff --git a/charts/ingress-nginx/templates/controller-configmap-tcp.yaml b/charts/ingress-nginx/templates/controller-configmap-tcp.yaml
+new file mode 100644
+index 000000000..bc972517c
+--- /dev/null
++++ b/charts/ingress-nginx/templates/controller-configmap-tcp.yaml
+@@ -0,0 +1,13 @@
++{{- if .Values.tcp -}}
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  labels:
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++{{- if .Values.controller.tcp.annotations }}
++  annotations: {{ toYaml .Values.controller.tcp.annotations | nindent 4 }}
++{{- end }}
++  name: {{ include "ingress-nginx.fullname" . }}-tcp
++data: {{ tpl (toYaml .Values.tcp) . | nindent 2 }}
++{{- end }}
+diff --git a/charts/ingress-nginx/templates/controller-configmap-udp.yaml b/charts/ingress-nginx/templates/controller-configmap-udp.yaml
+new file mode 100644
+index 000000000..a9dc388f1
+--- /dev/null
++++ b/charts/ingress-nginx/templates/controller-configmap-udp.yaml
+@@ -0,0 +1,13 @@
++{{- if .Values.udp -}}
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  labels:
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++{{- if .Values.controller.udp.annotations }}
++  annotations: {{ toYaml .Values.controller.udp.annotations | nindent 4 }}
++{{- end }}
++  name: {{ include "ingress-nginx.fullname" . }}-udp
++data: {{ tpl (toYaml .Values.udp) . | nindent 2 }}
++{{- end }}
+diff --git a/charts/ingress-nginx/templates/controller-configmap.yaml b/charts/ingress-nginx/templates/controller-configmap.yaml
+index 16f0beb53..1170ad6df 100644
+--- a/charts/ingress-nginx/templates/controller-configmap.yaml
++++ b/charts/ingress-nginx/templates/controller-configmap.yaml
+@@ -1,24 +1,22 @@
+-{{- if or .Values.controller.config (or (or .Values.controller.proxySetHeaders .Values.controller.headers) .Values.controller.addHeaders) }}
++{{- if or .Values.controller.config (or (or .Values.controller.proxySetHeaders .Values.controller.headers) .Values.controller.addHeaders) -}}
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  annotations:
+-{{ toYaml .Values.controller.configAnnotations | indent 4}}
+-  name: {{ template "nginx-ingress.controller.fullname" . }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++{{- if .Values.controller.configAnnotations }}
++  annotations: {{ toYaml .Values.controller.configAnnotations | nindent 4 }}
++{{- end }}
++  name: {{ include "ingress-nginx.controller.fullname" . }}
+ data:
+ {{- if .Values.controller.addHeaders }}
+-  add-headers: {{ .Release.Namespace }}/{{ template "nginx-ingress.fullname" . }}-custom-add-headers
++  add-headers: {{ .Release.Namespace }}/{{ include "ingress-nginx.fullname" . }}-custom-add-headers
+ {{- end }}
+ {{- if or .Values.controller.proxySetHeaders .Values.controller.headers }}
+-  proxy-set-headers: {{ .Release.Namespace }}/{{ template "nginx-ingress.fullname" . }}-custom-proxy-headers
++  proxy-set-headers: {{ .Release.Namespace }}/{{ include "ingress-nginx.fullname" . }}-custom-proxy-headers
+ {{- end }}
+ {{- if .Values.controller.config }}
+-{{ toYaml .Values.controller.config | indent 2 }}
++  {{ toYaml .Values.controller.config | nindent 2 }}
+ {{- end }}
+ {{- end }}
+diff --git a/charts/ingress-nginx/templates/controller-daemonset.yaml b/charts/ingress-nginx/templates/controller-daemonset.yaml
+index 36517c466..d69e6df9f 100644
+--- a/charts/ingress-nginx/templates/controller-daemonset.yaml
++++ b/charts/ingress-nginx/templates/controller-daemonset.yaml
+@@ -1,71 +1,60 @@
+-{{- if or (eq .Values.controller.kind "DaemonSet") (eq .Values.controller.kind "Both") }}
+-{{- $useHostPort := .Values.controller.daemonset.useHostPort -}}
+-{{- $hostPorts := .Values.controller.daemonset.hostPorts -}}
+-apiVersion: {{ template "deployment.apiVersion" . }}
++{{- if or (eq .Values.controller.kind "DaemonSet") (eq .Values.controller.kind "Both") -}}
++apiVersion: {{ template "daemonset.apiVersion" . }}
+ kind: DaemonSet
+ metadata:
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.controller.fullname" . }}
+-  annotations:    
+-{{ toYaml .Values.controller.deploymentAnnotations | indent 4}}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++  name: {{ include "ingress-nginx.controller.fullname" . }}
++{{- if .Values.controller.daemonsetAnnotations }}
++  annotations: {{ toYaml .Values.controller.daemonsetAnnotations | nindent 4 }}
++{{- end }}
+ spec:
+   selector:
+     matchLabels:
+-      app: {{ template "nginx-ingress.name" . }}
+-      release: {{ .Release.Name }}
++      {{- include "ingress-nginx.selectorLabels" . | nindent 6 }}
++      app.kubernetes.io/component: controller
+   revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+-  updateStrategy:
+-{{ toYaml .Values.controller.updateStrategy | indent 4 }}
++{{- if .Values.controller.updateStrategy }}
++  updateStrategy: {{ toYaml .Values.controller.updateStrategy | nindent 4 }}
++{{- end }}
+   minReadySeconds: {{ .Values.controller.minReadySeconds }}
+   template:
+     metadata:
+-      {{- if .Values.controller.podAnnotations }}
+-      annotations:
+-      {{- range $key, $value := .Values.controller.podAnnotations }}
+-        {{ $key }}: {{ $value | quote }}
+-      {{- end }}
+-      {{- end }}
++    {{- if .Values.controller.podAnnotations }}
++      annotations: {{ toYaml .Values.controller.podAnnotations | nindent 8 }}
++    {{- end }}
+       labels:
+-        app: {{ template "nginx-ingress.name" . }}
+-        component: "{{ .Values.controller.name }}"
+-        release: {{ .Release.Name }}
+-        {{- if .Values.controller.podLabels }}
+-{{ toYaml .Values.controller.podLabels | indent 8}}
+-        {{- end }}
++        {{- include "ingress-nginx.selectorLabels" . | nindent 8 }}
++        app.kubernetes.io/component: controller
++      {{- if .Values.controller.podLabels }}
++        {{- toYaml .Values.controller.podLabels | nindent 8 }}
++      {{- end }}
+     spec:
+-{{- if .Values.controller.dnsConfig }}
+-      dnsConfig:
+-{{ toYaml .Values.controller.dnsConfig | indent 8 }}
+-{{- end }}
++    {{- if .Values.controller.dnsConfig }}
++      dnsConfig: {{ toYaml .Values.controller.dnsConfig | nindent 8 }}
++    {{- end }}
+       dnsPolicy: {{ .Values.controller.dnsPolicy }}
+-      {{- if .Values.imagePullSecrets }}
+-      imagePullSecrets:
+-{{ toYaml .Values.imagePullSecrets | indent 8 }}
+-      {{- end }}
+-{{- if .Values.controller.priorityClassName }}
+-      priorityClassName: "{{ .Values.controller.priorityClassName }}"
+-{{- end }}
+-      {{- if .Values.controller.podSecurityContext }}
+-      securityContext:
+-{{ toYaml .Values.controller.podSecurityContext | indent 8 }}
+-      {{- end }}
++    {{- if .Values.imagePullSecrets }}
++      imagePullSecrets: {{ toYaml .Values.imagePullSecrets | nindent 8 }}
++    {{- end }}
++    {{- if .Values.controller.priorityClassName }}
++      priorityClassName: {{ .Values.controller.priorityClassName }}
++    {{- end }}
++    {{- if .Values.controller.podSecurityContext }}
++      securityContext: {{ toYaml .Values.controller.podSecurityContext | nindent 8 }}
++    {{- end }}
+       containers:
+-        - name: {{ template "nginx-ingress.name" . }}-{{ .Values.controller.name }}
+-          image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag }}"
+-          imagePullPolicy: "{{ .Values.controller.image.pullPolicy }}"
+-          {{- if .Values.controller.lifecycle }}
+-          lifecycle:
+-{{ toYaml .Values.controller.lifecycle | indent 12 }}
+-          {{- end }}
++        - name: {{ template "ingress-nginx.name" . }}-{{ .Values.controller.name }}
++          image: {{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag }}
++          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
++        {{- if .Values.controller.lifecycle }}
++          lifecycle: {{ toYaml .Values.controller.lifecycle | nindent 12 }}
++        {{- end }}
+           args:
+             - /nginx-ingress-controller
+           {{- if .Values.defaultBackend.enabled }}
+-            - --default-backend-service={{ .Release.Namespace }}/{{ template "nginx-ingress.defaultBackend.fullname" . }}
++            - --default-backend-service={{ .Release.Namespace }}/{{ include "ingress-nginx.defaultBackend.fullname" . }}
+           {{- else }}
+             {{- if (semverCompare "<0.21.0" .Values.controller.image.tag) }}
+             - --default-backend-service={{ required ".Values.controller.defaultBackendService is required if .Values.defaultBackend.enabled=false and .Values.controller.image.tag < 0.21.0" .Values.controller.defaultBackendService }}
+@@ -74,7 +63,7 @@ spec:
+             {{- end }}
+           {{- end }}
+           {{- if and (semverCompare ">=0.9.0-beta.1" .Values.controller.image.tag) .Values.controller.publishService.enabled }}
+-            - --publish-service={{ template "nginx-ingress.controller.publishServicePath" . }}
++            - --publish-service={{ template "ingress-nginx.controller.publishServicePath" . }}
+           {{- end }}
+           {{- if (semverCompare ">=0.9.0-beta.1" .Values.controller.image.tag) }}
+             - --election-id={{ .Values.controller.electionID }}
+@@ -83,20 +72,20 @@ spec:
+             - --ingress-class={{ .Values.controller.ingressClass }}
+           {{- end }}
+           {{- if (semverCompare ">=0.9.0-beta.1" .Values.controller.image.tag) }}
+-            - --configmap={{ .Release.Namespace }}/{{ template "nginx-ingress.controller.fullname" . }}
++            - --configmap={{ .Release.Namespace }}/{{ include "ingress-nginx.controller.fullname" . }}
+           {{- else }}
+-            - --nginx-configmap={{ .Release.Namespace }}/{{ template "nginx-ingress.controller.fullname" . }}
++            - --nginx-configmap={{ .Release.Namespace }}/{{ include "ingress-nginx.controller.fullname" . }}
+           {{- end }}
+           {{- if .Values.tcp }}
+-            - --tcp-services-configmap={{ .Release.Namespace }}/{{ template "nginx-ingress.fullname" . }}-tcp
++            - --tcp-services-configmap={{ .Release.Namespace }}/{{ include "ingress-nginx.fullname" . }}-tcp
+           {{- end }}
+           {{- if .Values.udp }}
+-            - --udp-services-configmap={{ .Release.Namespace }}/{{ template "nginx-ingress.fullname" . }}-udp
++            - --udp-services-configmap={{ .Release.Namespace }}/{{ include "ingress-nginx.fullname" . }}-udp
+           {{- end }}
+           {{- if .Values.controller.scope.enabled }}
+             - --watch-namespace={{ default .Release.Namespace .Values.controller.scope.namespace }}
+           {{- end }}
+-          {{- if and (.Values.controller.reportNodeInternalIp) (.Values.controller.hostNetwork)}}
++          {{- if and .Values.controller.reportNodeInternalIp .Values.controller.hostNetwork }}
+             - --report-node-internal-ip-address={{ .Values.controller.reportNodeInternalIp }}
+           {{- end }}
+           {{- if .Values.controller.admissionWebhooks.enabled }}
+@@ -114,7 +103,7 @@ spec:
+             - --{{ $key }}
+             {{- end }}
+           {{- end }}
+-          {{- if (semverCompare ">=0.16.0" .Values.controller.image.tag) }}
++        {{- if (semverCompare ">=0.16.0" .Values.controller.image.tag) }}
+           securityContext:
+             capabilities:
+                 drop:
+@@ -123,7 +112,7 @@ spec:
+                 - NET_BIND_SERVICE
+             runAsUser: {{ .Values.controller.image.runAsUser }}
+             allowPrivilegeEscalation: {{ .Values.controller.image.allowPrivilegeEscalation }}
+-          {{- end }}
++        {{- end }}
+           env:
+             - name: POD_NAME
+               valueFrom:
+@@ -134,7 +123,7 @@ spec:
+                 fieldRef:
+                   fieldPath: metadata.namespace
+           {{- if .Values.controller.extraEnvs }}
+-{{ toYaml .Values.controller.extraEnvs | indent 12 }}
++            {{- toYaml .Values.controller.extraEnvs | nindent 12 }}
+           {{- end }}
+           livenessProbe:
+             httpGet:
+@@ -146,13 +135,23 @@ spec:
+             timeoutSeconds: {{ .Values.controller.livenessProbe.timeoutSeconds }}
+             successThreshold: {{ .Values.controller.livenessProbe.successThreshold }}
+             failureThreshold: {{ .Values.controller.livenessProbe.failureThreshold }}
++          readinessProbe:
++            httpGet:
++              path: /healthz
++              port: {{ .Values.controller.readinessProbe.port }}
++              scheme: HTTP
++            initialDelaySeconds: {{ .Values.controller.readinessProbe.initialDelaySeconds }}
++            periodSeconds: {{ .Values.controller.readinessProbe.periodSeconds }}
++            timeoutSeconds: {{ .Values.controller.readinessProbe.timeoutSeconds }}
++            successThreshold: {{ .Values.controller.readinessProbe.successThreshold }}
++            failureThreshold: {{ .Values.controller.readinessProbe.failureThreshold }}
+           ports:
+           {{- range $key, $value := .Values.controller.containerPort }}
+             - name: {{ $key }}
+               containerPort: {{ $value }}
+               protocol: TCP
+-              {{- if $useHostPort }}
+-              hostPort: {{ index $hostPorts $key | default $value }}
++              {{- if $.Values.controller.daemonset.useHostPort }}
++              hostPort: {{ index $.Values.controller.daemonset.hostPorts $key | default $value }}
+               {{- end }}
+           {{- end }}
+           {{- if .Values.controller.metrics.enabled }}
+@@ -166,88 +165,77 @@ spec:
+               protocol: TCP
+           {{- end }}
+           {{- range $key, $value := .Values.tcp }}
+-            - name: "{{ $key }}-tcp"
++            - name: {{ $key }}-tcp
+               containerPort: {{ $key }}
+               protocol: TCP
+-              {{- if $useHostPort }}
++              {{- if $.Values.controller.daemonset.useHostPort }}
+               hostPort: {{ $key }}
+               {{- end }}
+           {{- end }}
+           {{- range $key, $value := .Values.udp }}
+-            - name: "{{ $key }}-udp"
++            - name: {{ $key }}-udp
+               containerPort: {{ $key }}
+               protocol: UDP
+-              {{- if $useHostPort }}
++              {{- if $.Values.controller.daemonset.useHostPort }}
+               hostPort: {{ $key }}
+               {{- end }}
+           {{- end }}
+-          readinessProbe:
+-            httpGet:
+-              path: /healthz
+-              port: {{ .Values.controller.readinessProbe.port }}
+-              scheme: HTTP
+-            initialDelaySeconds: {{ .Values.controller.readinessProbe.initialDelaySeconds }}
+-            periodSeconds: {{ .Values.controller.readinessProbe.periodSeconds }}
+-            timeoutSeconds: {{ .Values.controller.readinessProbe.timeoutSeconds }}
+-            successThreshold: {{ .Values.controller.readinessProbe.successThreshold }}
+-            failureThreshold: {{ .Values.controller.readinessProbe.failureThreshold }}
+-{{- if (or .Values.controller.customTemplate.configMapName .Values.controller.extraVolumeMounts .Values.controller.admissionWebhooks.enabled) }}
++        {{- if (or .Values.controller.customTemplate.configMapName .Values.controller.extraVolumeMounts .Values.controller.admissionWebhooks.enabled) }}
+           volumeMounts:
+-{{- end }}
+-{{- if .Values.controller.customTemplate.configMapName }}
++          {{- if .Values.controller.customTemplate.configMapName }}
+             - mountPath: /etc/nginx/template
+               name: nginx-template-volume
+               readOnly: true
+-{{- end }}
+-{{- if .Values.controller.admissionWebhooks.enabled }}
++          {{- end }}
++          {{- if .Values.controller.admissionWebhooks.enabled }}
+             - name: webhook-cert
+-              mountPath: "/usr/local/certificates/"
++              mountPath: /usr/local/certificates/
+               readOnly: true
+-{{- end }}
+-{{- if .Values.controller.extraVolumeMounts }}
+-{{ toYaml .Values.controller.extraVolumeMounts | indent 12}}
+-{{- end }}
+-          resources:
+-{{ toYaml .Values.controller.resources | indent 12 }}
+-{{- if .Values.controller.extraContainers }}
+-{{ toYaml .Values.controller.extraContainers | indent 8}}
+-{{- end }}
+-{{- if .Values.controller.extraInitContainers }}
+-      initContainers:
+-{{ toYaml .Values.controller.extraInitContainers | indent 8}}
+-{{- end }}
++          {{- end }}
++          {{- if .Values.controller.extraVolumeMounts }}
++            {{- toYaml .Values.controller.extraVolumeMounts | nindent 12 }}
++          {{- end }}
++        {{- end }}
++        {{- if .Values.controller.resources }}
++          resources: {{ toYaml .Values.controller.resources | nindent 12 }}
++        {{- end }}
++      {{- if .Values.controller.extraContainers }}
++        {{ toYaml .Values.controller.extraContainers | nindent 8 }}
++      {{- end }}
++    {{- if .Values.controller.extraInitContainers }}
++      initContainers: {{ toYaml .Values.controller.extraInitContainers | nindent 8 }}
++    {{- end }}
++    {{- if .Values.controller.hostNetwork }}
+       hostNetwork: {{ .Values.controller.hostNetwork }}
++    {{- end }}
+     {{- if .Values.controller.nodeSelector }}
+-      nodeSelector:
+-{{ toYaml .Values.controller.nodeSelector | indent 8 }}
++      nodeSelector: {{ toYaml .Values.controller.nodeSelector | nindent 8 }}
+     {{- end }}
+     {{- if .Values.controller.tolerations }}
+-      tolerations:
+-{{ toYaml .Values.controller.tolerations | indent 8 }}
++      tolerations: {{ toYaml .Values.controller.tolerations | nindent 8 }}
+     {{- end }}
+     {{- if .Values.controller.affinity }}
+-      affinity:
+-{{ toYaml .Values.controller.affinity | indent 8 }}
++      affinity: {{ toYaml .Values.controller.affinity | nindent 8 }}
+     {{- end }}
+-      serviceAccountName: {{ template "nginx-ingress.serviceAccountName" . }}
+-      terminationGracePeriodSeconds: 60
+-{{- if (or .Values.controller.customTemplate.configMapName .Values.controller.extraVolumeMounts .Values.controller.admissionWebhooks.enabled .Values.controller.extraVolumes) }}
++      serviceAccountName: {{ template "ingress-nginx.serviceAccountName" . }}
++      terminationGracePeriodSeconds: {{ .Values.controller.terminationGracePeriodSeconds }}
++    {{- if (or .Values.controller.customTemplate.configMapName .Values.controller.extraVolumeMounts .Values.controller.admissionWebhooks.enabled .Values.controller.extraVolumes) }}
+       volumes:
+-{{- end }}
+-{{- if .Values.controller.customTemplate.configMapName }}
++      {{- if .Values.controller.customTemplate.configMapName }}
+         - name: nginx-template-volume
+           configMap:
+             name: {{ .Values.controller.customTemplate.configMapName }}
+             items:
+             - key: {{ .Values.controller.customTemplate.configMapKey }}
+               path: nginx.tmpl
+-{{- end }}
+-{{- if .Values.controller.admissionWebhooks.enabled }}
++      {{- end }}
++      {{- if .Values.controller.admissionWebhooks.enabled }}
+         - name: webhook-cert
+           secret:
+-            secretName: {{ template "nginx-ingress.fullname". }}-admission
+-{{- end }}
+-{{- if .Values.controller.extraVolumes }}
+-{{ toYaml .Values.controller.extraVolumes | indent 8}}
+-{{- end }}
++            secretName: {{ include "ingress-nginx.fullname" . }}-admission
++      {{- end }}
++      {{- if .Values.controller.extraVolumes }}
++        {{ toYaml .Values.controller.extraVolumes | nindent 8 }}
++      {{- end }}
++    {{- end }}
+ {{- end }}
+diff --git a/charts/ingress-nginx/templates/controller-deployment.yaml b/charts/ingress-nginx/templates/controller-deployment.yaml
+index 1a00a4b8e..8f73b278b 100644
+--- a/charts/ingress-nginx/templates/controller-deployment.yaml
++++ b/charts/ingress-nginx/templates/controller-deployment.yaml
+@@ -1,72 +1,63 @@
+-{{- if or (eq .Values.controller.kind "Deployment") (eq .Values.controller.kind "Both") }}
++{{- if or (eq .Values.controller.kind "Deployment") (eq .Values.controller.kind "Both") -}}
+ apiVersion: {{ template "deployment.apiVersion" . }}
+ kind: Deployment
+ metadata:
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.controller.fullname" . }}
+-  annotations:
+-{{ toYaml .Values.controller.deploymentAnnotations | indent 4}}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++  name: {{ include "ingress-nginx.controller.fullname" . }}
++{{- if .Values.controller.deploymentAnnotations }}
++  annotations: {{ toYaml .Values.controller.deploymentAnnotations | nindent 4 }}
++{{- end }}
+ spec:
+   selector:
+     matchLabels:
+-      app: {{ template "nginx-ingress.name" . }}
+-      release: {{ .Release.Name }}
++      {{- include "ingress-nginx.selectorLabels" . | nindent 6 }}
++      app.kubernetes.io/component: controller
+ {{- if not .Values.controller.autoscaling.enabled }}
+   replicas: {{ .Values.controller.replicaCount }}
+ {{- end }}
+   revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+-  strategy:
+-{{ toYaml .Values.controller.updateStrategy | indent 4 }}
++{{- if .Values.controller.updateStrategy }}
++  strategy: {{ toYaml .Values.controller.updateStrategy | nindent 4 }}
++{{- end }}
+   minReadySeconds: {{ .Values.controller.minReadySeconds }}
+   template:
+     metadata:
+-      {{- if .Values.controller.podAnnotations }}
+-      annotations:
+-      {{- range $key, $value := .Values.controller.podAnnotations }}
+-        {{ $key }}: {{ $value | quote }}
+-      {{- end }}
+-      {{- end }}
++    {{- if .Values.controller.podAnnotations }}
++      annotations: {{ toYaml .Values.controller.podAnnotations | nindent 8 }}
++    {{- end }}
+       labels:
+-        app: {{ template "nginx-ingress.name" . }}
+-        component: "{{ .Values.controller.name }}"
+-        release: {{ .Release.Name }}
+-        {{- if .Values.controller.podLabels }}
+-{{ toYaml .Values.controller.podLabels | indent 8 }}
+-        {{- end }}
++        {{- include "ingress-nginx.selectorLabels" . | nindent 8 }}
++        app.kubernetes.io/component: controller
++      {{- if .Values.controller.podLabels }}
++        {{- toYaml .Values.controller.podLabels | nindent 8 }}
++      {{- end }}
+     spec:
+-{{- if .Values.controller.dnsConfig }}
+-      dnsConfig:
+-{{ toYaml .Values.controller.dnsConfig | indent 8 }}
+-{{- end }}
++    {{- if .Values.controller.dnsConfig }}
++      dnsConfig: {{ toYaml .Values.controller.dnsConfig | nindent 8 }}
++    {{- end }}
+       dnsPolicy: {{ .Values.controller.dnsPolicy }}
+-      {{- if .Values.imagePullSecrets }}
+-      imagePullSecrets:
+-{{ toYaml .Values.imagePullSecrets | indent 8 }}
+-      {{- end }}
+-{{- if .Values.controller.priorityClassName }}
+-      priorityClassName: "{{ .Values.controller.priorityClassName }}"
+-{{- end }}
+-      {{- if .Values.controller.podSecurityContext }}
+-      securityContext:
+-{{ toYaml .Values.controller.podSecurityContext | indent 8 }}
+-      {{- end }}
++    {{- if .Values.imagePullSecrets }}
++      imagePullSecrets: {{ toYaml .Values.imagePullSecrets | nindent 8 }}
++    {{- end }}
++    {{- if .Values.controller.priorityClassName }}
++      priorityClassName: {{ .Values.controller.priorityClassName }}
++    {{- end }}
++    {{- if .Values.controller.podSecurityContext }}
++      securityContext: {{ toYaml .Values.controller.podSecurityContext | nindent 8 }}
++    {{- end }}
+       containers:
+-        - name: {{ template "nginx-ingress.name" . }}-{{ .Values.controller.name }}
+-          image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag }}"
+-          imagePullPolicy: "{{ .Values.controller.image.pullPolicy }}"
+-          {{- if .Values.controller.lifecycle }}
+-          lifecycle:
+-{{ toYaml .Values.controller.lifecycle | indent 12 }}
+-          {{- end }}
++        - name: {{ template "ingress-nginx.name" . }}-{{ .Values.controller.name }}
++          image: {{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag }}
++          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
++        {{- if .Values.controller.lifecycle }}
++          lifecycle: {{ toYaml .Values.controller.lifecycle | nindent 12 }}
++        {{- end }}
+           args:
+             - /nginx-ingress-controller
+           {{- if .Values.defaultBackend.enabled }}
+-            - --default-backend-service={{ .Release.Namespace }}/{{ template "nginx-ingress.defaultBackend.fullname" . }}
++            - --default-backend-service={{ .Release.Namespace }}/{{ include "ingress-nginx.defaultBackend.fullname" . }}
+           {{- else }}
+             {{- if (semverCompare "<0.21.0" .Values.controller.image.tag) }}
+             - --default-backend-service={{ required ".Values.controller.defaultBackendService is required if .Values.defaultBackend.enabled=false and .Values.controller.image.tag < 0.21.0" .Values.controller.defaultBackendService }}
+@@ -75,7 +66,7 @@ spec:
+             {{- end }}
+           {{- end }}
+           {{- if and (semverCompare ">=0.9.0-beta.1" .Values.controller.image.tag) .Values.controller.publishService.enabled }}
+-            - --publish-service={{ template "nginx-ingress.controller.publishServicePath" . }}
++            - --publish-service={{ template "ingress-nginx.controller.publishServicePath" . }}
+           {{- end }}
+           {{- if (semverCompare ">=0.9.0-beta.1" .Values.controller.image.tag) }}
+             - --election-id={{ .Values.controller.electionID }}
+@@ -84,20 +75,20 @@ spec:
+             - --ingress-class={{ .Values.controller.ingressClass }}
+           {{- end }}
+           {{- if (semverCompare ">=0.9.0-beta.1" .Values.controller.image.tag) }}
+-            - --configmap={{ default .Release.Namespace .Values.controller.configMapNamespace }}/{{ template "nginx-ingress.controller.fullname" . }}
++            - --configmap={{ default .Release.Namespace .Values.controller.configMapNamespace }}/{{ include "ingress-nginx.controller.fullname" . }}
+           {{- else }}
+-            - --nginx-configmap={{ default .Release.Namespace .Values.controller.configMapNamespace }}/{{ template "nginx-ingress.controller.fullname" . }}
++            - --nginx-configmap={{ default .Release.Namespace .Values.controller.configMapNamespace }}/{{ include "ingress-nginx.controller.fullname" . }}
+           {{- end }}
+           {{- if .Values.tcp }}
+-            - --tcp-services-configmap={{ default .Release.Namespace .Values.controller.tcp.configMapNamespace }}/{{ template "nginx-ingress.fullname" . }}-tcp
++            - --tcp-services-configmap={{ default .Release.Namespace .Values.controller.tcp.configMapNamespace }}/{{ include "ingress-nginx.fullname" . }}-tcp
+           {{- end }}
+           {{- if .Values.udp }}
+-            - --udp-services-configmap={{ default .Release.Namespace .Values.controller.udp.configMapNamespace }}/{{ template "nginx-ingress.fullname" . }}-udp
++            - --udp-services-configmap={{ default .Release.Namespace .Values.controller.udp.configMapNamespace }}/{{ include "ingress-nginx.fullname" . }}-udp
+           {{- end }}
+           {{- if .Values.controller.scope.enabled }}
+             - --watch-namespace={{ default .Release.Namespace .Values.controller.scope.namespace }}
+           {{- end }}
+-          {{- if and (.Values.controller.reportNodeInternalIp) (.Values.controller.hostNetwork) }}
++          {{- if and .Values.controller.reportNodeInternalIp .Values.controller.hostNetwork }}
+             - --report-node-internal-ip-address={{ .Values.controller.reportNodeInternalIp }}
+           {{- end }}
+           {{- if .Values.controller.admissionWebhooks.enabled }}
+@@ -115,7 +106,7 @@ spec:
+             - --{{ $key }}
+             {{- end }}
+           {{- end }}
+-          {{- if (semverCompare ">=0.16.0" .Values.controller.image.tag) }}
++        {{- if (semverCompare ">=0.16.0" .Values.controller.image.tag) }}
+           securityContext:
+             capabilities:
+                 drop:
+@@ -124,7 +115,7 @@ spec:
+                 - NET_BIND_SERVICE
+             runAsUser: {{ .Values.controller.image.runAsUser }}
+             allowPrivilegeEscalation: {{ .Values.controller.image.allowPrivilegeEscalation }}
+-          {{- end }}
++        {{- end }}
+           env:
+             - name: POD_NAME
+               valueFrom:
+@@ -135,7 +126,7 @@ spec:
+                 fieldRef:
+                   fieldPath: metadata.namespace
+           {{- if .Values.controller.extraEnvs }}
+-{{ toYaml .Values.controller.extraEnvs | indent 12 }}
++            {{- toYaml .Values.controller.extraEnvs | nindent 12 }}
+           {{- end }}
+           livenessProbe:
+             httpGet:
+@@ -147,6 +138,16 @@ spec:
+             timeoutSeconds: {{ .Values.controller.livenessProbe.timeoutSeconds }}
+             successThreshold: {{ .Values.controller.livenessProbe.successThreshold }}
+             failureThreshold: {{ .Values.controller.livenessProbe.failureThreshold }}
++          readinessProbe:
++            httpGet:
++              path: /healthz
++              port: {{ .Values.controller.readinessProbe.port }}
++              scheme: HTTP
++            initialDelaySeconds: {{ .Values.controller.readinessProbe.initialDelaySeconds }}
++            periodSeconds: {{ .Values.controller.readinessProbe.periodSeconds }}
++            timeoutSeconds: {{ .Values.controller.readinessProbe.timeoutSeconds }}
++            successThreshold: {{ .Values.controller.readinessProbe.successThreshold }}
++            failureThreshold: {{ .Values.controller.readinessProbe.failureThreshold }}
+           ports:
+           {{- range $key, $value := .Values.controller.containerPort }}
+             - name: {{ $key }}
+@@ -164,82 +165,71 @@ spec:
+               protocol: TCP
+           {{- end }}
+           {{- range $key, $value := .Values.tcp }}
+-            - name: "{{ $key }}-tcp"
++            - name: {{ $key }}-tcp
+               containerPort: {{ $key }}
+               protocol: TCP
+           {{- end }}
+           {{- range $key, $value := .Values.udp }}
+-            - name: "{{ $key }}-udp"
++            - name: {{ $key }}-udp
+               containerPort: {{ $key }}
+               protocol: UDP
+           {{- end }}
+-          readinessProbe:
+-            httpGet:
+-              path: /healthz
+-              port: {{ .Values.controller.readinessProbe.port }}
+-              scheme: HTTP
+-            initialDelaySeconds: {{ .Values.controller.readinessProbe.initialDelaySeconds }}
+-            periodSeconds: {{ .Values.controller.readinessProbe.periodSeconds }}
+-            timeoutSeconds: {{ .Values.controller.readinessProbe.timeoutSeconds }}
+-            successThreshold: {{ .Values.controller.readinessProbe.successThreshold }}
+-            failureThreshold: {{ .Values.controller.readinessProbe.failureThreshold }}
+-{{- if (or .Values.controller.customTemplate.configMapName .Values.controller.extraVolumeMounts .Values.controller.admissionWebhooks.enabled) }}
++        {{- if (or .Values.controller.customTemplate.configMapName .Values.controller.extraVolumeMounts .Values.controller.admissionWebhooks.enabled) }}
+           volumeMounts:
+-{{- end }}
+-{{- if .Values.controller.customTemplate.configMapName }}
++          {{- if .Values.controller.customTemplate.configMapName }}
+             - mountPath: /etc/nginx/template
+               name: nginx-template-volume
+               readOnly: true
+-{{- end }}
+-{{- if .Values.controller.admissionWebhooks.enabled }}
++          {{- end }}
++          {{- if .Values.controller.admissionWebhooks.enabled }}
+             - name: webhook-cert
+-              mountPath: "/usr/local/certificates/"
++              mountPath: /usr/local/certificates/
+               readOnly: true
+-{{- end }}
+-{{- if .Values.controller.extraVolumeMounts }}
+-{{ toYaml .Values.controller.extraVolumeMounts | indent 12}}
+-{{- end }}
+-          resources:
+-{{ toYaml .Values.controller.resources | indent 12 }}
+-{{- if .Values.controller.extraContainers }}
+-{{ toYaml .Values.controller.extraContainers | indent 8}}
+-{{- end }}
+-{{- if .Values.controller.extraInitContainers }}
+-      initContainers:
+-{{ toYaml .Values.controller.extraInitContainers | indent 8}}
+-{{- end }}
++          {{- end }}
++          {{- if .Values.controller.extraVolumeMounts }}
++            {{- toYaml .Values.controller.extraVolumeMounts | nindent 12 }}
++          {{- end }}
++        {{- end }}
++        {{- if .Values.controller.resources }}
++          resources: {{ toYaml .Values.controller.resources | nindent 12 }}
++        {{- end }}
++      {{- if .Values.controller.extraContainers }}
++        {{ toYaml .Values.controller.extraContainers | nindent 8 }}
++      {{- end }}
++    {{- if .Values.controller.extraInitContainers }}
++      initContainers: {{ toYaml .Values.controller.extraInitContainers | nindent 8 }}
++    {{- end }}
++    {{- if .Values.controller.hostNetwork }}
+       hostNetwork: {{ .Values.controller.hostNetwork }}
++    {{- end }}
+     {{- if .Values.controller.nodeSelector }}
+-      nodeSelector:
+-{{ toYaml .Values.controller.nodeSelector | indent 8 }}
++      nodeSelector: {{ toYaml .Values.controller.nodeSelector | nindent 8 }}
+     {{- end }}
+     {{- if .Values.controller.tolerations }}
+-      tolerations:
+-{{ toYaml .Values.controller.tolerations | indent 8 }}
++      tolerations: {{ toYaml .Values.controller.tolerations | nindent 8 }}
+     {{- end }}
+     {{- if .Values.controller.affinity }}
+-      affinity:
+-{{ toYaml .Values.controller.affinity | indent 8 }}
++      affinity: {{ toYaml .Values.controller.affinity | nindent 8 }}
+     {{- end }}
+-      serviceAccountName: {{ template "nginx-ingress.serviceAccountName" . }}
++      serviceAccountName: {{ template "ingress-nginx.serviceAccountName" . }}
+       terminationGracePeriodSeconds: {{ .Values.controller.terminationGracePeriodSeconds }}
+-{{- if (or .Values.controller.customTemplate.configMapName .Values.controller.extraVolumeMounts .Values.controller.admissionWebhooks.enabled .Values.controller.extraVolumes) }}
++    {{- if (or .Values.controller.customTemplate.configMapName .Values.controller.extraVolumeMounts .Values.controller.admissionWebhooks.enabled .Values.controller.extraVolumes) }}
+       volumes:
+-{{- end }}
+-{{- if .Values.controller.customTemplate.configMapName }}
++      {{- if .Values.controller.customTemplate.configMapName }}
+         - name: nginx-template-volume
+           configMap:
+             name: {{ .Values.controller.customTemplate.configMapName }}
+             items:
+             - key: {{ .Values.controller.customTemplate.configMapKey }}
+               path: nginx.tmpl
+-{{- end }}
+-{{- if .Values.controller.admissionWebhooks.enabled }}
++      {{- end }}
++      {{- if .Values.controller.admissionWebhooks.enabled }}
+         - name: webhook-cert
+           secret:
+-            secretName: {{ template "nginx-ingress.fullname". }}-admission
+-{{- end }}
+-{{- if .Values.controller.extraVolumes }}
+-{{ toYaml .Values.controller.extraVolumes | indent 8}}
+-{{- end }}
++            secretName: {{ include "ingress-nginx.fullname" . }}-admission
++      {{- end }}
++      {{- if .Values.controller.extraVolumes }}
++        {{ toYaml .Values.controller.extraVolumes | nindent 8 }}
++      {{- end }}
++    {{- end }}
+ {{- end }}
+diff --git a/charts/ingress-nginx/templates/controller-hpa.yaml b/charts/ingress-nginx/templates/controller-hpa.yaml
+index dc993ebae..4fd2ce744 100644
+--- a/charts/ingress-nginx/templates/controller-hpa.yaml
++++ b/charts/ingress-nginx/templates/controller-hpa.yaml
+@@ -1,34 +1,29 @@
+-{{- if or (eq .Values.controller.kind "Deployment") (eq .Values.controller.kind "Both") }}
+-{{- if .Values.controller.autoscaling.enabled }}
++{{- if and .Values.controller.autoscaling.enabled (or (eq .Values.controller.kind "Deployment") (eq .Values.controller.kind "Both")) -}}
+ apiVersion: autoscaling/v2beta1
+ kind: HorizontalPodAutoscaler
+ metadata:
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.controller.fullname" . }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++  name: {{ include "ingress-nginx.controller.fullname" . }}
+ spec:
+   scaleTargetRef:
+     apiVersion: {{ template "deployment.apiVersion" . }}
+     kind: Deployment
+-    name: {{ template "nginx-ingress.controller.fullname" . }}
++    name: {{ include "ingress-nginx.controller.fullname" . }}
+   minReplicas: {{ .Values.controller.autoscaling.minReplicas }}
+   maxReplicas: {{ .Values.controller.autoscaling.maxReplicas }}
+   metrics:
+-{{- with .Values.controller.autoscaling.targetCPUUtilizationPercentage }}
++  {{- with .Values.controller.autoscaling.targetCPUUtilizationPercentage }}
+     - type: Resource
+       resource:
+         name: cpu
+         targetAverageUtilization: {{ . }}
+-{{- end }}
+-{{- with .Values.controller.autoscaling.targetMemoryUtilizationPercentage }}
++  {{- end }}
++  {{- with .Values.controller.autoscaling.targetMemoryUtilizationPercentage }}
+     - type: Resource
+       resource:
+         name: memory
+         targetAverageUtilization: {{ . }}
+-{{- end }}
+-{{- end }}
++  {{- end }}
+ {{- end }}
+diff --git a/charts/ingress-nginx/templates/controller-metrics-service.yaml b/charts/ingress-nginx/templates/controller-metrics-service.yaml
+deleted file mode 100644
+index f38dca01d..000000000
+--- a/charts/ingress-nginx/templates/controller-metrics-service.yaml
++++ /dev/null
+@@ -1,47 +0,0 @@
+-{{- if .Values.controller.metrics.enabled }}
+-apiVersion: v1
+-kind: Service
+-metadata:
+-{{- if .Values.controller.metrics.service.annotations }}
+-  annotations:
+-  {{- range $key, $value := .Values.controller.metrics.service.annotations }}
+-    {{ $key }}: {{ $value | quote }}
+-  {{- end }}
+-{{- end }}
+-  labels:
+-{{- if .Values.controller.metrics.service.labels }}
+-{{ toYaml .Values.controller.metrics.service.labels | indent 4 }}
+-{{- end }}
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.controller.fullname" . }}-metrics
+-spec:
+-{{- if not .Values.controller.metrics.service.omitClusterIP }}
+-  {{- with .Values.controller.metrics.service.clusterIP }}
+-  clusterIP: {{ if eq "-" . }}""{{ else }}{{ . | quote }}{{ end }}
+-  {{- end }}
+-{{- end }}
+-{{- if .Values.controller.metrics.service.externalIPs }}
+-  externalIPs:
+-{{ toYaml .Values.controller.metrics.service.externalIPs | indent 4 }}
+-{{- end }}
+-{{- if .Values.controller.metrics.service.loadBalancerIP }}
+-  loadBalancerIP: "{{ .Values.controller.metrics.service.loadBalancerIP }}"
+-{{- end }}
+-{{- if .Values.controller.metrics.service.loadBalancerSourceRanges }}
+-  loadBalancerSourceRanges:
+-{{ toYaml .Values.controller.metrics.service.loadBalancerSourceRanges | indent 4 }}
+-{{- end }}
+-  ports:
+-    - name: metrics
+-      port: {{ .Values.controller.metrics.service.servicePort }}
+-      targetPort: metrics
+-  selector:
+-    app: {{ template "nginx-ingress.name" . }}
+-    component: "{{ .Values.controller.name }}"
+-    release: {{ .Release.Name }}
+-  type: "{{ .Values.controller.metrics.service.type }}"
+-{{- end }}
+diff --git a/charts/ingress-nginx/templates/controller-poddisruptionbudget.yaml b/charts/ingress-nginx/templates/controller-poddisruptionbudget.yaml
+index 70a59c103..9dc878911 100644
+--- a/charts/ingress-nginx/templates/controller-poddisruptionbudget.yaml
++++ b/charts/ingress-nginx/templates/controller-poddisruptionbudget.yaml
+@@ -1,19 +1,15 @@
+-{{- if or (and .Values.controller.autoscaling.enabled (gt (.Values.controller.autoscaling.minReplicas | int) 1)) (gt (.Values.controller.replicaCount | int) 1) }}
++{{- if or (and .Values.controller.autoscaling.enabled (gt (.Values.controller.autoscaling.minReplicas | int) 1)) (gt (.Values.controller.replicaCount | int) 1) -}}
+ apiVersion: policy/v1beta1
+ kind: PodDisruptionBudget
+ metadata:
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.controller.fullname" . }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++  name: {{ include "ingress-nginx.controller.fullname" . }}
+ spec:
+   selector:
+     matchLabels:
+-      app: {{ template "nginx-ingress.name" . }}
+-      release: {{ .Release.Name }}
+-      component: "{{ .Values.controller.name }}"
++      {{- include "ingress-nginx.selectorLabels" . | nindent 6 }}
++      app.kubernetes.io/component: controller
+   minAvailable: {{ .Values.controller.minAvailable }}
+ {{- end }}
+diff --git a/charts/ingress-nginx/templates/controller-prometheusrules.yaml b/charts/ingress-nginx/templates/controller-prometheusrules.yaml
+index 9cee0e990..c0b7e89ca 100644
+--- a/charts/ingress-nginx/templates/controller-prometheusrules.yaml
++++ b/charts/ingress-nginx/templates/controller-prometheusrules.yaml
+@@ -1,24 +1,21 @@
+-{{- if and .Values.controller.metrics.enabled .Values.controller.metrics.prometheusRule.enabled }}
++{{- if and .Values.controller.metrics.enabled .Values.controller.metrics.prometheusRule.enabled -}}
+ apiVersion: monitoring.coreos.com/v1
+ kind: PrometheusRule
+ metadata:
+-  name: {{ template "nginx-ingress.controller.fullname" . }}
+-  {{- if .Values.controller.metrics.prometheusRule.namespace }}
++  name: {{ include "ingress-nginx.controller.fullname" . }}
++{{- if .Values.controller.metrics.prometheusRule.namespace }}
+   namespace: {{ .Values.controller.metrics.prometheusRule.namespace }}
+-  {{- end }}
++{{- end }}
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-    {{- if .Values.controller.metrics.prometheusRule.additionalLabels }}
+-{{ toYaml .Values.controller.metrics.prometheusRule.additionalLabels | indent 4 }}
+-    {{- end }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++  {{- if .Values.controller.metrics.prometheusRule.additionalLabels }}
++    {{- toYaml .Values.controller.metrics.prometheusRule.additionalLabels | nindent 4 }}
++  {{- end }}
+ spec:
+-  {{- with .Values.controller.metrics.prometheusRule.rules }}
++{{- if .Values.controller.metrics.prometheusRule.rules }}
+   groups:
+-  - name: {{ template "nginx-ingress.name" $ }}
+-    rules: {{- toYaml . | nindent 4 }}
+-  {{- end }}
++  - name: {{ template "ingress-nginx.name" . }}
++    rules: {{- toYaml .Values.controller.metrics.prometheusRule.rules | nindent 4 }}
++{{- end }}
+ {{- end }}
+diff --git a/charts/ingress-nginx/templates/controller-psp.yaml b/charts/ingress-nginx/templates/controller-psp.yaml
+index b91ecba22..9929587db 100644
+--- a/charts/ingress-nginx/templates/controller-psp.yaml
++++ b/charts/ingress-nginx/templates/controller-psp.yaml
+@@ -1,13 +1,11 @@
+-{{- if .Values.podSecurityPolicy.enabled}}
++{{- if .Values.podSecurityPolicy.enabled -}}
+ apiVersion: {{ template "podSecurityPolicy.apiVersion" . }}
+ kind: PodSecurityPolicy
+ metadata:
+-  name: {{ template "nginx-ingress.fullname" . }}
++  name: {{ include "ingress-nginx.fullname" . }}
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
+ spec:
+   allowedCapabilities:
+     - NET_BIND_SERVICE
+@@ -20,7 +18,9 @@ spec:
+     #- 'projected'
+     - 'secret'
+     #- 'downwardAPI'
++{{- if .Values.controller.hostNetwork }}
+   hostNetwork: {{ .Values.controller.hostNetwork }}
++{{- end }}
+ {{- if or .Values.controller.hostNetwork .Values.controller.daemonset.useHostPort }}
+   hostPorts:
+ {{- if .Values.controller.hostNetwork }}
+diff --git a/charts/ingress-nginx/templates/controller-role.yaml b/charts/ingress-nginx/templates/controller-role.yaml
+index 9e53929db..4d313a961 100644
+--- a/charts/ingress-nginx/templates/controller-role.yaml
++++ b/charts/ingress-nginx/templates/controller-role.yaml
+@@ -3,11 +3,9 @@ apiVersion: rbac.authorization.k8s.io/v1
+ kind: Role
+ metadata:
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.fullname" . }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++  name: {{ include "ingress-nginx.fullname" . }}
+ rules:
+   - apiGroups:
+       - ""
+@@ -82,10 +80,9 @@ rules:
+       - create
+       - patch
+ {{- if .Values.podSecurityPolicy.enabled }}
+-  - apiGroups:      ['{{ template "podSecurityPolicy.apiGroup" . }}']
++  - apiGroups:      [{{ template "podSecurityPolicy.apiGroup" . }}]
+     resources:      ['podsecuritypolicies']
+     verbs:          ['use']
+-    resourceNames:  [{{ template "nginx-ingress.fullname" . }}]
++    resourceNames:  [{{ include "ingress-nginx.fullname" . }}]
++{{- end }}
+ {{- end }}
+-
+-{{- end -}}
+diff --git a/charts/ingress-nginx/templates/controller-rolebinding.yaml b/charts/ingress-nginx/templates/controller-rolebinding.yaml
+index 3e96a31c5..503135088 100644
+--- a/charts/ingress-nginx/templates/controller-rolebinding.yaml
++++ b/charts/ingress-nginx/templates/controller-rolebinding.yaml
+@@ -3,17 +3,15 @@ apiVersion: rbac.authorization.k8s.io/v1
+ kind: RoleBinding
+ metadata:
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.fullname" . }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++  name: {{ include "ingress-nginx.fullname" . }}
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: Role
+-  name: {{ template "nginx-ingress.fullname" . }}
++  name: {{ include "ingress-nginx.fullname" . }}
+ subjects:
+   - kind: ServiceAccount
+-    name: {{ template "nginx-ingress.serviceAccountName" . }}
++    name: {{ template "ingress-nginx.serviceAccountName" . }}
+     namespace: {{ .Release.Namespace }}
+-{{- end -}}
++{{- end }}
+diff --git a/charts/ingress-nginx/templates/controller-service-metrics.yaml b/charts/ingress-nginx/templates/controller-service-metrics.yaml
+new file mode 100644
+index 000000000..08317a81a
+--- /dev/null
++++ b/charts/ingress-nginx/templates/controller-service-metrics.yaml
+@@ -0,0 +1,36 @@
++{{- if .Values.controller.metrics.enabled -}}
++apiVersion: v1
++kind: Service
++metadata:
++{{- if .Values.controller.metrics.service.annotations }}
++  annotations: {{ toYaml .Values.controller.metrics.service.annotations | nindent 4 }}
++{{- end }}
++  labels:
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++  {{- if .Values.controller.metrics.service.labels }}
++    {{- toYaml .Values.controller.metrics.service.labels | nindent 4 }}
++  {{- end }}
++  name: {{ include "ingress-nginx.controller.fullname" . }}-metrics
++spec:
++  type: {{ .Values.controller.metrics.service.type }}
++{{- if .Values.controller.metrics.service.clusterIP }}
++  clusterIP: {{ .Values.controller.metrics.service.clusterIP }}
++{{- end }}
++{{- if .Values.controller.metrics.service.externalIPs }}
++  externalIPs: {{ toYaml .Values.controller.metrics.service.externalIPs | nindent 4 }}
++{{- end }}
++{{- if .Values.controller.metrics.service.loadBalancerIP }}
++  loadBalancerIP: {{ .Values.controller.metrics.service.loadBalancerIP }}
++{{- end }}
++{{- if .Values.controller.metrics.service.loadBalancerSourceRanges }}
++  loadBalancerSourceRanges: {{ toYaml .Values.controller.metrics.service.loadBalancerSourceRanges | nindent 4 }}
++{{- end }}
++  ports:
++    - name: metrics
++      port: {{ .Values.controller.metrics.service.servicePort }}
++      targetPort: metrics
++  selector:
++    {{- include "ingress-nginx.selectorLabels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++{{- end }}
+diff --git a/charts/ingress-nginx/templates/controller-service-webhook.yaml b/charts/ingress-nginx/templates/controller-service-webhook.yaml
+new file mode 100644
+index 000000000..7a4dd51db
+--- /dev/null
++++ b/charts/ingress-nginx/templates/controller-service-webhook.yaml
+@@ -0,0 +1,33 @@
++{{- if .Values.controller.admissionWebhooks.enabled -}}
++apiVersion: v1
++kind: Service
++metadata:
++{{- if .Values.controller.admissionWebhooks.service.annotations }}
++  annotations: {{ toYaml .Values.controller.admissionWebhooks.service.annotations | nindent 4 }}
++{{- end }}
++  labels:
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++  name: {{ include "ingress-nginx.controller.fullname" . }}-admission
++spec:
++  type: {{ .Values.controller.admissionWebhooks.service.type }}
++{{- if .Values.controller.admissionWebhooks.service.clusterIP }}
++  clusterIP: {{ .Values.controller.admissionWebhooks.service.clusterIP }}
++{{- end }}
++{{- if .Values.controller.admissionWebhooks.service.externalIPs }}
++  externalIPs: {{ toYaml .Values.controller.admissionWebhooks.service.externalIPs | nindent 4 }}
++{{- end }}
++{{- if .Values.controller.admissionWebhooks.service.loadBalancerIP }}
++  loadBalancerIP: {{ .Values.controller.admissionWebhooks.service.loadBalancerIP }}
++{{- end }}
++{{- if .Values.controller.admissionWebhooks.service.loadBalancerSourceRanges }}
++  loadBalancerSourceRanges: {{ toYaml .Values.controller.admissionWebhooks.service.loadBalancerSourceRanges | nindent 4 }}
++{{- end }}
++  ports:
++    - name: https-webhook
++      port: 443
++      targetPort: webhook
++  selector:
++    {{- include "ingress-nginx.selectorLabels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++{{- end }}
+diff --git a/charts/ingress-nginx/templates/controller-service.yaml b/charts/ingress-nginx/templates/controller-service.yaml
+index 5961fc159..a0006bce5 100644
+--- a/charts/ingress-nginx/templates/controller-service.yaml
++++ b/charts/ingress-nginx/templates/controller-service.yaml
+@@ -1,94 +1,83 @@
+-{{- if .Values.controller.service.enabled }}
++{{- if .Values.controller.service.enabled -}}
+ apiVersion: v1
+ kind: Service
+ metadata:
+ {{- if .Values.controller.service.annotations }}
+-  annotations:
+-  {{- range $key, $value := .Values.controller.service.annotations }}
+-    {{ $key }}: {{ $value | quote }}
+-  {{- end }}
++  annotations: {{ toYaml .Values.controller.service.annotations | nindent 4 }}
+ {{- end }}
+   labels:
+-{{- if .Values.controller.service.labels }}
+-{{ toYaml .Values.controller.service.labels | indent 4 }}
+-{{- end }}
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.controller.fullname" . }}
+-spec:
+-{{- if not .Values.controller.service.omitClusterIP }}
+-  {{- with .Values.controller.service.clusterIP }}
+-  clusterIP: {{ if eq "-" . }}""{{ else }}{{ . | quote }}{{ end }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++  {{- if .Values.controller.service.labels }}
++    {{- toYaml .Values.controller.service.labels | nindent 4 }}
+   {{- end }}
++  name: {{ include "ingress-nginx.controller.fullname" . }}
++spec:
++  type: {{ .Values.controller.service.type }}
++{{- if .Values.controller.service.clusterIP }}
++  clusterIP: {{ .Values.controller.service.clusterIP }}
+ {{- end }}
+ {{- if .Values.controller.service.externalIPs }}
+-  externalIPs:
+-{{ toYaml .Values.controller.service.externalIPs | indent 4 }}
++  externalIPs: {{ toYaml .Values.controller.service.externalIPs | nindent 4 }}
+ {{- end }}
+ {{- if .Values.controller.service.loadBalancerIP }}
+-  loadBalancerIP: "{{ .Values.controller.service.loadBalancerIP }}"
++  loadBalancerIP: {{ .Values.controller.service.loadBalancerIP }}
+ {{- end }}
+ {{- if .Values.controller.service.loadBalancerSourceRanges }}
+-  loadBalancerSourceRanges:
+-{{ toYaml .Values.controller.service.loadBalancerSourceRanges | indent 4 }}
++  loadBalancerSourceRanges: {{ toYaml .Values.controller.service.loadBalancerSourceRanges | nindent 4 }}
+ {{- end }}
+-{{- if and (semverCompare ">=1.7-0" .Capabilities.KubeVersion.GitVersion) (.Values.controller.service.externalTrafficPolicy) }}
+-  externalTrafficPolicy: "{{ .Values.controller.service.externalTrafficPolicy }}"
++{{- if and .Values.controller.service.externalTrafficPolicy (semverCompare ">=1.7-0" .Capabilities.KubeVersion.GitVersion) }}
++  externalTrafficPolicy: {{ .Values.controller.service.externalTrafficPolicy }}
+ {{- end }}
+ {{- if .Values.controller.service.sessionAffinity }}
+-  sessionAffinity: "{{ .Values.controller.service.sessionAffinity }}"
++  sessionAffinity: {{ .Values.controller.service.sessionAffinity }}
+ {{- end }}
+-{{- if and (semverCompare ">=1.7-0" .Capabilities.KubeVersion.GitVersion) (.Values.controller.service.healthCheckNodePort) }}
++{{- if and .Values.controller.service.healthCheckNodePort (semverCompare ">=1.7-0" .Capabilities.KubeVersion.GitVersion) }}
+   healthCheckNodePort: {{ .Values.controller.service.healthCheckNodePort }}
+ {{- end }}
+   ports:
+-    {{- $setNodePorts := (or (eq .Values.controller.service.type "NodePort") (eq .Values.controller.service.type "LoadBalancer")) }}
+-    {{- if .Values.controller.service.enableHttp }}
++  {{- $setNodePorts := (or (eq .Values.controller.service.type "NodePort") (eq .Values.controller.service.type "LoadBalancer")) }}
++  {{- if .Values.controller.service.enableHttp }}
+     - name: http
+       port: {{ .Values.controller.service.ports.http }}
+       protocol: TCP
+       targetPort: {{ .Values.controller.service.targetPorts.http }}
+-      {{- if (and $setNodePorts (not (empty .Values.controller.service.nodePorts.http))) }}
++    {{- if (and $setNodePorts (not (empty .Values.controller.service.nodePorts.http))) }}
+       nodePort: {{ .Values.controller.service.nodePorts.http }}
+-      {{- end }}
+     {{- end }}
+-    {{- if .Values.controller.service.enableHttps }}
++  {{- end }}
++  {{- if .Values.controller.service.enableHttps }}
+     - name: https
+       port: {{ .Values.controller.service.ports.https }}
+       protocol: TCP
+       targetPort: {{ .Values.controller.service.targetPorts.https }}
+-      {{- if (and $setNodePorts (not (empty .Values.controller.service.nodePorts.https))) }}
++    {{- if (and $setNodePorts (not (empty .Values.controller.service.nodePorts.https))) }}
+       nodePort: {{ .Values.controller.service.nodePorts.https }}
+-      {{- end }}
+     {{- end }}
++  {{- end }}
+   {{- range $key, $value := .Values.tcp }}
+-    - name: "{{ $key }}-tcp"
++    - name: {{ $key }}-tcp
+       port: {{ $key }}
+       protocol: TCP
+-      targetPort: "{{ $key }}-tcp"
+-     {{- if $.Values.controller.service.nodePorts.tcp }}
+-      {{- if index $.Values.controller.service.nodePorts.tcp $key }}
++      targetPort: {{ $key }}-tcp
++    {{- if $.Values.controller.service.nodePorts.tcp }}
++    {{- if index $.Values.controller.service.nodePorts.tcp $key }}
+       nodePort: {{ index $.Values.controller.service.nodePorts.tcp $key }}
+-      {{- end }}
+-     {{- end }}
++    {{- end }}
++    {{- end }}
+   {{- end }}
+   {{- range $key, $value := .Values.udp }}
+-    - name: "{{ $key }}-udp"
++    - name: {{ $key }}-udp
+       port: {{ $key }}
+       protocol: UDP
+-      targetPort: "{{ $key }}-udp"
+-     {{- if $.Values.controller.service.nodePorts.udp }}
+-      {{- if index $.Values.controller.service.nodePorts.udp $key }}
++      targetPort: {{ $key }}-udp
++    {{- if $.Values.controller.service.nodePorts.udp }}
++    {{- if index $.Values.controller.service.nodePorts.udp $key }}
+       nodePort: {{ index $.Values.controller.service.nodePorts.udp $key }}
+-      {{- end }}
+-     {{- end }}
++    {{- end }}
++    {{- end }}
+   {{- end }}
+   selector:
+-    app: {{ template "nginx-ingress.name" . }}
+-    component: "{{ .Values.controller.name }}"
+-    release: {{ .Release.Name }}
+-  type: "{{ .Values.controller.service.type }}"
++    {{- include "ingress-nginx.selectorLabels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
+ {{- end }}
+diff --git a/charts/ingress-nginx/templates/controller-serviceaccount.yaml b/charts/ingress-nginx/templates/controller-serviceaccount.yaml
+index 4ad90638e..43585076c 100644
+--- a/charts/ingress-nginx/templates/controller-serviceaccount.yaml
++++ b/charts/ingress-nginx/templates/controller-serviceaccount.yaml
+@@ -3,9 +3,7 @@ apiVersion: v1
+ kind: ServiceAccount
+ metadata:
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.serviceAccountName" . }}
+-{{- end -}}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++  name: {{ template "ingress-nginx.serviceAccountName" . }}
++{{- end }}
+diff --git a/charts/ingress-nginx/templates/controller-servicemonitor.yaml b/charts/ingress-nginx/templates/controller-servicemonitor.yaml
+index e082b2f77..c496ab4eb 100644
+--- a/charts/ingress-nginx/templates/controller-servicemonitor.yaml
++++ b/charts/ingress-nginx/templates/controller-servicemonitor.yaml
+@@ -1,38 +1,33 @@
+-{{- if and .Values.controller.metrics.enabled .Values.controller.metrics.serviceMonitor.enabled }}
++{{- if and .Values.controller.metrics.enabled .Values.controller.metrics.serviceMonitor.enabled -}}
+ apiVersion: monitoring.coreos.com/v1
+ kind: ServiceMonitor
+ metadata:
+-  name: {{ template "nginx-ingress.controller.fullname" . }}
+-  {{- if .Values.controller.metrics.serviceMonitor.namespace }}
++  name: {{ include "ingress-nginx.controller.fullname" . }}
++{{- if .Values.controller.metrics.serviceMonitor.namespace }}
+   namespace: {{ .Values.controller.metrics.serviceMonitor.namespace }}
+-  {{- end }}
++{{- end }}
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-    {{- if .Values.controller.metrics.serviceMonitor.additionalLabels }}
+-{{ toYaml .Values.controller.metrics.serviceMonitor.additionalLabels | indent 4 }}
+-    {{- end }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: controller
++  {{- if .Values.controller.metrics.serviceMonitor.additionalLabels }}
++    {{- toYaml .Values.controller.metrics.serviceMonitor.additionalLabels | nindent 4 }}
++  {{- end }}
+ spec:
+   endpoints:
+     - port: metrics
+       interval: {{ .Values.controller.metrics.serviceMonitor.scrapeInterval }}
+-      {{- if .Values.controller.metrics.serviceMonitor.honorLabels }}
++    {{- if .Values.controller.metrics.serviceMonitor.honorLabels }}
+       honorLabels: true
+-      {{- end }}
+-  {{- if .Values.controller.metrics.serviceMonitor.namespaceSelector }}
+-  namespaceSelector:
+-{{ toYaml .Values.controller.metrics.serviceMonitor.namespaceSelector | indent 4 -}}
+-  {{ else }}
++    {{- end }}
++{{- if .Values.controller.metrics.serviceMonitor.namespaceSelector }}
++  namespaceSelector: {{ toYaml .Values.controller.metrics.serviceMonitor.namespaceSelector | nindent 4 }}
++{{ else }}
+   namespaceSelector:
+     matchNames:
+       - {{ .Release.Namespace }}
+-  {{- end }}
++{{- end }}
+   selector:
+     matchLabels:
+-      app: {{ template "nginx-ingress.name" . }}
+-      component: "{{ .Values.controller.name }}"
+-      release: {{ .Release.Name }}
++      {{- include "ingress-nginx.selectorLabels" . | nindent 6 }}
++      app.kubernetes.io/component: controller
+ {{- end }}
+diff --git a/charts/ingress-nginx/templates/controller-webhook-service.yaml b/charts/ingress-nginx/templates/controller-webhook-service.yaml
+deleted file mode 100644
+index 0b2a4ca79..000000000
+--- a/charts/ingress-nginx/templates/controller-webhook-service.yaml
++++ /dev/null
+@@ -1,44 +0,0 @@
+-{{- if .Values.controller.admissionWebhooks.enabled }}
+-apiVersion: v1
+-kind: Service
+-metadata:
+-{{- if .Values.controller.admissionWebhooks.service.annotations }}
+-  annotations:
+-  {{- range $key, $value := .Values.controller.admissionWebhooks.service.annotations }}
+-    {{ $key }}: {{ $value | quote }}
+-  {{- end }}
+-{{- end }}
+-  labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.controller.fullname" . }}-admission
+-spec:
+-{{- if not .Values.controller.admissionWebhooks.service.omitClusterIP }}
+-  {{- with .Values.controller.admissionWebhooks.service.clusterIP }}
+-  clusterIP: {{ if eq "-" . }}""{{ else }}{{ . | quote }}{{ end }}
+-  {{- end }}
+-{{- end }}
+-{{- if .Values.controller.admissionWebhooks.service.externalIPs }}
+-  externalIPs:
+-{{ toYaml .Values.controller.admissionWebhooks.service.externalIPs | indent 4 }}
+-{{- end }}
+-{{- if .Values.controller.admissionWebhooks.service.loadBalancerIP }}
+-  loadBalancerIP: "{{ .Values.controller.admissionWebhooks.service.loadBalancerIP }}"
+-{{- end }}
+-{{- if .Values.controller.admissionWebhooks.service.loadBalancerSourceRanges }}
+-  loadBalancerSourceRanges:
+-{{ toYaml .Values.controller.admissionWebhooks.service.loadBalancerSourceRanges | indent 4 }}
+-{{- end }}
+-  ports:
+-    - name: https-webhook
+-      port: 443
+-      targetPort: webhook
+-  selector:
+-    app: {{ template "nginx-ingress.name" . }}
+-    component: "{{ .Values.controller.name }}"
+-    release: {{ .Release.Name }}
+-  type: "{{ .Values.controller.admissionWebhooks.service.type }}"
+-{{- end }}
+diff --git a/charts/ingress-nginx/templates/default-backend-deployment.yaml b/charts/ingress-nginx/templates/default-backend-deployment.yaml
+index 835a73706..3ff0a2c5c 100644
+--- a/charts/ingress-nginx/templates/default-backend-deployment.yaml
++++ b/charts/ingress-nginx/templates/default-backend-deployment.yaml
+@@ -1,52 +1,44 @@
+-{{- if .Values.defaultBackend.enabled }}
++{{- if .Values.defaultBackend.enabled -}}
+ apiVersion: {{ template "deployment.apiVersion" . }}
+ kind: Deployment
+ metadata:
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.defaultBackend.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.defaultBackend.fullname" . }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: default-backend
++  name: {{ include "ingress-nginx.defaultBackend.fullname" . }}
+ spec:
+   selector:
+     matchLabels:
+-      app: {{ template "nginx-ingress.name" . }}
+-      release: {{ .Release.Name }}
++      {{- include "ingress-nginx.selectorLabels" . | nindent 6 }}
++      app.kubernetes.io/component: default-backend
+   replicas: {{ .Values.defaultBackend.replicaCount }}
+   revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+   template:
+     metadata:
+     {{- if .Values.defaultBackend.podAnnotations }}
+-      annotations:
+-      {{- range $key, $value := .Values.defaultBackend.podAnnotations }}
+-        {{ $key }}: {{ $value | quote }}
+-      {{- end }}
++      annotations: {{ toYaml .Values.defaultBackend.podAnnotations | nindent 8 }}
+     {{- end }}
+       labels:
+-        app: {{ template "nginx-ingress.name" . }}
+-        component: "{{ .Values.defaultBackend.name }}"
+-        release: {{ .Release.Name }}
+-        {{- if .Values.defaultBackend.podLabels }}
+-{{ toYaml .Values.defaultBackend.podLabels | indent 8 }}
+-        {{- end }}
+-    spec:
+-      {{- if .Values.imagePullSecrets }}
+-      imagePullSecrets:
+-{{ toYaml .Values.imagePullSecrets | indent 8 }}
+-      {{- end }}
+-{{- if .Values.defaultBackend.priorityClassName }}
+-      priorityClassName: "{{ .Values.defaultBackend.priorityClassName }}"
+-{{- end }}
+-      {{- if .Values.defaultBackend.podSecurityContext }}
+-      securityContext:
+-{{ toYaml .Values.defaultBackend.podSecurityContext | indent 8 }}
++        {{- include "ingress-nginx.selectorLabels" . | nindent 8 }}
++        app.kubernetes.io/component: default-backend
++      {{- if .Values.defaultBackend.podLabels }}
++        {{- toYaml .Values.defaultBackend.podLabels | nindent 8 }}
+       {{- end }}
++    spec:
++    {{- if .Values.imagePullSecrets }}
++      imagePullSecrets: {{ toYaml .Values.imagePullSecrets | nindent 8 }}
++    {{- end }}
++    {{- if .Values.defaultBackend.priorityClassName }}
++      priorityClassName: {{ .Values.defaultBackend.priorityClassName }}
++    {{- end }}
++    {{- if .Values.defaultBackend.podSecurityContext }}
++      securityContext: {{ toYaml .Values.defaultBackend.podSecurityContext | nindent 8 }}
++    {{- end }}
+       containers:
+-        - name: {{ template "nginx-ingress.name" . }}-{{ .Values.defaultBackend.name }}
+-          image: "{{ .Values.defaultBackend.image.repository }}:{{ .Values.defaultBackend.image.tag }}"
+-          imagePullPolicy: "{{ .Values.defaultBackend.image.pullPolicy }}"
++        - name: {{ template "ingress-nginx.name" . }}-{{ .Values.defaultBackend.name }}
++          image: {{ .Values.defaultBackend.image.repository }}:{{ .Values.defaultBackend.image.tag }}
++          imagePullPolicy: {{ .Values.defaultBackend.image.pullPolicy }}
++        {{- if .Values.defaultBackend.extraArgs }}
+           args:
+           {{- range $key, $value := .Values.defaultBackend.extraArgs }}
+             {{- if $value }}
+@@ -55,12 +47,12 @@ spec:
+             - --{{ $key }}
+             {{- end }}
+           {{- end }}
++        {{- end }}
+           securityContext:
+             runAsUser: {{ .Values.defaultBackend.image.runAsUser }}
+-          {{- if .Values.defaultBackend.extraEnvs }}
+-          env:
+-{{ toYaml .Values.defaultBackend.extraEnvs | indent 12 }}
+-          {{- end }}
++        {{- if .Values.defaultBackend.extraEnvs }}
++          env: {{ toYaml .Values.defaultBackend.extraEnvs | nindent 12 }}
++        {{- end }}
+           livenessProbe:
+             httpGet:
+               path: /healthz
+@@ -85,20 +77,18 @@ spec:
+             - name: http
+               containerPort: {{ .Values.defaultBackend.port }}
+               protocol: TCP
+-          resources:
+-{{ toYaml .Values.defaultBackend.resources | indent 12 }}
++        {{- if .Values.defaultBackend.resources }}
++          resources: {{ toYaml .Values.defaultBackend.resources | nindent 12 }}
++        {{- end }}
+     {{- if .Values.defaultBackend.nodeSelector }}
+-      nodeSelector:
+-{{ toYaml .Values.defaultBackend.nodeSelector | indent 8 }}
++      nodeSelector: {{ toYaml .Values.defaultBackend.nodeSelector | nindent 8 }}
+     {{- end }}
+-      serviceAccountName: {{ template "nginx-ingress.defaultBackend.serviceAccountName" . }}
++      serviceAccountName: {{ template "ingress-nginx.defaultBackend.serviceAccountName" . }}
+     {{- if .Values.defaultBackend.tolerations }}
+-      tolerations:
+-{{ toYaml .Values.defaultBackend.tolerations | indent 8 }}
++      tolerations: {{ toYaml .Values.defaultBackend.tolerations | nindent 8 }}
+     {{- end }}
+     {{- if .Values.defaultBackend.affinity }}
+-      affinity:
+-{{ toYaml .Values.defaultBackend.affinity | indent 8 }}
++      affinity: {{ toYaml .Values.defaultBackend.affinity | nindent 8 }}
+     {{- end }}
+       terminationGracePeriodSeconds: 60
+ {{- end }}
+diff --git a/charts/ingress-nginx/templates/default-backend-poddisruptionbudget.yaml b/charts/ingress-nginx/templates/default-backend-poddisruptionbudget.yaml
+index af0ec7372..b6c9c4499 100644
+--- a/charts/ingress-nginx/templates/default-backend-poddisruptionbudget.yaml
++++ b/charts/ingress-nginx/templates/default-backend-poddisruptionbudget.yaml
+@@ -1,19 +1,15 @@
+-{{- if gt (.Values.defaultBackend.replicaCount | int) 1 }}
++{{- if gt (.Values.defaultBackend.replicaCount | int) 1 -}}
+ apiVersion: policy/v1beta1
+ kind: PodDisruptionBudget
+ metadata:
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.defaultBackend.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.defaultBackend.fullname" . }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: default-backend
++  name: {{ include "ingress-nginx.defaultBackend.fullname" . }}
+ spec:
+   selector:
+     matchLabels:
+-      app: {{ template "nginx-ingress.name" . }}
+-      release: {{ .Release.Name }}
+-      component: "{{ .Values.defaultBackend.name }}"
++      {{- include "ingress-nginx.selectorLabels" . | nindent 6 }}
++      app.kubernetes.io/component: default-backend
+   minAvailable: {{ .Values.defaultBackend.minAvailable }}
+ {{- end }}
+diff --git a/charts/ingress-nginx/templates/default-backend-psp.yaml b/charts/ingress-nginx/templates/default-backend-psp.yaml
+index beed24908..2673bf1f6 100644
+--- a/charts/ingress-nginx/templates/default-backend-psp.yaml
++++ b/charts/ingress-nginx/templates/default-backend-psp.yaml
+@@ -2,12 +2,10 @@
+ apiVersion: {{ template "podSecurityPolicy.apiVersion" . }}
+ kind: PodSecurityPolicy
+ metadata:
+-  name: {{ template "nginx-ingress.fullname" . }}-backend
++  name: {{ include "ingress-nginx.fullname" . }}-backend
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: default-backend
+ spec:
+   allowPrivilegeEscalation: false
+   fsGroup:
+@@ -32,4 +30,4 @@ spec:
+   - projected
+   - secret
+   - downwardAPI
+-{{- end -}}
++{{- end }}
+diff --git a/charts/ingress-nginx/templates/default-backend-role.yaml b/charts/ingress-nginx/templates/default-backend-role.yaml
+index 184ac815b..23498de22 100644
+--- a/charts/ingress-nginx/templates/default-backend-role.yaml
++++ b/charts/ingress-nginx/templates/default-backend-role.yaml
+@@ -3,14 +3,12 @@ apiVersion: rbac.authorization.k8s.io/v1
+ kind: Role
+ metadata:
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.fullname" . }}-backend
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: default-backend
++  name: {{ include "ingress-nginx.fullname" . }}-backend
+ rules:
+-  - apiGroups:      ['{{ template "podSecurityPolicy.apiGroup" . }}']
++  - apiGroups:      [{{ template "podSecurityPolicy.apiGroup" . }}]
+     resources:      ['podsecuritypolicies']
+     verbs:          ['use']
+-    resourceNames:  [{{ template "nginx-ingress.fullname" . }}-backend]
+-{{- end -}}
++    resourceNames:  [{{ include "ingress-nginx.fullname" . }}-backend]
++{{- end }}
+diff --git a/charts/ingress-nginx/templates/default-backend-rolebinding.yaml b/charts/ingress-nginx/templates/default-backend-rolebinding.yaml
+index 27c3e10df..45558aac1 100644
+--- a/charts/ingress-nginx/templates/default-backend-rolebinding.yaml
++++ b/charts/ingress-nginx/templates/default-backend-rolebinding.yaml
+@@ -3,17 +3,15 @@ apiVersion: rbac.authorization.k8s.io/v1
+ kind: RoleBinding
+ metadata:
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.fullname" . }}-backend
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: default-backend
++  name: {{ include "ingress-nginx.fullname" . }}-backend
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: Role
+-  name: {{ template "nginx-ingress.fullname" . }}-backend
++  name: {{ include "ingress-nginx.fullname" . }}-backend
+ subjects:
+   - kind: ServiceAccount
+-    name: {{ template "nginx-ingress.defaultBackend.serviceAccountName" . }}
++    name: {{ template "ingress-nginx.defaultBackend.serviceAccountName" . }}
+     namespace: {{ .Release.Namespace }}
+-{{- end -}}
++{{- end }}
+diff --git a/charts/ingress-nginx/templates/default-backend-service.yaml b/charts/ingress-nginx/templates/default-backend-service.yaml
+index c7d336eea..e74714d92 100644
+--- a/charts/ingress-nginx/templates/default-backend-service.yaml
++++ b/charts/ingress-nginx/templates/default-backend-service.yaml
+@@ -1,36 +1,27 @@
+-{{- if .Values.defaultBackend.enabled }}
++{{- if .Values.defaultBackend.enabled -}}
+ apiVersion: v1
+ kind: Service
+ metadata:
+ {{- if .Values.defaultBackend.service.annotations }}
+-  annotations:
+-  {{- range $key, $value := .Values.defaultBackend.service.annotations }}
+-    {{ $key }}: {{ $value | quote }}
+-  {{- end }}
++  annotations: {{ toYaml .Values.defaultBackend.service.annotations | nindent 4 }}
+ {{- end }}
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.defaultBackend.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.defaultBackend.fullname" . }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: default-backend
++  name: {{ include "ingress-nginx.defaultBackend.fullname" . }}
+ spec:
+-{{- if not .Values.defaultBackend.service.omitClusterIP }}
+-  {{- with .Values.defaultBackend.service.clusterIP }}
+-  clusterIP: {{ if eq "-" . }}""{{ else }}{{ . | quote }}{{ end }}
+-  {{- end }}
++  type: {{ .Values.defaultBackend.service.type }}
++{{- if .Values.defaultBackend.service.clusterIP }}
++  clusterIP: {{ .Values.defaultBackend.service.clusterIP }}
+ {{- end }}
+ {{- if .Values.defaultBackend.service.externalIPs }}
+-  externalIPs:
+-{{ toYaml .Values.defaultBackend.service.externalIPs | indent 4 }}
++  externalIPs: {{ toYaml .Values.defaultBackend.service.externalIPs | nindent 4 }}
+ {{- end }}
+ {{- if .Values.defaultBackend.service.loadBalancerIP }}
+-  loadBalancerIP: "{{ .Values.defaultBackend.service.loadBalancerIP }}"
++  loadBalancerIP: {{ .Values.defaultBackend.service.loadBalancerIP }}
+ {{- end }}
+ {{- if .Values.defaultBackend.service.loadBalancerSourceRanges }}
+-  loadBalancerSourceRanges:
+-{{ toYaml .Values.defaultBackend.service.loadBalancerSourceRanges | indent 4 }}
++  loadBalancerSourceRanges: {{ toYaml .Values.defaultBackend.service.loadBalancerSourceRanges | nindent 4 }}
+ {{- end }}
+   ports:
+     - name: http
+@@ -38,8 +29,6 @@ spec:
+       protocol: TCP
+       targetPort: http
+   selector:
+-    app: {{ template "nginx-ingress.name" . }}
+-    component: "{{ .Values.defaultBackend.name }}"
+-    release: {{ .Release.Name }}
+-  type: "{{ .Values.defaultBackend.service.type }}"
++    {{- include "ingress-nginx.selectorLabels" . | nindent 4 }}
++    app.kubernetes.io/component: default-backend
+ {{- end }}
+diff --git a/charts/ingress-nginx/templates/default-backend-serviceaccount.yaml b/charts/ingress-nginx/templates/default-backend-serviceaccount.yaml
+index 39d3c653a..96419cfa0 100644
+--- a/charts/ingress-nginx/templates/default-backend-serviceaccount.yaml
++++ b/charts/ingress-nginx/templates/default-backend-serviceaccount.yaml
+@@ -1,11 +1,9 @@
+-{{- if and .Values.defaultBackend.enabled  .Values.defaultBackend.serviceAccount.create }}
++{{- if and .Values.defaultBackend.enabled  .Values.defaultBackend.serviceAccount.create -}}
+ apiVersion: v1
+ kind: ServiceAccount
+ metadata:
+   labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  name: {{ template "nginx-ingress.defaultBackend.serviceAccountName" . }}
++    {{- include "ingress-nginx.labels" . | nindent 4 }}
++    app.kubernetes.io/component: default-backend
++  name: {{ template "ingress-nginx.defaultBackend.serviceAccountName" . }}
+ {{- end }}
+diff --git a/charts/ingress-nginx/templates/tcp-configmap.yaml b/charts/ingress-nginx/templates/tcp-configmap.yaml
+deleted file mode 100644
+index 73bc30b91..000000000
+--- a/charts/ingress-nginx/templates/tcp-configmap.yaml
++++ /dev/null
+@@ -1,16 +0,0 @@
+-{{- if .Values.tcp }}
+-apiVersion: v1
+-kind: ConfigMap
+-metadata:
+-  labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  annotations:
+-{{ toYaml .Values.controller.tcp.annotations | indent 4}}
+-  name: {{ template "nginx-ingress.fullname" . }}-tcp
+-data:
+-{{ tpl (toYaml .Values.tcp) . | indent 2 }}
+-{{- end }}
+diff --git a/charts/ingress-nginx/templates/udp-configmap.yaml b/charts/ingress-nginx/templates/udp-configmap.yaml
+deleted file mode 100644
+index b363e705e..000000000
+--- a/charts/ingress-nginx/templates/udp-configmap.yaml
++++ /dev/null
+@@ -1,16 +0,0 @@
+-{{- if .Values.udp }}
+-apiVersion: v1
+-kind: ConfigMap
+-metadata:
+-  labels:
+-    app: {{ template "nginx-ingress.name" . }}
+-    chart: {{ template "nginx-ingress.chart" . }}
+-    component: "{{ .Values.controller.name }}"
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-  annotations:
+-{{ toYaml .Values.controller.udp.annotations | indent 4}}
+-  name: {{ template "nginx-ingress.fullname" . }}-udp
+-data:
+-{{ tpl (toYaml .Values.udp) . | indent 2 }}
+-{{- end }}
+diff --git a/charts/ingress-nginx/values.yaml b/charts/ingress-nginx/values.yaml
+index 1c54e03ef..30d9646e7 100644
+--- a/charts/ingress-nginx/values.yaml
++++ b/charts/ingress-nginx/values.yaml
+@@ -2,7 +2,6 @@
+ ## Ref: https://github.com/kubernetes/ingress/blob/master/controllers/nginx/configuration.md
+ ##
+ controller:
+-  name: controller
+   image:
+     repository: quay.io/kubernetes-ingress-controller/nginx-ingress-controller
+     tag: "0.30.0"
+@@ -133,6 +132,10 @@ controller:
+   ##
+   deploymentAnnotations: {}
+ 
++  ## Annotations to be added to the controller daemonset
++  ##
++  daemonsetAnnotations: {}
++
+   # The update strategy to apply to the Deployment or DaemonSet
+   ##
+   updateStrategy: {}
+@@ -168,7 +171,7 @@ controller:
+     #         - key: app
+     #           operator: In
+     #           values:
+-    #           - nginx-ingress
++    #           - ingress-nginx
+     #       topologyKey: kubernetes.io/hostname
+ 
+     # # An example of required pod anti-affinity
+@@ -179,7 +182,7 @@ controller:
+     #       - key: app
+     #         operator: In
+     #         values:
+-    #         - nginx-ingress
++    #         - ingress-nginx
+     #     topologyKey: "kubernetes.io/hostname"
+ 
+   ## terminationGracePeriodSeconds
+@@ -242,8 +245,6 @@ controller:
+ 
+     annotations: {}
+     labels: {}
+-    ## Deprecated, instead simply do not provide a clusterIP value
+-    omitClusterIP: false
+     # clusterIP: ""
+ 
+     ## List of IP addresses at which the controller services are available
+@@ -251,7 +252,7 @@ controller:
+     ##
+     externalIPs: []
+ 
+-    loadBalancerIP: ""
++    # loadBalancerIP: ""
+     loadBalancerSourceRanges: []
+ 
+     enableHttp: true
+@@ -260,13 +261,16 @@ controller:
+     ## Set external traffic policy to: "Local" to preserve source IP on
+     ## providers supporting it
+     ## Ref: https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-typeloadbalancer
+-    externalTrafficPolicy: ""
++    # externalTrafficPolicy: ""
+ 
+     # Must be either "None" or "ClientIP" if set. Kubernetes will default to "None".
+     # Ref: https://kubernetes.io/docs/concepts/services-networking/service/#virtual-ips-and-service-proxies
+-    sessionAffinity: ""
++    # sessionAffinity: ""
+ 
+-    healthCheckNodePort: 0
++    # specifies the health check node port (numeric port number) for the service. If healthCheckNodePort isn’t specified,
++    # the service controller allocates a port from your cluster’s NodePort range.
++    # Ref: https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/#preserving-the-client-source-ip
++    # healthCheckNodePort: 0
+ 
+     ports:
+       http: 80
+@@ -337,11 +341,9 @@ controller:
+ 
+     service:
+       annotations: {}
+-      ## Deprecated, instead simply do not provide a clusterIP value
+-      omitClusterIP: false
+       # clusterIP: ""
+       externalIPs: []
+-      loadBalancerIP: ""
++      # loadBalancerIP: ""
+       loadBalancerSourceRanges: []
+       servicePort: 443
+       type: ClusterIP
+@@ -368,8 +370,6 @@ controller:
+       # prometheus.io/scrape: "true"
+       # prometheus.io/port: "10254"
+ 
+-      ## Deprecated, instead simply do not provide a clusterIP value
+-      omitClusterIP: false
+       # clusterIP: ""
+ 
+       ## List of IP addresses at which the stats-exporter service is available
+@@ -377,7 +377,7 @@ controller:
+       ##
+       externalIPs: []
+ 
+-      loadBalancerIP: ""
++      # loadBalancerIP: ""
+       loadBalancerSourceRanges: []
+       servicePort: 9913
+       type: ClusterIP
+@@ -397,7 +397,7 @@ controller:
+     prometheusRule:
+       enabled: false
+       additionalLabels: {}
+-      namespace: ""
++      # namespace: ""
+       rules: []
+         # # These are just examples rules, please adapt them to your needs
+         # - alert: TooMany500s
+@@ -434,7 +434,6 @@ defaultBackend:
+   ##
+   enabled: false
+ 
+-  name: default-backend
+   image:
+     repository: k8s.gcr.io/defaultbackend-amd64
+     tag: "1.5"
+@@ -516,8 +515,7 @@ defaultBackend:
+ 
+   service:
+     annotations: {}
+-    ## Deprecated, instead simply do not provide a clusterIP value
+-    omitClusterIP: false
++
+     # clusterIP: ""
+ 
+     ## List of IP addresses at which the default backend service is available
+@@ -525,7 +523,7 @@ defaultBackend:
+     ##
+     externalIPs: []
+ 
+-    loadBalancerIP: ""
++    # loadBalancerIP: ""
+     loadBalancerSourceRanges: []
+     servicePort: 80
+     type: ClusterIP
+diff --git a/docs/user-guide/nginx-configuration/configmap.md b/docs/user-guide/nginx-configuration/configmap.md
+index 68ef49b77..153f68549 100755
+--- a/docs/user-guide/nginx-configuration/configmap.md
++++ b/docs/user-guide/nginx-configuration/configmap.md
+@@ -1053,6 +1053,6 @@ _References:_
+ 
+ ## proxy-ssl-location-only
+ 
+-Set if proxy-ssl parameters should be applied onyl on locations and not on servers.
++Set if proxy-ssl parameters should be applied only on locations and not on servers.
+ _**default:**_ is disabled
+ 
+diff --git a/images/e2e/Dockerfile b/images/e2e/Dockerfile
+index 6a994ed4b..e7483d903 100644
+--- a/images/e2e/Dockerfile
++++ b/images/e2e/Dockerfile
+@@ -12,7 +12,7 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
+-FROM quay.io/kubernetes-ingress-controller/nginx-amd64:c5db20ace43ada5b4c191df24c480fddceb5d482
++FROM quay.io/kubernetes-ingress-controller/nginx-amd64:7b6e2dd312f1808e43fb39992ea814035557c7f3
+ 
+ ARG GOLANG_VERSION
+ ARG GOLANG_SHA
+diff --git a/images/nginx/Makefile b/images/nginx/Makefile
+index 232fce9b3..73232befe 100644
+--- a/images/nginx/Makefile
++++ b/images/nginx/Makefile
+@@ -18,7 +18,7 @@
+ SHELL=/bin/bash -o pipefail
+ 
+ # 0.0.0 shouldn't clobber any released builds
+-TAG ?= 0.98
++TAG ?= 0.99
+ REGISTRY ?= quay.io/kubernetes-ingress-controller
+ 
+ IMGNAME = nginx
+diff --git a/images/nginx/rootfs/build.sh b/images/nginx/rootfs/build.sh
+index 3f3dc69de..d02b40553 100755
+--- a/images/nginx/rootfs/build.sh
++++ b/images/nginx/rootfs/build.sh
+@@ -21,7 +21,7 @@ set -o pipefail
+ 
+ export DEBIAN_FRONTEND=noninteractive
+ 
+-export NGINX_VERSION=1.17.8
++export NGINX_VERSION=1.17.9
+ export NDK_VERSION=0.3.1rc1
+ export SETMISC_VERSION=0.32
+ export MORE_HEADERS_VERSION=0.33
+@@ -132,7 +132,7 @@ mkdir --verbose -p "$BUILD_PATH"
+ cd "$BUILD_PATH"
+ 
+ # download, verify and extract the source files
+-get_src 97d23ecf6d5150b30e284b40e8a6f7e3bb5be6b601e373a4d013768d5a25965b \
++get_src 7dd65d405c753c41b7fdab9415cfb4bdbaf093ec6d9f7432072d52cb7bcbb689 \
+         "https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz"
+ 
+ get_src 49f50d4cd62b166bc1aaf712febec5e028d9f187cedbc27a610dfd01bdde2d36 \
+diff --git a/internal/ingress/controller/controller.go b/internal/ingress/controller/controller.go
+index b0e6efce5..e943e5717 100644
+--- a/internal/ingress/controller/controller.go
++++ b/internal/ingress/controller/controller.go
+@@ -1111,6 +1111,13 @@ func (n *NGINXController) createServers(data []*ingress.Ingress,
+ 				continue
+ 			}
+ 
++			if cert.Certificate == nil {
++				klog.Warningf("SSL certificate %q does not contain a valid SSL certificate for server %q", secrKey, host)
++				klog.Warningf("Using default certificate")
++				servers[host].SSLCert = n.getDefaultSSLCertificate()
++				continue
++			}
++
+ 			err = cert.Certificate.VerifyHostname(host)
+ 			if err != nil {
+ 				klog.Warningf("Unexpected error validating SSL certificate %q for server %q: %v", secrKey, host, err)
+diff --git a/internal/ingress/controller/template/template.go b/internal/ingress/controller/template/template.go
+index 7939565c3..afe9fedeb 100644
+--- a/internal/ingress/controller/template/template.go
++++ b/internal/ingress/controller/template/template.go
+@@ -219,6 +219,8 @@ func quote(input interface{}) string {
+ 		inputStr = input
+ 	case fmt.Stringer:
+ 		inputStr = input.String()
++	case *string:
++		inputStr = *input
+ 	default:
+ 		inputStr = fmt.Sprintf("%v", input)
+ 	}
+@@ -866,7 +868,7 @@ func getIngressInformation(i, h, p interface{}) *ingressInformation {
+ 			continue
+ 		}
+ 
+-		if hostname != "" && hostname != rule.Host {
++		if hostname != "_" && rule.Host == "" {
+ 			continue
+ 		}
+ 
+diff --git a/internal/ingress/controller/template/template_test.go b/internal/ingress/controller/template/template_test.go
+index f641960ce..7e32eb188 100644
+--- a/internal/ingress/controller/template/template_test.go
++++ b/internal/ingress/controller/template/template_test.go
+@@ -256,10 +256,12 @@ func TestFormatIP(t *testing.T) {
+ }
+ 
+ func TestQuote(t *testing.T) {
++	foo := "foo"
+ 	cases := map[interface{}]string{
+ 		"foo":      `"foo"`,
+ 		"\"foo\"":  `"\"foo\""`,
+ 		"foo\nbar": `"foo\nbar"`,
++		&foo:       `"foo"`,
+ 		10:         `"10"`,
+ 	}
+ 	for input, output := range cases {
+diff --git a/test/e2e-image/Dockerfile b/test/e2e-image/Dockerfile
+index ced013ca7..3423fad0f 100644
+--- a/test/e2e-image/Dockerfile
++++ b/test/e2e-image/Dockerfile
+@@ -1,4 +1,4 @@
+-FROM quay.io/kubernetes-ingress-controller/e2e:v02262020-a830e931d AS BASE
++FROM quay.io/kubernetes-ingress-controller/e2e:v03062020-7b6e2dd31 AS BASE
+ 
+ FROM alpine:3.11
+ 
+diff --git a/test/e2e/annotations/affinity.go b/test/e2e/annotations/affinity.go
+index 80808a6b8..50c8ec0ea 100644
+--- a/test/e2e/annotations/affinity.go
++++ b/test/e2e/annotations/affinity.go
+@@ -40,10 +40,9 @@ var _ = framework.DescribeAnnotation("affinity session-cookie-name", func() {
+ 
+ 	ginkgo.It("should set sticky cookie SERVERID", func() {
+ 		host := "sticky.foo.com"
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/affinity":            "cookie",
+-			"nginx.ingress.kubernetes.io/session-cookie-name": "SERVERID",
+-		}
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/affinity"] = "cookie"
++		annotations["nginx.ingress.kubernetes.io/session-cookie-name"] = "SERVERID"
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+@@ -63,10 +62,9 @@ var _ = framework.DescribeAnnotation("affinity session-cookie-name", func() {
+ 
+ 	ginkgo.It("should change cookie name on ingress definition change", func() {
+ 		host := "change.foo.com"
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/affinity":            "cookie",
+-			"nginx.ingress.kubernetes.io/session-cookie-name": "SERVERID",
+-		}
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/affinity"] = "cookie"
++		annotations["nginx.ingress.kubernetes.io/session-cookie-name"] = "SERVERID"
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+@@ -99,10 +97,9 @@ var _ = framework.DescribeAnnotation("affinity session-cookie-name", func() {
+ 
+ 	ginkgo.It("should set the path to /something on the generated cookie", func() {
+ 		host := "path.foo.com"
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/affinity":            "cookie",
+-			"nginx.ingress.kubernetes.io/session-cookie-name": "SERVERID",
+-		}
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/affinity"] = "cookie"
++		annotations["nginx.ingress.kubernetes.io/session-cookie-name"] = "SERVERID"
+ 
+ 		ing := framework.NewSingleIngress(host, "/something", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+@@ -122,10 +119,9 @@ var _ = framework.DescribeAnnotation("affinity session-cookie-name", func() {
+ 
+ 	ginkgo.It("does not set the path to / on the generated cookie if there's more than one rule referring to the same backend", func() {
+ 		host := "morethanonerule.foo.com"
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/affinity":            "cookie",
+-			"nginx.ingress.kubernetes.io/session-cookie-name": "SERVERID",
+-		}
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/affinity"] = "cookie"
++		annotations["nginx.ingress.kubernetes.io/session-cookie-name"] = "SERVERID"
+ 
+ 		f.EnsureIngress(&networking.Ingress{
+ 			ObjectMeta: metav1.ObjectMeta{
+@@ -184,12 +180,11 @@ var _ = framework.DescribeAnnotation("affinity session-cookie-name", func() {
+ 
+ 	ginkgo.It("should set cookie with expires", func() {
+ 		host := "cookieexpires.foo.com"
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/affinity":               "cookie",
+-			"nginx.ingress.kubernetes.io/session-cookie-name":    "ExpiresCookie",
+-			"nginx.ingress.kubernetes.io/session-cookie-expires": "172800",
+-			"nginx.ingress.kubernetes.io/session-cookie-max-age": "259200",
+-		}
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/affinity"] = "cookie"
++		annotations["nginx.ingress.kubernetes.io/session-cookie-name"] = "ExpiresCookie"
++		annotations["nginx.ingress.kubernetes.io/session-cookie-expires"] = "172800"
++		annotations["nginx.ingress.kubernetes.io/session-cookie-max-age"] = "259200"
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+@@ -216,12 +211,11 @@ var _ = framework.DescribeAnnotation("affinity session-cookie-name", func() {
+ 
+ 	ginkgo.It("should work with use-regex annotation and session-cookie-path", func() {
+ 		host := "useregex.foo.com"
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/affinity":            "cookie",
+-			"nginx.ingress.kubernetes.io/session-cookie-name": "SERVERID",
+-			"nginx.ingress.kubernetes.io/use-regex":           "true",
+-			"nginx.ingress.kubernetes.io/session-cookie-path": "/foo/bar",
+-		}
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/affinity"] = "cookie"
++		annotations["nginx.ingress.kubernetes.io/session-cookie-name"] = "SERVERID"
++		annotations["nginx.ingress.kubernetes.io/use-regex"] = "true"
++		annotations["nginx.ingress.kubernetes.io/session-cookie-path"] = "/foo/bar"
+ 
+ 		ing := framework.NewSingleIngress(host, "/foo/.*", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+@@ -241,11 +235,10 @@ var _ = framework.DescribeAnnotation("affinity session-cookie-name", func() {
+ 
+ 	ginkgo.It("should warn user when use-regex is true and session-cookie-path is not set", func() {
+ 		host := "useregexwarn.foo.com"
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/affinity":            "cookie",
+-			"nginx.ingress.kubernetes.io/session-cookie-name": "SERVERID",
+-			"nginx.ingress.kubernetes.io/use-regex":           "true",
+-		}
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/affinity"] = "cookie"
++		annotations["nginx.ingress.kubernetes.io/session-cookie-name"] = "SERVERID"
++		annotations["nginx.ingress.kubernetes.io/use-regex"] = "true"
+ 
+ 		ing := framework.NewSingleIngress(host, "/foo/.*", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+@@ -269,9 +262,9 @@ var _ = framework.DescribeAnnotation("affinity session-cookie-name", func() {
+ 	ginkgo.It("should not set affinity across all server locations when using separate ingresses", func() {
+ 		host := "separate.foo.com"
+ 
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/affinity": "cookie",
+-		}
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/affinity"] = "cookie"
++
+ 		ing1 := framework.NewSingleIngress("ingress1", "/foo/bar", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing1)
+ 
+@@ -299,10 +292,9 @@ var _ = framework.DescribeAnnotation("affinity session-cookie-name", func() {
+ 	})
+ 
+ 	ginkgo.It("should set sticky cookie without host", func() {
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/affinity":            "cookie",
+-			"nginx.ingress.kubernetes.io/session-cookie-name": "SERVERID",
+-		}
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/affinity"] = "cookie"
++		annotations["nginx.ingress.kubernetes.io/session-cookie-name"] = "SERVERID"
+ 
+ 		ing := framework.NewSingleIngress("default-no-host", "/", "", f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+diff --git a/test/e2e/annotations/affinitymode.go b/test/e2e/annotations/affinitymode.go
+new file mode 100644
+index 000000000..548b33836
+--- /dev/null
++++ b/test/e2e/annotations/affinitymode.go
+@@ -0,0 +1,173 @@
++/*
++Copyright 2020 The Kubernetes Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package annotations
++
++import (
++	"fmt"
++	"net/http"
++	"reflect"
++	"strings"
++	"time"
++
++	"github.com/onsi/ginkgo"
++	"github.com/stretchr/testify/assert"
++
++	"k8s.io/ingress-nginx/test/e2e/framework"
++)
++
++var _ = framework.DescribeAnnotation("affinitymode", func() {
++	f := framework.NewDefaultFramework("affinity")
++
++	ginkgo.It("Balanced affinity mode should balance", func() {
++		deploymentName := "affinitybalanceecho"
++		replicas := 5
++		f.NewEchoDeploymentWithNameAndReplicas(deploymentName, replicas)
++
++		host := "affinity-mode-balance.com"
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/affinity"] = "cookie"
++		annotations["ginx.ingress.kubernetes.io/session-cookie-name"] = "hello-cookie"
++		annotations["nginx.ingress.kubernetes.io/session-cookie-expires"] = "172800"
++		annotations["nginx.ingress.kubernetes.io/session-cookie-max-age"] = "172800"
++		annotations["nginx.ingress.kubernetes.io/ssl-redirect"] = "false"
++		annotations["nginx.ingress.kubernetes.io/affinity-mode"] = "balanced"
++		annotations["nginx.ingress.kubernetes.io/session-cookie-hash"] = "sha1"
++
++		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, deploymentName, 80, annotations)
++		f.EnsureIngress(ing)
++
++		f.WaitForNginxServer(host,
++			func(server string) bool {
++				return strings.Contains(server, fmt.Sprintf("server_name %s ;", host))
++			})
++
++		// Check configuration
++		ingress := f.GetIngress(f.Namespace, host)
++		returnedAnnotations := ingress.GetAnnotations()
++		isItEqual := reflect.DeepEqual(annotations, returnedAnnotations)
++		assert.Equal(ginkgo.GinkgoT(), isItEqual, true)
++	})
++
++	ginkgo.It("Check persistent affinity mode", func() {
++		deploymentName := "affinitypersistentecho"
++		replicas := 5
++		f.NewEchoDeploymentWithNameAndReplicas(deploymentName, replicas)
++
++		host := "affinity-mode-persistent.com"
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/affinity"] = "cookie"
++		annotations["ginx.ingress.kubernetes.io/session-cookie-name"] = "hello-cookie"
++		annotations["nginx.ingress.kubernetes.io/session-cookie-expires"] = "172800"
++		annotations["nginx.ingress.kubernetes.io/session-cookie-max-age"] = "172800"
++		annotations["nginx.ingress.kubernetes.io/ssl-redirect"] = "false"
++		annotations["nginx.ingress.kubernetes.io/affinity-mode"] = "persistent"
++		annotations["nginx.ingress.kubernetes.io/session-cookie-hash"] = "sha1"
++
++		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, deploymentName, 80, annotations)
++		f.EnsureIngress(ing)
++
++		f.WaitForNginxServer(host,
++			func(server string) bool {
++				return strings.Contains(server, fmt.Sprintf("server_name %s ;", host))
++			})
++
++		// Check configuration
++		ingress := f.GetIngress(f.Namespace, host)
++		returnedAnnotations := ingress.GetAnnotations()
++		isItEqual := reflect.DeepEqual(annotations, returnedAnnotations)
++		assert.Equal(ginkgo.GinkgoT(), isItEqual, true)
++
++		// Make a request
++		request := f.HTTPTestClient().GET("/").WithHeader("Host", host)
++		response := request.Expect()
++
++		// Get the responder host name
++		originalHostName := getHostnameFromResponseBody(response.Body().Raw())
++
++		// Send new requests and add new backends. Check which backend responded to the sent request
++		cookies := getCookiesFromHeader(response.Header("Set-Cookie").Raw())
++		for sendRequestNumber := 0; sendRequestNumber < 10; sendRequestNumber++ {
++			replicas = replicas + 1
++			err := framework.UpdateDeployment(f.KubeClientSet, f.Namespace, deploymentName, replicas, nil)
++			assert.Nil(ginkgo.GinkgoT(), err)
++			time.Sleep(3 * time.Second)
++			response = request.WithCookies(cookies).Expect()
++			newHostName := getHostnameFromResponseBody(response.Body().Raw())
++			assert.Equal(ginkgo.GinkgoT(), originalHostName, newHostName,
++				fmt.Sprintf("Response number %v is not from the same host. Original host: %s, response returned: %s", sendRequestNumber, originalHostName, newHostName))
++
++		}
++
++		// remove all backends
++		replicas = 0
++		err := framework.UpdateDeployment(f.KubeClientSet, f.Namespace, deploymentName, replicas, nil)
++		assert.Nil(ginkgo.GinkgoT(), err)
++		time.Sleep(5 * time.Second)
++
++		// validate, there is no backend to serve the request
++		response = request.WithCookies(cookies).Expect().Status(http.StatusServiceUnavailable)
++
++		// create brand new backends
++		replicas = 2
++		err = framework.UpdateDeployment(f.KubeClientSet, f.Namespace, deploymentName, replicas, nil)
++		assert.Nil(ginkgo.GinkgoT(), err)
++		time.Sleep(5 * time.Second)
++
++		// wait brand new backends to spawn
++		response = request.WithCookies(cookies).Expect()
++		try := 0
++		for (response.Raw().StatusCode == http.StatusServiceUnavailable) && (try < 30) {
++			time.Sleep(5 * time.Second)
++			response = request.WithCookies(cookies).Expect()
++			try++
++		}
++		assert.LessOrEqual(ginkgo.GinkgoT(), try, 29, "Tries reached it's maximum, backends did not deployed in time.")
++
++		// brand new backends equals new hostname
++		newHostName := getHostnameFromResponseBody(response.Body().Raw())
++		assert.NotEqual(ginkgo.GinkgoT(), originalHostName, newHostName,
++			fmt.Sprintf("Response is from the same host (That should not be possible). Original host: %s, response returned: %s", originalHostName, newHostName))
++	})
++})
++
++func getHostnameFromResponseBody(rawResponseBody string) string {
++	lines := strings.Split(strings.TrimSpace(rawResponseBody), "\n")
++	for _, line := range lines {
++		if strings.Contains(line, "Hostname") {
++			hostnameParts := strings.Split(strings.TrimSpace(line), ":")
++			if len(hostnameParts) == 2 {
++				return strings.TrimSpace(hostnameParts[1])
++			}
++			return ""
++		}
++	}
++	return ""
++}
++
++func getCookiesFromHeader(rawheader string) map[string]string {
++	cookies := make(map[string]string)
++	parts := strings.Split(strings.TrimSpace(rawheader), ";")
++	for _, part := range parts {
++		subparts := strings.Split(strings.TrimSpace(part), "=")
++		if len(subparts) == 2 {
++			cookies[subparts[0]] = subparts[1]
++		} else {
++			cookies[subparts[0]] = ""
++		}
++	}
++	return cookies
++}
+diff --git a/test/e2e/annotations/clientbodybuffersize.go b/test/e2e/annotations/clientbodybuffersize.go
+index 4876eb1c7..4091bdad1 100644
+--- a/test/e2e/annotations/clientbodybuffersize.go
++++ b/test/e2e/annotations/clientbodybuffersize.go
+@@ -17,6 +17,7 @@ limitations under the License.
+ package annotations
+ 
+ import (
++	"fmt"
+ 	"strings"
+ 
+ 	"github.com/onsi/ginkgo"
+@@ -32,92 +33,98 @@ var _ = framework.DescribeAnnotation("client-body-buffer-size", func() {
+ 	})
+ 
+ 	ginkgo.It("should set client_body_buffer_size to 1000", func() {
+-		host := "proxy.foo.com"
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/client-body-buffer-size": "1000",
+-		}
++		host := "client-body-buffer-size.com"
++
++		clientBodyBufferSize := "1000"
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/client-body-buffer-size"] = clientBodyBufferSize
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		f.WaitForNginxServer(host,
+ 			func(server string) bool {
+-				return strings.Contains(server, "client_body_buffer_size 1000;")
++				return strings.Contains(server, fmt.Sprintf("client_body_buffer_size %s;", clientBodyBufferSize))
+ 			})
+ 	})
+ 
+ 	ginkgo.It("should set client_body_buffer_size to 1K", func() {
+-		host := "proxy.foo.com"
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/client-body-buffer-size": "1K",
+-		}
++		host := "client-body-buffer-size.com"
++
++		clientBodyBufferSize := "1K"
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/client-body-buffer-size"] = clientBodyBufferSize
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		f.WaitForNginxServer(host,
+ 			func(server string) bool {
+-				return strings.Contains(server, "client_body_buffer_size 1K;")
++				return strings.Contains(server, fmt.Sprintf("client_body_buffer_size %s;", clientBodyBufferSize))
+ 			})
+ 	})
+ 
+ 	ginkgo.It("should set client_body_buffer_size to 1k", func() {
+-		host := "proxy.foo.com"
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/client-body-buffer-size": "1k",
+-		}
++		host := "client-body-buffer-size.com"
++
++		clientBodyBufferSize := "1k"
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/client-body-buffer-size"] = clientBodyBufferSize
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		f.WaitForNginxServer(host,
+ 			func(server string) bool {
+-				return strings.Contains(server, "client_body_buffer_size 1k;")
++				return strings.Contains(server, fmt.Sprintf("client_body_buffer_size %s;", clientBodyBufferSize))
+ 			})
+ 	})
+ 
+ 	ginkgo.It("should set client_body_buffer_size to 1m", func() {
+-		host := "proxy.foo.com"
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/client-body-buffer-size": "1m",
+-		}
++		host := "client-body-buffer-size.com"
++
++		clientBodyBufferSize := "1m"
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/client-body-buffer-size"] = clientBodyBufferSize
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		f.WaitForNginxServer(host,
+ 			func(server string) bool {
+-				return strings.Contains(server, "client_body_buffer_size 1m;")
++				return strings.Contains(server, fmt.Sprintf("client_body_buffer_size %s;", clientBodyBufferSize))
+ 			})
+ 	})
+ 
+ 	ginkgo.It("should set client_body_buffer_size to 1M", func() {
+-		host := "proxy.foo.com"
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/client-body-buffer-size": "1M",
+-		}
++		host := "client-body-buffer-size.com"
++
++		clientBodyBufferSize := "1M"
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/client-body-buffer-size"] = clientBodyBufferSize
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		f.WaitForNginxServer(host,
+ 			func(server string) bool {
+-				return strings.Contains(server, "client_body_buffer_size 1M;")
++				return strings.Contains(server, fmt.Sprintf("client_body_buffer_size %s;", clientBodyBufferSize))
+ 			})
+ 	})
+ 
+ 	ginkgo.It("should not set client_body_buffer_size to invalid 1b", func() {
+-		host := "proxy.foo.com"
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/client-body-buffer-size": "1b",
+-		}
++		host := "client-body-buffer-size.com"
++
++		clientBodyBufferSize := "1b"
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/client-body-buffer-size"] = clientBodyBufferSize
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		f.WaitForNginxServer(host,
+ 			func(server string) bool {
+-				return !strings.Contains(server, "client_body_buffer_size 1b;")
++				return !strings.Contains(server, fmt.Sprintf("client_body_buffer_size %s;", clientBodyBufferSize))
+ 			})
+ 	})
+ })
+diff --git a/test/e2e/annotations/proxy.go b/test/e2e/annotations/proxy.go
+index 47dab921c..65e71da8e 100644
+--- a/test/e2e/annotations/proxy.go
++++ b/test/e2e/annotations/proxy.go
+@@ -17,6 +17,7 @@ limitations under the License.
+ package annotations
+ 
+ import (
++	"fmt"
+ 	"strings"
+ 
+ 	"github.com/onsi/ginkgo"
+@@ -33,211 +34,214 @@ var _ = framework.DescribeAnnotation("proxy-*", func() {
+ 	})
+ 
+ 	ginkgo.It("should set proxy_redirect to off", func() {
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/proxy-redirect-from": "off",
+-			"nginx.ingress.kubernetes.io/proxy-redirect-to":   "goodbye.com",
+-		}
++		proxyRedirectFrom := "off"
++
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/proxy-redirect-from"] = proxyRedirectFrom
++		annotations["nginx.ingress.kubernetes.io/proxy-redirect-to"] = "goodbye.com"
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		f.WaitForNginxServer(host,
+ 			func(server string) bool {
+-				return strings.Contains(server, "proxy_redirect off;")
++				return strings.Contains(server, fmt.Sprintf("proxy_redirect %s;", proxyRedirectFrom))
+ 			})
+ 	})
+ 
+ 	ginkgo.It("should set proxy_redirect to default", func() {
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/proxy-redirect-from": "default",
+-			"nginx.ingress.kubernetes.io/proxy-redirect-to":   "goodbye.com",
+-		}
++		proxyRedirectFrom := "default"
++
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/proxy-redirect-from"] = proxyRedirectFrom
++		annotations["nginx.ingress.kubernetes.io/proxy-redirect-to"] = "goodbye.com"
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		f.WaitForNginxServer(host,
+ 			func(server string) bool {
+-				return strings.Contains(server, "proxy_redirect default;")
++				return strings.Contains(server, fmt.Sprintf("proxy_redirect %s;", proxyRedirectFrom))
+ 			})
+ 	})
+ 
+ 	ginkgo.It("should set proxy_redirect to hello.com goodbye.com", func() {
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/proxy-redirect-from": "hello.com",
+-			"nginx.ingress.kubernetes.io/proxy-redirect-to":   "goodbye.com",
+-		}
++		proxyRedirectFrom := "hello.com"
++		proxyRedirectTo := "goodbye.com"
++
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/proxy-redirect-from"] = proxyRedirectFrom
++		annotations["nginx.ingress.kubernetes.io/proxy-redirect-to"] = proxyRedirectTo
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		f.WaitForNginxServer(host,
+ 			func(server string) bool {
+-				return strings.Contains(server, "proxy_redirect hello.com goodbye.com;")
++				return strings.Contains(server, fmt.Sprintf("proxy_redirect %s %s;", proxyRedirectFrom, proxyRedirectTo))
+ 			})
+ 	})
+ 
+ 	ginkgo.It("should set proxy client-max-body-size to 8m", func() {
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/proxy-body-size": "8m",
+-		}
++		proxyBodySize := "8m"
++
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/proxy-body-size"] = proxyBodySize
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		f.WaitForNginxServer(host,
+ 			func(server string) bool {
+-				return strings.Contains(server, "client_max_body_size 8m;")
++				return strings.Contains(server, fmt.Sprintf("client_max_body_size %s;", proxyBodySize))
+ 			})
+ 	})
+ 
+ 	ginkgo.It("should not set proxy client-max-body-size to incorrect value", func() {
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/proxy-body-size": "15r",
+-		}
++		proxyBodySize := "15r"
++
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/proxy-body-size"] = proxyBodySize
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		f.WaitForNginxServer(host,
+ 			func(server string) bool {
+-				return !strings.Contains(server, "client_max_body_size 15r;")
++				return !strings.Contains(server, fmt.Sprintf("client_max_body_size %s;", proxyBodySize))
+ 			})
+ 	})
+ 
+ 	ginkgo.It("should set valid proxy timeouts", func() {
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/proxy-connect-timeout": "50",
+-			"nginx.ingress.kubernetes.io/proxy-send-timeout":    "20",
+-			"nginx.ingress.kubernetes.io/proxy-read-timeout":    "20",
+-		}
++		proxyConnectTimeout := "50"
++		proxySendTimeout := "20"
++		proxyReadtimeout := "20"
++
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/proxy-connect-timeout"] = proxyConnectTimeout
++		annotations["nginx.ingress.kubernetes.io/proxy-send-timeout"] = proxySendTimeout
++		annotations["nginx.ingress.kubernetes.io/proxy-read-timeout"] = proxyReadtimeout
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		f.WaitForNginxServer(host,
+ 			func(server string) bool {
+-				return strings.Contains(server, "proxy_connect_timeout 50s;") &&
+-					strings.Contains(server, "proxy_send_timeout 20s;") &&
+-					strings.Contains(server, "proxy_read_timeout 20s;")
++				return strings.Contains(server, fmt.Sprintf("proxy_connect_timeout %ss;", proxyConnectTimeout)) &&
++					strings.Contains(server, fmt.Sprintf("proxy_send_timeout %ss;", proxySendTimeout)) &&
++					strings.Contains(server, fmt.Sprintf("proxy_read_timeout %ss;", proxyReadtimeout))
+ 			})
+ 	})
+ 
+ 	ginkgo.It("should not set invalid proxy timeouts", func() {
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/proxy-connect-timeout": "50k",
+-			"nginx.ingress.kubernetes.io/proxy-send-timeout":    "20k",
+-			"nginx.ingress.kubernetes.io/proxy-read-timeout":    "20k",
+-		}
++		proxyConnectTimeout := "50k"
++		proxySendTimeout := "20k"
++		proxyReadtimeout := "20k"
++
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/proxy-connect-timeout"] = proxyConnectTimeout
++		annotations["nginx.ingress.kubernetes.io/proxy-send-timeout"] = proxySendTimeout
++		annotations["nginx.ingress.kubernetes.io/proxy-read-timeout"] = proxyReadtimeout
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		f.WaitForNginxServer(host,
+ 			func(server string) bool {
+-				return !strings.Contains(server, "proxy_connect_timeout 50ks;") &&
+-					!strings.Contains(server, "proxy_send_timeout 20ks;") &&
+-					!strings.Contains(server, "proxy_read_timeout 20ks;")
++				return !strings.Contains(server, fmt.Sprintf("proxy_connect_timeout %ss;", proxyConnectTimeout)) &&
++					!strings.Contains(server, fmt.Sprintf("proxy_send_timeout %ss;", proxySendTimeout)) &&
++					!strings.Contains(server, fmt.Sprintf("proxy_read_timeout %ss;", proxyReadtimeout))
+ 			})
+ 	})
+ 
+ 	ginkgo.It("should turn on proxy-buffering", func() {
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/proxy-buffering":      "on",
+-			"nginx.ingress.kubernetes.io/proxy-buffers-number": "8",
+-			"nginx.ingress.kubernetes.io/proxy-buffer-size":    "8k",
+-		}
++		proxyBuffering := "on"
++		proxyBufersNumber := "8"
++		proxyBufferSize := "8k"
++
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/proxy-buffering"] = proxyBuffering
++		annotations["nginx.ingress.kubernetes.io/proxy-buffers-number"] = proxyBufersNumber
++		annotations["nginx.ingress.kubernetes.io/proxy-buffer-size"] = proxyBufferSize
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		f.WaitForNginxServer(host,
+ 			func(server string) bool {
+-				return strings.Contains(server, "proxy_buffering on;") &&
+-					strings.Contains(server, "proxy_buffer_size 8k;") &&
+-					strings.Contains(server, "proxy_buffers 8 8k;") &&
+-					strings.Contains(server, "proxy_request_buffering on;")
++				return strings.Contains(server, fmt.Sprintf("proxy_buffering %s;", proxyBuffering)) &&
++					strings.Contains(server, fmt.Sprintf("proxy_buffer_size %s;", proxyBufferSize)) &&
++					strings.Contains(server, fmt.Sprintf("proxy_buffers %s %s;", proxyBufersNumber, proxyBufferSize)) &&
++					strings.Contains(server, fmt.Sprintf("proxy_request_buffering %s;", proxyBuffering))
+ 			})
+ 	})
+ 
+ 	ginkgo.It("should turn off proxy-request-buffering", func() {
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/proxy-request-buffering": "off",
+-		}
++		proxyRequestBuffering := "off"
++
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/proxy-request-buffering"] = proxyRequestBuffering
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		f.WaitForNginxServer(host,
+ 			func(server string) bool {
+-				return strings.Contains(server, "proxy_request_buffering off;")
++				return strings.Contains(server, fmt.Sprintf("proxy_request_buffering %s;", proxyRequestBuffering))
+ 			})
+ 	})
+ 
+ 	ginkgo.It("should build proxy next upstream", func() {
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/proxy-next-upstream":         "error timeout http_502",
+-			"nginx.ingress.kubernetes.io/proxy-next-upstream-timeout": "999999",
+-			"nginx.ingress.kubernetes.io/proxy-next-upstream-tries":   "888888",
+-		}
++		proxyNextUpstream := "error timeout http_502"
++		proxyNextUpstreamTimeout := "999999"
++		proxyNextUpstreamTries := "888888"
+ 
+-		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+-		f.EnsureIngress(ing)
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/proxy-next-upstream"] = proxyNextUpstream
++		annotations["nginx.ingress.kubernetes.io/proxy-next-upstream-timeout"] = proxyNextUpstreamTimeout
++		annotations["nginx.ingress.kubernetes.io/proxy-next-upstream-tries"] = proxyNextUpstreamTries
+ 
+-		f.WaitForNginxServer(host,
+-			func(server string) bool {
+-				return strings.Contains(server, "error timeout http_502;") &&
+-					strings.Contains(server, "999999;") &&
+-					strings.Contains(server, "888888;")
+-			})
+-	})
+-
+-	ginkgo.It("should build proxy next upstream using configmap values", func() {
+-		annotations := map[string]string{}
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+-		f.SetNginxConfigMapData(map[string]string{
+-			"proxy-next-upstream":         "timeout http_502",
+-			"proxy-next-upstream-timeout": "999999",
+-			"proxy-next-upstream-tries":   "888888",
+-		})
+-
+ 		f.WaitForNginxServer(host,
+ 			func(server string) bool {
+-				return strings.Contains(server, "timeout http_502;") &&
+-					strings.Contains(server, "999999;") &&
+-					strings.Contains(server, "888888;")
++				return strings.Contains(server, fmt.Sprintf("proxy_next_upstream %s;", proxyNextUpstream)) &&
++					strings.Contains(server, fmt.Sprintf("proxy_next_upstream_timeout %s;", proxyNextUpstreamTimeout)) &&
++					strings.Contains(server, fmt.Sprintf("proxy_next_upstream_tries %s;", proxyNextUpstreamTries))
+ 			})
+ 	})
+ 
+ 	ginkgo.It("should setup proxy cookies", func() {
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/proxy-cookie-domain": "localhost example.org",
+-			"nginx.ingress.kubernetes.io/proxy-cookie-path":   "/one/ /",
+-		}
++		proxyCookieDomain := "localhost example.org"
++		proxyCookiePath := "/one/ /"
++
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/proxy-cookie-domain"] = proxyCookieDomain
++		annotations["nginx.ingress.kubernetes.io/proxy-cookie-path"] = proxyCookiePath
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		f.WaitForNginxServer(host,
+ 			func(server string) bool {
+-				return strings.Contains(server, "proxy_cookie_domain localhost example.org;") &&
+-					strings.Contains(server, "proxy_cookie_path /one/ /;")
++				return strings.Contains(server, fmt.Sprintf("proxy_cookie_domain %s;", proxyCookieDomain)) &&
++					strings.Contains(server, fmt.Sprintf("proxy_cookie_path %s;", proxyCookiePath))
+ 			})
+ 	})
+ 
+ 	ginkgo.It("should change the default proxy HTTP version", func() {
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/proxy-http-version": "1.0",
+-		}
++		proxyHTTPVersion := "1.0"
++
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/proxy-http-version"] = proxyHTTPVersion
+ 
+ 		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		f.WaitForNginxServer(host,
+ 			func(server string) bool {
+-				return strings.Contains(server, "proxy_http_version 1.0;")
++				return strings.Contains(server, fmt.Sprintf("proxy_http_version %s;", proxyHTTPVersion))
+ 			})
+ 	})
+ 
+diff --git a/test/e2e/annotations/proxyssl.go b/test/e2e/annotations/proxyssl.go
+index 5b3ebb566..b23462905 100644
+--- a/test/e2e/annotations/proxyssl.go
++++ b/test/e2e/annotations/proxyssl.go
+@@ -18,6 +18,7 @@ package annotations
+ 
+ import (
+ 	"fmt"
++	"net/http"
+ 	"strings"
+ 
+ 	"github.com/onsi/ginkgo"
+@@ -35,66 +36,114 @@ var _ = framework.DescribeAnnotation("proxy-ssl-*", func() {
+ 
+ 	ginkgo.It("should set valid proxy-ssl-secret", func() {
+ 		host := "proxyssl.foo.com"
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/proxy-ssl-secret": f.Namespace + "/" + host,
+-		}
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/proxy-ssl-secret"] = f.Namespace + "/" + host
+ 
+-		_, err := framework.CreateIngressMASecret(f.KubeClientSet, host, host, f.Namespace)
++		tlsConfig, err := framework.CreateIngressMASecret(f.KubeClientSet, host, host, f.Namespace)
+ 		assert.Nil(ginkgo.GinkgoT(), err)
+ 
+ 		ing := framework.NewSingleIngressWithTLS(host, "/", host, []string{host}, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		assertProxySSL(f, host, "DEFAULT", "TLSv1 TLSv1.1 TLSv1.2", "off", 1)
++
++		f.HTTPTestClient().
++			GET("/").
++			WithHeader("Host", host).
++			Expect().
++			Status(http.StatusPermanentRedirect)
++
++		f.HTTPTestClientWithTLSConfig(tlsConfig).
++			GET("/").
++			WithURL(f.GetURL(framework.HTTPS)).
++			WithHeader("Host", host).
++			Expect().
++			Status(http.StatusOK)
+ 	})
+ 
+ 	ginkgo.It("should set valid proxy-ssl-secret, proxy-ssl-verify to on, and proxy-ssl-verify-depth to 2", func() {
+ 		host := "proxyssl.foo.com"
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/proxy-ssl-secret":       f.Namespace + "/" + host,
+-			"nginx.ingress.kubernetes.io/proxy-ssl-verify":       "on",
+-			"nginx.ingress.kubernetes.io/proxy-ssl-verify-depth": "2",
+-		}
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/proxy-ssl-secret"] = f.Namespace + "/" + host
++		annotations["nginx.ingress.kubernetes.io/proxy-ssl-verify"] = "on"
++		annotations["nginx.ingress.kubernetes.io/proxy-ssl-verify-depth"] = "2"
+ 
+-		_, err := framework.CreateIngressMASecret(f.KubeClientSet, host, host, f.Namespace)
++		tlsConfig, err := framework.CreateIngressMASecret(f.KubeClientSet, host, host, f.Namespace)
+ 		assert.Nil(ginkgo.GinkgoT(), err)
+ 
+ 		ing := framework.NewSingleIngressWithTLS(host, "/", host, []string{host}, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		assertProxySSL(f, host, "DEFAULT", "TLSv1 TLSv1.1 TLSv1.2", "on", 2)
++
++		f.HTTPTestClient().
++			GET("/").
++			WithHeader("Host", host).
++			Expect().
++			Status(http.StatusPermanentRedirect)
++
++		f.HTTPTestClientWithTLSConfig(tlsConfig).
++			GET("/").
++			WithURL(f.GetURL(framework.HTTPS)).
++			WithHeader("Host", host).
++			Expect().
++			Status(http.StatusOK)
+ 	})
+ 
+ 	ginkgo.It("should set valid proxy-ssl-secret, proxy-ssl-ciphers to HIGH:!AES", func() {
+ 		host := "proxyssl.foo.com"
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/proxy-ssl-secret":  f.Namespace + "/" + host,
+-			"nginx.ingress.kubernetes.io/proxy-ssl-ciphers": "HIGH:!AES",
+-		}
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/proxy-ssl-secret"] = f.Namespace + "/" + host
++		annotations["nginx.ingress.kubernetes.io/proxy-ssl-ciphers"] = "HIGH:!AES"
+ 
+-		_, err := framework.CreateIngressMASecret(f.KubeClientSet, host, host, f.Namespace)
++		tlsConfig, err := framework.CreateIngressMASecret(f.KubeClientSet, host, host, f.Namespace)
+ 		assert.Nil(ginkgo.GinkgoT(), err)
+ 
+ 		ing := framework.NewSingleIngressWithTLS(host, "/", host, []string{host}, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		assertProxySSL(f, host, "HIGH:!AES", "TLSv1 TLSv1.1 TLSv1.2", "off", 1)
++
++		f.HTTPTestClient().
++			GET("/").
++			WithHeader("Host", host).
++			Expect().
++			Status(http.StatusPermanentRedirect)
++
++		f.HTTPTestClientWithTLSConfig(tlsConfig).
++			GET("/").
++			WithURL(f.GetURL(framework.HTTPS)).
++			WithHeader("Host", host).
++			Expect().
++			Status(http.StatusOK)
+ 	})
+ 
+ 	ginkgo.It("should set valid proxy-ssl-secret, proxy-ssl-protocols", func() {
+ 		host := "proxyssl.foo.com"
+-		annotations := map[string]string{
+-			"nginx.ingress.kubernetes.io/proxy-ssl-secret":    f.Namespace + "/" + host,
+-			"nginx.ingress.kubernetes.io/proxy-ssl-protocols": "TLSv1.2 TLSv1.3",
+-		}
++		annotations := make(map[string]string)
++		annotations["nginx.ingress.kubernetes.io/proxy-ssl-secret"] = f.Namespace + "/" + host
++		annotations["nginx.ingress.kubernetes.io/proxy-ssl-protocols"] = "TLSv1.2 TLSv1.3"
+ 
+-		_, err := framework.CreateIngressMASecret(f.KubeClientSet, host, host, f.Namespace)
++		tlsConfig, err := framework.CreateIngressMASecret(f.KubeClientSet, host, host, f.Namespace)
+ 		assert.Nil(ginkgo.GinkgoT(), err)
+ 
+ 		ing := framework.NewSingleIngressWithTLS(host, "/", host, []string{host}, f.Namespace, framework.EchoService, 80, annotations)
+ 		f.EnsureIngress(ing)
+ 
+ 		assertProxySSL(f, host, "DEFAULT", "TLSv1.2 TLSv1.3", "off", 1)
++
++		f.HTTPTestClient().
++			GET("/").
++			WithHeader("Host", host).
++			Expect().
++			Status(http.StatusPermanentRedirect)
++
++		f.HTTPTestClientWithTLSConfig(tlsConfig).
++			GET("/").
++			WithURL(f.GetURL(framework.HTTPS)).
++			WithHeader("Host", host).
++			Expect().
++			Status(http.StatusOK)
+ 	})
+ })
+ 
+diff --git a/test/e2e/framework/k8s.go b/test/e2e/framework/k8s.go
+index cff5f7f2f..51322f064 100644
+--- a/test/e2e/framework/k8s.go
++++ b/test/e2e/framework/k8s.go
+@@ -61,14 +61,20 @@ func (f *Framework) EnsureConfigMap(configMap *api.ConfigMap) (*api.ConfigMap, e
+ 	return cm, nil
+ }
+ 
++// GetIngress gets an Ingress object from the given namespace, name and retunrs it, throws error if it does not exists.
++func (f *Framework) GetIngress(namespace string, name string) *networking.Ingress {
++	ing, err := f.KubeClientSet.NetworkingV1beta1().Ingresses(namespace).Get(name, metav1.GetOptions{})
++	assert.Nil(ginkgo.GinkgoT(), err, "getting ingress")
++	assert.NotNil(ginkgo.GinkgoT(), ing, "expected an ingress but none returned")
++	return ing
++}
++
+ // EnsureIngress creates an Ingress object and retunrs it, throws error if it already exists.
+ func (f *Framework) EnsureIngress(ingress *networking.Ingress) *networking.Ingress {
+ 	err := createIngressWithRetries(f.KubeClientSet, f.Namespace, ingress)
+ 	assert.Nil(ginkgo.GinkgoT(), err, "creating ingress")
+ 
+-	ing, err := f.KubeClientSet.NetworkingV1beta1().Ingresses(f.Namespace).Get(ingress.Name, metav1.GetOptions{})
+-	assert.Nil(ginkgo.GinkgoT(), err, "getting ingress")
+-	assert.NotNil(ginkgo.GinkgoT(), ing, "expected an ingress but none returned")
++	ing := f.GetIngress(f.Namespace, ingress.Name)
+ 
+ 	if ing.Annotations == nil {
+ 		ing.Annotations = make(map[string]string)
+@@ -85,9 +91,7 @@ func (f *Framework) UpdateIngress(ingress *networking.Ingress) *networking.Ingre
+ 	err := updateIngressWithRetries(f.KubeClientSet, f.Namespace, ingress)
+ 	assert.Nil(ginkgo.GinkgoT(), err, "updating ingress")
+ 
+-	ing, err := f.KubeClientSet.NetworkingV1beta1().Ingresses(f.Namespace).Get(ingress.Name, metav1.GetOptions{})
+-	assert.Nil(ginkgo.GinkgoT(), err, "getting ingress")
+-	assert.NotNil(ginkgo.GinkgoT(), ing, "expected an ingress but none returned")
++	ing := f.GetIngress(f.Namespace, ingress.Name)
+ 
+ 	if ing.Annotations == nil {
+ 		ing.Annotations = make(map[string]string)
+diff --git a/test/e2e/settings/proxy_connect_timeout.go b/test/e2e/settings/proxy_connect_timeout.go
+new file mode 100644
+index 000000000..8d2fd5fda
+--- /dev/null
++++ b/test/e2e/settings/proxy_connect_timeout.go
+@@ -0,0 +1,68 @@
++/*
++Copyright 2020 The Kubernetes Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package settings
++
++import (
++	"fmt"
++	"strings"
++
++	"github.com/onsi/ginkgo"
++
++	"k8s.io/ingress-nginx/test/e2e/framework"
++)
++
++var _ = framework.DescribeSetting("proxy-connect-timeout", func() {
++	f := framework.NewDefaultFramework("proxy")
++	host := "proxy-connect-timeout.com"
++
++	ginkgo.BeforeEach(func() {
++		f.NewEchoDeployment()
++	})
++
++	ginkgo.It("should set valid proxy timeouts using configmap values", func() {
++		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, nil)
++		f.EnsureIngress(ing)
++
++		proxyConnectTimeout := "50"
++
++		cm := make(map[string]string)
++		cm["proxy-connect-timeout"] = proxyConnectTimeout
++		f.SetNginxConfigMapData(cm)
++
++		f.WaitForNginxServer(host,
++			func(server string) bool {
++				return strings.Contains(server, fmt.Sprintf("proxy_connect_timeout %ss;", proxyConnectTimeout))
++			})
++	})
++
++	ginkgo.It("should not set invalid proxy timeouts using configmap values", func() {
++		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, nil)
++		f.EnsureIngress(ing)
++
++		proxyConnectTimeout := "50k"
++
++		cm := make(map[string]string)
++		cm["proxy-connect-timeout"] = proxyConnectTimeout
++		f.SetNginxConfigMapData(cm)
++
++		f.WaitForNginxServer(host,
++			func(server string) bool {
++				return !strings.Contains(server, fmt.Sprintf("proxy_connect_timeout %ss;", proxyConnectTimeout))
++			})
++	})
++
++})
+diff --git a/test/e2e/settings/proxy_next_upstream.go b/test/e2e/settings/proxy_next_upstream.go
+new file mode 100644
+index 000000000..bc17cd0c7
+--- /dev/null
++++ b/test/e2e/settings/proxy_next_upstream.go
+@@ -0,0 +1,57 @@
++/*
++Copyright 2020 The Kubernetes Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package settings
++
++import (
++	"fmt"
++	"strings"
++
++	"github.com/onsi/ginkgo"
++
++	"k8s.io/ingress-nginx/test/e2e/framework"
++)
++
++var _ = framework.DescribeSetting("proxy-next-upstream", func() {
++	f := framework.NewDefaultFramework("proxy")
++	host := "proxy-next-upstream.com"
++
++	ginkgo.BeforeEach(func() {
++		f.NewEchoDeployment()
++	})
++
++	ginkgo.It("should build proxy next upstream using configmap values", func() {
++		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, nil)
++		f.EnsureIngress(ing)
++
++		proxyNextUpstream := "timeout http_502"
++		proxyNextUpstreamTimeout := "999999"
++		proxyNextUpstreamTries := "888888"
++
++		cm := make(map[string]string)
++		cm["proxy-next-upstream"] = proxyNextUpstream
++		cm["proxy-next-upstream-timeout"] = proxyNextUpstreamTimeout
++		cm["proxy-next-upstream-tries"] = proxyNextUpstreamTries
++		f.SetNginxConfigMapData(cm)
++
++		f.WaitForNginxServer(host,
++			func(server string) bool {
++				return strings.Contains(server, fmt.Sprintf("proxy_next_upstream %s;", proxyNextUpstream)) &&
++					strings.Contains(server, fmt.Sprintf("proxy_next_upstream_timeout %s;", proxyNextUpstreamTimeout)) &&
++					strings.Contains(server, fmt.Sprintf("proxy_next_upstream_tries %s;", proxyNextUpstreamTries))
++			})
++	})
++})
+diff --git a/test/e2e/settings/proxy_read_timeout.go b/test/e2e/settings/proxy_read_timeout.go
+new file mode 100644
+index 000000000..41171e2c6
+--- /dev/null
++++ b/test/e2e/settings/proxy_read_timeout.go
+@@ -0,0 +1,68 @@
++/*
++Copyright 2020 The Kubernetes Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package settings
++
++import (
++	"fmt"
++	"strings"
++
++	"github.com/onsi/ginkgo"
++
++	"k8s.io/ingress-nginx/test/e2e/framework"
++)
++
++var _ = framework.DescribeSetting("proxy-read-timeout", func() {
++	f := framework.NewDefaultFramework("proxy")
++	host := "proxy-read-timeout.com"
++
++	ginkgo.BeforeEach(func() {
++		f.NewEchoDeployment()
++	})
++
++	ginkgo.It("should set valid proxy read timeouts using configmap values", func() {
++		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, nil)
++		f.EnsureIngress(ing)
++
++		proxyReadtimeout := "20"
++
++		cm := make(map[string]string)
++		cm["proxy-read-timeout"] = proxyReadtimeout
++		f.SetNginxConfigMapData(cm)
++
++		f.WaitForNginxServer(host,
++			func(server string) bool {
++				return strings.Contains(server, fmt.Sprintf("proxy_read_timeout %ss;", proxyReadtimeout))
++			})
++	})
++
++	ginkgo.It("should not set invalid proxy read timeouts using configmap values", func() {
++		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, nil)
++		f.EnsureIngress(ing)
++
++		proxyReadtimeout := "20k"
++
++		cm := make(map[string]string)
++		cm["proxy-read-timeout"] = proxyReadtimeout
++		f.SetNginxConfigMapData(cm)
++
++		f.WaitForNginxServer(host,
++			func(server string) bool {
++				return !strings.Contains(server, fmt.Sprintf("proxy_read_timeout %ss;", proxyReadtimeout))
++			})
++	})
++
++})
+diff --git a/test/e2e/settings/proxy_send_timeout.go b/test/e2e/settings/proxy_send_timeout.go
+new file mode 100644
+index 000000000..031f4361f
+--- /dev/null
++++ b/test/e2e/settings/proxy_send_timeout.go
+@@ -0,0 +1,68 @@
++/*
++Copyright 2020 The Kubernetes Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package settings
++
++import (
++	"fmt"
++	"strings"
++
++	"github.com/onsi/ginkgo"
++
++	"k8s.io/ingress-nginx/test/e2e/framework"
++)
++
++var _ = framework.DescribeSetting("proxy-send-timeout", func() {
++	f := framework.NewDefaultFramework("proxy")
++	host := "proxy-send-timeout.com"
++
++	ginkgo.BeforeEach(func() {
++		f.NewEchoDeployment()
++	})
++
++	ginkgo.It("should set valid proxy send timeouts using configmap values", func() {
++		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, nil)
++		f.EnsureIngress(ing)
++
++		proxySendTimeout := "20"
++
++		cm := make(map[string]string)
++		cm["proxy-send-timeout"] = proxySendTimeout
++		f.SetNginxConfigMapData(cm)
++
++		f.WaitForNginxServer(host,
++			func(server string) bool {
++				return strings.Contains(server, fmt.Sprintf("proxy_send_timeout %ss;", proxySendTimeout))
++			})
++	})
++
++	ginkgo.It("should not set invalid proxy send timeouts using configmap values", func() {
++		ing := framework.NewSingleIngress(host, "/", host, f.Namespace, framework.EchoService, 80, nil)
++		f.EnsureIngress(ing)
++
++		proxySendTimeout := "20k"
++
++		cm := make(map[string]string)
++		cm["proxy-send-timeout"] = proxySendTimeout
++		f.SetNginxConfigMapData(cm)
++
++		f.WaitForNginxServer(host,
++			func(server string) bool {
++				return !strings.Contains(server, fmt.Sprintf("proxy_send_timeout %ss;", proxySendTimeout))
++			})
++	})
++
++})

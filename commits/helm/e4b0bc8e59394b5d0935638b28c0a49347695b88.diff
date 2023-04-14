@@ -1,0 +1,179 @@
+commit e4b0bc8e59394b5d0935638b28c0a49347695b88
+Author: Dave Anderson <dave@natulte.net>
+Date:   Thu Apr 19 07:27:01 2018 -0700
+
+    stable/metallb: Refactor the config-passing part of the chart. (#4781)
+    
+    * stable/metallb: Refactor the config-passing part of the chart.
+    
+    Adds a third option for configuration: passing in a reference to
+    an external (not managed by Helm) ConfigMap. This makes life easier
+    for some users who want Helm to manage the binary lifecycle, but
+    want to keep the configuration manually editable without special tools.
+    
+    The 3 ways of passing a config are now grouped under the 'config' yaml
+    tree, to make things more readable.
+    
+    * Remove simpleLayer2 as an option.
+    
+    It complicates the chart, and it's not really a great option anyway
+    because it encourages using MetalLB without reading the documentation
+    first, which leads to broken clusters.
+    
+    Since we're now back down to 2 options, switch back to non-nested configs.
+    
+    * Rename configName to existingConfigMap to align with other charts.
+
+diff --git a/stable/metallb/Chart.yaml b/stable/metallb/Chart.yaml
+index f62ef04ce..7ae452ed2 100644
+--- a/stable/metallb/Chart.yaml
++++ b/stable/metallb/Chart.yaml
+@@ -1,5 +1,5 @@
+ apiVersion: v1
+-version: 0.3.1
++version: 0.4.0
+ 
+ name: metallb
+ appVersion: 0.5.0
+diff --git a/stable/metallb/templates/NOTES.txt b/stable/metallb/templates/NOTES.txt
+index bf9c93e0c..5265f6870 100644
+--- a/stable/metallb/templates/NOTES.txt
++++ b/stable/metallb/templates/NOTES.txt
+@@ -1,14 +1,11 @@
+ 
+ MetalLB is now running in the cluster.
+-{{ if .Values.arpAddresses -}}
+-LoadBalancer Services in your cluster are now available on IPs
+-within {{ .Values.arpAddresses }}. To see the IP assignments,
+-try `kubectl get services`.
+-{{- else if .Values.config }}
++{{- if .Values.configInline }}
+ LoadBalancer Services in your cluster are now available on the IPs you
+ defined in MetalLB's configuration. To see IP assignments,
+ try `kubectl get services`.
+ {{- else }}
+-WARNING: you did not provide a configuration for MetalLB. LoadBalancer
+-services will not function until you provide a configuration.
++WARNING: you specified a ConfigMap that isn't managed by
++Helm. LoadBalancer services will not function until you add that
++ConfigMap to your cluster yourself.
+ {{- end }}
+diff --git a/stable/metallb/templates/_helpers.tpl b/stable/metallb/templates/_helpers.tpl
+index b8b3482b7..10a48aef7 100644
+--- a/stable/metallb/templates/_helpers.tpl
++++ b/stable/metallb/templates/_helpers.tpl
+@@ -52,3 +52,14 @@ Create the name of the speaker service account to use
+     {{ default "default" .Values.serviceAccounts.speaker.name }}
+ {{- end -}}
+ {{- end -}}
++
++{{/*
++Create the name of the settings ConfigMap to use.
++*/}}
++{{- define "metallb.configMapName" -}}
++{{- if .Values.configInline -}}
++    {{ include "metallb.fullname" . }}
++{{- else -}}
++    {{ .Values.existingConfigMap }}
++{{- end -}}
++{{- end -}}
+diff --git a/stable/metallb/templates/config.yaml b/stable/metallb/templates/config.yaml
+index 0c9ec5f6e..2a3fc8c1c 100644
+--- a/stable/metallb/templates/config.yaml
++++ b/stable/metallb/templates/config.yaml
+@@ -1,4 +1,4 @@
+-{{- if (or .Values.config .Values.arpAddresses) }}
++{{- if .Values.configInline }}
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+@@ -10,13 +10,5 @@ metadata:
+     app: {{ template "metallb.name" . }}
+ data:
+   config: |
+-{{- if .Values.config }}
+-{{ toYaml .Values.config | indent 4 }}
+-{{- else }}
+-    address-pools:
+-    - name: default
+-      protocol: arp
+-      cidr:
+-      - {{ .Values.arpAddresses }}
+-{{- end }}
++{{ toYaml .Values.configInline | indent 4 }}
+ {{- end }}
+diff --git a/stable/metallb/templates/controller.yaml b/stable/metallb/templates/controller.yaml
+index 6fe128256..217284138 100644
+--- a/stable/metallb/templates/controller.yaml
++++ b/stable/metallb/templates/controller.yaml
+@@ -40,7 +40,7 @@ spec:
+         imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+         args:
+         - --port=7472
+-        - --config={{ template "metallb.fullname" . }}
++        - --config={{ template "metallb.configMapName" . }}
+         ports:
+         - name: monitoring
+           containerPort: 7472
+diff --git a/stable/metallb/templates/rbac.yaml b/stable/metallb/templates/rbac.yaml
+index fc1b64237..9d6c32578 100644
+--- a/stable/metallb/templates/rbac.yaml
++++ b/stable/metallb/templates/rbac.yaml
+@@ -19,7 +19,7 @@ rules:
+   verbs: ["update"]
+ - apiGroups: [""]
+   resources: ["events"]
+-  verbs: ["create"]
++  verbs: ["create", "patch"]
+ ---
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: ClusterRole
+diff --git a/stable/metallb/templates/speaker.yaml b/stable/metallb/templates/speaker.yaml
+index ea33b84a1..0459bc51a 100644
+--- a/stable/metallb/templates/speaker.yaml
++++ b/stable/metallb/templates/speaker.yaml
+@@ -37,7 +37,7 @@ spec:
+         imagePullPolicy: {{ .Values.speaker.image.pullPolicy }}
+         args:
+         - --port=7472
+-        - --config={{ template "metallb.fullname" . }}
++        - --config={{ template "metallb.configMapName" . }}
+         env:
+         - name: METALLB_NODE_IP
+           valueFrom:
+diff --git a/stable/metallb/values.yaml b/stable/metallb/values.yaml
+index d97bf214b..813a982cf 100644
+--- a/stable/metallb/values.yaml
++++ b/stable/metallb/values.yaml
+@@ -2,16 +2,22 @@
+ # This is a YAML-formatted file.
+ # Declare variables to be passed into your templates.
+ 
+-# config is the MetalLB configuration, in YAML format. Refer to
+-# https://metallb.universe.tf/configuration/ for available options.
+-config:
++# To configure MetalLB, you must specify ONE of the following two
++# options.
+ 
+-# When arpAddresses is specified instead of config, the chart will
+-# install a trivial "quick start" MetalLB configuration that uses ARP
+-# mode. Refer to https://metallb.universe.tf/ for more
+-# information. For production configurations, use of the `config`
+-# field is recommended instead of arpAddresses.
+-arpAddresses:
++# existingConfigMap specifies the name of an externally-defined
++# ConfigMap to use as the configuration. Helm will not manage the
++# contents of this ConfigMap, it is your responsibility to create it.
++existingConfigMap: metallb-config
++
++# configInline specifies MetalLB's configuration directly, in yaml
++# format. When configInline is used, Helm manages MetalLB's
++# configuration ConfigMap as part of the release, and
++# existingConfigMap is ignored.
++#
++# Refer to https://metallb.universe.tf/configuration/ for
++# available options.
++configInline:
+ 
+ rbac:
+   # create specifies whether to install and use RBAC rules.

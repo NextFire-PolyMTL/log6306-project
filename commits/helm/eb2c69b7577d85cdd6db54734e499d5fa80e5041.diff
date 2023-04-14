@@ -1,0 +1,309 @@
+commit eb2c69b7577d85cdd6db54734e499d5fa80e5041
+Author: Harry <harrybagdi@gmail.com>
+Date:   Tue Oct 15 11:16:09 2019 -0700
+
+    [stable/kong] custom plugins support (#17908)
+    
+    * [stable/kong] custom plugins support
+    
+    - Refactor out volumes and volumeMounts into helpers
+    - Allow users to easily mount custom plugins via secrets and configmaps
+    - Custom plugins containing custom DAOs are allowed as well
+    
+    A guide will be published in near future on how to exactly use this
+    feature.
+    
+    In a subsequent PR, we will de-duplicate env and initContainer sections
+    in the migrations jobs to reduce duplication.
+    
+    Signed-off-by: Harry Bagdi <harrybagdi@gmail.com>
+    
+    * automatically populate KONG_PLUGINS
+    
+    Signed-off-by: Harry Bagdi <harrybagdi@gmail.com>
+    
+    * fix typo
+    
+    Signed-off-by: Harry Bagdi <harrybagdi@gmail.com>
+    
+    * fix typos
+    
+    Signed-off-by: Harry Bagdi <harrybagdi@gmail.com>
+
+diff --git a/stable/kong/Chart.yaml b/stable/kong/Chart.yaml
+index 2378bb3a5..7e502f8f6 100644
+--- a/stable/kong/Chart.yaml
++++ b/stable/kong/Chart.yaml
+@@ -12,5 +12,5 @@ maintainers:
+ name: kong
+ sources:
+ - https://github.com/Kong/kong
+-version: 0.21.1
++version: 0.22.0
+ appVersion: 1.3
+diff --git a/stable/kong/README.md b/stable/kong/README.md
+index 14b6726b9..3ac734116 100644
+--- a/stable/kong/README.md
++++ b/stable/kong/README.md
+@@ -101,6 +101,7 @@ and their default values.
+ | proxy.ingress.annotations          | Ingress annotations. See documentation for your ingress controller for details        | `{}`                |
+ | updateStrategy                     | update strategy for deployment                                                        | `{}`                |
+ | env                                | Additional [Kong configurations](https://getkong.org/docs/latest/configuration/)      |                     |
++| plugins                            | Install custom plugins into Kong via ConfigMaps or Secrets                            | `{}`                |
+ | runMigrations                      | Run Kong migrations job                                                               | `true`              |
+ | readinessProbe                     | Kong readiness probe                                                                  |                     |
+ | livenessProbe                      | Kong liveness probe                                                                   |                     |
+diff --git a/stable/kong/templates/_helpers.tpl b/stable/kong/templates/_helpers.tpl
+index 9a28011b6..275b23261 100644
+--- a/stable/kong/templates/_helpers.tpl
++++ b/stable/kong/templates/_helpers.tpl
+@@ -136,6 +136,68 @@ Create the ingress servicePort value string
+ {{- end -}}
+ {{- end -}}
+ 
++{{- define "kong.volumes" -}}
++{{- range .Values.plugins.configMaps }}
++- name: kong-plugin-{{ .pluginName }}
++  configMap:
++    name: {{ .name }}
++{{- end }}
++{{- range .Values.plugins.secrets }}
++- name: kong-plugin-{{ .pluginName }}
++  secret:
++    secretName: {{ .name }}
++{{- end }}
++- name: custom-nginx-template-volume
++  configMap:
++    name: {{ template "kong.fullname" . }}-default-custom-server-blocks
++{{- if (and (not .Values.ingressController.enabled) (eq .Values.env.database "off")) }}
++- name: kong-custom-dbless-config-volume
++  configMap:
++    {{- if .Values.dblessConfig.configMap }}
++    name: {{ .Values.dblessConfig.configMap }}
++    {{- else }}
++    name: {{ template "kong.dblessConfig.fullname" . }}
++    {{- end }}
++{{- end }}
++{{- range $secretVolume := .Values.secretVolumes }}
++- name: {{ . }}
++  secret:
++    secretName: {{ . }}
++{{- end }}
++{{- end -}}
++
++{{- define "kong.volumeMounts" -}}
++- name: custom-nginx-template-volume
++  mountPath: /kong
++{{- if (and (not .Values.ingressController.enabled) (eq .Values.env.database "off")) }}
++- name: kong-custom-dbless-config-volume
++  mountPath: /kong_dbless/
++{{- end }}
++{{- range .Values.secretVolumes }}
++- name:  {{ . }}
++  mountPath: /etc/secrets/{{ . }}
++{{- end }}
++{{- range .Values.plugins.configMaps }}
++- name:  kong-plugin-{{ .pluginName }}
++  mountPath: /opt/kong/plugins/{{ .pluginName }}
++{{- end }}
++{{- range .Values.plugins.secrets }}
++- name:  kong-plugin-{{ .pluginName }}
++  mountPath: /opt/kong/plugins/{{ .pluginName }}
++{{- end }}
++{{- end -}}
++
++{{- define "kong.plugins" -}}
++{{ $myList := list "bundled" }}
++{{- range .Values.plugins.configMaps -}}
++{{- $myList = append $myList .pluginName -}}
++{{- end -}}
++{{- range .Values.plugins.secrets -}}
++  {{ $myList = append $myList .pluginName -}}
++{{- end }}
++{{- $myList | join "," -}}
++{{- end -}}
++
+ {{- define "kong.wait-for-db" -}}
+ - name: wait-for-db
+   image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+@@ -149,6 +211,8 @@ Create the ingress servicePort value string
+     value: {{ template "kong.postgresql.fullname" . }}
+   - name: KONG_PG_PORT
+     value: "{{ .Values.postgresql.service.port }}"
++  - name: KONG_LUA_PACKAGE_PATH
++    value: "/opt/?.lua;;"
+   - name: KONG_PG_PASSWORD
+     valueFrom:
+       secretKeyRef:
+@@ -161,6 +225,8 @@ Create the ingress servicePort value string
+   {{- end }}
+   {{- include "kong.env" .  | nindent 2 }}
+   command: [ "/bin/sh", "-c", "until kong start; do echo 'waiting for db'; sleep 1; done; kong stop" ]
++  volumeMounts:
++  {{- include "kong.volumeMounts" . | nindent 4 }}
+ {{- end -}}
+ 
+ {{- define "kong.controller-container" -}}
+diff --git a/stable/kong/templates/deployment.yaml b/stable/kong/templates/deployment.yaml
+index 7cb0e251c..f6fafb11b 100644
+--- a/stable/kong/templates/deployment.yaml
++++ b/stable/kong/templates/deployment.yaml
+@@ -57,6 +57,8 @@ spec:
+         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+         imagePullPolicy: {{ .Values.image.pullPolicy }}
+         env:
++        - name: KONG_LUA_PACKAGE_PATH
++          value: "/opt/?.lua;;"
+         {{- if not .Values.env.admin_listen }}
+         {{- if .Values.admin.useTLS }}
+         - name: KONG_ADMIN_LISTEN
+@@ -166,6 +168,8 @@ spec:
+         - name: KONG_DECLARATIVE_CONFIG
+           value: "/kong_dbless/kong.yml"
+         {{- end }}
++        - name: KONG_PLUGINS
++          value: {{ template "kong.plugins" . }}
+         {{- include "kong.env" .  | indent 8 }}
+         lifecycle:
+           preStop:
+@@ -248,16 +252,7 @@ spec:
+         {{- end }}
+         {{- end }}
+         volumeMounts:
+-          - name: custom-nginx-template-volume
+-            mountPath: /kong
+-          {{- if (and (not .Values.ingressController.enabled) (eq .Values.env.database "off")) }}
+-          - name: kong-custom-dbless-config-volume
+-            mountPath: /kong_dbless/
+-          {{- end }}
+-          {{- range .Values.secretVolumes }}
+-          - name:  {{ . }}
+-            mountPath: /etc/secrets/{{ . }}
+-          {{- end }}
++        {{- include "kong.volumeMounts" . | nindent 10 }}
+         readinessProbe:
+ {{ toYaml .Values.readinessProbe | indent 10 }}
+         livenessProbe:
+@@ -275,21 +270,4 @@ spec:
+       tolerations:
+ {{ toYaml .Values.tolerations | indent 8 }}
+       volumes:
+-        - name: custom-nginx-template-volume
+-          configMap:
+-            name: {{ template "kong.fullname" . }}-default-custom-server-blocks
+-{{- if (and (not .Values.ingressController.enabled) (eq .Values.env.database "off")) }}
+-        - name: kong-custom-dbless-config-volume
+-          configMap:
+-            {{- if .Values.dblessConfig.configMap }}
+-            name: {{ .Values.dblessConfig.configMap }}
+-            {{- else }}
+-            name: {{ template "kong.dblessConfig.fullname" . }}
+-            {{- end }}
+-{{- end }}
+-
+-{{- range $secretVolume := .Values.secretVolumes }}
+-        - name: {{ . }}
+-          secret:
+-            secretName: {{ . }}
+-{{- end }}
++      {{- include "kong.volumes" . | nindent 8 -}}
+diff --git a/stable/kong/templates/migrations-post-upgrade.yaml b/stable/kong/templates/migrations-post-upgrade.yaml
+index dcc9b77a6..f5cba2ce4 100644
+--- a/stable/kong/templates/migrations-post-upgrade.yaml
++++ b/stable/kong/templates/migrations-post-upgrade.yaml
+@@ -50,6 +50,10 @@ spec:
+         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+         imagePullPolicy: {{ .Values.image.pullPolicy }}
+         env:
++        - name: KONG_LUA_PACKAGE_PATH
++          value: "/opt/?.lua;;"
++        - name: KONG_PLUGINS
++          value: {{ template "kong.plugins" . }}
+         - name: KONG_NGINX_DAEMON
+           value: "off"
+         {{- if .Values.enterprise.enabled }}
+@@ -72,5 +76,9 @@ spec:
+         {{- end }}
+         {{- include "kong.env" .  | indent 8 }}
+         command: [ "/bin/sh", "-c", "kong migrations finish" ]
++        volumeMounts:
++        {{- include "kong.volumeMounts" . | nindent 8 }}
+       restartPolicy: OnFailure
++      volumes:
++      {{- include "kong.volumes" . | nindent 6 -}}
+ {{- end }}
+diff --git a/stable/kong/templates/migrations-pre-upgrade.yaml b/stable/kong/templates/migrations-pre-upgrade.yaml
+index 18398715d..a894fc3e4 100644
+--- a/stable/kong/templates/migrations-pre-upgrade.yaml
++++ b/stable/kong/templates/migrations-pre-upgrade.yaml
+@@ -50,6 +50,10 @@ spec:
+         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+         imagePullPolicy: {{ .Values.image.pullPolicy }}
+         env:
++        - name: KONG_LUA_PACKAGE_PATH
++          value: "/opt/?.lua;;"
++        - name: KONG_PLUGINS
++          value: {{ template "kong.plugins" . }}
+         - name: KONG_NGINX_DAEMON
+           value: "off"
+         {{- if .Values.enterprise.enabled }}
+@@ -72,5 +76,9 @@ spec:
+         {{- end }}
+         {{- include "kong.env" .  | indent 8 }}
+         command: [ "/bin/sh", "-c", "kong migrations up" ]
++        volumeMounts:
++        {{- include "kong.volumeMounts" . | nindent 8 }}
+       restartPolicy: OnFailure
++      volumes:
++      {{- include "kong.volumes" . | nindent 6 -}}
+ {{- end }}
+diff --git a/stable/kong/templates/migrations.yaml b/stable/kong/templates/migrations.yaml
+index 76c9b2975..4c99e4656 100644
+--- a/stable/kong/templates/migrations.yaml
++++ b/stable/kong/templates/migrations.yaml
+@@ -45,6 +45,10 @@ spec:
+         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+         imagePullPolicy: {{ .Values.image.pullPolicy }}
+         env:
++        - name: KONG_PLUGINS
++          value: {{ template "kong.plugins" . }}
++        - name: KONG_LUA_PACKAGE_PATH
++          value: "/opt/?.lua;;"
+         - name: KONG_NGINX_DAEMON
+           value: "off"
+         {{- if .Values.enterprise.enabled }}
+@@ -67,5 +71,9 @@ spec:
+         {{- end }}
+         {{- include "kong.env" .  | indent 8 }}
+         command: [ "/bin/sh", "-c", "kong migrations bootstrap" ]
++        volumeMounts:
++        {{- include "kong.volumeMounts" . | nindent 8 }}
+       restartPolicy: OnFailure
++      volumes:
++      {{- include "kong.volumes" . | nindent 6 -}}
+ {{- end }}
+diff --git a/stable/kong/values.yaml b/stable/kong/values.yaml
+index 14a25128e..7fd0759a1 100644
+--- a/stable/kong/values.yaml
++++ b/stable/kong/values.yaml
+@@ -358,6 +358,20 @@ postgresql:
+   service:
+     port: 5432
+ 
++# Custom Kong plugins can be loaded into Kong by mounting the plugin code
++# into the file-system of Kong container.
++# The plugin code should be present in ConfigMap or Secret inside the same
++# namespace as Kong is being installed.
++# The `name` property refers to the name of the ConfigMap or Secret
++# itself, while the pluginName refers to the name of the plugin as it appears
++# in Kong.
++plugins: {}
++  # configMaps:
++  # - pluginName: rewriter
++  #   name: kong-plugin-rewriter
++  # secrets:
++  # - pluginName: rewriter
++  #   name: kong-plugin-rewriter
+ # Kong Ingress Controller's primary purpose is to satisfy Ingress resources
+ # created in k8s.  It uses CRDs for more fine grained control over routing and
+ # for Kong specific configuration.

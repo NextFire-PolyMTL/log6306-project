@@ -1,0 +1,1269 @@
+commit eca581812963d383800c329cd680c09ae7dbed1d
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Thu Jun 14 13:26:28 2018 +0200
+
+    [stable/mongodb] - Refactor MongoDB chart to support replica set configurations (#5578)
+    
+    * Refactor MongoDB chart to support replica set
+    
+    * update pullPolicy
+    
+    * Remove trailing spaces
+    
+    * Remove trailing spaces in values.yaml
+    
+    * Added Juan's fixes
+    
+    * Fixes from Sameer review
+    
+    * Some improvements in the README
+    
+    * Include HA characteristics in README
+    
+    * Fix typo
+
+diff --git a/stable/mongodb/Chart.yaml b/stable/mongodb/Chart.yaml
+index c999a42fb..e4c9b232d 100644
+--- a/stable/mongodb/Chart.yaml
++++ b/stable/mongodb/Chart.yaml
+@@ -1,11 +1,14 @@
+ name: mongodb
+-version: 2.0.9
++version: 3.0.0
+ appVersion: 3.6.5
+ description: NoSQL document-oriented database that stores JSON-like documents with dynamic schemas, simplifying the integration of data in content-driven applications.
+ keywords:
+ - mongodb
+ - database
+ - nosql
++- cluster
++- replicaset
++- replication
+ home: https://mongodb.org
+ icon: https://bitnami.com/assets/stacks/mongodb/img/mongodb-stack-220x234.png
+ sources:
+diff --git a/stable/mongodb/README.md b/stable/mongodb/README.md
+index f889d9c04..25bd9de4c 100644
+--- a/stable/mongodb/README.md
++++ b/stable/mongodb/README.md
+@@ -43,39 +43,52 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following table lists the configurable parameters of the MongoDB chart and their default values.
+ 
+-|         Parameter                   |             Description                                                                      |                         Default                          |
+-|-------------------------------------|----------------------------------------------------------------------------------------------|----------------------------------------------------------|
+-| `image.registry`                    | MongoDB image registry                                                                       | `docker.io`                                              |
+-| `image.repository`                  | MongoDB Image name                                                                           | `bitnami/mongodb`                                        |
+-| `image.tag`                         | MongoDB Image tag                                                                            | `{VERSION}`                                              |
+-| `image.pullPolicy`                  | Image pull policy                                                                            | `Always` if `imageTag` is `latest`, else `IfNotPresent`  |
+-| `image.pullSecrets`                 | Specify image pull secrets                                                                   | `nil`                                                    |
+-| `usePassword`                       | Enable password authentication                                                               | `true`                                                   |
+-| `mongodbRootPassword`               | MongoDB admin password                                                                       | `random alhpanumeric string (10)`                        |
+-| `mongodbUsername`                   | MongoDB custom user                                                                          | `nil`                                                    |
+-| `mongodbPassword`                   | MongoDB custom user password                                                                 | `random alhpanumeric string (10)`                        |
+-| `mongodbDatabase`                   | Database to create                                                                           | `nil`                                                    |
+-| `mongodbExtraFlags`                 | MongoDB additional command line flags                                                        | []                                                       |
+-| `service.type`                      | Kubernetes Service type                                                                      | `ClusterIP`                                              |
+-| `service.nodePort`                  | Port to bind to for NodePort service type                                                    | `nil`                                                    |
+-| `persistence.enabled`               | Use a PVC to persist data                                                                    | `true`                                                   |
+-| `persistence.storageClass`          | Storage class of backing PVC                                                                 | `nil` (uses alpha storage class annotation)              |
+-| `persistence.existingClaim`         | Use an existing PVC                                                                      | `nil` (uses dynamic provisioning)              |
+-| `persistence.accessMode`            | Use volume as ReadOnly or ReadWrite                                                          | `ReadWriteOnce`                                          |
+-| `persistence.size`                  | Size of data volume                                                                          | `8Gi`                                                    |
+-| `nodeSelector`                      | Node labels for pod assignment                                                               | {}                                                       |
+-| `livenessProbe.initialDelaySeconds` | Delay before liveness probe is initiated                                                     | 30                                                       |
+-| `livenessProbe.periodSeconds`       | How often to perform the probe                                                               | 10                                                       |
+-| `livenessProbe.timeoutSeconds`      | When the probe times out                                                                     | 5                                                        |
+-| `livenessProbe.successThreshold`    | Minimum consecutive successes for the probe to be considered successful after having failed. | 1                                                        |
+-| `livenessProbe.failureThreshold`    | Minimum consecutive failures for the probe to be considered failed after having succeeded.   | 6                                                        |
+-| `readinessProbe.initialDelaySeconds`| Delay before readiness probe is initiated                                                    | 5                                                        |
+-| `readinessProbe.periodSeconds`      | How often to perform the probe                                                               | 10                                                       |
+-| `readinessProbe.timeoutSeconds`     | When the probe times out                                                                     | 5                                                        |
+-| `readinessProbe.successThreshold`   | Minimum consecutive successes for the probe to be considered successful after having failed. | 1                                                        |
+-| `readinessProbe.failureThreshold`   | Minimum consecutive failures for the probe to be considered failed after having succeeded.   | 6                                                        |
+-
+-The above parameters map to the env variables defined in [bitnami/mongodb](http://github.com/bitnami/bitnami-docker-mongodb). For more information please refer to the [bitnami/mongodb](http://github.com/bitnami/bitnami-docker-mongodb) image documentation.
++|         Parameter                       |             Description                                                                      |                         Default                          |
++|-----------------------------------------|----------------------------------------------------------------------------------------------|----------------------------------------------------------|
++| `image.registry`                        | MongoDB image registry                                                                       | `docker.io`                                              |
++| `image.repository`                      | MongoDB Image name                                                                           | `bitnami/mongodb`                                        |
++| `image.tag`                             | MongoDB Image tag                                                                            | `{VERSION}`                                              |
++| `image.pullPolicy`                      | Image pull policy                                                                            | `Always`                                                 |
++| `image.pullSecrets`                     | Specify image pull secrets                                                                   | `nil`                                                    |
++| `usePassword`                           | Enable password authentication                                                               | `true`                                                   |
++| `existingSecret`                        | Existing secret with MongoDB credentials                                                     | `nil`                                                    |
++| `mongodbRootPassword`                   | MongoDB admin password                                                                       | `random alhpanumeric string (10)`                        |
++| `mongodbUsername`                       | MongoDB custom user                                                                          | `nil`                                                    |
++| `mongodbPassword`                       | MongoDB custom user password                                                                 | `random alhpanumeric string (10)`                        |
++| `mongodbDatabase`                       | Database to create                                                                           | `nil`                                                    |
++| `mongodbExtraFlags`                     | MongoDB additional command line flags                                                        | []                                                       |
++| `service.type`                          | Kubernetes Service type                                                                      | `ClusterIP`                                              |
++| `service.nodePort`                      | Port to bind to for NodePort service type                                                    | `nil`                                                    |
++| `port`                                  | MongoDB service port                                                                         | `27017`                                                  |
++| `replicaSet.enabled`                    | Switch to enable/disable replica set configuration                                           | `false`                                                  |
++| `replicaSet.name`                       | Name of the replica set                                                                      | `rs0`                                                    |
++| `replicaSet.key`                        | Key used for authentication in the replica set                                               | `nil`                                                    |
++| `replicaSet.replicas.secondary`         | Number of secondary nodes in the replica set                                                 | `1`                                                      |
++| `replicaSet.replicas.arbiter`           | Number of arbiter nodes in the replica set                                                   | `1`                                                      |
++| `replicaSet.pdb.minAvailable.primary`   | PDB for the MongoDB Primary nodes                                                            | `1`                                                      |
++| `replicaSet.pdb.minAvailable.secondary` | PDB for the MongoDB Secondary nodes                                                          | `1`                                                      |
++| `replicaSet.pdb.minAvailable.arbiter`   | PDB for the MongoDB Arbiter nodes                                                            | `1`                                                      |
++| `podAnnotations`                        | Annotations to be added to pods                                                              | {}                                                       |
++| `resources`                             | Pod resources                                                                                | {}                                                       |
++| `nodeSelector`                          | Node labels for pod assignment                                                               | {}                                                       |
++| `affinity`                              | Affinity for pod assignment                                                                  | {}                                                       |
++| `tolerations`                           | Toleration labels for pod assignment                                                         | {}                                                       |
++| `persistence.enabled`                   | Use a PVC to persist data                                                                    | `true`                                                   |
++| `persistence.storageClass`              | Storage class of backing PVC                                                                 | `nil` (uses alpha storage class annotation)              |
++| `persistence.accessMode`                | Use volume as ReadOnly or ReadWrite                                                          | `ReadWriteOnce`                                          |
++| `persistence.size`                      | Size of data volume                                                                          | `8Gi`                                                    |
++| `persistence.annotations`               | Persistent Volume annotations                                                                | `{}`                                                     |
++| `livenessProbe.initialDelaySeconds`     | Delay before liveness probe is initiated                                                     | `30`                                                     |
++| `livenessProbe.periodSeconds`           | How often to perform the probe                                                               | `10`                                                     |
++| `livenessProbe.timeoutSeconds`          | When the probe times out                                                                     | `5`                                                      |
++| `livenessProbe.successThreshold`        | Minimum consecutive successes for the probe to be considered successful after having failed. | `1`                                                      |
++| `livenessProbe.failureThreshold`        | Minimum consecutive failures for the probe to be considered failed after having succeeded.   | `6`                                                      |
++| `readinessProbe.initialDelaySeconds`    | Delay before readiness probe is initiated                                                    | `5`                                                      |
++| `readinessProbe.periodSeconds`          | How often to perform the probe                                                               | `10`                                                     |
++| `readinessProbe.timeoutSeconds`         | When the probe times out                                                                     | `5`                                                      |
++| `readinessProbe.failureThreshold`       | Minimum consecutive failures for the probe to be considered failed after having succeeded.   | `6`                                                      |
++| `readinessProbe.successThreshold`       | Minimum consecutive successes for the probe to be considered successful after having failed. | `1`                                                      |
++| `configmap`                             | MongoDB configuration file to be used                                                        | `nil`                                                    |
+ 
+ Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
+ 
+@@ -92,9 +105,36 @@ Alternatively, a YAML file that specifies the values for the parameters can be p
+ ```bash
+ $ helm install --name my-release -f values.yaml stable/mongodb
+ ```
+-
+ > **Tip**: You can use the default [values.yaml](values.yaml)
+ 
++## Replication
++
++You can start the MongoDB chart in replica set mode with the following command:
++
++```bash
++$ helm install --name my-release stable/mongodb --set replication.enabled=true
++```
++## Production settings and horizontal scaling
++
++The [values-production.yaml](values-production.yaml) file consists a configuration to deploy a scalable and high-available MongoDB deployment for production environments. We recommend that you base your production configuration on this template and adjust the parameters appropriately.
++
++```console
++$ curl -O https://raw.githubusercontent.com/kubernetes/charts/master/stable/mongodb/values-production.yaml
++$ helm install --name my-release -f ./values-production.yaml stable/mongodb
++```
++
++To horizontally scale this chart, run the following command to scale the number of secondary nodes in your MongoDB replica set.
++
++```console
++$ kubectl scale statefulset my-release-mongodb-secondary --replicas=3
++```
++
++Some characteristics of this chart are:
++
++* Each of the participants in the replication has a fixed stateful set so you always know where to find the primary, secondary or arbiter nodes.
++* The number of secondary and arbiter nodes can be scaled out independently.
++* Easy to move an application from using a standalone MongoDB server to use a replica set.
++
+ ## Persistence
+ 
+ The [Bitnami MongoDB](https://github.com/bitnami/bitnami-docker-mongodb) image stores the MongoDB data and configurations at the `/bitnami/mongodb` path of the container.
+diff --git a/stable/mongodb/templates/NOTES.txt b/stable/mongodb/templates/NOTES.txt
+index 8c0f90e08..65dfb86bf 100644
+--- a/stable/mongodb/templates/NOTES.txt
++++ b/stable/mongodb/templates/NOTES.txt
+@@ -40,7 +40,7 @@ To get the password for "{{ .Values.mongodbUsername }}" run:
+ 
+ To connect to your database run the following command:
+ 
+-    kubectl run {{ template "mongodb.fullname" . }}-client --rm --tty -i --image bitnami/mongodb --command -- mongo --host {{ template "mongodb.fullname" . }} {{- if .Values.usePassword }} -p $MONGODB_ROOT_PASSWORD{{- end }}
++    kubectl run {{ template "mongodb.fullname" . }}-client --rm --tty -i --image bitnami/mongodb --command -- mongo admin --host {{ template "mongodb.fullname" . }} {{- if .Values.usePassword }} -u root -p $MONGODB_ROOT_PASSWORD{{- end }}
+ 
+ To connect to your database from outside the cluster execute the following commands:
+ 
+diff --git a/stable/mongodb/templates/_helpers.tpl b/stable/mongodb/templates/_helpers.tpl
+index ec0d3418c..a948b7ecb 100644
+--- a/stable/mongodb/templates/_helpers.tpl
++++ b/stable/mongodb/templates/_helpers.tpl
+@@ -9,11 +9,49 @@ Expand the name of the chart.
+ {{/*
+ Create a default fully qualified app name.
+ We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
++If release name contains chart name it will be used as a full name.
+ */}}
+ {{- define "mongodb.fullname" -}}
++{{- if .Values.fullnameOverride -}}
++{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
+ {{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
+ {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Create chart name and version as used by the chart label.
++*/}}
++{{- define "mongodb.chart" -}}
++{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*
++Create the name for the admin secret.
++*/}}
++{{- define "mongodb.adminSecret" -}}
++    {{- if .Values.auth.existingAdminSecret -}}
++        {{- .Values.auth.existingAdminSecret -}}
++    {{- else -}}
++        {{- template "mongodb.fullname" . -}}-admin
++    {{- end -}}
++{{- end -}}
++
++{{/*
++Create the name for the key secret.
++*/}}
++{{- define "mongodb.keySecret" -}}
++    {{- if .Values.auth.existingKeySecret -}}
++        {{- .Values.auth.existingKeySecret -}}
++    {{- else -}}
++        {{- template "mongodb.fullname" . -}}-keyfile
++    {{- end -}}
++{{- end -}}
+ 
+ {{/*
+ Return the proper image name
+@@ -23,4 +61,4 @@ Return the proper image name
+ {{- $repositoryName := .Values.image.repository -}}
+ {{- $tag := .Values.image.tag | toString -}}
+ {{- printf "%s/%s:%s" $registryName $repositoryName $tag -}}
+-{{- end -}}
++{{- end -}}
+\ No newline at end of file
+diff --git a/stable/mongodb/templates/configmap.yaml b/stable/mongodb/templates/configmap.yaml
+new file mode 100644
+index 000000000..66dc85386
+--- /dev/null
++++ b/stable/mongodb/templates/configmap.yaml
+@@ -0,0 +1,14 @@
++{{- if .Values.configmap }}
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  labels:
++    app: {{ template "mongodb.name" . }}
++    chart: {{ template "mongodb.chart" . }}
++    heritage: {{ .Release.Service }}
++    release: {{ .Release.Name }}
++  name: {{ template "mongodb.fullname" . }}
++data:
++  mongodb.conf: |-
++{{ toYaml .Values.configmap | indent 4 }}
++{{- end }}
+\ No newline at end of file
+diff --git a/stable/mongodb/templates/deployment.yaml b/stable/mongodb/templates/deployment-standalone.yaml
+similarity index 87%
+rename from stable/mongodb/templates/deployment.yaml
+rename to stable/mongodb/templates/deployment-standalone.yaml
+index 1e25ec293..66e5c2d56 100644
+--- a/stable/mongodb/templates/deployment.yaml
++++ b/stable/mongodb/templates/deployment-standalone.yaml
+@@ -1,3 +1,4 @@
++{{- if not .Values.replicaSet.enabled }}
+ apiVersion: extensions/v1beta1
+ kind: Deployment
+ metadata:
+@@ -69,6 +70,11 @@ spec:
+         volumeMounts:
+         - name: data
+           mountPath: /bitnami/mongodb
++        {{- if .Values.configmap }}
++        - name: config
++          mountPath: /opt/bitnami/mongodb/conf/mongodb.conf
++          subPath: mongodb.conf
++        {{- end }}
+         resources:
+ {{ toYaml .Values.resources | indent 10 }}
+       volumes:
+@@ -80,3 +86,9 @@ spec:
+       {{- else }}
+         emptyDir: {}
+       {{- end -}}
++      {{- if .Values.configmap }}
++      - name: config
++        configMap:
++          name: {{ template "mongodb.fullname" . }}
++      {{- end }}
++ {{- end -}}
+diff --git a/stable/mongodb/templates/headless-svc-rs.yaml b/stable/mongodb/templates/headless-svc-rs.yaml
+new file mode 100644
+index 000000000..cc0705df8
+--- /dev/null
++++ b/stable/mongodb/templates/headless-svc-rs.yaml
+@@ -0,0 +1,20 @@
++{{- if .Values.replicaSet.enabled }}
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ template "mongodb.fullname" . }}-headless
++  labels:
++    app: {{ template "mongodb.name" . }}
++    chart: {{ template "mongodb.chart" . }}
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++spec:
++  type: ClusterIP
++  clusterIP: None
++  ports:
++  - name: mongodb
++    port: {{ .Values.service.port }}
++  selector:
++    app: {{ template "mongodb.name" . }}
++    release: {{ .Release.Name }}
++{{- end }}
+\ No newline at end of file
+diff --git a/stable/mongodb/templates/poddisruptionbudget-arbiter-rs.yaml b/stable/mongodb/templates/poddisruptionbudget-arbiter-rs.yaml
+new file mode 100644
+index 000000000..eb7f14aae
+--- /dev/null
++++ b/stable/mongodb/templates/poddisruptionbudget-arbiter-rs.yaml
+@@ -0,0 +1,18 @@
++{{- if .Values.replicaSet.enabled }}
++apiVersion: policy/v1beta1
++kind: PodDisruptionBudget
++metadata:
++  labels:
++    app: {{ template "mongodb.name" . }}
++    chart: {{ template "mongodb.chart" . }}
++    heritage: {{ .Release.Service }}
++    release: {{ .Release.Name }}
++  name: {{ template "mongodb.fullname" . }}-arbiter
++spec:
++  selector:
++    matchLabels:
++      app: {{ template "mongodb.name" . }}
++      release: {{ .Release.Name }}
++      component: arbiter
++  minAvailable: {{ .Values.replicaSet.pdb.minAvailable.arbiter }}
++{{- end }}
+\ No newline at end of file
+diff --git a/stable/mongodb/templates/poddisruptionbudget-primary-rs.yaml b/stable/mongodb/templates/poddisruptionbudget-primary-rs.yaml
+new file mode 100644
+index 000000000..6434e3f72
+--- /dev/null
++++ b/stable/mongodb/templates/poddisruptionbudget-primary-rs.yaml
+@@ -0,0 +1,18 @@
++{{- if .Values.replicaSet.enabled }}
++apiVersion: policy/v1beta1
++kind: PodDisruptionBudget
++metadata:
++  labels:
++    app: {{ template "mongodb.name" . }}
++    chart: {{ template "mongodb.chart" . }}
++    heritage: {{ .Release.Service }}
++    release: {{ .Release.Name }}
++  name: {{ template "mongodb.fullname" . }}-primary
++spec:
++  selector:
++    matchLabels:
++      app: {{ template "mongodb.name" . }}
++      release: {{ .Release.Name }}
++      component: primary
++  minAvailable: {{ .Values.replicaSet.pdb.minAvailable.primary }}
++{{- end }}
+\ No newline at end of file
+diff --git a/stable/mongodb/templates/poddisruptionbudget-secondary-rs.yaml b/stable/mongodb/templates/poddisruptionbudget-secondary-rs.yaml
+new file mode 100644
+index 000000000..03f317d9b
+--- /dev/null
++++ b/stable/mongodb/templates/poddisruptionbudget-secondary-rs.yaml
+@@ -0,0 +1,18 @@
++{{- if .Values.replicaSet.enabled }}
++apiVersion: policy/v1beta1
++kind: PodDisruptionBudget
++metadata:
++  labels:
++    app: {{ template "mongodb.name" . }}
++    chart: {{ template "mongodb.chart" . }}
++    heritage: {{ .Release.Service }}
++    release: {{ .Release.Name }}
++  name: {{ template "mongodb.fullname" . }}-secondary
++spec:
++  selector:
++    matchLabels:
++      app: {{ template "mongodb.name" . }}
++      release: {{ .Release.Name }}
++      component: secondary
++  minAvailable: {{ .Values.replicaSet.pdb.minAvailable.secondary }}
++{{- end }}
+diff --git a/stable/mongodb/templates/pvc.yaml b/stable/mongodb/templates/pvc-standalone.yaml
+similarity index 52%
+rename from stable/mongodb/templates/pvc.yaml
+rename to stable/mongodb/templates/pvc-standalone.yaml
+index bc2cce6dd..8182ce72c 100644
+--- a/stable/mongodb/templates/pvc.yaml
++++ b/stable/mongodb/templates/pvc-standalone.yaml
+@@ -1,11 +1,18 @@
+-{{ if and .Values.persistence.enabled (not .Values.persistence.existingClaim) -}}
++{{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) (not .Values.replicaSet.enabled) }}
+ kind: PersistentVolumeClaim
+ apiVersion: v1
+ metadata:
++  labels:
++    app: {{ template "mongodb.name" . }}
++    chart: {{ template "mongodb.chart" . }}
++    heritage: {{ .Release.Service }}
++    release: {{ .Release.Name }}
+   name: {{ template "mongodb.fullname" . }}
+ spec:
+   accessModes:
+-    - {{ .Values.persistence.accessMode | quote }}
++  {{- range .Values.persistence.accessModes }}
++    - {{ . | quote }}
++  {{- end }}
+   resources:
+     requests:
+       storage: {{ .Values.persistence.size | quote }}
+@@ -16,4 +23,4 @@ spec:
+   storageClassName: "{{ .Values.persistence.storageClass }}"
+ {{- end }}
+ {{- end }}
+-{{- end }}
++{{- end }}
+\ No newline at end of file
+diff --git a/stable/mongodb/templates/secrets.yaml b/stable/mongodb/templates/secrets.yaml
+index 06b8f3b93..38412297f 100644
+--- a/stable/mongodb/templates/secrets.yaml
++++ b/stable/mongodb/templates/secrets.yaml
+@@ -24,4 +24,11 @@ data:
+   mongodb-password: {{ randAlphaNum 10 | b64enc | quote }}
+   {{- end }}
+   {{- end }}
++  {{- if .Values.replicaSet.enabled }}
++  {{- if .Values.replicaSet.key }}
++  mongodb-replica-set-key:  {{ .Values.replicaSet.key | b64enc | quote }}
++  {{- else }}
++  mongodb-replica-set-key: {{ randAlphaNum 10 | b64enc | quote }}
++  {{- end }}
++  {{- end }}
+ {{- end }}
+diff --git a/stable/mongodb/templates/statefulset-arbiter-rs.yaml b/stable/mongodb/templates/statefulset-arbiter-rs.yaml
+new file mode 100644
+index 000000000..b02521fae
+--- /dev/null
++++ b/stable/mongodb/templates/statefulset-arbiter-rs.yaml
+@@ -0,0 +1,98 @@
++{{- if .Values.replicaSet.enabled }}
++apiVersion: apps/v1
++kind: StatefulSet
++metadata:
++  labels:
++    app: {{ template "mongodb.name" . }}
++    chart: {{ template "mongodb.chart" . }}
++    heritage: {{ .Release.Service }}
++    release: {{ .Release.Name }}
++  name: {{ template "mongodb.fullname" . }}-arbiter
++spec:
++  selector:
++    matchLabels:
++      app: {{ template "mongodb.name" . }}
++      release: {{ .Release.Name }}
++      component: arbiter
++  serviceName: {{ template "mongodb.fullname" . }}-headless
++  replicas: {{ .Values.replicaSet.replicas.arbiter }}
++  template:
++    metadata:
++      labels:
++        app: {{ template "mongodb.name" . }}
++        release: {{ .Release.Name }}
++        component: arbiter
++    spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
++      containers:
++        - name: {{ template "mongodb.name" . }}-arbiter
++          image: {{ template "mongodb.image" . }}
++          imagePullPolicy: {{ .Values.image.pullPolicy }}
++          ports:
++          - containerPort: {{ .Values.service.port }}
++            name: mongodb
++          env:
++          - name: MONGODB_REPLICA_SET_MODE
++            value: "arbiter"
++          - name: MONGODB_PRIMARY_HOST
++            value: {{ template "mongodb.fullname" . }} 
++          - name: MONGODB_REPLICA_SET_NAME
++            value: {{ .Values.replicaSet.name | quote }}
++            {{- if .Values.usePassword }}
++          - name: MONGODB_PRIMARY_ROOT_PASSWORD
++            valueFrom:
++              secretKeyRef:
++                name: {{ if .Values.existingSecret }}{{ .Values.existingSecret }}{{- else }}{{ template "mongodb.fullname" . }}{{- end }}
++                key: mongodb-root-password
++          - name: MONGODB_REPLICA_SET_KEY
++            valueFrom:
++              secretKeyRef:
++                name: {{ if .Values.existingSecret }}{{ .Values.existingSecret }}{{- else }}{{ template "mongodb.fullname" . }}{{- end }}
++                key: mongodb-replica-set-key
++            {{- end }}
++          - name: MONGODB_EXTRA_FLAGS
++            value: {{ default "" .Values.mongodbExtraFlags | join " " }}
++          {{- if .Values.livenessProbe.enabled }}
++          livenessProbe:
++            exec:
++              command:
++                - mongo
++                - --eval
++                - "db.adminCommand('ping')"
++            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
++            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
++            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
++            successThreshold: {{ .Values.livenessProbe.successThreshold }}
++            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
++          {{- end }}
++          {{- if .Values.readinessProbe.enabled }}
++          readinessProbe:
++            exec:
++              command:
++                - mongo
++                - --eval
++                - "db.adminCommand('ping')"
++            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
++            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
++            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
++            successThreshold: {{ .Values.readinessProbe.successThreshold }}
++            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
++          {{- end }}
++          volumeMounts:
++          {{- if .Values.configmap }}
++            - name: config
++              mountPath: /opt/bitnami/mongodb/conf/mongodb.conf
++              subPath: mongodb.conf
++          {{- end }}
++      volumes:
++      {{- if .Values.configmap }}
++        - name: config
++          configMap:
++            name: {{ template "mongodb.fullname" . }}
++      {{- end }}
++{{- end }}
+\ No newline at end of file
+diff --git a/stable/mongodb/templates/statefulset-primary-rs.yaml b/stable/mongodb/templates/statefulset-primary-rs.yaml
+new file mode 100644
+index 000000000..04a79ce44
+--- /dev/null
++++ b/stable/mongodb/templates/statefulset-primary-rs.yaml
+@@ -0,0 +1,136 @@
++{{- if .Values.replicaSet.enabled }}
++apiVersion: apps/v1
++kind: StatefulSet
++metadata:
++  labels:
++    app: {{ template "mongodb.name" . }}
++    chart: {{ template "mongodb.chart" . }}
++    heritage: {{ .Release.Service }}
++    release: {{ .Release.Name }}
++  name: {{ template "mongodb.fullname" . }}-primary
++spec:
++  serviceName: {{ template "mongodb.fullname" . }}-headless
++  replicas: 1
++  selector:
++    matchLabels:
++      app: {{ template "mongodb.name" . }}
++      release: {{ .Release.Name }}
++      component: primary
++  template:
++    metadata:
++      labels:
++        app: {{ template "mongodb.name" . }}
++        release: {{ .Release.Name }}
++        component: primary
++    spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
++      containers:
++        - name: {{ template "mongodb.name" . }}-primary
++          image: {{ template "mongodb.image" . }}
++          imagePullPolicy: {{ .Values.image.pullPolicy }}
++          ports:
++          - containerPort: {{ .Values.service.port }}
++            name: mongodb
++          env:
++          - name: MONGODB_REPLICA_SET_MODE
++            value: "primary"
++          - name: MONGODB_REPLICA_SET_NAME
++            value: {{ .Values.replicaSet.name | quote }}
++          - name: MONGODB_USERNAME
++            value: {{ .Values.mongodbUsername | quote }}
++          - name: MONGODB_DATABASE
++            value: {{ .Values.mongodbDatabase | quote }}
++            {{- if .Values.usePassword }}
++            {{- if .Values.mongodbPassword }}
++          - name: MONGODB_PASSWORD
++            valueFrom:
++              secretKeyRef:
++                name: {{ if .Values.existingSecret }}{{ .Values.existingSecret }}{{- else }}{{ template "mongodb.fullname" . }}{{- end }}
++                key: mongodb-password
++            {{- end }}
++          - name: MONGODB_ROOT_PASSWORD
++            valueFrom:
++              secretKeyRef:
++                name: {{ if .Values.existingSecret }}{{ .Values.existingSecret }}{{- else }}{{ template "mongodb.fullname" . }}{{- end }}
++                key: mongodb-root-password
++          - name: MONGODB_REPLICA_SET_KEY
++            valueFrom:
++              secretKeyRef:
++                name: {{ if .Values.existingSecret }}{{ .Values.existingSecret }}{{- else }}{{ template "mongodb.fullname" . }}{{- end }}
++                key: mongodb-replica-set-key
++            {{- end }}
++          - name: MONGODB_EXTRA_FLAGS
++            value: {{ default "" .Values.mongodbExtraFlags | join " " }}
++          {{- if .Values.livenessProbe.enabled }}
++          livenessProbe:
++            exec:
++              command:
++                - mongo
++                - --eval
++                - "db.adminCommand('ping')"
++            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
++            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
++            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
++            successThreshold: {{ .Values.livenessProbe.successThreshold }}
++            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
++          {{- end }}
++          {{- if .Values.readinessProbe.enabled }}
++          readinessProbe:
++            exec:
++              command:
++                - mongo
++                - --eval
++                - "db.adminCommand('ping')"
++            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
++            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
++            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
++            successThreshold: {{ .Values.readinessProbe.successThreshold }}
++            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
++          {{- end }}
++          volumeMounts:
++            - name: datadir
++              mountPath: /bitnami/mongodb
++          {{- if .Values.configmap }}
++            - name: config
++              mountPath: /opt/bitnami/mongodb/conf/mongodb.conf
++              subPath: mongodb.conf
++          {{- end }}
++      volumes:
++      {{- if .Values.configmap }}
++        - name: config
++          configMap:
++            name: {{ template "mongodb.fullname" . }}
++      {{- end }}
++{{- if .Values.persistence.enabled }}
++  volumeClaimTemplates:
++    - metadata:
++        name: datadir
++        annotations:
++        {{- range $key, $value := .Values.persistence.annotations }}
++          {{ $key }}: {{ $value }}
++        {{- end }}
++      spec:
++        accessModes:
++        {{- range .Values.persistence.accessModes }}
++          - {{ . | quote }}
++        {{- end }}
++        resources:
++          requests:
++            storage: {{ .Values.persistence.size | quote }}
++      {{- if .Values.persistence.storageClass }}
++      {{- if (eq "-" .Values.persistence.storageClass) }}
++        storageClassName: ""
++      {{- else }}
++        storageClassName: "{{ .Values.persistence.storageClass }}"
++      {{- end }}
++      {{- end }}
++{{- else }}
++        - name: datadir
++          emptyDir: {}
++{{- end }}
++{{- end }}
+diff --git a/stable/mongodb/templates/statefulset-secondary-rs.yaml b/stable/mongodb/templates/statefulset-secondary-rs.yaml
+new file mode 100644
+index 000000000..4289e374e
+--- /dev/null
++++ b/stable/mongodb/templates/statefulset-secondary-rs.yaml
+@@ -0,0 +1,128 @@
++{{- if .Values.replicaSet.enabled }}
++apiVersion: apps/v1
++kind: StatefulSet
++metadata:
++  labels:
++    app: {{ template "mongodb.name" . }}
++    chart: {{ template "mongodb.chart" . }}
++    heritage: {{ .Release.Service }}
++    release: {{ .Release.Name }}
++  name: {{ template "mongodb.fullname" . }}-secondary
++spec:
++  selector:
++    matchLabels:
++      app: {{ template "mongodb.name" . }}
++      release: {{ .Release.Name }}
++      component: secondary
++  podManagementPolicy: "Parallel"
++  serviceName: {{ template "mongodb.fullname" . }}-headless
++  replicas: {{ .Values.replicaSet.replicas.secondary }}
++  template:
++    metadata:
++      labels:
++        app: {{ template "mongodb.name" . }}
++        release: {{ .Release.Name }}
++        component: secondary
++    spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
++      containers:
++        - name: {{ template "mongodb.name" . }}-secondary
++          image: {{ template "mongodb.image" . }}
++          imagePullPolicy: {{ .Values.image.pullPolicy }}
++          ports:
++          - containerPort: {{ .Values.service.port }}
++            name: mongodb
++          env:
++          - name: MONGODB_REPLICA_SET_MODE
++            value: "secondary"
++          - name: MONGODB_PRIMARY_HOST
++            value: {{ template "mongodb.fullname" . }} 
++          - name: MONGODB_REPLICA_SET_NAME
++            value: {{ .Values.replicaSet.name | quote }}
++            {{- if .Values.usePassword }}
++          - name: MONGODB_PRIMARY_ROOT_PASSWORD
++            valueFrom:
++              secretKeyRef:
++                name: {{ if .Values.existingSecret }}{{ .Values.existingSecret }}{{- else }}{{ template "mongodb.fullname" . }}{{- end }}
++                key: mongodb-root-password
++          - name: MONGODB_REPLICA_SET_KEY
++            valueFrom:
++              secretKeyRef:
++                name: {{ if .Values.existingSecret }}{{ .Values.existingSecret }}{{- else }}{{ template "mongodb.fullname" . }}{{- end }}
++                key: mongodb-replica-set-key
++            {{- end }}
++          - name: MONGODB_EXTRA_FLAGS
++            value: {{ default "" .Values.mongodbExtraFlags | join " " }}
++          {{- if .Values.livenessProbe.enabled }}
++          livenessProbe:
++            exec:
++              command:
++                - mongo
++                - --eval
++                - "db.adminCommand('ping')"
++            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
++            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
++            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
++            successThreshold: {{ .Values.livenessProbe.successThreshold }}
++            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
++          {{- end }}
++          {{- if .Values.readinessProbe.enabled }}
++          readinessProbe:
++            exec:
++              command:
++                - mongo
++                - --eval
++                - "db.adminCommand('ping')"
++            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
++            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
++            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
++            successThreshold: {{ .Values.readinessProbe.successThreshold }}
++            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
++          {{- end }}
++          volumeMounts:
++            - name: datadir
++              mountPath: /bitnami/mongodb
++            {{- if .Values.configmap }}
++            - name: config
++              mountPath: /opt/bitnami/mongodb/conf/mongodb.conf
++              subPath: mongodb.conf
++            {{- end }}
++      volumes:
++        {{- if .Values.configmap }}
++        - name: config
++          configMap:
++            name: {{ template "mongodb.fullname" . }}
++        {{- end }}
++{{- if .Values.persistence.enabled }}
++  volumeClaimTemplates:
++    - metadata:
++        name: datadir
++        annotations:
++        {{- range $key, $value := .Values.persistence.annotations }}
++          {{ $key }}: {{ $value }}
++        {{- end }}
++      spec:
++        accessModes:
++        {{- range .Values.persistence.accessModes }}
++          - {{ . | quote }}
++        {{- end }}
++        resources:
++          requests:
++            storage: {{ .Values.persistence.size | quote }}
++      {{- if .Values.persistence.storageClass }}
++      {{- if (eq "-" .Values.persistence.storageClass) }}
++        storageClassName: ""
++      {{- else }}
++        storageClassName: "{{ .Values.persistence.storageClass }}"
++      {{- end }}
++      {{- end }}
++{{- else }}
++        - name: datadir
++          emptyDir: {}
++{{- end }}
++{{- end }}
+\ No newline at end of file
+diff --git a/stable/mongodb/templates/svc-primary-rs.yaml b/stable/mongodb/templates/svc-primary-rs.yaml
+new file mode 100644
+index 000000000..1492b6c87
+--- /dev/null
++++ b/stable/mongodb/templates/svc-primary-rs.yaml
+@@ -0,0 +1,24 @@
++{{- if .Values.replicaSet.enabled }}
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ template "mongodb.fullname" . }}
++  labels:
++    app: {{ template "mongodb.name" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++spec:
++  type: {{ .Values.service.type }}
++  ports:
++  - name: mongodb
++    port: 27017
++    targetPort: mongodb
++{{- if .Values.service.nodePort }}
++    nodePort: {{ .Values.service.nodePort }}
++{{- end }}
++  selector:
++    app: {{ template "mongodb.name" . }}
++    release: "{{ .Release.Name }}"
++    component: primary
++{{- end }}
+\ No newline at end of file
+diff --git a/stable/mongodb/templates/svc.yaml b/stable/mongodb/templates/svc-standalone.yaml
+similarity index 91%
+rename from stable/mongodb/templates/svc.yaml
+rename to stable/mongodb/templates/svc-standalone.yaml
+index ba36e2abe..0d0bf6ca6 100644
+--- a/stable/mongodb/templates/svc.yaml
++++ b/stable/mongodb/templates/svc-standalone.yaml
+@@ -1,3 +1,4 @@
++{{- if not .Values.replicaSet.enabled }}
+ apiVersion: v1
+ kind: Service
+ metadata:
+@@ -19,3 +20,4 @@ spec:
+   selector:
+     app: {{ template "mongodb.name" . }}
+     release: "{{ .Release.Name }}"
++{{- end }}
+\ No newline at end of file
+diff --git a/stable/mongodb/values-production.yaml b/stable/mongodb/values-production.yaml
+new file mode 100644
+index 000000000..946a1ce7c
+--- /dev/null
++++ b/stable/mongodb/values-production.yaml
+@@ -0,0 +1,185 @@
++image:
++  ## Bitnami MongoDB registry
++  ##
++  registry: docker.io
++  ## Bitnami MongoDB image name
++  ##
++  repository: bitnami/mongodb
++  ## Bitnami MongoDB image tag
++  ## ref: https://hub.docker.com/r/bitnami/mongodb/tags/
++  ##
++  tag: 3.6.5
++
++  ## Specify a imagePullPolicy
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: Always
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
++
++## Enable authentication
++## ref: https://docs.mongodb.com/manual/tutorial/enable-authentication/
++#
++usePassword: true
++# existingSecret: name-of-existing-secret
++
++## MongoDB admin password
++## ref: https://github.com/bitnami/bitnami-docker-mongodb/blob/master/README.md#setting-the-root-password-on-first-run
++##
++# mongodbRootPassword:
++
++## MongoDB custom user and database
++## ref: https://github.com/bitnami/bitnami-docker-mongodb/blob/master/README.md#creating-a-user-and-database-on-first-run
++##
++# mongodbUsername: username
++# mongodbPassword: password
++# mongodbDatabase: database
++
++## MongoDB additional command line flags
++##
++## Can be used to specify command line flags, for example:
++##
++## mongodbExtraFlags:
++##  - "--wiredTigerCacheSizeGB=2"
++mongodbExtraFlags: []
++
++## Kubernetes service type
++service:
++  type: ClusterIP
++  port: 27017
++
++  ## Specify the nodePort value for the LoadBalancer and NodePort service types.
++  ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
++  ##
++  # nodePort:
++
++
++replicaSet:
++  ## Whether to create a MongoDB replica set for high availability or not
++  enabled: true
++  ## Name of the replica set
++  ##
++  name: rs0
++
++  ## Key used for replica set authentication
++  ##
++  # key: key
++  
++  ## Number of replicas per each node type
++  ##
++  replicas:
++    secondary: 1
++    arbiter: 1
++  ## Pod Disruption Budget
++  ## ref: https://kubernetes.io/docs/concepts/workloads/pods/disruptions/
++  pdb:
++    minAvailable:
++      primary: 1
++      secondary: 1
++      arbiter: 1
++
++# Annotations to be added to MongoDB pods
++podAnnotations: {}
++
++## Configure resource requests and limits
++## ref: http://kubernetes.io/docs/user-guide/compute-resources/
++##
++resources: {}
++# limits:
++#   cpu: 500m
++#   memory: 512Mi
++# requests:
++#   cpu: 100m
++#   memory: 256Mi
++
++## Node selector
++## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
++nodeSelector: {}
++
++## Affinity
++## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
++affinity: {}
++
++## Tolerations
++## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
++tolerations: []
++
++## Enable persistence using Persistent Volume Claims
++## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
++##
++persistence:
++  enabled: true
++  ## A manually managed Persistent Volume and Claim
++  ## Requires persistence.enabled: true
++  ## If defined, PVC must be created manually before volume will be bound
++  # existingClaim:
++
++  ## mongodb data Persistent Volume Storage Class
++  ## If defined, storageClassName: <storageClass>
++  ## If set to "-", storageClassName: "", which disables dynamic provisioning
++  ## If undefined (the default) or set to null, no storageClassName spec is
++  ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
++  ##   GKE, AWS & OpenStack)
++  ##
++  # storageClass: "-"
++  accessModes:
++    - ReadWriteOnce
++  size: 8Gi
++  annotations: {}
++
++## Configure extra options for liveness and readiness probes
++## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#configure-probes)
++livenessProbe:
++  enabled: true
++  initialDelaySeconds: 30
++  periodSeconds: 10
++  timeoutSeconds: 5
++  failureThreshold: 6
++  successThreshold: 1
++readinessProbe:
++  enabled: true
++  initialDelaySeconds: 5
++  periodSeconds: 10
++  timeoutSeconds: 5
++  failureThreshold: 6
++  successThreshold: 1
++
++# Entries for the MongoDB config file
++configmap:
++#  # Where and how to store data.
++#  storage:
++#    dbPath: /opt/bitnami/mongodb/data/db
++#    journal:
++#      enabled: true
++#    #engine:
++#    #wiredTiger:
++#  # where to write logging data.
++#  systemLog:
++#    destination: file
++#    logAppend: true
++#    path: /opt/bitnami/mongodb/logs/mongodb.log
++#  # network interfaces
++#  net:
++#    port: 27017
++#    bindIp: 0.0.0.0
++#    unixDomainSocket:
++#      enabled: true
++#      pathPrefix: /opt/bitnami/mongodb/tmp
++#  # replica set options
++#  replication:
++#    replSetName: replicaset
++#  # process management options
++#  processManagement:
++#     fork: false
++#     pidFilePath: /opt/bitnami/mongodb/tmp/mongodb.pid
++#  # set parameter options
++#  setParameter:
++#     enableLocalhostAuthBypass: true
++#  # security options
++#  security:
++#    authorization: enabled
++#    keyFile: /opt/bitnami/mongodb/conf/keyfile
+\ No newline at end of file
+diff --git a/stable/mongodb/values.yaml b/stable/mongodb/values.yaml
+index 1a4bd6305..3d0113f14 100644
+--- a/stable/mongodb/values.yaml
++++ b/stable/mongodb/values.yaml
+@@ -1,15 +1,19 @@
+-## Bitnami MongoDB image version
+-## ref: https://hub.docker.com/r/bitnami/mongodb/tags/
+-##
+ image:
++  ## Bitnami MongoDB registry
++  ##
+   registry: docker.io
++  ## Bitnami MongoDB image name
++  ##
+   repository: bitnami/mongodb
++  ## Bitnami MongoDB image tag
++  ## ref: https://hub.docker.com/r/bitnami/mongodb/tags/
++  ##
+   tag: 3.6.5
++
+   ## Specify a imagePullPolicy
+-  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+   ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+   ##
+-  pullPolicy: IfNotPresent
++  pullPolicy: Always
+   ## Optionally specify an array of imagePullSecrets.
+   ## Secrets must be manually created in the namespace.
+   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+@@ -21,6 +25,7 @@ image:
+ ## ref: https://docs.mongodb.com/manual/tutorial/enable-authentication/
+ #
+ usePassword: true
++# existingSecret: name-of-existing-secret
+ 
+ ## MongoDB admin password
+ ## ref: https://github.com/bitnami/bitnami-docker-mongodb/blob/master/README.md#setting-the-root-password-on-first-run
+@@ -30,9 +35,9 @@ usePassword: true
+ ## MongoDB custom user and database
+ ## ref: https://github.com/bitnami/bitnami-docker-mongodb/blob/master/README.md#creating-a-user-and-database-on-first-run
+ ##
+-# mongodbUsername:
+-# mongodbPassword:
+-# mongodbDatabase:
++# mongodbUsername: username
++# mongodbPassword: password
++# mongodbDatabase: database
+ 
+ ## MongoDB additional command line flags
+ ##
+@@ -42,15 +47,67 @@ usePassword: true
+ ##  - "--wiredTigerCacheSizeGB=2"
+ mongodbExtraFlags: []
+ 
++## Kubernetes service type
+ service:
+-  ## Kubernetes service type
+   type: ClusterIP
++  port: 27017
+ 
+   ## Specify the nodePort value for the LoadBalancer and NodePort service types.
+   ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
+   ##
+   # nodePort:
+ 
++
++replicaSet:
++  ## Whether to create a MongoDB replica set for high availability or not
++  enabled: false
++  ## Name of the replica set
++  ##
++  name: rs0
++
++  ## Key used for replica set authentication
++  ##
++  # key: key
++
++  ## Number of replicas per each node type
++  ##
++  replicas:
++    secondary: 1
++    arbiter: 1
++  ## Pod Disruption Budget
++  ## ref: https://kubernetes.io/docs/concepts/workloads/pods/disruptions/
++  pdb:
++    minAvailable:
++      primary: 1
++      secondary: 1
++      arbiter: 1
++
++# Annotations to be added to MongoDB pods
++podAnnotations: {}
++
++## Configure resource requests and limits
++## ref: http://kubernetes.io/docs/user-guide/compute-resources/
++##
++resources: {}
++# limits:
++#   cpu: 500m
++#   memory: 512Mi
++# requests:
++#   cpu: 100m
++#   memory: 256Mi
++
++## Node selector
++## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
++nodeSelector: {}
++
++## Affinity
++## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
++affinity: {}
++
++## Tolerations
++## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
++tolerations: []
++
+ ## Enable persistence using Persistent Volume Claims
+ ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+ ##
+@@ -69,32 +126,60 @@ persistence:
+   ##   GKE, AWS & OpenStack)
+   ##
+   # storageClass: "-"
+-  accessMode: ReadWriteOnce
++  accessModes:
++    - ReadWriteOnce
+   size: 8Gi
+-
+-## Configure resource requests and limits
+-## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+-##
+-resources:
+-  requests:
+-    memory: 256Mi
+-    cpu: 100m
+-
+-## Node selector
+-## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
+-nodeSelector: {}
++  annotations: {}
+ 
+ ## Configure extra options for liveness and readiness probes
+ ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#configure-probes)
+ livenessProbe:
++  enabled: true
+   initialDelaySeconds: 30
+   periodSeconds: 10
+   timeoutSeconds: 5
+   failureThreshold: 6
+   successThreshold: 1
+ readinessProbe:
++  enabled: true
+   initialDelaySeconds: 5
+   periodSeconds: 10
+   timeoutSeconds: 5
+   failureThreshold: 6
+   successThreshold: 1
++
++# Entries for the MongoDB config file
++configmap:
++#  # Where and how to store data.
++#  storage:
++#    dbPath: /opt/bitnami/mongodb/data/db
++#    journal:
++#      enabled: true
++#    #engine:
++#    #wiredTiger:
++#  # where to write logging data.
++#  systemLog:
++#    destination: file
++#    logAppend: true
++#    path: /opt/bitnami/mongodb/logs/mongodb.log
++#  # network interfaces
++#  net:
++#    port: 27017
++#    bindIp: 0.0.0.0
++#    unixDomainSocket:
++#      enabled: true
++#      pathPrefix: /opt/bitnami/mongodb/tmp
++#  # replica set options
++#  #replication:
++#  #  replSetName: replicaset
++#  # process management options
++#  processManagement:
++#     fork: false
++#     pidFilePath: /opt/bitnami/mongodb/tmp/mongodb.pid
++#  # set parameter options
++#  setParameter:
++#     enableLocalhostAuthBypass: true
++#  # security options
++#  security:
++#    authorization: enabled
++#    #keyFile: /opt/bitnami/mongodb/conf/keyfile

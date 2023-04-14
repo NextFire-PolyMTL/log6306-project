@@ -1,0 +1,179 @@
+commit 4564bfa96f5a625b67fb47514287404b929ae105
+Author: hamza3202 <hamza@aurorasolutions.io>
+Date:   Mon Apr 29 20:56:21 2019 +0500
+
+    [stable/sonatype-nexus] Add openshift routes (#13248)
+    
+    * Fix configmap of keycloak
+    
+    Signed-off-by: kahootali <kahoot.ali@gmail.com>
+    
+    * Add openshift route for nexus and nexus proxy.
+    
+    Signed-off-by: Muhammad Hamza Zaib <hamza@aurorasolutions.io>
+    
+    * Refactor code and bump minor version
+    
+    Signed-off-by: Muhammad Hamza Zaib <hamza@aurorasolutions.io>
+
+diff --git a/stable/sonatype-nexus/Chart.yaml b/stable/sonatype-nexus/Chart.yaml
+index 1279dfff6..b28b3b776 100644
+--- a/stable/sonatype-nexus/Chart.yaml
++++ b/stable/sonatype-nexus/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: sonatype-nexus
+-version: 1.17.0
++version: 1.18.0
+ appVersion: 3.15.2-01
+ description: Sonatype Nexus is an open source repository manager
+ keywords:
+diff --git a/stable/sonatype-nexus/README.md b/stable/sonatype-nexus/README.md
+index d307f4d6b..80cfdb890 100644
+--- a/stable/sonatype-nexus/README.md
++++ b/stable/sonatype-nexus/README.md
+@@ -100,6 +100,10 @@ The following table lists the configurable parameters of the Nexus chart and the
+ | `nexusProxy.env.nexusDockerHost`            | Containers url to be used with docker | `nil`                                 |
+ | `nexusProxy.env.enforceHttps`               | Allow only https access or not      | `false`                                 |
+ | `nexusProxy.env.cloudIamAuthEnabled`        | Enable GCP IAM authentication in Nexus proxy  | `false`                       |
++| `nexusProxyRoute.enabled`     | Set to true to create route for additional service | `false` |
++| `nexusProxyRoute.labels`      | Labels to be added to proxy route            | `{}` |
++| `nexusProxyRoute.annotations` | Annotations to be added to proxy route       | `{}` |
++| `nexusProxyRoute.path`        | Host name of Route e.g jenkins.example.com   |  nil |
+ | `persistence.enabled`                       | Create a volume for storage         | `true`                                  |
+ | `persistence.accessMode`                    | ReadWriteOnce or ReadOnly           | `ReadWriteOnce`                         |
+ | `persistence.storageClass`                  | Storage class of Nexus PVC          | `nil`                                   |
+@@ -144,6 +148,12 @@ The following table lists the configurable parameters of the Nexus chart and the
+ | `service.annotations`                       | Service annotations              | `nil`                                      |
+ | `service.targetPort`                        | Service port                     | `nil`                                      |
+ | `service.port`                              | Port for exposing service        | `nil`                                      |
++| `route.enabled`         | Set to true to create route for additional service | `false` |
++| `route.name`            | Name of route                                      | `docker` |
++| `route.portName`        | Target port name of service                        | `docker` |
++| `route.labels`          | Labels to be added to route                        | `{}` |
++| `route.annotations`     | Annotations to be added to route                   | `{}` |
++| `route.path`            | Host name of Route e.g jenkins.example.com         | nil |
+ 
+ If `nexusProxy.env.cloudIamAuthEnabled` is set to `true` the following variables need to be configured
+ 
+diff --git a/stable/sonatype-nexus/templates/proxy-route.yaml b/stable/sonatype-nexus/templates/proxy-route.yaml
+new file mode 100644
+index 000000000..764f36ec9
+--- /dev/null
++++ b/stable/sonatype-nexus/templates/proxy-route.yaml
+@@ -0,0 +1,31 @@
++{{- if .Values.nexusProxyRoute.enabled }}
++apiVersion: route.openshift.io/v1
++kind: Route
++metadata:
++  name: {{ template "nexus.fullname" . }}
++  labels: {{ .Values.nexusProxyRoute.labels }}
++  annotations:
++    {{- range $key, $value := .Values.nexusProxyRoute.annotations }}
++    {{ $key }}: {{ $value | quote }}
++    {{- end }}
++spec:
++  host: {{ .Values.nexusProxyRoute.path }}
++  port:
++    {{- if .Values.nexusProxy.svcName }}
++      targetPort: {{ .Values.nexusProxy.svcName }}
++    {{- else }}
++      targetPort: {{ template "nexus.fullname" . }}
++    {{- end }}
++  tls:
++    insecureEdgeTerminationPolicy: Redirect
++    termination: edge
++  to:
++    kind: Service
++{{- if .Values.nexusProxy.svcName }}
++    name: {{ .Values.nexusProxy.svcName }}
++{{- else }}
++    name: {{ template "nexus.fullname" . }}
++{{- end }}
++    weight: 100
++  wildcardPolicy: None
++{{- end }}
+diff --git a/stable/sonatype-nexus/templates/proxy-svc.yaml b/stable/sonatype-nexus/templates/proxy-svc.yaml
+index 4dbef9144..7853c2e81 100644
+--- a/stable/sonatype-nexus/templates/proxy-svc.yaml
++++ b/stable/sonatype-nexus/templates/proxy-svc.yaml
+@@ -21,8 +21,12 @@ metadata:
+ {{- end }}
+ spec:
+   ports:
+-    - name: {{ .Values.nexusProxy.name }}
+-      port: {{ .Values.nexusProxy.port }}
++    - port: {{ .Values.nexusProxy.port }}
++{{- if .Values.nexusProxy.svcName }}
++      name: {{ .Values.nexusProxy.svcName }}
++{{- else }}
++      name: {{ template "nexus.fullname" . }}
++{{- end }}
+       protocol: TCP
+       targetPort: {{ .Values.nexusProxy.targetPort }}
+   selector:
+diff --git a/stable/sonatype-nexus/templates/route.yaml b/stable/sonatype-nexus/templates/route.yaml
+new file mode 100644
+index 000000000..cf76e5bdd
+--- /dev/null
++++ b/stable/sonatype-nexus/templates/route.yaml
+@@ -0,0 +1,27 @@
++{{- if .Values.route.enabled }}
++apiVersion: route.openshift.io/v1
++kind: Route
++metadata:
++  name: {{ .Values.route.name }}
++  labels: {{ .Values.route.labels }}
++  annotations:
++    {{- range $key, $value := .Values.route.annotations }}
++    {{ $key }}: {{ $value | quote }}
++    {{- end }}
++spec:
++  host: {{ .Values.route.path }}
++  port:
++    targetPort: {{ .Values.service.portName }}
++  tls:
++    insecureEdgeTerminationPolicy: Redirect
++    termination: edge
++  to:
++    kind: Service
++{{- if .Values.service.name }}
++    name: {{ .Values.service.name }}
++{{- else }}
++    name: {{ template "nexus.name" . }}-service
++{{- end }}
++    weight: 100
++  wildcardPolicy: None
++{{- end }}
+diff --git a/stable/sonatype-nexus/values.yaml b/stable/sonatype-nexus/values.yaml
+index d8ff16d52..8a2a44e9a 100644
+--- a/stable/sonatype-nexus/values.yaml
++++ b/stable/sonatype-nexus/values.yaml
+@@ -59,6 +59,14 @@ nexus:
+   #   - "example.com"
+   #   - "www.example.com"
+ 
++route:
++  enabled: false
++  name: docker
++  portName: docker
++  labels:
++  annotations:
++  # path: /docker
++
+ nexusProxy:
+   enabled: true
+   # svcName: proxy-svc
+@@ -89,6 +97,13 @@ nexusProxy:
+     # limits:
+       # cpu: 200m
+       # memory: 512Mi
++
++nexusProxyRoute:
++  enabled: false
++  labels:
++  annotations:
++  # path: /nexus
++
+ persistence:
+   enabled: true
+   accessMode: ReadWriteOnce

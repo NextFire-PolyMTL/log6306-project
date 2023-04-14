@@ -1,0 +1,1269 @@
+commit 834bdd9e3894163d039ceebd6b51ea5e8a0abeba
+Author: Bobby DeSimone <desimone@users.noreply.github.com>
+Date:   Tue Jun 4 09:04:06 2019 -0700
+
+    add: pomerium identity-aware access proxy (#12415)
+    
+    * add: pomerium identity-aware access proxy
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+    
+    * Add logic to stand up dummy CA and self signed certs.
+    Add victornoel to owners.
+    Several other small fixes.
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+    
+    * fix naming issue
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+    
+    * s/ONWERS/OWNERS
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+    
+    * updates
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+    
+    * Mistakenly added policy to authenticate not authorize.
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+    
+    * Updates
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+    
+    * improved ingress, change proxyRootDomain to rootDomain
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+    
+    * updates
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+    
+    * Autoconfigure what we can.
+    Fix issues pointed out by victor
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+    
+    * updates
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+    
+    * tidy up values
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+    
+    * updates
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+    
+    * pomerium : remove unnecessary spaces
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+    
+    * tag release to v0.0.3
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+    
+    * Refactor labels to use updated Kubernetes keys.
+    Use helper templates for names to avoid going over 63 chars.
+    Add component label since this is a multi-service app.
+    Replace name with "nameOverride and fullnameOverride"
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+    
+    * fix automatic certificate generation
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+    
+    * fix service name fall through
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+    
+    * remove unused variable
+    
+    Signed-off-by: Bobby DeSimone <bobbydesimone@gmail.com>
+
+diff --git a/stable/pomerium/.helmignore b/stable/pomerium/.helmignore
+new file mode 100644
+index 000000000..f0c131944
+--- /dev/null
++++ b/stable/pomerium/.helmignore
+@@ -0,0 +1,21 @@
++# Patterns to ignore when building packages.
++# This supports shell glob matching, relative path matching, and
++# negation (prefixed with !). Only one pattern per line.
++.DS_Store
++# Common VCS dirs
++.git/
++.gitignore
++.bzr/
++.bzrignore
++.hg/
++.hgignore
++.svn/
++# Common backup files
++*.swp
++*.bak
++*.tmp
++*~
++# Various IDEs
++.project
++.idea/
++*.tmproj
+diff --git a/stable/pomerium/Chart.yaml b/stable/pomerium/Chart.yaml
+new file mode 100644
+index 000000000..7206738c3
+--- /dev/null
++++ b/stable/pomerium/Chart.yaml
+@@ -0,0 +1,26 @@
++apiVersion: v1
++name: pomerium
++version: 1.0.0
++appVersion: 0.0.3
++home: http://www.pomerium.io/
++icon: https://www.pomerium.io/logo.svg
++description: Pomerium is an identity-aware access proxy.
++keywords:
++- proxy
++- access-proxy
++- reverse-proxy
++- sso
++- openid connect
++- oauth2
++- authorization
++- authentication
++- google
++- okta
++- azure
++sources:
++- https://github.com/pomerium/pomerium
++engine: gotpl
++
++maintainers:
++- name: desimone
++  email: bobby.desimone@gmail.com
+diff --git a/stable/pomerium/OWNERS b/stable/pomerium/OWNERS
+new file mode 100644
+index 000000000..5f53cd62f
+--- /dev/null
++++ b/stable/pomerium/OWNERS
+@@ -0,0 +1,5 @@
++approvers:
++- desimone
++reviewers:
++- desimone
++- victornoel
+\ No newline at end of file
+diff --git a/stable/pomerium/README.md b/stable/pomerium/README.md
+new file mode 100644
+index 000000000..db0d5927e
+--- /dev/null
++++ b/stable/pomerium/README.md
+@@ -0,0 +1,74 @@
++# Pomerium
++
++[Pomerium](https://pomerium.io) is an [open-source](https://github.com/pomerium/pomerium) tool for managing secure access to internal applications and resources.
++
++## TL;DR;
++
++```console
++helm install --name my-release stable/pomerium
++```
++
++> Note: Pomerium depends on being configured with a third party identity providers to function properly. If you run pomerium without specifiying default values, you will need to change those configuration variables following setup.
++
++## Install the chart
++
++An example of a minimal, but complete installation of pomerium with identity provider settings, random secrets, certificates, and external URLs is as follows:
++
++```sh
++helm install --name my-release \
++    --set config.rootDomain="corp.example.com" \
++    --set ingress.tls.certificate=$(base64 -i "*.corp.example.com.cer") \
++    --set ingress.tls.key=$(base64 -i "*.corp.example.com.key") \
++    --set config.policy=$(base64 -i "policy.yaml") \
++    --set authenticate.idp.provider="google" \
++    --set authenticate.idp.clientID="REPLACE_ME" \
++    --set authenticate.idp.clientSecret="REPLACE_ME"
++    stable/pomerium
++```
++
++## Uninstalling the Chart
++
++To uninstall/delete the `my-release` deployment:
++
++```console
++helm delete --purge my-release
++```
++
++The command removes nearly all the Kubernetes components associated with the chart and deletes the release.
++
++## Configuration
++
++A full listing of Pomerium's configuration variables can be found on the [config reference page](https://www.pomerium.io/docs/config-reference.html).
++
++Parameter                         | Description                                                                                                                                                                                                | Default
++--------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------
++`config.rootDomain`               | Root Domain specifies the sub-domain handled by pomerium. [See more](https://www.pomerium.io/docs/config-reference.html#proxy-root-domains).                                                               | `corp.pomerium.io`
++`config.generateTLS`              | Generate a dummy Certificate Authority and certs for service communication. Manual CA and certs can be set in values.                                                                                      | `true`
++`config.sharedSecret`             | 256 bit key to secure service communication. [See more](https://www.pomerium.io/docs/config-reference.html#shared-secret).                                                                                 | 32 [random ascii chars](http://masterminds.github.io/sprig/strings.html)
++`config.cookieSecret`             | Cookie secret is a 32 byte key used to encrypt user sessions.                                                                                                                                              | 32 [random ascii chars](http://masterminds.github.io/sprig/strings.html)
++`config.policy`                   | Base64 encoded string containing the routes, and their access policies.                                                                                                                                    |
++`config.policyFile`               | Relative file location of the policy file which contains the routes, and their access policies.                                                                                                            | [See example](https://www.pomerium.io/docs/config-reference.html#policy) in values
++`authenticate.nameOverride`       | Name of the authenticate service.                                                                                                                                                                          |
++`authenticate.fullnameOverride`   | Full name of the authenticate service.                                                                                                                                                                     |
++`authenticate.redirectUrl`        | Redirect URL is the url the user will be redirected to following authentication with the third-party identity provider (IdP). [See more](https://www.pomerium.io/docs/config-reference.html#redirect-url). | `https://{{authenticate.name}}.{{config.rootDomain}}/oauth2/callback`
++`authenticate.idp.provider`       | Identity [Provider Name](https://www.pomerium.io/docs/config-reference.html#identity-provider-name).                                                                                                       | `google`
++`authenticate.idp.clientID`       | Identity Provider oauth [client ID](https://www.pomerium.io/docs/config-reference.html#identity-provider-client-id).                                                                                       | Required
++`authenticate.idp.clientSecret`   | Identity Provider oauth [client secret](https://www.pomerium.io/docs/config-reference.html#identity-provider-client-secret).                                                                               | Required
++`authenticate.idp.url`            | Identity [Provider URL](https://www.pomerium.io/docs/config-reference.html#identity-provider-url).                                                                                                         | Optional
++`authenticate.idp.serviceAccount` | Identity Provider [service account](https://www.pomerium.io/docs/config-reference.html#identity-provider-service-account).                                                                                 | Optional
++`proxy.nameOverride`              | Name of the proxy service.                                                                                                                                                                                 |
++`proxy.fullnameOverride`          | Full name of the proxy service.                                                                                                                                                                            |
++`proxy.authenticateServiceUrl`    | The externally accessible url for the authenticate service.                                                                                                                                                | `https://{{authenticate.name}}.{{config.rootDomain}}`
++`proxy.authorizeServiceUrl`       | The externally accessible url for the authorize service.                                                                                                                                                   | `https://{{authorize.name}}.{{config.rootDomain}}`
++`authorize.nameOverride`          | Name of the authorize service.                                                                                                                                                                             |
++`authorize.fullnameOverride`      | Full name of the authorize service.                                                                                                                                                                        |
++`images.server.repository`        | Pomerium image                                                                                                                                                                                             | `pomerium/pomerium`
++`images.server.tag`               | Pomerium image tag                                                                                                                                                                                         | `latest`
++`images.server.pullPolicy`        | Pomerium image pull policy                                                                                                                                                                                 | `Always`
++`service.annotations`             | Service annotations                                                                                                                                                                                        | `{}`
++`service.externalPort`            | Pomerium's port                                                                                                                                                                                            | `443`
++`service.type`                    | Service type (ClusterIP, NodePort or LoadBalancer)                                                                                                                                                         | `ClusterIP`
++`ingress.enabled`                 | Enables Ingress for pomerium                                                                                                                                                                               | `false`
++`ingress.annotations`             | Ingress annotations                                                                                                                                                                                        | `{}`
++`ingress.hosts`                   | Ingress accepted hostnames                                                                                                                                                                                 | `nil`
++`ingress.tls`                     | Ingress TLS configuration                                                                                                                                                                                  | `[]`
+diff --git a/stable/pomerium/templates/NOTES.txt b/stable/pomerium/templates/NOTES.txt
+new file mode 100644
+index 000000000..80ac288d7
+--- /dev/null
++++ b/stable/pomerium/templates/NOTES.txt
+@@ -0,0 +1,67 @@
++{{- if eq (include "pomerium.providerOK" .) "true" }}
++{{- if .Values.ingress.enabled }}
++From outside the cluster, the server URL(s) are:
++{{- range .Values.ingress.hosts }}
++     {{ $.Values.server.protocol }}://{{ . }}
++{{- end }}
++
++{{- else if contains "NodePort" .Values.service.type }}
++
++Get the Pomerium URL by running:
++  export NODE_PORT=$(kubectl get -o jsonpath="{.spec.ports[0].nodePort}" services {{ template "pomerium.fullname" . }})
++  export NODE_IP=$(kubectl get nodes -o jsonpath="{.items[0].status.addresses[0].address}")
++  echo http://$NODE_IP:$NODE_PORT/
++
++{{- else if contains "LoadBalancer" .Values.service.type }}
++
++  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
++        Watch the status with: 'kubectl get svc -w {{ template "pomerium.fullname" . }}'
++
++Get the Pomerium URL by running:
++  export SERVICE_IP=$(kubectl get svc {{ template "pomerium.fullname" . }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
++  echo http://$SERVICE_IP/
++{{- else if contains "ClusterIP" .Values.service.type }}
++
++Get the Pomerium URL by running:
++  export POD_NAME=$(kubectl get pods -n {{ .Release.Namespace }} -l "component=server,app={{ template "pomerium.name" . }},release={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
++  echo http://127.0.0.1:8000/
++  kubectl -n {{ .Release.Namespace }} port-forward $POD_NAME 8000:8000
++{{- end }}
++{{- else -}}
++##############################################################################
++####        ERROR: You did not set a valid identity provider              ####
++##############################################################################
++
++This deployment will be incomplete until you configure a valid version
++control provider:
++
++    helm upgrade {{ .Release.Name }} \
++        --reuse-values \
++        --set config.sharedSecret=$(head -c32 /dev/urandom | base64) \
++        --set config.cookieSecret=$(head -c32 /dev/urandom | base64) \
++        --set config.cert=$(base64 -i cert.pem) \
++        --set config.key=$(base64 -i privkey.pem) \
++        --set config.policy="$(cat policy.example.yaml | base64)" \
++        --set authenticate.idp.provider="google" \
++        --set config.rootDomain="corp.pomerium.io" \
++        --set authenticate.redirectUrl="https://auth.corp.pomerium.io/oauth2/callback" \
++        --set authenticate.idp.clientID="REPLACE_ME" \
++        --set authenticate.idp.clientSecret="REPLACE_ME" \
++        --set proxy.authenticateServiceUrl="https://auth.corp.pomerium.io" \
++        --set proxy.authorizeServiceUrl="https://access.corp.pomerium.io"
++        stable/pomerium
++
++Currently supported providers:
++
++    - Okta
++    - Google
++    - Azure Active Directory
++    - OneLogin
++
++See the values.yaml file to see what values are required for each provider.
++
++If you are having trouble with the configuration of a provider please visit
++the official documentation:
++
++    https://www.pomerium.io/docs/identity-providers.html
++{{- end }}
+diff --git a/stable/pomerium/templates/_helpers.tpl b/stable/pomerium/templates/_helpers.tpl
+new file mode 100644
+index 000000000..8df31f115
+--- /dev/null
++++ b/stable/pomerium/templates/_helpers.tpl
+@@ -0,0 +1,115 @@
++{{/* vim: set filetype=mustache: */}}
++
++{{/*Expand the name of the chart.*/}}
++{{- define "pomerium.name" -}}
++{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*Expand the name of the proxy-service.*/}}
++{{- define "pomerium.proxy.name" -}}
++{{- default (printf "%s-proxy" .Chart.Name) .Values.proxy.nameOverride | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*Expand the name of the authenticate-service.*/}}
++{{- define "pomerium.authenticate.name" -}}
++{{- default (printf "%s-authenticate" .Chart.Name) .Values.authenticate.nameOverride | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*Expand the name of the authorize-service.*/}}
++{{- define "pomerium.authorize.name" -}}
++{{- default (printf "%s-authorize" .Chart.Name) .Values.authorize.nameOverride | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*
++Create a default fully qualified app name.
++We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
++If release name contains chart name it will be used as a full name.
++*/}}
++{{- define "pomerium.fullname" -}}
++{{- if .Values.fullnameOverride -}}
++{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{/* Proxy services fully qualified name. Truncated at 63 chars. */}}
++{{- define "pomerium.proxy.fullname" -}}
++{{- if .Values.proxy.fullnameOverride -}}
++{{- .Values.proxy.fullnameOverride | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- printf "%s-proxy" .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- printf "%s-%s-proxy" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{/* authorize services fully qualified name. Truncated at 63 chars. */}}
++{{- define "pomerium.authorize.fullname" -}}
++{{- if .Values.authorize.fullnameOverride -}}
++{{- .Values.authorize.fullnameOverride | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- printf "%s-authorize" .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- printf "%s-%s-authorize" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{/* authenticate services fully qualified name. Truncated at 63 chars. */}}
++{{- define "pomerium.authenticate.fullname" -}}
++{{- if .Values.authenticate.fullnameOverride -}}
++{{- .Values.authenticate.fullnameOverride | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- printf "%s-authenticate" .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- printf "%s-%s-authenticate" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{/*Create chart name and version as used by the chart label.*/}}
++{{- define "pomerium.chart" -}}
++{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++{{- define "pomerium.routestring" -}}
++{{- $routes := dict "routes" (list) -}}
++{{- range $key, $val := .Values.proxy.routes -}}
++{{- $noop := printf "%s=%s" $key $val | append $routes.routes | set $routes "routes" -}}
++{{- end -}}
++{{- join "," $routes.routes | default "none=none" | quote -}}
++{{- end -}}
++
++
++{{/*
++Check if a valid source control provider has been set
++Adapted from : https://github.com/helm/charts/blob/master/stable/drone/templates/_provider-envs.yaml
++*/}}
++{{- define "pomerium.providerOK" -}}
++{{- if .Values.authenticate.idp -}}
++  {{- if eq .Values.authenticate.idp.clientID "" -}}
++  false
++  {{- else if eq .Values.authenticate.idp.clientSecret "" -}}
++  false
++  {{- else if eq .Values.authenticate.idp.clientID "REPLACE_ME" -}}
++  false
++  {{- else if eq .Values.authenticate.idp.clientSecret "REPLACE_ME" -}}
++  false
++  {{- else -}}
++  true
++  {{- end -}}
++{{- end -}}
++{{- end -}}
+diff --git a/stable/pomerium/templates/authenticate-deployment.yaml b/stable/pomerium/templates/authenticate-deployment.yaml
+new file mode 100644
+index 000000000..96396c237
+--- /dev/null
++++ b/stable/pomerium/templates/authenticate-deployment.yaml
+@@ -0,0 +1,142 @@
++{{- $secretName := default (include "pomerium.fullname" .) .Values.config.existingSecret }}
++apiVersion: apps/v1
++kind: Deployment
++metadata:
++  labels:
++    app.kubernetes.io/name: {{ template "pomerium.authenticate.name" . }}
++    helm.sh/chart: {{ template "pomerium.chart" . }}
++    app.kubernetes.io/managed-by: {{ .Release.Service }}
++    app.kubernetes.io/instance: {{ .Release.Name }}
++    app.kubernetes.io/component: authenticate
++  name: {{ template "pomerium.authenticate.fullname" . }}
++{{- if .Values.annotations }}
++  annotations:
++{{ toYaml .Values.annotations | indent 4 }}
++{{- end }}
++spec:
++  replicas: {{ .Values.replicaCount }}
++  selector:
++    matchLabels:
++      app.kubernetes.io/name: {{ template "pomerium.authenticate.name" . }}
++      app.kubernetes.io/instance: {{ .Release.Name }}
++  template:
++    metadata:
++{{- if .Values.podAnnotations }}
++      annotations:
++{{ toYaml .Values.podAnnotations | indent 8 }}
++{{- end }}
++      labels:
++        app.kubernetes.io/name: {{ template "pomerium.authenticate.name" . }}
++        helm.sh/chart: {{ template "pomerium.chart" . }}
++        app.kubernetes.io/managed-by: {{ .Release.Service }}
++        app.kubernetes.io/instance: {{ .Release.Name }}
++{{- if .Values.podLabels }}
++{{ toYaml .Values.podLabels | indent 8 }}
++{{- end }}
++    spec:
++{{- if .Values.priorityClassName }}
++      priorityClassName: {{ .Values.priorityClassName }}
++{{- end }}
++      containers:
++      - name: {{ .Chart.Name }}
++        image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
++        imagePullPolicy: {{ .Values.image.pullPolicy }}
++        args:
++{{- range $key, $value := .Values.extraArgs }}
++{{- if $value }}
++          - --{{ $key }}={{ $value }}
++{{- else }}
++          - --{{ $key }}
++{{- end }}
++{{- end }}
++        env:
++        - name: SERVICES
++          value: authenticate
++        - name: COOKIE_SECRET
++          valueFrom:
++            secretKeyRef:
++              name: {{ $secretName }}
++              key: cookie-secret
++        - name: SHARED_SECRET
++          valueFrom:
++            secretKeyRef:
++              name: {{ $secretName }}
++              key: shared-secret
++        - name: REDIRECT_URL
++          value: {{ default (printf "https://%s.%s/oauth2/callback" (include "pomerium.authenticate.fullname" .)  .Values.config.rootDomain ) .Values.authenticate.redirectUrl }}
++        - name: PROXY_ROOT_DOMAIN
++          value: {{ .Values.config.rootDomain }}
++        - name: IDP_PROVIDER
++          value: {{ .Values.authenticate.idp.provider }}
++        - name: IDP_CLIENT_ID
++          valueFrom:
++            secretKeyRef:
++              name:  {{ $secretName }}
++              key: idp-client-id
++        - name: IDP_CLIENT_SECRET
++          valueFrom:
++            secretKeyRef:
++              name:  {{ $secretName }}
++              key: idp-client-secret
++        - name: IDP_PROVIDER_URL
++          value: {{ .Values.authenticate.idp.url }}
++        - name: IDP_SERVICE_ACCOUNT
++          valueFrom:
++            secretKeyRef:
++              name:  {{ $secretName }}
++              key: idp-service-account
++        - name: CERTIFICATE
++          valueFrom:
++            secretKeyRef:
++              name:  {{ $secretName }}
++              key:  authenticate-cert
++        - name: CERTIFICATE_KEY
++          valueFrom:
++            secretKeyRef:
++              name:  {{ $secretName }}
++              key:  authenticate-key
++        - name: CERTIFICATE_AUTHORITY
++          valueFrom:
++            secretKeyRef:
++              name:  {{ $secretName }}
++              key:  ca-cert
++{{- range $name, $value := .Values.extraEnv }}
++        - name: {{ $name }}
++          value: {{ quote $value }}
++{{- end }}
++        ports:
++          - containerPort: 443
++            name: https
++            protocol: TCP
++        livenessProbe:
++          httpGet:
++            path: /ping
++            port: https
++            scheme: HTTPS
++        readinessProbe:
++          httpGet:
++            path: /ping
++            port: https
++            scheme: HTTPS
++      resources:
++{{ toYaml .Values.resources | indent 10 }}
++{{- if .Values.extraVolumes }}
++      volumes:
++{{- toYaml .Values.extraVolumes | indent 8 }}
++{{- end }}
++{{- if .Values.imagePullSecrets }}
++      imagePullSecrets:
++{{ toYaml .Values.imagePullSecrets | indent 8 }}
++{{- end }}
++{{- if .Values.nodeSelector }}
++      nodeSelector:
++{{ toYaml .Values.nodeSelector | indent 8 }}
++{{- end }}
++{{- if .Values.tolerations }}
++      tolerations:
++{{ toYaml .Values.tolerations | indent 8 }}
++{{- end }}
++{{- if .Values.affinity }}
++      affinity:
++{{ toYaml .Values.affinity | indent 8 }}
++{{- end }}
+\ No newline at end of file
+diff --git a/stable/pomerium/templates/authenticate-service.yaml b/stable/pomerium/templates/authenticate-service.yaml
+new file mode 100644
+index 000000000..7db18db50
+--- /dev/null
++++ b/stable/pomerium/templates/authenticate-service.yaml
+@@ -0,0 +1,31 @@
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ template "pomerium.authenticate.fullname" . }}
++  labels:
++    app.kubernetes.io/name: {{ template "pomerium.authenticate.name" . }}
++    helm.sh/chart: {{ template "pomerium.chart" . }}
++    app.kubernetes.io/instance: {{ .Release.Name }}
++    app.kubernetes.io/managed-by: {{ .Release.Service }}
++    app.kubernetes.io/component: authenticate
++{{- if .Values.service.labels }}
++{{ toYaml .Values.service.labels | indent 4 }}
++{{- end }}
++{{- if .Values.service.annotations }}
++  annotations:
++{{ toYaml .Values.service.annotations | indent 4 }}
++{{- end }}
++spec:
++  type: {{ .Values.service.type }}
++  ports:
++    - port: {{ .Values.service.externalPort }}
++      targetPort: https
++      protocol: TCP
++      name: https
++
++{{- if hasKey .Values.service "nodePort" }}
++    nodePort: {{ .Values.service.nodePort }}
++{{- end }}
++  selector:
++    app.kubernetes.io/name: {{ template "pomerium.authenticate.name" . }}
++    app.kubernetes.io/instance: {{ .Release.Name }}
+diff --git a/stable/pomerium/templates/authorize-deployment.yaml b/stable/pomerium/templates/authorize-deployment.yaml
+new file mode 100644
+index 000000000..97f83f73b
+--- /dev/null
++++ b/stable/pomerium/templates/authorize-deployment.yaml
+@@ -0,0 +1,132 @@
++{{- $configName := default (include "pomerium.fullname" .) .Values.config.existingConfig }}
++{{- $secretName := default (include "pomerium.fullname" .) .Values.config.existingSecret }}
++apiVersion: apps/v1
++kind: Deployment
++metadata:
++  labels:
++    app.kubernetes.io/name: {{ template "pomerium.authorize.name" . }}
++    helm.sh/chart: {{ template "pomerium.chart" . }}
++    app.kubernetes.io/managed-by: {{ .Release.Service }}
++    app.kubernetes.io/instance: {{ .Release.Name }}
++    app.kubernetes.io/component: authorize
++  name: {{ template "pomerium.authorize.fullname" . }}
++{{- if .Values.annotations }}
++  annotations:
++{{ toYaml .Values.annotations | indent 4 }}
++{{- end }}
++spec:
++  replicas: {{ .Values.replicaCount }}
++  selector:
++    matchLabels:
++      app.kubernetes.io/name: {{ template "pomerium.authorize.name" . }}
++      app.kubernetes.io/instance: {{ .Release.Name }}
++  template:
++    metadata:
++{{- if .Values.podAnnotations }}
++      annotations:
++{{ toYaml .Values.podAnnotations | indent 8 }}
++{{- end }}
++      labels:
++        app.kubernetes.io/name: {{ template "pomerium.authorize.name" . }}
++        helm.sh/chart: {{ template "pomerium.chart" . }}
++        app.kubernetes.io/managed-by: {{ .Release.Service }}
++        app.kubernetes.io/instance: {{ .Release.Name }}
++{{- if .Values.podLabels }}
++{{ toYaml .Values.podLabels | indent 8 }}
++{{- end }}
++    spec:
++{{- if .Values.priorityClassName }}
++      priorityClassName: {{ .Values.priorityClassName }}
++{{- end }}
++      containers:
++      - name: {{ .Chart.Name }}
++        image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
++        imagePullPolicy: {{ .Values.image.pullPolicy }}
++        args:
++{{- range $key, $value := .Values.extraArgs }}
++{{- if $value }}
++          - --{{ $key }}={{ $value }}
++{{- else }}
++          - --{{ $key }}
++{{- end }}
++{{- end }}
++        env:
++        - name: SERVICES
++          value: authorize
++        - name: SHARED_SECRET
++          valueFrom:
++            secretKeyRef:
++              name: {{ $secretName }}
++              key: shared-secret
++{{- if or .Values.config.existingConfig .Values.config.policyFile}}
++        - name: POLICY_FILE
++          value: /etc/pomerium/policy.yaml
++{{- end }}
++{{- if .Values.config.policy}}
++        - name: POLICY
++          value: {{ .Values.config.policy }}
++{{- end }}
++        - name: CERTIFICATE
++          valueFrom:
++            secretKeyRef:
++              name: {{ $secretName }}
++              key: authorize-cert
++        - name: CERTIFICATE_KEY
++          valueFrom:
++            secretKeyRef:
++              name: {{ $secretName }}
++              key: authorize-key
++        - name: CERTIFICATE_AUTHORITY
++          valueFrom:
++            secretKeyRef:
++              name: {{ $secretName }}
++              key: ca-cert
++{{- range $name, $value := .Values.extraEnv }}
++        - name: {{ $name }}
++          value: {{ quote $value }}
++{{- end }}
++        ports:
++          - containerPort: 443
++            name: https
++            protocol: TCP
++        livenessProbe:
++          httpGet:
++            path: /ping
++            port: https
++            scheme: HTTPS
++        readinessProbe:
++          httpGet:
++            path: /ping
++            port: https
++            scheme: HTTPS
++{{- if or .Values.config.existingConfig .Values.config.policyFile}}
++        volumeMounts:
++        - mountPath: /etc/pomerium/
++          name: policy
++      volumes:
++      - name: policy
++        configMap:
++          name: {{ $configName }}
++{{- end }}
++      resources:
++{{ toYaml .Values.resources | indent 10 }}
++{{- if .Values.extraVolumes }}
++      volumes:
++{{- toYaml .Values.extraVolumes | indent 8 }}
++{{- end }}
++{{- if .Values.imagePullSecrets }}
++      imagePullSecrets:
++{{ toYaml .Values.imagePullSecrets | indent 8 }}
++{{- end }}
++{{- if .Values.nodeSelector }}
++      nodeSelector:
++{{ toYaml .Values.nodeSelector | indent 8 }}
++{{- end }}
++{{- if .Values.tolerations }}
++      tolerations:
++{{ toYaml .Values.tolerations | indent 8 }}
++{{- end }}
++{{- if .Values.affinity }}
++      affinity:
++{{ toYaml .Values.affinity | indent 8 }}
++{{- end }}
+diff --git a/stable/pomerium/templates/authorize-service.yaml b/stable/pomerium/templates/authorize-service.yaml
+new file mode 100644
+index 000000000..bfd0b0fd9
+--- /dev/null
++++ b/stable/pomerium/templates/authorize-service.yaml
+@@ -0,0 +1,31 @@
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ template "pomerium.authorize.fullname" . }}
++  labels:
++    app.kubernetes.io/name: {{ template "pomerium.authorize.name" . }}
++    helm.sh/chart: {{ template "pomerium.chart" . }}
++    app.kubernetes.io/instance: {{ .Release.Name }}
++    app.kubernetes.io/managed-by: {{ .Release.Service }}
++    app.kubernetes.io/component: authorize
++{{- if .Values.service.labels }}
++{{ toYaml .Values.service.labels | indent 4 }}
++{{- end }}
++{{- if .Values.service.annotations }}
++  annotations:
++{{ toYaml .Values.service.annotations | indent 4 }}
++{{- end }}
++spec:
++  type: {{ .Values.service.type }}
++  ports:
++    - port: {{ .Values.service.externalPort }}
++      targetPort: https
++      protocol: TCP
++      name: https
++
++{{- if hasKey .Values.service "nodePort" }}
++    nodePort: {{ .Values.service.nodePort }}
++{{- end }}
++  selector:
++    app.kubernetes.io/name: {{ template "pomerium.authorize.name" . }}
++    app.kubernetes.io/instance: {{ .Release.Name }}
+diff --git a/stable/pomerium/templates/configmap.yaml b/stable/pomerium/templates/configmap.yaml
+new file mode 100644
+index 000000000..4f708febd
+--- /dev/null
++++ b/stable/pomerium/templates/configmap.yaml
+@@ -0,0 +1,13 @@
++{{- if not .Values.config.existingConfig }}
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  name: {{ template "pomerium.fullname" . }}
++  labels:
++    app.kubernetes.io/name: {{ template "pomerium.name" . }}
++    helm.sh/chart: {{ template "pomerium.chart" . }}
++    app.kubernetes.io/managed-by: {{ .Release.Service }}
++    app.kubernetes.io/instance: {{ .Release.Name }}
++data:
++  policy.yaml: {{toYaml .Values.config.policyFile | indent 4}}
++{{- end }}
+diff --git a/stable/pomerium/templates/ingress.yaml b/stable/pomerium/templates/ingress.yaml
+new file mode 100644
+index 000000000..e0dea9e53
+--- /dev/null
++++ b/stable/pomerium/templates/ingress.yaml
+@@ -0,0 +1,44 @@
++{{- if .Values.ingress.enabled -}}
++apiVersion: extensions/v1beta1
++kind: Ingress
++metadata:
++  name: {{ include "pomerium.fullname" . }}
++  labels:
++    app.kubernetes.io/name: {{ include "pomerium.name" . }}
++    app.kubernetes.io/instance: {{ .Release.Name }}
++    app.kubernetes.io/managed-by: {{ .Release.Service }}
++    helm.sh/chart: {{ include "pomerium.chart" . }}
++{{- with .Values.ingress.annotations }}
++  annotations:
++{{ toYaml . | indent 4 }}
++{{- end }}
++spec:
++  tls:
++    - secretName: {{ default .Values.ingress.secretName .Values.ingress.secret.name}}
++      hosts:
++        - '*.{{ .Values.config.rootDomain }}'
++        - {{ default (printf "authorize.%s" .Values.config.rootDomain ) .Values.proxy.authorizeServiceUrl }}
++        - {{ default (printf "authenticate.%s" .Values.config.rootDomain ) .Values.proxy.authenticateServiceUrl }}
++  rules:
++    - host: {{ default (printf "authorize.%s" .Values.config.rootDomain ) .Values.proxy.authorizeServiceUrl }}
++      http:
++        paths:
++          - paths:
++            backend:
++              serviceName: {{ include "pomerium.authorize.fullname" .}}
++              servicePort: https
++    - host: {{ default (printf "authenticate.%s" .Values.config.rootDomain ) .Values.proxy.authenticateServiceUrl }}
++      http:
++        paths:
++          - paths:
++            backend:
++              serviceName: {{ include "pomerium.authenticate.fullname" .}}
++              servicePort: https
++    - host: '*.{{ .Values.config.rootDomain }}'
++      http:
++        paths:
++          - paths:
++            backend:
++              serviceName: {{ include "pomerium.proxy.fullname" .}}
++              servicePort: https
++{{- end }}
+\ No newline at end of file
+diff --git a/stable/pomerium/templates/proxy-deployment.yaml b/stable/pomerium/templates/proxy-deployment.yaml
+new file mode 100644
+index 000000000..7e80dff08
+--- /dev/null
++++ b/stable/pomerium/templates/proxy-deployment.yaml
+@@ -0,0 +1,145 @@
++{{- $configName := default (include "pomerium.fullname" .) .Values.config.existingConfig }}
++{{- $secretName := default (include "pomerium.fullname" .) .Values.config.existingSecret }}
++apiVersion: apps/v1
++kind: Deployment
++metadata:
++  labels:
++    app.kubernetes.io/name: {{ template "pomerium.proxy.name" . }}
++    helm.sh/chart: {{ template "pomerium.chart" . }}
++    app.kubernetes.io/managed-by: {{ .Release.Service }}
++    app.kubernetes.io/instance: {{ .Release.Name }}
++    app.kubernetes.io/component: proxy
++  name: {{ template "pomerium.proxy.fullname" . }}
++{{- if .Values.annotations }}
++  annotations:
++{{ toYaml .Values.annotations | indent 4 }}
++{{- end }}
++spec:
++  replicas: {{ .Values.replicaCount }}
++  selector:
++    matchLabels:  
++      app.kubernetes.io/name: {{ template "pomerium.proxy.name" . }}
++      app.kubernetes.io/instance: {{ .Release.Name }}
++  template:
++    metadata:
++{{- if .Values.podAnnotations }}
++      annotations:
++{{ toYaml .Values.podAnnotations | indent 8 }}
++{{- end }}
++      labels:
++        app.kubernetes.io/name: {{ template "pomerium.proxy.name" . }}
++        helm.sh/chart: {{ template "pomerium.chart" . }}
++        app.kubernetes.io/managed-by: {{ .Release.Service }}
++        app.kubernetes.io/instance: {{ .Release.Name }}
++{{- if .Values.podLabels }}
++{{ toYaml .Values.podLabels | indent 8 }}
++{{- end }}
++    spec:
++{{- if .Values.priorityClassName }}
++      priorityClassName: {{ .Values.priorityClassName }}
++{{- end }}
++      containers:
++      - name: {{ .Chart.Name }}
++        image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
++        imagePullPolicy: {{ .Values.image.pullPolicy }}
++        args:
++{{- range $key, $value := .Values.extraArgs }}
++{{- if $value }}
++          - --{{ $key }}={{ $value }}
++{{- else }}
++          - --{{ $key }}
++{{- end }}
++{{- end }}
++        env:
++        - name: SERVICES
++          value: proxy
++        - name: COOKIE_SECRET
++          valueFrom:
++            secretKeyRef:
++              name: {{ $secretName }}
++              key: cookie-secret
++        - name: SHARED_SECRET
++          valueFrom:
++            secretKeyRef:
++              name: {{ $secretName }}
++              key: shared-secret
++        - name: AUTHENTICATE_SERVICE_URL
++          value: {{ default (printf "https://authenticate.%s" .Values.config.rootDomain ) .Values.proxy.authenticateServiceUrl }}
++        - name: AUTHORIZE_SERVICE_URL
++          value: {{ default (printf "https://authorize.%s" .Values.config.rootDomain ) .Values.proxy.authorizeServiceUrl }}
++        - name: AUTHENTICATE_INTERNAL_URL
++          value: {{ default (printf "%s.%s.svc.cluster.local" (include "pomerium.authenticate.fullname" .) .Release.Namespace ) .Values.proxy.authenticateInternalUrl}}
++        - name: AUTHORIZE_INTERNAL_URL
++          value: {{ default (printf "%s.%s.svc.cluster.local" (include "pomerium.authorize.fullname" .) .Release.Namespace ) .Values.proxy.authorizeInternalUrl}}
++{{- if or .Values.config.existingConfig .Values.config.policyFile}}
++        - name: POLICY_FILE
++          value: /etc/pomerium/policy.yaml
++{{- end }}
++{{- if .Values.config.policy}}
++        - name: POLICY
++          value: {{ .Values.config.policy }}
++{{- end }}
++        - name: CERTIFICATE
++          valueFrom:
++            secretKeyRef:
++              name: {{ $secretName }}
++              key: proxy-cert
++        - name: CERTIFICATE_KEY
++          valueFrom:
++            secretKeyRef:
++              name: {{ $secretName }}
++              key: proxy-key
++        - name: CERTIFICATE_AUTHORITY
++          valueFrom:
++            secretKeyRef:
++              name: {{ $secretName }}
++              key:  ca-cert
++{{- range $name, $value := .Values.extraEnv }}
++        - name: {{ $name }}
++          value: {{ quote $value }}
++{{- end }}
++        ports:
++          - containerPort: 443
++            name: https
++            protocol: TCP
++        livenessProbe:
++          httpGet:
++            path: /ping
++            port: https
++            scheme: HTTPS
++        readinessProbe:
++          httpGet:
++            path: /ping
++            port: https
++            scheme: HTTPS
++{{- if or .Values.config.existingConfig .Values.config.policyFile}}
++        volumeMounts:
++        - mountPath: /etc/pomerium/
++          name: policy
++      volumes:
++      - name: policy
++        configMap:
++          name: {{ $configName }}
++{{- end }}
++      resources:
++{{ toYaml .Values.resources | indent 10 }}
++{{- if .Values.extraVolumes }}
++      volumes:
++{{- toYaml .Values.extraVolumes | indent 8 }}
++{{- end }}
++{{- if .Values.imagePullSecrets }}
++      imagePullSecrets:
++{{ toYaml .Values.imagePullSecrets | indent 8 }}
++{{- end }}
++{{- if .Values.nodeSelector }}
++      nodeSelector:
++{{ toYaml .Values.nodeSelector | indent 8 }}
++{{- end }}
++{{- if .Values.tolerations }}
++      tolerations:
++{{ toYaml .Values.tolerations | indent 8 }}
++{{- end }}
++{{- if .Values.affinity }}
++      affinity:
++{{ toYaml .Values.affinity | indent 8 }}
++{{- end }}
+\ No newline at end of file
+diff --git a/stable/pomerium/templates/proxy-service.yaml b/stable/pomerium/templates/proxy-service.yaml
+new file mode 100644
+index 000000000..a327b1dd4
+--- /dev/null
++++ b/stable/pomerium/templates/proxy-service.yaml
+@@ -0,0 +1,31 @@
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ template "pomerium.proxy.fullname" . }}
++  labels:
++    app.kubernetes.io/name: {{ template "pomerium.proxy.name" . }}
++    helm.sh/chart: {{ template "pomerium.chart" . }}
++    app.kubernetes.io/instance: {{ .Release.Name }}
++    app.kubernetes.io/managed-by: {{ .Release.Service }}
++    app.kubernetes.io/component: proxy
++{{- if .Values.service.labels }}
++{{ toYaml .Values.service.labels | indent 4 }}
++{{- end }}
++{{- if .Values.service.annotations }}
++  annotations:
++{{ toYaml .Values.service.annotations | indent 4 }}
++{{- end }}
++spec:
++  type: {{ .Values.service.type }}
++  ports:
++    - port: {{ .Values.service.externalPort }}
++      targetPort: https
++      protocol: TCP
++      name: https
++
++{{- if hasKey .Values.service "nodePort" }}
++    nodePort: {{ .Values.service.nodePort }}
++{{- end }}
++  selector:
++    app.kubernetes.io/name: {{ template "pomerium.proxy.name" . }}
++    app.kubernetes.io/instance: {{ .Release.Name }}
+diff --git a/stable/pomerium/templates/secret.yaml b/stable/pomerium/templates/secret.yaml
+new file mode 100644
+index 000000000..7200a13d1
+--- /dev/null
++++ b/stable/pomerium/templates/secret.yaml
+@@ -0,0 +1,44 @@
++{{- if not .Values.config.existingSecret }}
++apiVersion: v1
++kind: Secret
++metadata:
++  labels:
++    app.kubernetes.io/name: {{ template "pomerium.name" . }}
++    helm.sh/chart: {{ template "pomerium.chart" . }}
++    app.kubernetes.io/managed-by: {{ .Release.Service }}
++    app.kubernetes.io/instance: {{ .Release.Name }}
++  name: {{ template "pomerium.fullname" . }}
++  namespace: {{ .Release.Namespace }}
++type: Opaque
++data:
++  cookie-secret: {{ default (randAscii 32 | b64enc | b64enc) (.Values.config.cookieSecret | b64enc )}}
++  shared-secret: {{ default (randAscii 32 | b64enc | b64enc) (.Values.config.sharedSecret | b64enc )}}
++  idp-client-id: {{ .Values.authenticate.idp.clientID | b64enc }}
++  idp-client-secret: {{ .Values.authenticate.idp.clientSecret | b64enc }}
++  idp-service-account: {{ .Values.authenticate.idp.serviceAccount | b64enc }}
++{{- if .Values.config.generateTLS }}
++{{- $ca := genCA "default-ca" 3650 }}
++{{- $authenticateSN:= list (printf "%s.%s" .Values.authenticate.name .Values.config.rootDomain) (printf "%s.%s.svc.cluster.local" (include "pomerium.authenticate.fullname" .) .Release.Namespace )}}
++{{- $authorizeSN:= list (printf "%s.%s" .Values.authorize.name .Values.config.rootDomain) (printf "%s.%s.svc.cluster.local" (include "pomerium.authorize.fullname" .) .Release.Namespace )}}
++{{- $cn := default "example.com" .Values.config.rootDomain }}
++  ca-cert: {{ $ca.Cert | b64enc | b64enc }}
++  ca-key: {{ $ca.Key | b64enc | b64enc }}
++{{- $kp := genSignedCert $cn ( default nil .Values.authenticate.tls.defaultIPList ) ( default $authenticateSN .Values.authenticate.tls.defaultSANList ) 3650 $ca }}
++  authenticate-cert: {{ $kp.Cert | b64enc | b64enc }}
++  authenticate-key: {{ $kp.Key | b64enc | b64enc }}
++{{- $kp := genSignedCert $cn ( default nil .Values.authorize.tls.defaultIPList ) ( default $authorizeSN .Values.authorize.tls.defaultSANList ) 3650 $ca }}
++  authorize-cert: {{ $kp.Cert | b64enc | b64enc }}
++  authorize-key: {{ $kp.Key | b64enc | b64enc }}
++{{- $kp := genSignedCert $cn ( default nil .Values.proxy.tls.defaultIPList ) ( default nil .Values.proxy.tls.defaultSANList ) 3650 $ca }}
++  proxy-cert: {{ $kp.Cert | b64enc | b64enc }}
++  proxy-key: {{ $kp.Key | b64enc | b64enc }}
++{{- else }}
++  ca-cert: {{ .Values.config.ca | b64enc }}
++  proxy-cert: {{ .Values.proxy.tls.cert | b64enc }}
++  proxy-key: {{ .Values.proxy.tls.key | b64enc }}
++  authenticate-cert: {{ .Values.authenticate.tls.cert | b64enc }}
++  authenticate-key: {{ .Values.authenticate.tls.key | b64enc }}
++  authorize-cert: {{ .Values.authorize.tls.cert | b64enc }}
++  authorize-key: {{ .Values.authorize.tls.key | b64enc }}
++{{- end }}
++{{- end }}
+diff --git a/stable/pomerium/templates/tls-secrets.yaml b/stable/pomerium/templates/tls-secrets.yaml
+new file mode 100644
+index 000000000..93bee98c0
+--- /dev/null
++++ b/stable/pomerium/templates/tls-secrets.yaml
+@@ -0,0 +1,18 @@
++{{- if .Values.ingress.enabled }}
++{{- if not .Values.ingress.secretName }}
++apiVersion: v1
++kind: Secret
++metadata:
++  name: {{ default "pomerium-tls" .Values.ingress.secret.name }}
++  labels:
++    app.kubernetes.io/name: {{ template "pomerium.name" . }}
++    helm.sh/chart: {{ template "pomerium.chart" . }}
++    app.kubernetes.io/managed-by: {{ .Release.Service }}
++    app.kubernetes.io/instance: {{ .Release.Name }}
++type: kubernetes.io/tls
++data:
++  tls.crt: {{ .Values.ingress.secret.cert }}
++  tls.key: {{ .Values.ingress.secret.key }}
++---
++{{- end }}
++{{- end }}
+diff --git a/stable/pomerium/values.yaml b/stable/pomerium/values.yaml
+new file mode 100644
+index 000000000..4af2650ae
+--- /dev/null
++++ b/stable/pomerium/values.yaml
+@@ -0,0 +1,136 @@
++# For detailed explanation of each of the configuration settings see
++# https://www.pomerium.io/docs/config-reference.htmls
++
++# settings that are shared by all services
++config:
++  # routes under this wildcard domain are handled by pomerium
++  rootDomain: corp.pomerium.io
++  # existingSecret:
++  # existingConfig:
++  sharedSecret: ""
++  cookieSecret: ""
++  generateTLS: true
++  policyFile: |-
++    - from: httpbin.corp.pomerium.io
++      to: http://httpbin
++      allowed_domains:
++      - pomerium.io
++    - from: external-httpbin.corp.pomerium.io
++      to: httpbin.org
++      allowed_domains:
++      - gmail.com
++    - from: weirdlyssl.corp.pomerium.io
++      to: http://neverssl.com
++      allowed_users:
++      - bdd@pomerium.io
++      allowed_groups:
++      - admins
++      - developers
++    - from: hello.corp.pomerium.io
++      to: http://hello:8080
++      allowed_groups:
++      - admins
++
++authenticate:
++  # fullnameOverride: authenticate
++  # nameOverride: authenticate
++  redirectUrl: ""
++  # see https://www.pomerium.io/docs/identity-providers.html
++  idp:
++    provider: google
++    clientID: "REPLACE_ME"
++    clientSecret: "REPLACE_ME"
++    url: ""
++    serviceAccount: ""
++  tls:
++    cert: ""
++    key: ""
++    defaultSANList: []
++    defaultIPList: []
++
++authorize:
++  # fullnameOverride: authorize
++  # nameOverride: authorize
++  tls:
++    cert: ""
++    key: ""
++    defaultSANList: []
++    defaultIPList: []
++
++proxy:
++  # fullnameOverride: proxy
++  # nameOverride: proxy
++  tls:
++    cert: ""
++    key: ""
++    defaultSANList: []
++    defaultIPList: []
++  authenticateServiceUrl: ""
++  authorizeServiceUrl: ""
++  authorizeInternalUrl: ""
++  authenticateInternalUrl: ""
++
++service:
++  # Service type can be set to ClusterIP, NodePort or LoadBalancer.
++  type: ClusterIP
++  externalPort: 443
++  annotations:
++    {}
++    # ===  GKE load balancer tweaks
++    # cloud.google.com/app-protocols: '{"https":"HTTPS"}'
++    # kubernetes.io/ingress.allow-http: "false"
++  labels: {}
++
++ingress:
++  secretName: ""
++  secret:
++    name: ""
++    cert: ""
++    key: ""
++  enabled: true
++  annotations:
++    {}
++    # === nginx tweaks
++    # kubernetes.io/ingress.class: nginx
++    # nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
++    # nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
++    # ===  GKE load balancer tweaks ==
++    # cloud.google.com/app-protocols: '{"https":"HTTPS"}'
++    # kubernetes.io/ingress.allow-http: "false"
++resources:
++  {}
++  # limits:
++  #   cpu: 100m
++  #   memory: 300Mi
++  # requests:
++  #   cpu: 100m
++  #   memory: 300Mi
++
++priorityClassName: ""
++
++# Affinity for pod assignment
++# Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
++# affinity: {}
++
++# Tolerations for pod assignment
++# Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
++# tolerations: []
++
++# Node labels for pod assignment
++# Ref: https://kubernetes.io/docs/user-guide/node-selection/
++# nodeSelector: {}
++
++podAnnotations: {}
++podLabels: {}
++replicaCount: 1
++
++# For any other settings that are optional. for a complete listing see:
++# https://www.pomerium.io/docs/config-reference.html
++extraEnv: {}
++extraArgs: {}
++extraVolumes: {}
++
++image:
++  repository: "pomerium/pomerium"
++  tag: "v0.0.3"
++  pullPolicy: "IfNotPresent"

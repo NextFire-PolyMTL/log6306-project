@@ -1,0 +1,50 @@
+commit fa19385a3003a7b69e03836b24e02bde041ee693
+Author: rjpnps <roberto.nunes@dojo.tech>
+Date:   Tue Jun 14 12:03:51 2022 +0100
+
+    Refactor extraArgs feature template.
+    
+    Signed-off-by: rjpnps <roberto.nunes@dojo.tech>
+
+diff --git a/charts/agent-operator/templates/_helpers.tpl b/charts/agent-operator/templates/_helpers.tpl
+index 47097590..f4646711 100644
+--- a/charts/agent-operator/templates/_helpers.tpl
++++ b/charts/agent-operator/templates/_helpers.tpl
+@@ -37,7 +37,6 @@ Common labels
+ {{ include "ga-operator.selectorLabels" . }}
+ app.kubernetes.io/managed-by: {{ .Release.Service }}
+ app.kubernetes.io/component: operator
+-app.kubernetes.io/part-of: {{ template "ga-operator.name" . }}
+ helm.sh/chart: {{ include "ga-operator.chart" . }}
+ {{- if .Chart.AppVersion }}
+ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+diff --git a/charts/agent-operator/templates/operator-deployment.yaml b/charts/agent-operator/templates/operator-deployment.yaml
+index b65cf424..3f5e8e07 100644
+--- a/charts/agent-operator/templates/operator-deployment.yaml
++++ b/charts/agent-operator/templates/operator-deployment.yaml
+@@ -35,21 +35,16 @@ spec:
+         resources:
+         {{- toYaml . | nindent 10 }}
+         {{- end }}
+-        {{- if and .Values.kubeletService.namespace .Values.kubeletService.serviceName }}
++        {{- if or (and .Values.kubeletService.namespace .Values.kubeletService.serviceName) (.Values.extraArgs) }}
+         args:
++          {{- if and .Values.kubeletService.namespace .Values.kubeletService.serviceName }}
+           - --kubelet-service={{ .Values.kubeletService.namespace }}/{{ .Values.kubeletService.serviceName }}
+-          {{-  if .Values.extraArgs  }}
+-          {{- range .Values.extraArgs  }}
+-          - {{ . }}
+-          {{- end }}
+           {{- end }}
+-        {{- else}}
+-        {{-  if .Values.extraArgs  }}
+-        args:
++          {{- if .Values.extraArgs  }}
+           {{- range .Values.extraArgs  }}
+           - {{ . }}
+           {{- end }}
+-        {{- end }}
++          {{- end }}
+         {{- end }}
+       {{- with .Values.image.pullSecrets }}
+       imagePullSecrets:

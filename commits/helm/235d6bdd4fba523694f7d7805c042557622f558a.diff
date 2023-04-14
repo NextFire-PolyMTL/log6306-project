@@ -1,0 +1,291 @@
+commit 235d6bdd4fba523694f7d7805c042557622f558a
+Author: tompizmor <tompizmor@users.noreply.github.com>
+Date:   Tue Dec 26 07:18:35 2017 +0100
+
+    [stable/phpbb] allow use of external database (#2815)
+    
+    * Allow phpBB helm chart to use an existing database
+    
+    * Add missing env var
+    
+    * Refactor properties to configure external database
+    
+    * Fix lint
+    
+    * Update dependencies
+    
+    * Avoid exposing the database password for external database setup
+    
+    * Apply Sameer feedback
+    
+    * More feedback
+    
+    * Fix typo
+    
+    * Fix lint error
+
+diff --git a/stable/phpbb/Chart.yaml b/stable/phpbb/Chart.yaml
+index 1d86caa82..0a1d31522 100644
+--- a/stable/phpbb/Chart.yaml
++++ b/stable/phpbb/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: phpbb
+-version: 0.5.0
++version: 0.6.0
+ appVersion: 3.2.1
+ description: Community forum that supports the notion of users and groups, file attachments,
+   full-text search, notifications and more.
+diff --git a/stable/phpbb/README.md b/stable/phpbb/README.md
+index 89202d671..9626f68fc 100644
+--- a/stable/phpbb/README.md
++++ b/stable/phpbb/README.md
+@@ -52,11 +52,20 @@ The following tables lists the configurable parameters of the phpBB chart and th
+ | `phpbbUser`                       | User of the application               | `user`                                                  |
+ | `phpbbPassword`                   | Application password                  | _random 10 character long alphanumeric string_          |
+ | `phpbbEmail`                      | Admin email                           | `user@example.com`                                      |
++| `allowEmptyPassword`              | Allow DB blank passwords              | `yes`                                                   |
+ | `smtpHost`                        | SMTP host                             | `nil`                                                   |
+ | `smtpPort`                        | SMTP port                             | `nil`                                                   |
+ | `smtpUser`                        | SMTP user                             | `nil`                                                   |
+ | `smtpPassword`                    | SMTP password                         | `nil`                                                   |
++| `externalDatabase.host`           | Host of the external database         | `nil`                                                   |
++| `externalDatabase.user`           | Existing username in the external db  | `bn_phpbb`                                              |
++| `externalDatabase.password`       | Password for the above username       | `nil`                                                   |
++| `externalDatabase.database`       | Name of the existing databse          | `bitnami_phpbb`                                         |
++| `mariadb.enabled`                 | Use or not the mariadb chart          | `true`                                                  |
+ | `mariadb.mariadbRootPassword`     | MariaDB admin password                | `nil`                                                   |
++| `mariadb.mariadbDatabase`         | Database name to create               | `bitnami_phpbb`                                         |
++| `mariadb.mariadbUser`             | Database user to create               | `bn_phpbb`                                              |
++| `mariadb.mariadbPassword`         | Password for the database             | _random 10 character long alphanumeric string_          |
+ | `serviceType`                     | Kubernetes Service type               | `LoadBalancer`                                          |
+ | `persistence.enabled`             | Enable persistence using PVC          | `true`                                                  |
+ | `persistence.apache.storageClass` | PVC Storage Class for Apache volume   | `nil` (uses alpha storage class annotation)             |
+diff --git a/stable/phpbb/requirements.lock b/stable/phpbb/requirements.lock
+index 6e9cf8e44..49af1ffa2 100644
+--- a/stable/phpbb/requirements.lock
++++ b/stable/phpbb/requirements.lock
+@@ -2,5 +2,5 @@ dependencies:
+ - name: mariadb
+   repository: https://kubernetes-charts.storage.googleapis.com/
+   version: 0.7.0
+-digest: sha256:e1af13ac4ac21f67582006f12d2b4eb78a1a2a59b34338fac850f2bec0b08b41
+-generated: 2017-08-09T22:52:57.521757713-04:00
++digest: sha256:f59f68030aa5c50b9e776b813804875fac911f91c2aa384e991f37a795c5ae34
++generated: 2017-12-05T17:17:21.788784+01:00
+diff --git a/stable/phpbb/requirements.yaml b/stable/phpbb/requirements.yaml
+index 4896aa89d..7c0c6a88a 100644
+--- a/stable/phpbb/requirements.yaml
++++ b/stable/phpbb/requirements.yaml
+@@ -2,3 +2,4 @@ dependencies:
+ - name: mariadb
+   version: 0.7.0
+   repository: https://kubernetes-charts.storage.googleapis.com/
++  condition: mariadb.enabled
+diff --git a/stable/phpbb/templates/NOTES.txt b/stable/phpbb/templates/NOTES.txt
+index 5cba31b4e..7027fed72 100644
+--- a/stable/phpbb/templates/NOTES.txt
++++ b/stable/phpbb/templates/NOTES.txt
+@@ -1,3 +1,4 @@
++{{- if or .Values.mariadb.enabled .Values.externalDatabase.host -}}
+ 
+ 1. Get the phpBB URL by running:
+ 
+@@ -25,3 +26,19 @@
+ 
+     echo Username: {{ .Values.phpbbUser }}
+     echo Password: $(kubectl get secret --namespace {{ .Release.Namespace }} {{ template "phpbb.fullname" . }} -o jsonpath="{.data.phpbb-password}" | base64 --decode)
++
++{{- else -}}
++
++########################################################################################
++### ERROR: You did not provide an external database host in your 'helm install' call ###
++########################################################################################
++
++This deployment will be incomplete until you configure phpBB with a resolvable database
++host. To configure phpBB to use and external database host:
++
++
++1. Complete your phpBB deployment by running:
++
++  helm upgrade {{ .Release.Name }} --set serviceType={{ .Values.serviceType }},mariadb.enabled=false,externalDatabase.host=YOUR_EXTERNAL_DATABASE_HOST stable/phpbb
++
++{{- end }}
+diff --git a/stable/phpbb/templates/deployment.yaml b/stable/phpbb/templates/deployment.yaml
+index 7730422fa..a957455b8 100644
+--- a/stable/phpbb/templates/deployment.yaml
++++ b/stable/phpbb/templates/deployment.yaml
+@@ -1,3 +1,4 @@
++{{- if or .Values.mariadb.enabled .Values.externalDatabase.host -}}
+ apiVersion: extensions/v1beta1
+ kind: Deployment
+ metadata:
+@@ -17,32 +18,59 @@ spec:
+       containers:
+       - name: {{ template "phpbb.fullname" . }}
+         image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
+         env:
++        - name: ALLOW_EMPTY_PASSWORD
++          value: {{ .Values.allowEmptyPassword | quote }}
+         - name: MARIADB_HOST
++        {{- if .Values.mariadb.enabled }}
+           value: {{ template "phpbb.mariadb.fullname" . }}
++        {{- else }}
++          value: {{ .Values.externalDatabase.host | quote }}
++        {{- end }}
+         - name: MARIADB_PORT_NUMBER
++        {{- if .Values.mariadb.enabled }}
+           value: "3306"
+-        - name: MARIADB_PASSWORD
++        {{- else }}
++          value: {{ .Values.externalDatabase.port | quote }}
++        {{- end }}
++        - name: PHPBB_DATABASE_NAME
++        {{- if .Values.mariadb.enabled }}
++          value: {{ .Values.mariadb.mariadbDatabase | quote }}
++        {{- else }}
++          value: {{ .Values.externalDatabase.database | quote }}
++        {{- end }}
++        - name: PHPBB_DATABASE_USER
++        {{- if .Values.mariadb.enabled }}
++          value: {{ .Values.mariadb.mariadbUser | quote }}
++        {{- else }}
++          value: {{ .Values.externalDatabase.user | quote }}
++        {{- end }}
++        - name: PHPBB_DATABASE_PASSWORD
+           valueFrom:
+             secretKeyRef:
++            {{- if .Values.mariadb.enabled }}
+               name: {{ template "phpbb.mariadb.fullname" . }}
+-              key: mariadb-root-password
++              key: mariadb-password
++            {{- else }}
++              name: {{ printf "%s-%s" .Release.Name "externaldb" }}
++              key: db-password
++            {{- end }}
+         - name: PHPBB_USERNAME
+-          value: {{ default "" .Values.phpbbUser | quote }}
++          value: {{ .Values.phpbbUser | quote }}
+         - name: PHPBB_PASSWORD
+           valueFrom:
+             secretKeyRef:
+               name: {{ template "phpbb.fullname" . }}
+               key: phpbb-password
+         - name: PHPBB_EMAIL
+-          value: {{ default "" .Values.phpbbEmail | quote }}
++          value: {{ .Values.phpbbEmail | quote }}
+         - name: SMTP_HOST
+-          value: {{ default "" .Values.smtpHost | quote }}
++          value: {{ .Values.smtpHost | quote }}
+         - name: SMTP_PORT
+-          value: {{ default "" .Values.smtpPort | quote }}
++          value: {{ .Values.smtpPort | quote }}
+         - name: SMTP_USER
+-          value: {{ default "" .Values.smtpUser | quote }}
++          value: {{ .Values.smtpUser | quote }}
+         - name: SMTP_PASSWORD
+           valueFrom:
+             secretKeyRef:
+@@ -87,3 +115,4 @@ spec:
+       {{- else }}
+         emptyDir: {}
+       {{- end }}
++{{- end }}
+diff --git a/stable/phpbb/templates/externaldb-secrets.yaml b/stable/phpbb/templates/externaldb-secrets.yaml
+new file mode 100644
+index 000000000..b189c7648
+--- /dev/null
++++ b/stable/phpbb/templates/externaldb-secrets.yaml
+@@ -0,0 +1,14 @@
++{{- if not .Values.mariadb.enabled }}
++apiVersion: v1
++kind: Secret
++metadata:
++  name: {{ printf "%s-%s" .Release.Name "externaldb"  }}
++  labels:
++    app: {{ printf "%s-%s" .Release.Name "externaldb"  }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++type: Opaque
++data:
++  db-password: {{ default "" .Values.externalDatabase.password | b64enc | quote }}
++{{- end }}
+diff --git a/stable/phpbb/values.yaml b/stable/phpbb/values.yaml
+index ab378371d..4c7bb1da7 100644
+--- a/stable/phpbb/values.yaml
++++ b/stable/phpbb/values.yaml
+@@ -1,7 +1,7 @@
+ ## Bitnami phpBB image version
+ ## ref: https://hub.docker.com/r/bitnami/phpbb/tags/
+ ##
+-image: bitnami/phpbb:3.2.1-r1
++image: bitnami/phpbb:3.2.1-r2
+ 
+ ## Specify a imagePullPolicy
+ ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+@@ -24,6 +24,10 @@ phpbbUser: user
+ ##
+ phpbbEmail: user@example.com
+ 
++## Set to `yes` to allow the container to be started with blank passwords
++## ref: https://github.com/bitnami/bitnami-docker-wordpress#environment-variables
++allowEmptyPassword: "yes"
++
+ ## SMTP mail delivery configuration
+ ## ref: https://github.com/bitnami/bitnami-docker-phpbb#smtp-configuration
+ ##
+@@ -32,15 +36,52 @@ phpbbEmail: user@example.com
+ # smtpUser:
+ # smtpPassword:
+ 
++##
++## External database configuration
++##
++externalDatabase:
++  ## Database host
++  host:
++
++  ## Database host
++  port: 3306
++
++  ## Database user
++  user: bn_phpbb
++
++  ## Database password
++  password:
++
++  ## Database name
++  database: bitnami_phpbb
++
+ ##
+ ## MariaDB chart configuration
+ ##
+ mariadb:
++  ## Whether to deploy a mariadb server to satisfy the applications database requirements. To use an external database set this to false and configure the externalDatabase parameters
++  enabled: true
++
+   ## MariaDB admin password
+   ## ref: https://github.com/bitnami/bitnami-docker-mariadb/blob/master/README.md#setting-the-root-password-on-first-run
+   ##
+   # mariadbRootPassword:
+ 
++  ## Create a database
++  ## ref: https://github.com/bitnami/bitnami-docker-mariadb/blob/master/README.md#creating-a-database-on-first-run
++  ##
++  mariadbDatabase: bitnami_phpbb
++
++  ## Create a database user
++  ## ref: https://github.com/bitnami/bitnami-docker-mariadb/blob/master/README.md#creating-a-database-user-on-first-run
++  ##
++  mariadbUser: bn_phpbb
++
++  ## Password for mariadbUser
++  ## ref: https://github.com/bitnami/bitnami-docker-mariadb/blob/master/README.md#creating-a-database-user-on-first-run
++  ##
++  # mariadbPassword:
++
+   ## Enable persistence using Persistent Volume Claims
+   ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+   ##

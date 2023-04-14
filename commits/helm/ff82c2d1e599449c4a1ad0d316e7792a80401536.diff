@@ -1,0 +1,251 @@
+commit ff82c2d1e599449c4a1ad0d316e7792a80401536
+Author: Reinhard Nägele <unguiculus@gmail.com>
+Date:   Wed Aug 9 05:23:14 2017 +0200
+
+    [stable/mongodb-replicaset] Refactor tests (#1620)
+    
+    [stable/mongodb-replicaset] Refactor tests
+
+diff --git a/stable/mongodb-replicaset/Chart.yaml b/stable/mongodb-replicaset/Chart.yaml
+index d0d2f31b9..955aae2bc 100644
+--- a/stable/mongodb-replicaset/Chart.yaml
++++ b/stable/mongodb-replicaset/Chart.yaml
+@@ -1,6 +1,6 @@
+ name: mongodb-replicaset
+ home: https://github.com/mongodb/mongo
+-version: 1.3.0
++version: 1.4.0
+ description: NoSQL document-oriented database that stores JSON-like documents with dynamic schemas, simplifying the integration of data in content-driven applications.
+ icon: https://webassets.mongodb.com/_com_assets/cms/mongodb-logo-rgb-j6w271g1xn.jpg
+ sources:
+diff --git a/stable/mongodb-replicaset/mongodb-up-test.sh b/stable/mongodb-replicaset/mongodb-up-test.sh
+new file mode 100644
+index 000000000..7b09f3643
+--- /dev/null
++++ b/stable/mongodb-replicaset/mongodb-up-test.sh
+@@ -0,0 +1,69 @@
++#!/usr/bin/env bash
++
++    pod_name() {
++        local full_name="${FULL_NAME?Environment variable FULL_NAME not set}"
++        local index="$1"
++        echo "$full_name-$index.$full_name"
++    }
++
++    replicas() {
++        echo "${REPLICAS?Environment variable REPLICAS not set}"
++    }
++
++    master_pod() {
++        for ((i = 0; i < $(replicas); ++i)); do
++            response=$(mongo "--host=$(pod_name $i)" "--eval=rs.isMaster().ismaster")
++            if [[ $response =~ "true" ]]; then
++                pod_name "$i"
++                break
++            fi
++        done
++    }
++
++    setup() {
++        local ready=0
++        until [[ $ready -eq $(replicas) ]]; do
++            echo "Waiting for application to become ready" >&2
++            sleep 1
++
++            for ((i = 0; i < $(replicas); ++i)); do
++                response=$(mongo "--host=$(pod_name $i)" "--eval=rs.status()" || true)
++                if [[ $response =~ .*ok.* ]]; then
++                    ready=$((ready + 1))
++                fi
++            done
++        done
++    }
++
++    @test "Testing mongodb client is accessible" {
++        mongo -h
++        [ "$?" -eq 0 ]
++    }
++
++    @test "Connect mongodb client to mongodb pods" {
++        for ((i = 0; i < $(replicas); ++i)); do
++            response=$(mongo "--host=$(pod_name $i)" "--eval=rs.status()")
++            if [[ ! $response =~ .*ok.* ]]; then
++                exit 1
++            fi
++        done
++    }
++
++    @test "Write key to master" {
++        response=$(mongo --host=$(master_pod) "--eval=db.test.insert({\"abc\": \"def\"}).nInserted")
++        if [[ ! $response =~ "1" ]]; then
++            exit 1
++        fi
++    }
++
++    @test "Read key from slaves" {
++        # wait for slaves to catch up
++        sleep 10
++
++        for ((i = 0; i < $(replicas); ++i)); do
++            response=$(mongo --host=$(pod_name $i) "--eval=rs.slaveOk(); db.test.find({\"abc\":\"def\"})")
++            if [[ ! $response =~ .*def.* ]]; then
++                exit 1
++            fi
++        done
++    }
+diff --git a/stable/mongodb-replicaset/templates/mongodb-up-test-config.yaml b/stable/mongodb-replicaset/templates/mongodb-up-test-config.yaml
+deleted file mode 100644
+index e8ce946c8..000000000
+--- a/stable/mongodb-replicaset/templates/mongodb-up-test-config.yaml
++++ /dev/null
+@@ -1,85 +0,0 @@
+-apiVersion: v1
+-kind: ConfigMap
+-metadata:
+-  name: {{ template "fullname" . }}-tests
+-  labels:
+-    app: {{ template "fullname" . }}-tests
+-data:
+-  mongo-up-test.sh: |
+-    pod_name() {
+-      echo {{ template "fullname" . }}-$1.{{ template "fullname" . }}.default.svc.cluster.local
+-    }
+-
+-    master_pod() {
+-      for i in {0..2}
+-      do
+-        response=$(mongo \
+-            --host=$(pod_name $i) \
+-            --eval="rs.isMaster().ismaster")
+-        if [[ $response =~ "true" ]]; then
+-          echo $(pod_name $i)
+-          break
+-        fi
+-      done
+-    }
+-
+-    setup() {
+-        ready=0
+-        until [[ $ready -eq 3 ]];
+-        do
+-         echo "Waiting for application to become ready" >&2
+-         sleep 1
+-         ready=0
+-
+-         for i in {0..2}
+-          do
+-            response=$(mongo \
+-                --host=$(pod_name $i) \
+-                --eval="rs.status()") || true
+-            if [[ $response =~ .*ok.* ]]; then
+-              ready=$((ready+1))
+-            fi
+-          done
+-        done
+-    }
+-
+-    @test "Testing mongodb client is accessible" {
+-      mongo -h
+-      [ "$?" -eq 0 ]
+-    }
+-
+-    @test "Connect mongodb client to mongodb pods" {
+-      for i in {0..2}
+-      do
+-        response=$(mongo \
+-            --host=$(pod_name $i) \
+-            --eval="rs.status()")
+-        if [[ ! $response =~ .*ok.* ]]; then
+-          exit 1
+-        fi
+-      done
+-    }
+-
+-    @test "Write key to master" {
+-      response=$(mongo \
+-          --host=$(master_pod) \
+-          --eval="db.test.insert({\"abc\": \"def\"}).nInserted")
+-      if [[ ! $response =~ "1" ]]; then
+-        exit 1
+-      fi
+-    }
+-
+-    @test "Read key from slaves" {
+-      # wait for slaves to catch up
+-      sleep 10
+-
+-      for i in {0..2}
+-      do
+-        response=$(mongo \
+-          --host=$(pod_name $i) \
+-          --eval="rs.slaveOk(); db.test.find({\"abc\":\"def\"})")
+-        if [[ ! $response =~ .*def.* ]]; then
+-          exit 1
+-        fi
+-      done
+-    }
+diff --git a/stable/mongodb-replicaset/templates/tests/mongodb-up-test-configmap.yaml b/stable/mongodb-replicaset/templates/tests/mongodb-up-test-configmap.yaml
+new file mode 100644
+index 000000000..baf858f36
+--- /dev/null
++++ b/stable/mongodb-replicaset/templates/tests/mongodb-up-test-configmap.yaml
+@@ -0,0 +1,12 @@
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  labels:
++    app: {{ template "name" . }}
++    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
++    heritage: {{ .Release.Service }}
++    release: {{ .Release.Name }}
++  name: {{ template "fullname" . }}-tests
++data:
++  mongodb-up-test.sh: |-
++    {{ .Files.Get "mongodb-up-test.sh" }}
+diff --git a/stable/mongodb-replicaset/templates/mongo-up-test.yaml b/stable/mongodb-replicaset/templates/tests/mongodb-up-test-pod.yaml
+similarity index 61%
+rename from stable/mongodb-replicaset/templates/mongo-up-test.yaml
+rename to stable/mongodb-replicaset/templates/tests/mongodb-up-test-pod.yaml
+index ad1fc57e2..114747b72 100644
+--- a/stable/mongodb-replicaset/templates/mongo-up-test.yaml
++++ b/stable/mongodb-replicaset/templates/tests/mongodb-up-test-pod.yaml
+@@ -1,6 +1,11 @@
+ apiVersion: v1
+ kind: Pod
+ metadata:
++  labels:
++    app: {{ template "name" . }}
++    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
++    heritage: {{ .Release.Service }}
++    release: {{ .Release.Name }}
+   name: {{ template "fullname" . }}-test
+   annotations:
+     "helm.sh/hook": test-success
+@@ -24,16 +29,21 @@ spec:
+       command:
+         - /tools/bats/bats
+         - -t
+-        - /tests/mongo-up-test.sh
++        - /tests/mongodb-up-test.sh
++      env:
++        - name: FULL_NAME
++          value: {{ template "fullname" . }}
++        - name: REPLICAS
++          value: "{{ .Values.replicas }}"
+       volumeMounts:
+         - name: tools
+           mountPath: /tools
+         - name: tests
+           mountPath: /tests
+   volumes:
+-  - name: tools
+-    emptyDir: {}
+-  - name: tests
+-    configMap:
+-      name: {{ template "fullname" . }}-tests
++    - name: tools
++      emptyDir: {}
++    - name: tests
++      configMap:
++        name: {{ template "fullname" . }}-tests
+   restartPolicy: Never

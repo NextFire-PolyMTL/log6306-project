@@ -1,0 +1,571 @@
+commit c4edd903b9635ddab672b03afdcd8241a7ef8510
+Author: Jose Antonio Carmona <jcarmona@bitnami.com>
+Date:   Mon Sep 14 11:09:23 2020 +0200
+
+    [bitnami/harbor] Fix and standardize internalTLS (#3627)
+    
+    * Fix and standardize internalTLS
+    
+    Signed-off-by: joancafom <jcarmona@bitnami.com>
+    
+    * Refactor cert location according to upstream https://github.com/goharbor/harbor-helm/pull/696/files
+    
+    * Update README
+    
+    Co-authored-by: Juan Ariza Toledano <juanariza@vmware.com>
+
+diff --git a/bitnami/harbor/Chart.yaml b/bitnami/harbor/Chart.yaml
+index dcea6d1756..748ff3b45c 100644
+--- a/bitnami/harbor/Chart.yaml
++++ b/bitnami/harbor/Chart.yaml
+@@ -1,6 +1,6 @@
+ apiVersion: v1
+ name: harbor
+-version: 7.1.2
++version: 7.2.0
+ appVersion: 2.0.2
+ description: Harbor is an an open source trusted cloud native registry project that stores, signs, and scans content
+ keywords:
+diff --git a/bitnami/harbor/README.md b/bitnami/harbor/README.md
+index fc346b5592..fa74c18aff 100644
+--- a/bitnami/harbor/README.md
++++ b/bitnami/harbor/README.md
+@@ -67,7 +67,7 @@ The following tables list the configurable parameters of the Harbor chart and th
+ |---------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------|
+ | `commonLabels`                        | Labels to add to all deployed objects                                                                                                                     | `nil`                                                   |
+ | `commonAnnotations`                   | Annotations to add to all deployed objects                                                                                                                | `[]`                                                    |
+-| `internalTLS.enabled`                   | Use TLS in all Harbor containers objects                                                                                                                | `false`                                                 |
++| `internalTLS.enabled`                 | Use TLS in all the supported containers: chartmuseum, clair, core, jobservice, portal, registry and trivy                                                 | `false`                                                 |
+ | `logLevel`                            | The log level                                                                                                                                             | `debug`                                                 |
+ | `forcePassword`                       | Option to ensure all passwords and keys are set by the user                                                                                               | `false`                                                 |
+ | `harborAdminPassword`                 | The initial password of Harbor admin. Change it from portal after launching Harbor                                                                        | _random 10 character long alphanumeric string_          |
+@@ -548,7 +548,7 @@ The following tables list the configurable parameters of the Harbor chart and th
+ | `notary.signer.tolerations`          | Tolerations for pod assignment                                                                                                                                                                                                                                                                               | `[]`                                                    |
+ | `notary.signer.affinity`             | Node/Pod affinities                                                                                                                                                                                                                                                                                          | `{}`                                                    |
+ | `notary.signer.podAnnotations`       | Annotations to add to the notary pod                                                                                                                                                                                                                                                                         | `{}`                                                    |
+-| `notary.secretName`                  | Fill the name of a kubernetes secret if you want to use your own TLS certificate authority, certificate and private key for notary communications. The secret must contain keys named `tls.ca`, `tls.crt` and `tls.key` that contain the CA, certificate and private key. They will be generated if not set. | `nil`                                                   |
++| `notary.secretName`                  | Fill the name of a kubernetes secret if you want to use your own TLS certificate authority, certificate and private key for notary communications. The secret must contain keys named `ca.crt`, `tls.crt` and `tls.key` that contain the CA, certificate and private key. They will be generated if not set. | `nil`                                                   |
+ | `notary.server.extraEnvVars`         | Array containing extra env vars                                                                                                                                                                                                                                                                              | `nil`                                                   |
+ | `notary.server.extraEnvVarsCM`       | ConfigMap containing extra env vars                                                                                                                                                                                                                                                                          | `nil`                                                   |
+ | `notary.server.extraEnvVarsSecret`   | Secret containing extra env vars (in case of sensitive data)                                                                                                                                                                                                                                                 | `nil`                                                   |
+@@ -738,6 +738,12 @@ This chart includes a `values-production.yaml` file where you can find some para
+ + postgresql.replication.enabled: true
+ ```
+ 
++- Internal TLS is enabled by default:
++```diff
++- internalTLS.enabled: false
+++ internalTLS.enabled: true
++```
++
+ ### Configure the way how to expose Harbor service:
+ 
+ - **Ingress**: The ingress controller must be installed in the Kubernetes cluster.
+diff --git a/bitnami/harbor/templates/chartmuseum/chartmuseum-cm-envvars.yaml b/bitnami/harbor/templates/chartmuseum/chartmuseum-cm-envvars.yaml
+index 76f4b222c9..f11481e633 100644
+--- a/bitnami/harbor/templates/chartmuseum/chartmuseum-cm-envvars.yaml
++++ b/bitnami/harbor/templates/chartmuseum/chartmuseum-cm-envvars.yaml
+@@ -14,8 +14,8 @@ metadata:
+ data:
+   PORT: {{ include "harbor.chartmuseum.containerPort" .  | quote }}
+   {{- if .Values.internalTLS.enabled }}
+-  TLS_CERT: "/bitnami/certs/tls.crt"
+-  TLS_KEY: "/bitnami/certs/tls.key"
++  TLS_CERT: "/etc/harbor/ssl/chartmuseum/tls.crt"
++  TLS_KEY: "/etc/harbor/ssl/chartmuseum/tls.key"
+   {{- end }}
+   {{- if .Values.chartmuseum.useRedisCache }}
+   CACHE: "redis"
+diff --git a/bitnami/harbor/templates/chartmuseum/chartmuseum-dpl.yaml b/bitnami/harbor/templates/chartmuseum/chartmuseum-dpl.yaml
+index 0ac39d2bd7..b63dcb9d4f 100644
+--- a/bitnami/harbor/templates/chartmuseum/chartmuseum-dpl.yaml
++++ b/bitnami/harbor/templates/chartmuseum/chartmuseum-dpl.yaml
+@@ -127,6 +127,16 @@ spec:
+             - name: NO_PROXY
+               value: {{ include "harbor.noProxy" . | quote }}
+             {{- end }}
++            {{- if .Values.internalTLS.enabled }}
++            - name: INTERNAL_TLS_ENABLED
++              value: "true"
++            - name: INTERNAL_TLS_KEY_PATH
++              value: /etc/harbor/ssl/chartmuseum/tls.key
++            - name: INTERNAL_TLS_CERT_PATH
++              value: /etc/harbor/ssl/chartmuseum/tls.crt
++            - name: INTERNAL_TLS_TRUST_CA_PATH
++              value: /etc/harbor/ssl/chartmuseum/ca.crt
++            {{- end }}
+             {{- if .Values.chartmuseum.extraEnvVars }}
+             {{- include "common.tplvalues.render" (dict "value" .Values.chartmuseum.extraEnvVars "context" $) | nindent 12 }}
+             {{- end }}
+@@ -149,12 +159,12 @@ spec:
+               subPath: gcs-key.json
+             {{- end }}
+             {{- if .Values.internalTLS.enabled }}
+-            - name: tls-certs
+-              mountPath: /bitnami/certs
++            - name: internal-tls-certs
++              mountPath: /etc/harbor/ssl/chartmuseum
+             {{- end }}
+             {{- if .Values.persistence.imageChartStorage.caBundleSecretName }}
+             - name: storage-service-ca
+-              mountPath: /etc/pki/tls/certs/ca-bundle.crt
++              mountPath: /harbor_cust_cert/ca-bundle.crt
+               subPath: ca.crt
+             {{- end }}
+             {{- if .Values.chartmuseum.extraVolumeMounts }}
+@@ -185,7 +195,7 @@ spec:
+             secretName: {{ .Values.persistence.imageChartStorage.caBundleSecretName }}
+         {{- end }}
+         {{- if .Values.internalTLS.enabled }}
+-        - name: tls-certs
++        - name: internal-tls-certs
+           secret:
+             secretName: {{ include "harbor.chartmuseum.tls.secretName" . }}
+         {{- end }}
+diff --git a/bitnami/harbor/templates/clair/clair-dpl.yaml b/bitnami/harbor/templates/clair/clair-dpl.yaml
+index 30ffefc47b..f67422e2f4 100644
+--- a/bitnami/harbor/templates/clair/clair-dpl.yaml
++++ b/bitnami/harbor/templates/clair/clair-dpl.yaml
+@@ -111,14 +111,6 @@ spec:
+             - name: NO_PROXY
+               value: {{ include "harbor.noProxy" . | quote }}
+             {{- end }}
+-            {{- if .Values.internalTLS.enabled }}
+-            - name: INTERNAL_TLS_KEY_PATH
+-              value: /bitnami/certs/tls.key
+-            - name: INTERNAL_TLS_CERT_PATH
+-              value: /bitnami/certs/tls.crt
+-            - name: INTERNAL_TLS_TRUST_CA_PATH
+-              value: /bitnami/certs/ca.crt
+-            {{- end }}
+             {{- if .Values.clair.server.extraEnvVars }}
+             {{- include "common.tplvalues.render" (dict "value" .Values.clair.server.extraEnvVars "context" $) | nindent 12 }}
+             {{- end }}
+@@ -140,6 +132,10 @@ spec:
+             - name: config
+               mountPath: /etc/clair/config.yaml
+               subPath: config.yaml
++            {{- if .Values.internalTLS.enabled }}
++            - name: internal-tls-certs
++              mountPath: /etc/harbor/ssl/clair
++            {{- end }}
+             {{- if .Values.clair.server.extraVolumeMounts }}
+             {{- include "common.tplvalues.render" (dict "value" .Values.clair.server.extraVolumeMounts "context" $) | nindent 12 }}
+             {{- end }}
+@@ -202,9 +198,9 @@ spec:
+             - name: SCANNER_API_SERVER_ADDR
+               value: {{ printf ":%s" ( include "harbor.clairAdapter.containerPort" . ) | quote }}
+             - name: SCANNER_API_SERVER_TLS_KEY
+-              value: /bitnami/certs/tls.key
++              value: /etc/harbor/ssl/clair/tls.key
+             - name: SCANNER_API_SERVER_TLS_CERTIFICATE
+-              value: /bitnami/certs/tls.crt
++              value: /etc/harbor/ssl/clair/tls.crt
+             {{- end }}
+             {{- if .Values.clair.adapter.extraEnvVars }}
+             {{- include "common.tplvalues.render" (dict "value" .Values.clair.adapter.extraEnvVars "context" $) | nindent 12 }}
+@@ -225,8 +221,8 @@ spec:
+             - containerPort: 8080
+           volumeMounts:
+             {{- if .Values.internalTLS.enabled }}
+-            - name: clair-internal-certs
+-              mountPath: /bitnami/certs
++            - name: internal-tls-certs
++              mountPath: /etc/harbor/ssl/clair
+             {{- end }}
+             {{- if .Values.clair.adapter.extraVolumeMounts }}
+             {{- include "common.tplvalues.render" (dict "value" .Values.clair.adapter.extraVolumeMounts "context" $) | nindent 12 }}
+@@ -239,7 +235,7 @@ spec:
+           secret:
+             secretName: {{ include "harbor.clair" . | quote }}
+         {{- if .Values.internalTLS.enabled }}
+-        - name: clair-internal-certs
++        - name: internal-tls-certs
+           secret:
+             secretName: {{ template "harbor.clair.tls.secretName" . }}
+         {{- end }}
+diff --git a/bitnami/harbor/templates/core/core-cm-envvars.yaml b/bitnami/harbor/templates/core/core-cm-envvars.yaml
+index 5a97371e07..4380058860 100644
+--- a/bitnami/harbor/templates/core/core-cm-envvars.yaml
++++ b/bitnami/harbor/templates/core/core-cm-envvars.yaml
+@@ -11,6 +11,7 @@ metadata:
+   annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+   {{- end }}
+ data:
++  PORT: {{ include "harbor.core.containerPort" . | quote }}
+   DATABASE_TYPE: "postgresql"
+   POSTGRESQL_HOST: {{ include "harbor.database.host" . | quote }}
+   POSTGRESQL_PORT: {{ include "harbor.database.port" . | quote }}
+@@ -24,6 +25,7 @@ data:
+   TOKEN_SERVICE_URL: {{ include "harbor.tokenService.url" . | quote }}
+   WITH_NOTARY: {{ .Values.notary.enabled | quote }}
+   NOTARY_URL: {{ printf "http://%s:4443" (include "harbor.notary-server" .) | quote }}
++  CORE_LOCAL_URL: "{{ ternary "https://127.0.0.1:8443" "http://127.0.0.1:8080" .Values.internalTLS.enabled }}"
+   CFG_EXPIRATION: "5"
+   ADMIRAL_URL: "NA"
+   WITH_CLAIR: {{ .Values.clair.enabled | quote }}
+diff --git a/bitnami/harbor/templates/core/core-cm.yaml b/bitnami/harbor/templates/core/core-cm.yaml
+index 80db0f8389..ee99234cde 100644
+--- a/bitnami/harbor/templates/core/core-cm.yaml
++++ b/bitnami/harbor/templates/core/core-cm.yaml
+@@ -13,8 +13,8 @@ metadata:
+ data:
+   app.conf: |+
+     appname = Harbor
+-    runmode = dev
++    runmode = prod
+     enablegzip = true
+ 
+-    [dev]
+-    httpport = 8080
++    [prod]
++    httpport = {{ include "harbor.core.containerPort" . | quote }}
+diff --git a/bitnami/harbor/templates/core/core-dpl.yaml b/bitnami/harbor/templates/core/core-dpl.yaml
+index 3ec89493a0..d73eea8dda 100644
+--- a/bitnami/harbor/templates/core/core-dpl.yaml
++++ b/bitnami/harbor/templates/core/core-dpl.yaml
+@@ -131,11 +131,11 @@ spec:
+             - name: INTERNAL_TLS_ENABLED
+               value: "true"
+             - name: INTERNAL_TLS_KEY_PATH
+-              value: /bitnami/certs/tls.key
++              value: /etc/harbor/ssl/core/tls.key
+             - name: INTERNAL_TLS_CERT_PATH
+-              value: /bitnami/certs/tls.crt
++              value: /etc/harbor/ssl/core/tls.crt
+             - name: INTERNAL_TLS_TRUST_CA_PATH
+-              value: /bitnami/certs/ca.crt
++              value: /etc/harbor/ssl/core/ca.crt
+             {{- end }}
+             {{- if .Values.core.extraEnvVars }}
+             {{- include "common.tplvalues.render" (dict "value" .Values.core.extraEnvVars "context" $) | nindent 12 }}
+@@ -154,8 +154,8 @@ spec:
+               mountPath: /etc/core/private_key.pem
+               subPath: tls.key
+             {{- if .Values.internalTLS.enabled }}
+-            - name: core-internal-certs
+-              mountPath: /bitnami/certs/
++            - name: internal-tls-certs
++              mountPath: /etc/harbor/ssl/core
+             {{- end }}
+             {{- if .Values.service.tls.enabled }}
+             - name: ca-download
+@@ -198,7 +198,7 @@ spec:
+             secretName: {{ include "harbor.core" . }}
+             {{- end }}
+         {{- if .Values.internalTLS.enabled }}
+-        - name: core-internal-certs
++        - name: internal-tls-certs
+           secret:
+             secretName: {{ include "harbor.core.tls.secretName" . }}
+         {{- end }}
+diff --git a/bitnami/harbor/templates/internal/internal-crt-secret.yaml b/bitnami/harbor/templates/internal/internal-crt-secret.yaml
+index 5feca07010..b8bf8778ae 100644
+--- a/bitnami/harbor/templates/internal/internal-crt-secret.yaml
++++ b/bitnami/harbor/templates/internal/internal-crt-secret.yaml
+@@ -92,7 +92,7 @@ metadata:
+     app.kubernetes.io/component: chartmuseum
+ type: kubernetes.io/tls
+ data:
+-  tls.ca: {{ $ca.Cert | b64enc | quote }}
++  ca.crt: {{ $ca.Cert | b64enc | quote }}
+   tls.crt: {{ $chartCrt.Cert | b64enc | quote }}
+   tls.key: {{ $chartCrt.Key | b64enc | quote }}
+ {{- end }}
+@@ -136,4 +136,4 @@ data:
+   tls.crt: {{ $trivyCrt.Cert | b64enc | quote }}
+   tls.key: {{ $trivyCrt.Key | b64enc | quote }}
+ {{- end }}
+-{{- end }}
+\ No newline at end of file
++{{- end }}
+diff --git a/bitnami/harbor/templates/jobservice/jobservice-cm.yaml b/bitnami/harbor/templates/jobservice/jobservice-cm.yaml
+index 70a918c9dd..9b8cd82933 100644
+--- a/bitnami/harbor/templates/jobservice/jobservice-cm.yaml
++++ b/bitnami/harbor/templates/jobservice/jobservice-cm.yaml
+@@ -17,8 +17,8 @@ data:
+     port: {{ include "harbor.jobservice.containerPort" . }}
+     {{- if .Values.internalTLS.enabled }}
+     https_config:
+-      cert: "/bitnami/certs/tls.crt"
+-      key: "/bitnami/certs/tls.key"
++      cert: "/etc/harbor/ssl/jobservice/tls.crt"
++      key: "/etc/harbor/ssl/jobservice/tls.key"
+     {{- end }}
+     worker_pool:
+       workers: {{ .Values.jobservice.maxJobWorkers }}
+diff --git a/bitnami/harbor/templates/jobservice/jobservice-dpl.yaml b/bitnami/harbor/templates/jobservice/jobservice-dpl.yaml
+index 00a00103c8..06531c0a5c 100644
+--- a/bitnami/harbor/templates/jobservice/jobservice-dpl.yaml
++++ b/bitnami/harbor/templates/jobservice/jobservice-dpl.yaml
+@@ -142,11 +142,11 @@ spec:
+             - name: INTERNAL_TLS_ENABLED
+               value: "true"
+             - name: INTERNAL_TLS_KEY_PATH
+-              value: /bitnami/certs/tls.key
++              value: /etc/harbor/ssl/jobservice/tls.key
+             - name: INTERNAL_TLS_CERT_PATH
+-              value: /bitnami/certs/tls.crt
++              value: /etc/harbor/ssl/jobservice/tls.crt
+             - name: INTERNAL_TLS_TRUST_CA_PATH
+-              value: /bitnami/certs/ca.crt
++              value: /etc/harbor/ssl/jobservice/ca.crt
+             {{- end }}
+             {{- if .Values.jobservice.extraEnvVars }}
+             {{- include "common.tplvalues.render" (dict "value" .Values.jobservice.extraEnvVars "context" $) | nindent 12 }}
+@@ -175,8 +175,8 @@ spec:
+               mountPath: /var/log/jobs
+               subPath: {{ .Values.persistence.persistentVolumeClaim.jobservice.subPath }}
+             {{- if .Values.internalTLS.enabled }}
+-            - name: jobservice-internal-certs
+-              mountPath: /bitnami/certs/
++            - name: internal-tls-certs
++              mountPath: /etc/harbor/ssl/jobservice
+             {{- end }}
+             {{- if .Values.jobservice.extraVolumeMounts }}
+             {{- include "common.tplvalues.render" (dict "value" .Values.jobservice.extraVolumeMounts "context" $) | nindent 12 }}
+@@ -196,7 +196,7 @@ spec:
+           emptyDir: {}
+           {{- end }}
+         {{- if .Values.internalTLS.enabled }}
+-        - name: jobservice-internal-certs
++        - name: internal-tls-certs
+           secret:
+             secretName: {{ include "harbor.jobservice.tls.secretName" . }}
+         {{- end }}
+diff --git a/bitnami/harbor/templates/portal/portal-cm.yaml b/bitnami/harbor/templates/portal/portal-cm.yaml
+index f17a0f2277..c59dff4ca3 100644
+--- a/bitnami/harbor/templates/portal/portal-cm.yaml
++++ b/bitnami/harbor/templates/portal/portal-cm.yaml
+@@ -27,8 +27,8 @@ data:
+             {{- if .Values.internalTLS.enabled }}
+             listen {{ template "harbor.portal.containerPort" . }} ssl;
+             # SSL
+-            ssl_certificate /etc/harbor/tls/portal.crt;
+-            ssl_certificate_key /etc/harbor/tls/portal.key;
++            ssl_certificate /etc/harbor/ssl/portal/tls.crt;
++            ssl_certificate_key /etc/harbor/ssl/portal/tls.key;
+ 
+             # Recommendations from https://raymii.org/s/tutorials/Strong_SSL_Security_On_nginx.html
+             ssl_protocols TLSv1.2;
+@@ -39,9 +39,9 @@ data:
+             listen {{ template "harbor.portal.containerPort" . }};
+             {{- end }}
+             server_name  localhost;
+-            root   /usr/share/nginx/html;
++            root   /opt/bitnami/harbor;
+             index  index.html index.htm;
+-            include /etc/nginx/mime.types;
++            include /opt/bitnami/nginx/conf/mime.types;
+             gzip on;
+             gzip_min_length 1000;
+             gzip_proxied expired no-cache no-store private auth;
+diff --git a/bitnami/harbor/templates/portal/portal-dpl.yaml b/bitnami/harbor/templates/portal/portal-dpl.yaml
+index ccb5b69245..0a48eb294c 100644
+--- a/bitnami/harbor/templates/portal/portal-dpl.yaml
++++ b/bitnami/harbor/templates/portal/portal-dpl.yaml
+@@ -117,29 +117,29 @@ spec:
+           ports:
+             - containerPort: {{ include "harbor.portal.containerPort" . }}
+               name: http
+-          {{- if .Values.portal.extraVolumeMounts }}
+           volumeMounts:
+             - name: portal-config
+               mountPath: /opt/bitnami/nginx/conf/nginx.conf
+               subPath: nginx.conf
+             {{- if .Values.internalTLS.enabled }}
+-            - name: portal-internal-certs
+-              mountPath: /bitnami/certs/
++            - name: internal-tls-certs
++              mountPath: /etc/harbor/ssl/portal
+             {{- end }}
++          {{- if .Values.portal.extraVolumeMounts }}
+             {{- include "common.tplvalues.render" (dict "value" .Values.portal.extraVolumeMounts "context" $) | nindent 12 }}
+           {{- end }}
+         {{- if .Values.portal.sidecars }}
+         {{- include "common.tplvalues.render" (dict "value" .Values.portal.sidecars "context" $) | nindent 8 }}
+         {{- end }}
+-      {{- if .Values.portal.extraVolumes }}
+       volumes:
+         - name: portal-config
+           configMap:
+             name: {{ include "harbor.portal" . }}
+         {{- if .Values.internalTLS.enabled }}
+-        - name: portal-internal-certs
++        - name: internal-tls-certs
+           secret:
+             secretName: {{ include "harbor.portal.tls.secretName" . }}
+         {{- end }}
++      {{- if .Values.portal.extraVolumes }}
+       {{- include "common.tplvalues.render" (dict "value" .Values.portal.extraVolumes "context" $) | nindent 6 }}
+       {{- end }}
+diff --git a/bitnami/harbor/templates/registry/registry-cm.yaml b/bitnami/harbor/templates/registry/registry-cm.yaml
+index ea2277a6a8..f5cb64a3f7 100644
+--- a/bitnami/harbor/templates/registry/registry-cm.yaml
++++ b/bitnami/harbor/templates/registry/registry-cm.yaml
+@@ -153,8 +153,8 @@ data:
+       addr: :{{ include "harbor.registry.containerPort" . }}
+       {{- if .Values.internalTLS.enabled }}
+       tls:
+-        certificate: /bitnami/certs/tls.crt
+-        key: /bitnami/certs/tls.key
++        certificate: /etc/harbor/ssl/registry/tls.crt
++        key: /etc/harbor/ssl/registry/tls.key
+         minimumtls: tls1.2
+       {{- end }}
+       # set via environment variable
+@@ -195,8 +195,8 @@ data:
+     protocol: "https"
+     port: 8443
+     https_config:
+-      cert: "/bitnami/certs/tls.crt"
+-      key: "/bitnami/certs/tls.key"
++      cert: "/etc/harbor/ssl/registry/tls.crt"
++      key: "/etc/harbor/ssl/registry/tls.key"
+     {{- else }}
+     protocol: "http"
+     port: 8080
+diff --git a/bitnami/harbor/templates/registry/registry-dpl.yaml b/bitnami/harbor/templates/registry/registry-dpl.yaml
+index 0a51adf8a4..3f4da186f4 100644
+--- a/bitnami/harbor/templates/registry/registry-dpl.yaml
++++ b/bitnami/harbor/templates/registry/registry-dpl.yaml
+@@ -131,11 +131,11 @@ spec:
+             - name: INTERNAL_TLS_ENABLED
+               value: "true"
+             - name: INTERNAL_TLS_KEY_PATH
+-              value: /bitnami/certs/tls.key
++              value: /etc/harbor/ssl/registry/tls.key
+             - name: INTERNAL_TLS_CERT_PATH
+-              value: /bitnami/certs/tls.crt
++              value: /etc/harbor/ssl/registry/tls.crt
+             - name: INTERNAL_TLS_TRUST_CA_PATH
+-              value: /bitnami/certs/ca.crt
++              value: /etc/harbor/ssl/registry/ca.crt
+             {{- end }}
+             {{- if has "chartmuseum" .Values.proxy.components }}
+             - name: HTTP_PROXY
+@@ -178,8 +178,8 @@ spec:
+               mountPath: /etc/registry/config.yml
+               subPath: config.yml
+             {{- if .Values.internalTLS.enabled }}
+-            - name: registry-internal-certs
+-              mountPath: /bitnami/certs/
++            - name: internal-tls-certs
++              mountPath: /etc/harbor/ssl/registry
+             {{- end }}
+             {{- if and .Values.persistence.enabled (eq .Values.persistence.imageChartStorage.type "gcs") }}
+             - name: gcs-key
+@@ -275,11 +275,11 @@ spec:
+             - name: INTERNAL_TLS_ENABLED
+               value: "true"
+             - name: INTERNAL_TLS_KEY_PATH
+-              value: /bitnami/certs/tls.key
++              value: /etc/harbor/ssl/registry/tls.key
+             - name: INTERNAL_TLS_CERT_PATH
+-              value: /bitnami/certs/tls.crt
++              value: /etc/harbor/ssl/registry/tls.crt
+             - name: INTERNAL_TLS_TRUST_CA_PATH
+-              value: /bitnami/certs/ca.crt
++              value: /etc/harbor/ssl/registry/ca.crt
+             {{- end }}
+             {{- if .Values.registry.controller.extraEnvVars }}
+             {{- include "common.tplvalues.render" (dict "value" .Values.registry.controller.extraEnvVars "context" $) | nindent 12 }}
+@@ -292,8 +292,8 @@ spec:
+               mountPath: {{ .Values.persistence.imageChartStorage.filesystem.rootdirectory }}
+               subPath: {{ .Values.persistence.persistentVolumeClaim.registry.subPath }}
+             {{- if .Values.internalTLS.enabled }}
+-            - name: registry-internal-certs
+-              mountPath: /bitnami/certs/
++            - name: internal-tls-certs
++              mountPath: /etc/harbor/ssl/registry
+             {{- end }}
+             - name: registry-config
+               mountPath: /etc/registry/config.yml
+@@ -332,7 +332,7 @@ spec:
+             secretName: {{ include "harbor.core" . }}
+             {{- end }}
+         {{- if .Values.internalTLS.enabled }}
+-        - name: registry-internal-certs
++        - name: internal-tls-certs
+           secret:
+             secretName: {{ include "harbor.registry.tls.secretName" . }}
+         {{- end }}
+diff --git a/bitnami/harbor/templates/registry/registry-svc.yaml b/bitnami/harbor/templates/registry/registry-svc.yaml
+index 92d8c99cf4..58bf56f24c 100644
+--- a/bitnami/harbor/templates/registry/registry-svc.yaml
++++ b/bitnami/harbor/templates/registry/registry-svc.yaml
+@@ -12,8 +12,8 @@ metadata:
+ spec:
+   ports:
+     - name: registry
+-      port: 5000
++      port: {{ include "harbor.registry.servicePort" . }}
+     - name: controller
+-      port: 8080
++      port: {{ include "harbor.registryctl.servicePort" . }}
+   selector: {{- include "common.labels.matchLabels" . | nindent 4 }}
+     app.kubernetes.io/component: registry
+diff --git a/bitnami/harbor/templates/trivy/trivy-cm-envvars.yaml b/bitnami/harbor/templates/trivy/trivy-cm-envvars.yaml
+index 0507ba2ddd..fa0f15133e 100644
+--- a/bitnami/harbor/templates/trivy/trivy-cm-envvars.yaml
++++ b/bitnami/harbor/templates/trivy/trivy-cm-envvars.yaml
+@@ -23,7 +23,6 @@ data:
+   SCANNER_API_SERVER_ADDR: {{ printf ":%s" (include "harbor.trivy.containerPort" .) | quote }}
+   {{- if .Values.internalTLS.enabled }}
+   INTERNAL_TLS_ENABLED: "true"
+-  SCANNER_API_SERVER_TLS_KEY: /bitnami/certs/tls.key
+-  SCANNER_API_SERVER_TLS_CERTIFICATE: /bitnami/certs/tls.crt
+-  SCANNER_API_SERVER_CLIENT_CAS: /bitnami/certs/ca.crt
++  SCANNER_API_SERVER_TLS_KEY: /etc/harbor/ssl/trivy/tls.key
++  SCANNER_API_SERVER_TLS_CERTIFICATE: /etc/harbor/ssl/trivy/tls.crt
+   {{- end }}
+diff --git a/bitnami/harbor/templates/trivy/trivy-sts.yaml b/bitnami/harbor/templates/trivy/trivy-sts.yaml
+index 9dab0c2a49..43a3875850 100644
+--- a/bitnami/harbor/templates/trivy/trivy-sts.yaml
++++ b/bitnami/harbor/templates/trivy/trivy-sts.yaml
+@@ -1,4 +1,5 @@
+ {{- if .Values.trivy.enabled }}
++
+ apiVersion: apps/v1
+ kind: StatefulSet
+ metadata:
+@@ -118,8 +119,8 @@ spec:
+               mountPath: {{ .Values.trivy.cacheDir }}
+               readOnly: false
+             {{- if .Values.internalTLS.enabled }}
+-            - name: trivy-internal-certs
+-              mountPath: /bitnami/certs/
++            - name: internal-tls-certs
++              mountPath: /etc/harbor/ssl/trivy
+             {{- end }}
+             {{- if .Values.trivy.extraVolumeMounts }}
+             {{- include "common.tplvalues.render" (dict "value" .Values.trivy.extraVolumeMounts "context" $) | nindent 12 }}
+@@ -130,8 +131,9 @@ spec:
+           {{- if .Values.trivy.livenessProbe.enabled }}
+           livenessProbe:
+             httpGet:
++              scheme: {{ include "harbor.component.scheme" . | upper }}
+               path: /probe/healthy
+-              port: http
++              port: api-server
+             initialDelaySeconds: {{ .Values.trivy.livenessProbe.initialDelaySeconds }}
+             periodSeconds: {{ .Values.trivy.livenessProbe.periodSeconds }}
+             timeoutSeconds: {{ .Values.trivy.livenessProbe.timeoutSeconds }}
+@@ -143,7 +145,7 @@ spec:
+           {{- if .Values.trivy.readinessProbe.enabled }}
+           readinessProbe:
+             httpGet:
+-              scheme: HTTP
++              scheme: {{ include "harbor.component.scheme" . | upper }}
+               path: /probe/ready
+               port: api-server
+             initialDelaySeconds: {{ .Values.trivy.readinessProbe.initialDelaySeconds }}
+@@ -160,7 +162,7 @@ spec:
+         {{- end }}
+       volumes:
+       {{- if .Values.internalTLS.enabled }}
+-        - name: trivy-internal-certs
++        - name: internal-tls-certs
+           secret:
+             secretName: {{ include "harbor.trivy.tls.secretName" . }}
+       {{- end }}

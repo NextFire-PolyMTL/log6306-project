@@ -1,0 +1,3209 @@
+commit a762b7d6c13307e8475c587d8896ca58ddee6bef
+Author: Javier J. Salmerón-García <jsalmeron@bitnami.com>
+Date:   Fri Jun 26 11:27:25 2020 +0200
+
+    [bitnami/redis-cluster] Refactor to add bitnami chart standard features (#2927)
+    
+    * [bitnami/redis-cluster] Refactor to add bitnami chart standard features
+    
+    * Remove merge issue
+    
+    * Lint issue
+
+diff --git a/bitnami/redis-cluster/Chart.yaml b/bitnami/redis-cluster/Chart.yaml
+index 9d9506e016..026da83aa3 100644
+--- a/bitnami/redis-cluster/Chart.yaml
++++ b/bitnami/redis-cluster/Chart.yaml
+@@ -1,6 +1,6 @@
+ apiVersion: v1
+ name: redis-cluster
+-version: 2.3.5
++version: 3.0.0
+ appVersion: 6.0.5
+ description: Open source, advanced key-value store. It is often referred to as a data structure server since keys can contain strings, hashes, lists, sets and sorted sets.
+ keywords:
+diff --git a/bitnami/redis-cluster/README.md b/bitnami/redis-cluster/README.md
+index ab4d726b9c..7cf99219db 100644
+--- a/bitnami/redis-cluster/README.md
++++ b/bitnami/redis-cluster/README.md
+@@ -33,7 +33,6 @@ The main features of each chart are the following:
+ | Single write point (single master)              | Multiple write points (multiple masters)                       |
+ | ![Redis Topology](img/redis-topology.png)       | ![Redis Cluster Topology](img/redis-cluster-topology.png)      |
+ 
+-
+ ## Prerequisites
+ 
+ - Kubernetes 1.12+
+@@ -96,21 +95,15 @@ The following table lists the configurable parameters of the Redis chart and the
+ | `existingSecretPasswordKey`                     | Name of key containing password to be retrieved from the existing secret | `nil`             |
+ | `usePassword`                                   | Use password                                                   | `true`            |
+ | `usePasswordFile`                               | Mount passwords as files instead of environment variables      | `false`           |
+-| `useAOFPersistence`                             | Enables AOF persistence mode                                   | `"yes"`           |
+ | `password`                                      | Redis password (ignored if existingSecret set)                 | Randomly generated |
+ | `configmap`                                     | Additional common Redis node configuration (this value is evaluated as a template) | See values.yaml   |
+-| `clusterDomain`                                 | Kubernetes DNS Domain name to use                              | `cluster.local`   |
+ | `networkPolicy.enabled`                         | Enable NetworkPolicy                                           | `false`           |
+ | `networkPolicy.allowExternal`                   | Don't require client label for connections                     | `true`            |
+ | `networkPolicy.ingressNSMatchLabels`            | Allow connections from other namespaces                        | `{}`              |
+ | `networkPolicy.ingressNSPodMatchLabels`         | For other namespaces match by pod labels and namespace labels  | `{}`              |
+-| `podSecurityContext.enabled`                    | Enable pods' security context                                  | `true`            |
+ | `podSecurityContext.fsGroup`                    | Group ID for the pods.                                         | `1001`            |
+-| `podSecurityContext.runAsUser`                  | User ID for the pods.                                          | `1001`            |
+ | `podSecurityContext.sysctls`                    | Set namespaced sysctls for the pods.                           | `nil`             |
+ | `podDisruptionBudget`                           | Configure podDisruptionBudget policy                           | `{}`              |
+-| `containerSecurityContext.enabled`              | Enable container's security context                            | `true`            |
+-| `containerSecurityContext.fsGroup`              | Group ID for the containers.                                   | `1001`            |
+ | `containerSecurityContext.runAsUser`            | User ID for the containers.                                    | `1001`            |
+ | `containerSecurityContext.sysctls`              | Set namespaced sysctls for the containers.                     | `nil`             |
+ | `serviceAccount.create`                         | Specifies whether a ServiceAccount should be created           | `false`           |
+@@ -127,9 +120,6 @@ The following table lists the configurable parameters of the Redis chart and the
+ | `persistence.matchExpressions`                  | matchExpressions persistent volume selector                    | `{}`              |
+ | `statefulset.updateStrategy`                    | Update strategy for StatefulSet                                | onDelete          |
+ | `statefulset.rollingUpdatePartition`            | Partition update strategy                                      | `nil`             |
+-| `podLabels`                                     | Additional labels for Redis pod                                | {}                |
+-| `podAnnotations`                                | Additional annotations for Redis pod                           | {}                |
+-| `redisPort`                                     | Redis port.                                                    | `6379`            |
+ | `tls.enabled`                                   | Enable TLS support for replication traffic                     | `false`           |
+ | `tls.authClients`                               | Require clients to authenticate or not                         | `true`            |
+ | `tls.certificatesSecret`                        | Name of the secret that contains the certificates              | `nil`             |
+@@ -137,33 +127,12 @@ The following table lists the configurable parameters of the Redis chart and the
+ | `tls.certKeyFilename`                           | Certificate key filename                                       | `nil`             |
+ | `tls.certCAFilename`                            | CA Certificate filename                                        | `nil`             |
+ | `tls.dhParamsFilename`                          | DH params (in order to support DH based ciphers)               | `nil`             |
+-| `command`                                       | Redis entrypoint string. The command `redis-server` is executed if this is not provided. | `nil`             |
+-| `args`                                          | Arguments for the provided command if needed                   | `nil`             |
+-| `configmap`                                     | Additional Redis configuration for the nodes (this value is evaluated as a template) | `nil`             |
+-| `extraFlags`                                    | Redis additional command line flags                            | []                |
+-| `nodeSelector`                                  | Redis Node labels for pod assignment                           | {"beta.kubernetes.io/arch": "amd64"} |
+-| `tolerations`                                   | Toleration labels for Redis pod assignment                     | []                |
+-| `affinity`                                      | Affinity settings for Redis pod assignment                     | {}                |
+-| `schedulerName`                                 | Name of an alternate scheduler                                 | `nil`             |
++| `podSecurityPolicy.create`                      | Specifies whether a PodSecurityPolicy should be created        | `false`           |
+ | `service.port`                                  | Kubernetes Service port.                                       | `6379`            |
+ | `service.annotations`                           | annotations for redis service                                  | {}                |
+ | `service.labels`                                | Additional labels for redis service                            | {}                |
+ | `service.type`                                  | Service type for default redis service                         | `ClusterIP`       |
+-| `service.loadBalancerIP`                        | loadBalancerIP if service.type is `LoadBalancer`               | `nil`             |
+-| `resources`                                     | Redis CPU/Memory resource requests/limits                      | Memory: `256Mi`, CPU: `100m` |
+-| `livenessProbe.enabled`                         | Turn on and off liveness probe.                                | `true`            |
+-| `livenessProbe.initialDelaySeconds`             | Delay before liveness probe is initiated.                      | `30`              |
+-| `livenessProbe.periodSeconds`                   | How often to perform the probe.                                | `30`              |
+-| `livenessProbe.timeoutSeconds`                  | When the probe times out.                                      | `5`               |
+-| `livenessProbe.successThreshold`                | Minimum consecutive successes for the probe to be considered successful after having failed. | `1`               |
+-| `livenessProbe.failureThreshold`                | Minimum consecutive failures for the probe to be considered failed after having succeeded. | `5`               |
+-| `readinessProbe.enabled`                        | Turn on and off readiness probe.                               | `true`            |
+-| `readinessProbe.initialDelaySeconds`            | Delay before readiness probe is initiated.                     | `5`               |
+-| `readinessProbe.periodSeconds`                  | How often to perform the probe.                                | `10`              |
+-| `readinessProbe.timeoutSeconds`                 | When the probe times out.                                      | `1`               |
+-| `readinessProbe.successThreshold`               | Minimum consecutive successes for the probe to be considered successful after having failed. | `1`               |
+-| `readinessProbe.failureThreshold`               | Minimum consecutive failures for the probe to be considered failed after having succeeded. | `5`               |
+-| `priorityClassName`                             | Redis Master pod priorityClassName                             | {}                |
++| `service.loadBalancerIP`                         | loadBalancerIP if service.type is `LoadBalancer`               | `nil`             |
+ | `volumePermissions.enabled`                     | Enable init container that changes volume permissions in the registry (for cases where the default k8s `runAsUser` and `fsUser` values do not work) | `false`           |
+ | `volumePermissions.image.registry`              | Init container volume-permissions image registry               | `docker.io`       |
+ | `volumePermissions.image.repository`            | Init container volume-permissions image name                   | `bitnami/minideb` |
+@@ -171,24 +140,97 @@ The following table lists the configurable parameters of the Redis chart and the
+ | `volumePermissions.image.pullPolicy`            | Init container volume-permissions image pull policy            | `Always`          |
+ | `volumePermissions.resources`                   | Init container volume-permissions CPU/Memory resource requests/limits | {}                |
+ | `volumePermissions.image.pullSecrets`           | Specify docker-registry secret names as an array               | `[]` (does not add image pull secrets to deployed pods) |
+-| `extraVolumes`                                  | Array of extra volumes to be added to all pods (evaluated as a template). Requires setting `extraVolumeMounts` | `[]`              |
+-| `extraVolumeMounts`                             | Array of extra volume mounts to be added to all pods (evaluated as a template). Normally used with `extraVolumes` | `[]`              |
+-| `extraEnvVars`                                  | Array containing extra env vars to be added to all pods (evaluated as a template) | `[]`              |
+-| `extraEnvVarsConfigMap`                         | ConfigMap containing extra env vars to be added to all pods (evaluated as a template) | `nil`             |
+-| `extraEnvVarsSecret`                            | Secret containing extra env vars to be added to all pods (evaluated as a template) | `nil`             |
+-| `extraInitContainers`                           | Init containers to add to the cronjob container                | {}                |
+-| `podSecurityPolicy.create`                      | Specifies whether a PodSecurityPolicy should be created        | `false`           |
+-| `sidecars`                                      | Attach additional containers to the pod (evaluated as a template) | `nil`             |
++| `commonLabels`                        | Labels to add to all deployed objects                                                                                                                     | `nil`                                                   |
++| `commonAnnotations`                   | Annotations to add to all deployed objects                                                                                                                | `[]`                                                    |
++| `extraDeploy`                         | Array of extra objects to deploy with the release (evaluated as a template).                                                                              | `nil`                                                   |
+ 
+-#### Redis cluster parameters
++#### Redis statefulset parameters
++| Parameter                                       | Description                                                    | Default           |
++|-------------------------------------------------|----------------------------------------------------------------|-------------------|
++| `redis.port`                                     | Redis port.                                                    | `6379`            |
++| `redis.useAOFPersistence`                             | Enables AOF persistence mode                                   | `"yes"`           |
++| `redis.podLabels`                                     | Additional labels for Redis pod                                | {}                |
++| `redis.command`                                       | Redis entrypoint string. The command `redis-server` is executed if this is not provided. | `nil`             |
++| `redis.args`                                          | Arguments for the provided command if needed                   | `nil`             |
++| `redis.schedulerName`                                 | Name of an alternate scheduler                                 | `nil`             |
++| `redis.configmap`                                     | Additional Redis configuration for the nodes (this value is evaluated as a template) | `nil`             |
++| `redis.tolerations`                                   | Toleration labels for Redis pod assignment                     | []                |
++| `redis.nodeSelector`                                  | Node labels for pod assignment                           | {"beta.kubernetes.io/arch": "amd64"} |
++| `redis.podAnnotations`                                | Additional annotations for Redis pod                           | {}                |
++| `redis.busPort`                               | Port for the Redis gossip protocol                             | `16379`           |
++| `redis.lifecycleHooks`       | LifecycleHook to set additional configuration at startup. Evaluated as a template    | ``                                                      |
++| `redis.livenessProbe.enabled`                         | Turn on and off liveness probe.                                | `true`            |
++| `redis.livenessProbe.initialDelaySeconds`             | Delay before liveness probe is initiated.                      | `30`              |
++| `redis.livenessProbe.periodSeconds`                   | How often to perform the probe.                                | `30`              |
++| `redis.livenessProbe.timeoutSeconds`                  | When the probe times out.                                      | `5`               |
++| `redis.livenessProbe.successThreshold`                | Minimum consecutive successes for the probe to be considered successful after having failed. | `1`               |
++| `redis.livenessProbe.failureThreshold`                | Minimum consecutive failures for the probe to be considered failed after having succeeded. | `5`               |
++| `redis.readinessProbe.enabled`                        | Turn on and off readiness probe.                               | `true`            |
++| `redis.readinessProbe.initialDelaySeconds`            | Delay before readiness probe is initiated.                     | `5`               |
++| `redis.readinessProbe.periodSeconds`                  | How often to perform the probe.                                | `10`              |
++| `redis.readinessProbe.timeoutSeconds`                 | When the probe times out.                                      | `1`               |
++| `redis.readinessProbe.successThreshold`               | Minimum consecutive successes for the probe to be considered successful after having failed. | `1`               |
++| `redis.readinessProbe.failureThreshold`               | Minimum consecutive failures for the probe to be considered failed after having succeeded. | `5`               |
++| `redis.priorityClassName`                             | Redis Master pod priorityClassName                             | {}                |
++| `redis.customLivenessProbe`  | Override default liveness probe                                                                                       | `nil`                                                   |
++| `redis.customReadinessProbe` | Override default readiness probe                                                                                      | `nil`                                                   |
++| `redis.extraVolumes`                                  | Array of extra volumes to be added to all pods (evaluated as a template). Requires setting `extraVolumeMounts` | `[]`              |
++| `redis.extraVolumeMounts`                             | Array of extra volume mounts to be added to all pods (evaluated as a template). Normally used with `extraVolumes` | `[]`              |
++| `redis.affinity`                                      | Affinity settings for Redis pod assignment                     | {}                |
++| `redis.extraEnvVars`                                  | Array containing extra env vars to be added to all pods (evaluated as a template) | `[]`              |
++| `redis.extraEnvVarsCM`                         | ConfigMap containing extra env vars to be added to all pods (evaluated as a template) | `nil`             |
++| `redis.extraEnvVarsSecret`                            | Secret containing extra env vars to be added to all pods (evaluated as a template) | `nil`             |
++| `redis.initContainers`                           | Init containers to add to the cronjob container                | {}                |
++| `redis.sidecars`                                      | Attach additional containers to the pod (evaluated as a template) | `nil`             |
++| `redis.resources`                                     | Redis CPU/Memory resource requests/limits                      | Memory: `256Mi`, CPU: `100m` |
++
++#### Cluster initialization job parameters
++| Parameter                                       | Description                                                    | Default           |
++|-------------------------------------------------|----------------------------------------------------------------|-------------------|
++| `initJob.activeDeadlineSeconds`                                      | Maximum time (in seconds) to wait for the cluster initialization job to succeed | `600`             |
++| `initJob.command`                                       | Entrypoint string.  | `nil`             |
++| `initJob.args`                                          | Arguments for the provided command if needed                   | `nil`             |
++| `initJob.annotations`                                          | Job annotations                   | `nil`             |
++| `initJob.podAnnotations`                                          | Job pod annotations                   | `nil`             |
++| `initJob.extraEnvVars`                                  | Array containing extra env vars to be added to all pods (evaluated as a template) | `[]`              |
++| `initJob.extraEnvVarsCM`                         | ConfigMap containing extra env vars to be added to all pods (evaluated as a template) | `nil`             |
++| `initJob.extraEnvVarsSecret`                            | Secret containing extra env vars to be added to all pods (evaluated as a template) | `nil`             |
++| `initJob.initContainers`                           | Init containers to add to the cronjob container                | {}                |
++| `initJob.extraVolumes`                                  | Array of extra volumes to be added to all pods (evaluated as a template). Requires setting `extraVolumeMounts` | `[]`              |
++| `initJob.extraVolumeMounts`                             | Array of extra volume mounts to be added to all pods (evaluated as a template). Normally used with `extraVolumes` | `[]`              |
++| `initJob.nodeSelector`                                  | Node labels for pod assignment                           | `nil`|
++| `initJob.podLabels`                                     | Additional labels                                | {}                |
++| `initJob.tolerations`                                   | Toleration labels for Redis pod assignment                     | []                |
++| `initJob.resources`                                     | Redis CPU/Memory resource requests/limits                      | `nil` |
++| `initJob.affinity`                                      | Affinity settings for                      | {}                |
++
++#### Cluster update job parameters
++| Parameter                                       | Description                                                    | Default           |
++|-------------------------------------------------|----------------------------------------------------------------|-------------------|
++| `updateJob.activeDeadlineSeconds`                                      | Maximum time (in seconds) to wait for the cluster initialization job to succeed | `600`             |
++| `updateJob.command`                                       | Entrypoint string.  | `nil`             |
++| `updateJob.args`                                          | Arguments for the provided command if needed                   | `nil`             |
++| `updateJob.annotations`                                          | Job annotations                   | `nil`             |
++| `updateJob.podAnnotations`                                          | Job pod annotations                   | `nil`             |
++| `updateJob.extraEnvVars`                                  | Array containing extra env vars to be added to all pods (evaluated as a template) | `[]`              |
++| `updateJob.extraEnvVarsCM`                         | ConfigMap containing extra env vars to be added to all pods (evaluated as a template) | `nil`             |
++| `updateJob.extraEnvVarsSecret`                            | Secret containing extra env vars to be added to all pods (evaluated as a template) | `nil`             |
++| `updateJob.initContainers`                           | Init containers to add to the cronjob container                | {}                |
++| `updateJob.extraVolumes`                                  | Array of extra volumes to be added to all pods (evaluated as a template). Requires setting `extraVolumeMounts` | `[]`              |
++| `updateJob.extraVolumeMounts`                             | Array of extra volume mounts to be added to all pods (evaluated as a template). Normally used with `extraVolumes` | `[]`              |
++| `updateJob.nodeSelector`                                  | Node labels for pod assignment                           | `nil`|
++| `updateJob.podLabels`                                     | Additional labels                                | {}                |
++| `updateJob.tolerations`                                   | Toleration labels for Redis pod assignment                     | []                |
++| `updateJob.resources`                                     | Redis CPU/Memory resource requests/limits                      | `nil` |
++| `updateJob.affinity`                                      | Affinity settings for                      | {}                |
++
++#### Cluster management parameters
+ 
+ | Parameter                                       | Description                                                    | Default           |
+ |-------------------------------------------------|----------------------------------------------------------------|-------------------|
+ | `cluster.init`                                  | Enable the creation of a job that initializes the Redis Cluster | `true`            |
+-| `cluster.activeDeadlineSeconds`                 | Number of seconds that the job to create the cluster will be waiting for the nodes to be ready | `600`             |
+ | `cluster.nodes`                                 | Number of nodes in the Redis cluster                           | `6`               |
+ | `cluster.replicas`                              | Number of replicas for every master in the cluster             | `1`               |
+-| `cluster.busPort`                               | Port for the Redis gossip protocol                             | `16379`           |
+ | `cluster.externalAccess.enabled`                | Enable access to the Redis cluster from Outside the Kubernetes Cluster | `false`           |
+ | `cluster.externalAccess.service.type`           | Type for the services used to expose every Pod                 | `LoadBalancer`    |
+ | `cluster.externalAccess.service.port`           | Port for the services used to expose every Pod                 | `6379`            |
+@@ -215,17 +257,14 @@ The following table lists the configurable parameters of the Redis chart and the
+ | `metrics.serviceMonitor.enabled`                | if `true`, creates a Prometheus Operator ServiceMonitor (also requires `metrics.enabled` to be `true`) | `false`           |
+ | `metrics.serviceMonitor.namespace`              | Optional namespace which Prometheus is running in              | `nil`             |
+ | `metrics.serviceMonitor.interval`               | How frequently to scrape metrics (use by default, falling back to Prometheus' default) | `nil`             |
+-| `metrics.serviceMonitor.selector`               | Default to kube-prometheus install (CoreOS recommended), but should be set according to Prometheus install | `{ prometheus: kube-prometheus }` |
+ | `metrics.service.type`                          | Kubernetes Service type (redis metrics)                        | `ClusterIP`       |
+ | `metrics.service.annotations`                   | Annotations for the services to monitor.                       | {}                |
+ | `metrics.service.labels`                        | Additional labels for the metrics service                      | {}                |
+ | `metrics.service.loadBalancerIP`                | loadBalancerIP if redis metrics service type is `LoadBalancer` | `nil`             |
+-| `metrics.priorityClassName`                     | Metrics exporter pod priorityClassName                         | {}                |
+ | `metrics.prometheusRule.enabled`                | Set this to true to create prometheusRules for Prometheus operator | `false`           |
+ | `metrics.prometheusRule.additionalLabels`       | Additional labels that can be used so prometheusRules will be discovered by Prometheus | `{}`              |
+ | `metrics.prometheusRule.namespace`              | namespace where prometheusRules resource should be created     | Same namespace as redis |
+ | `metrics.prometheusRule.rules`                  | [rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/) to be created, check values for an example. | `[]`              |
+-|                                                 |
+ 
+ #### Sysctl Image parameters
+ 
+@@ -303,7 +342,7 @@ In case the master crashes, one of his slaves will be promoted to master. The sl
+ 
+ Providing the values above, the cluster will have 3 masters and, each master, will have 2 replicas.
+ 
+-> NOTE: By default `cluster.init` will be set to `true` in order to initialize the Redis Cluster in the first installation. If for testing purpose you only want to deploy or upgrade the nodes but avoiding the creation of the cluster you can set `cluster.init` to `false`.
++> NOTE: By default `cluster.init` will be set to `true` in order to initialize the Redis Cluster in the first installation. If for testing purposes you only want to deploy or upgrade the nodes but avoiding the creation of the cluster you can set `cluster.init` to `false`.
+ 
+ #### Adding a new node to the cluster
+ 
+@@ -416,10 +455,10 @@ sidecars:
+        containerPort: 1234
+ ```
+ 
+-Similarly, you can add extra init containers using the `extraInitContainers` parameter.
++Similarly, you can add extra init containers using the `initContainers` parameter.
+ 
+ ```yaml
+-extraInitContainers:
++initContainers:
+   - name: your-image-name
+     image: your-image
+     imagePullPolicy: Always
+@@ -473,7 +512,7 @@ Note that this will not disable transparent huge tables.
+ 
+ ## Helm Upgrade
+ 
+- By default `cluster.init` will be set to `true` in order to initialize the Redis Cluster in the first installation. If for testing purpose you only want to deploy or upgrade the nodes but avoiding the creation of the cluster you can set `cluster.init` to `false`.
++ By default `cluster.init` will be set to `true` in order to initialize the Redis Cluster in the first installation. If for testing purposes you only want to deploy or upgrade the nodes but avoiding the creation of the cluster you can set `cluster.init` to `false`.
+ 
+ ## Persistence
+ 
+@@ -507,6 +546,10 @@ networkPolicy:
+ 
+ ## Notable changes
+ 
++### 3.0.0
++
++This version of the chart adapts the chart to the most recent Bitnami best practices and standards. Most of the Redis parameters were moved to the `redis` values section (such as extraEnvVars, sidecars, and so on). No major issues are expected during the upgrade.
++
+ ### 2.0.0
+ 
+ The version `1.0.0` was using a label in the Statefulset's volumeClaimTemplate that didn't allow to upgrade the chart. The version `2.0.0` fixed that issue. Also it adds more docs in the README.md.
+diff --git a/bitnami/redis-cluster/requirements.lock b/bitnami/redis-cluster/requirements.lock
+new file mode 100644
+index 0000000000..b3030528f7
+--- /dev/null
++++ b/bitnami/redis-cluster/requirements.lock
+@@ -0,0 +1,6 @@
++dependencies:
++- name: common
++  repository: https://charts.bitnami.com/bitnami
++  version: 0.3.1
++digest: sha256:4bd22b874a925f8e8e5bcb930b384cc741f85235317493107432b1b46347c4a5
++generated: "2020-06-25T15:40:54.122728+02:00"
+diff --git a/bitnami/redis-cluster/requirements.yaml b/bitnami/redis-cluster/requirements.yaml
+new file mode 100644
+index 0000000000..0c2495d0f4
+--- /dev/null
++++ b/bitnami/redis-cluster/requirements.yaml
+@@ -0,0 +1,6 @@
++dependencies:
++  - name: common
++    version: 0.x.x
++    repository: https://charts.bitnami.com/bitnami
++    tags:
++      - bitnami-common
+diff --git a/bitnami/redis-cluster/templates/NOTES.txt b/bitnami/redis-cluster/templates/NOTES.txt
+index 3b3d95e889..1f21549ac4 100644
+--- a/bitnami/redis-cluster/templates/NOTES.txt
++++ b/bitnami/redis-cluster/templates/NOTES.txt
+@@ -11,7 +11,7 @@ To get your password run:
+ To connect to your Redis server from outside the cluster check the following information:
+ 
+   NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+-        Watch the status with: 'kubectl get svc --namespace {{ .Release.Namespace }} -w {{ template "redis-cluster.fullname" . }}'
++        Watch the status with: 'kubectl get svc --namespace {{ .Release.Namespace }} -w {{ template "common.names.fullname" . }}'
+ 
+     You will have a different external IP for each Redis node. Get the external ip from `-external` suffixed services: `kubectl get svc`.
+     Redis port: {{ .Values.cluster.externalAccess.service.port }}
+@@ -28,7 +28,7 @@ To connect to your Redis server from outside the cluster check the following inf
+ 
+     To connect to your database from outside the cluster execute the following commands:
+ 
+-    export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "redis-cluster.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
++    export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "common.names.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+     redis-cli -c -h $SERVICE_IP -p {{ .Values.service.port }} {{- if .Values.usePassword }} -a $REDIS_PASSWORD{{ end }}{{ if .Values.tls.enabled }} --tls --cert /tmp/client.cert --key /tmp/client.key --cacert /tmp/CA.cert{{ end }}
+     {{- end }}
+ 
+@@ -45,33 +45,33 @@ To connect to your Redis cluster:
+ 1. Run a Redis pod that you can use as a client:
+ 
+ {{- if .Values.tls.enabled }}
+-   kubectl run --namespace {{ .Release.Namespace }} {{ template "redis-cluster.fullname" . }}-client --restart='Never' --env REDIS_PASSWORD=$REDIS_PASSWORD --image {{ template "redis-cluster.image" . }} --command -- sleep infinity
++   kubectl run --namespace {{ .Release.Namespace }} {{ template "common.names.fullname" . }}-client --restart='Never' --env REDIS_PASSWORD=$REDIS_PASSWORD --image {{ template "redis-cluster.image" . }} --command -- sleep infinity
+ 
+    Copy your TLS certificates to the pod:
+ 
+-   kubectl cp --namespace {{ .Release.Namespace }} /path/to/client.cert {{ template "redis-cluster.fullname" . }}-client:/tmp/client.cert
+-   kubectl cp --namespace {{ .Release.Namespace }} /path/to/client.key {{ template "redis-cluster.fullname" . }}-client:/tmp/client.key
+-   kubectl cp --namespace {{ .Release.Namespace }} /path/to/CA.cert {{ template "redis-cluster.fullname" . }}-client:/tmp/CA.cert
++   kubectl cp --namespace {{ .Release.Namespace }} /path/to/client.cert {{ template "common.names.fullname" . }}-client:/tmp/client.cert
++   kubectl cp --namespace {{ .Release.Namespace }} /path/to/client.key {{ template "common.names.fullname" . }}-client:/tmp/client.key
++   kubectl cp --namespace {{ .Release.Namespace }} /path/to/CA.cert {{ template "common.names.fullname" . }}-client:/tmp/CA.cert
+ 
+    Use the following command to attach to the pod:
+ 
+-   kubectl exec --tty -i {{ template "redis-cluster.fullname" . }}-client \
+-   {{- if and (.Values.networkPolicy.enabled) (not .Values.networkPolicy.allowExternal) }}--labels="{{ template "redis-cluster.fullname" . }}-client=true" \{{- end }}
++   kubectl exec --tty -i {{ template "common.names.fullname" . }}-client \
++   {{- if and (.Values.networkPolicy.enabled) (not .Values.networkPolicy.allowExternal) }}--labels="{{ template "common.names.fullname" . }}-client=true" \{{- end }}
+    --namespace {{ .Release.Namespace }} -- bash
+ {{- else }}
+-kubectl run --namespace {{ .Release.Namespace }} {{ template "redis-cluster.fullname" . }}-client --rm --tty -i --restart='Never' \
++kubectl run --namespace {{ .Release.Namespace }} {{ template "common.names.fullname" . }}-client --rm --tty -i --restart='Never' \
+ {{ if .Values.usePassword }} --env REDIS_PASSWORD=$REDIS_PASSWORD \{{ end }}
+-{{- if and (.Values.networkPolicy.enabled) (not .Values.networkPolicy.allowExternal) }}--labels="{{ template "redis-cluster.fullname" . }}-client=true" \{{- end }}
++{{- if and (.Values.networkPolicy.enabled) (not .Values.networkPolicy.allowExternal) }}--labels="{{ template "common.names.fullname" . }}-client=true" \{{- end }}
+ --image {{ template "redis-cluster.image" . }} -- bash
+ {{- end }}
+ 
+ 2. Connect using the Redis CLI:
+ 
+-redis-cli -c -h {{ template "redis-cluster.fullname" . }}{{ if .Values.usePassword }} -a $REDIS_PASSWORD{{ end }}{{ if .Values.tls.enabled }} --tls --cert /tmp/client.cert --key /tmp/client.key --cacert /tmp/CA.cert{{ end }}
++redis-cli -c -h {{ template "common.names.fullname" . }}{{ if .Values.usePassword }} -a $REDIS_PASSWORD{{ end }}{{ if .Values.tls.enabled }} --tls --cert /tmp/client.cert --key /tmp/client.key --cacert /tmp/CA.cert{{ end }}
+ 
+ {{ if and (.Values.networkPolicy.enabled) (not .Values.networkPolicy.allowExternal) }}
+ Note: Since NetworkPolicy is enabled, only pods with label
+-{{ template "redis-cluster.fullname" . }}-client=true"
++{{ template "common.names.fullname" . }}-client=true"
+ will be able to connect to redis.
+ {{- end -}}
+ {{- end -}}
+diff --git a/bitnami/redis-cluster/templates/_helpers.tpl b/bitnami/redis-cluster/templates/_helpers.tpl
+index 881c8ec81e..d37c0784db 100644
+--- a/bitnami/redis-cluster/templates/_helpers.tpl
++++ b/bitnami/redis-cluster/templates/_helpers.tpl
+@@ -1,35 +1,3 @@
+-{{/* vim: set filetype=mustache: */}}
+-{{/*
+-Expand the name of the chart.
+-*/}}
+-{{- define "redis-cluster.name" -}}
+-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
+-
+-{{/*
+-Expand the chart plus release name (used by the chart label)
+-*/}}
+-{{- define "redis-cluster.chart" -}}
+-{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
+-
+-{{/*
+-Create a default fully qualified app name.
+-We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+-If release name contains chart name it will be used as a full name.
+-*/}}
+-{{- define "redis-cluster.fullname" -}}
+-{{- if .Values.fullnameOverride -}}
+-{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+-{{- else -}}
+-{{- $name := default .Chart.Name .Values.nameOverride -}}
+-{{- if contains $name .Release.Name -}}
+-{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+-{{- else -}}
+-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
+-{{- end -}}
+-{{- end -}}
+ 
+ {{/*
+ Return the appropriate apiVersion for networkpolicy.
+@@ -137,21 +105,21 @@ Also, we can't use a single if because lazy evaluation is not an option
+ Return the path to the cert file.
+ */}}
+ {{- define "redis-cluster.tlsCert" -}}
+-{{- required "Certificate filename is required when TLS in enabled" .Values.tls.certFilename | printf "/opt/bitnami/redis/certs/%s" -}}
++{{- printf "/opt/bitnami/redis/certs/%s" .Values.tls.certFilename -}}
+ {{- end -}}
+ 
+ {{/*
+ Return the path to the cert key file.
+ */}}
+ {{- define "redis-cluster.tlsCertKey" -}}
+-{{- required "Certificate Key filename is required when TLS in enabled" .Values.tls.certKeyFilename | printf "/opt/bitnami/redis/certs/%s" -}}
++{{- printf "/opt/bitnami/redis/certs/%s" .Values.tls.certKeyFilename -}}
+ {{- end -}}
+ 
+ {{/*
+ Return the path to the CA cert file.
+ */}}
+ {{- define "redis-cluster.tlsCACert" -}}
+-{{- required "Certificate CA filename is required when TLS in enabled" .Values.tls.certCAFilename | printf "/opt/bitnami/redis/certs/%s" -}}
++{{- printf "/opt/bitnami/redis/certs/%s" .Values.tls.certCAFilename -}}
+ {{- end -}}
+ 
+ {{/*
+@@ -168,7 +136,7 @@ Create the name of the service account to use
+ */}}
+ {{- define "redis-cluster.serviceAccountName" -}}
+ {{- if .Values.serviceAccount.create -}}
+-    {{ default (include "redis-cluster.fullname" .) .Values.serviceAccount.name }}
++    {{ default (include "common.names.fullname" .) .Values.serviceAccount.name }}
+ {{- else -}}
+     {{ default "default" .Values.serviceAccount.name }}
+ {{- end -}}
+@@ -181,7 +149,7 @@ Get the password secret.
+ {{- if .Values.existingSecret -}}
+ {{- printf "%s" .Values.existingSecret -}}
+ {{- else -}}
+-{{- printf "%s" (include "redis-cluster.fullname" .) -}}
++{{- printf "%s" (include "common.names.fullname" .) -}}
+ {{- end -}}
+ {{- end -}}
+ 
+@@ -236,90 +204,20 @@ Also, we can't use a single if because lazy evaluation is not an option
+ Return the proper Docker Image Registry Secret Names
+ */}}
+ {{- define "redis-cluster.imagePullSecrets" -}}
+-{{/*
+-Helm 2.11 supports the assignment of a value to a variable defined in a different scope,
+-but Helm 2.9 and 2.10 does not support it, so we need to implement this if-else logic.
+-Also, we can not use a single if because lazy evaluation is not an option
+-*/}}
+-{{- if .Values.global }}
+-{{- if .Values.global.imagePullSecrets }}
+-imagePullSecrets:
+-{{- range .Values.global.imagePullSecrets }}
+-  - name: {{ . }}
+-{{- end }}
+-{{- else if or .Values.image.pullSecrets .Values.metrics.image.pullSecrets .Values.sysctlImage.pullSecrets .Values.volumePermissions.image.pullSecrets }}
+-imagePullSecrets:
+-{{- range .Values.image.pullSecrets }}
+-  - name: {{ . }}
+-{{- end }}
+-{{- range .Values.metrics.image.pullSecrets }}
+-  - name: {{ . }}
+-{{- end }}
+-{{- range .Values.sysctlImage.pullSecrets }}
+-  - name: {{ . }}
+-{{- end }}
+-{{- range .Values.volumePermissions.image.pullSecrets }}
+-  - name: {{ . }}
+-{{- end }}
+-{{- end -}}
+-{{- else if or .Values.image.pullSecrets .Values.metrics.image.pullSecrets .Values.sysctlImage.pullSecrets .Values.volumePermissions.image.pullSecrets }}
+-imagePullSecrets:
+-{{- range .Values.image.pullSecrets }}
+-  - name: {{ . }}
+-{{- end }}
+-{{- range .Values.metrics.image.pullSecrets }}
+-  - name: {{ . }}
+-{{- end }}
+-{{- range .Values.sysctlImage.pullSecrets }}
+-  - name: {{ . }}
+-{{- end }}
+-{{- range .Values.volumePermissions.image.pullSecrets }}
+-  - name: {{ . }}
+-{{- end }}
+-{{- end -}}
++{{- include "common.images.pullSecrets" (dict "images" (list .Values.image .Values.metrics.image) "global" .Values.global) -}}
+ {{- end -}}
+ 
+ {{/* Check if there are rolling tags in the images */}}
+ {{- define "redis-cluster.checkRollingTags" -}}
+-{{- if and (contains "bitnami/" .Values.image.repository) (not (.Values.image.tag | toString | regexFind "-r\\d+$|sha256:")) }}
+-WARNING: Rolling tag detected ({{ .Values.image.repository }}:{{ .Values.image.tag }}), please note that it is strongly recommended to avoid using rolling tags in a production environment.
+-+info https://docs.bitnami.com/containers/how-to/understand-rolling-tags-containers/
+-{{- end }}
++{{- include "common.warnings.rollingTag" .Values.image -}}
++{{- include "common.warnings.rollingTag" .Values.metrics.image -}}
+ {{- end -}}
+ 
+ {{/*
+ Return the proper Storage Class
+ */}}
+ {{- define "redis-cluster.storageClass" -}}
+-{{/*
+-Helm 2.11 supports the assignment of a value to a variable defined in a different scope,
+-but Helm 2.9 and 2.10 does not support it, so we need to implement this if-else logic.
+-*/}}
+-{{- if .Values.global -}}
+-    {{- if .Values.global.storageClass -}}
+-        {{- if (eq "-" .Values.global.storageClass) -}}
+-            {{- printf "storageClassName: \"\"" -}}
+-        {{- else }}
+-            {{- printf "storageClassName: %s" .Values.global.storageClass -}}
+-        {{- end -}}
+-    {{- else -}}
+-        {{- if .Values.persistence.storageClass -}}
+-              {{- if (eq "-" .Values.persistence.storageClass) -}}
+-                  {{- printf "storageClassName: \"\"" -}}
+-              {{- else }}
+-                  {{- printf "storageClassName: %s" .Values.persistence.storageClass -}}
+-              {{- end -}}
+-        {{- end -}}
+-    {{- end -}}
+-{{- else -}}
+-    {{- if .Values.persistence.storageClass -}}
+-        {{- if (eq "-" .Values.persistence.storageClass) -}}
+-            {{- printf "storageClassName: \"\"" -}}
+-        {{- else }}
+-            {{- printf "storageClassName: %s" .Values.persistence.storageClass -}}
+-        {{- end -}}
+-    {{- end -}}
+-{{- end -}}
++{{- include "common.storage.class" ( dict "persistence" .Values.persistence "global" .Values.global ) -}}
+ {{- end -}}
+ 
+ {{/*
+@@ -334,30 +232,13 @@ Determines whether or not to create the Statefulset
+     {{- end -}}
+ {{- end -}}
+ 
+-{{/*
+-Common labels
+-*/}}
+-{{- define "redis-cluster.labels" -}}
+-app.kubernetes.io/name: {{ include "redis-cluster.name" . }}
+-helm.sh/chart: {{ include "redis-cluster.chart" . }}
+-app.kubernetes.io/instance: {{ .Release.Name }}
+-app.kubernetes.io/managed-by: {{ .Release.Service }}
+-{{- end -}}
+-
+-{{/*
+-Labels to use on deploy.spec.selector.matchLabels and svc.spec.selector
+-*/}}
+-{{- define "redis-cluster.matchLabels" -}}
+-app.kubernetes.io/name: {{ include "redis-cluster.name" . }}
+-app.kubernetes.io/instance: {{ .Release.Name }}
+-{{- end -}}
+-
+ {{/*
+ Compile all warnings into a single message, and call fail.
+ */}}
+ {{- define "redis-cluster.validateValues" -}}
+ {{- $messages := list -}}
+ {{- $messages := append $messages (include "redis-cluster.validateValues.updateParameters" .) -}}
++{{- $messages := append $messages (include "redis-cluster.validateValues.tlsParameters" .) -}}
+ {{- $messages := without $messages "" -}}
+ {{- $message := join "\n" $messages -}}
+ 
+@@ -383,15 +264,28 @@ redis-cluster: currentNumberOfNodes
+ {{- end -}}
+ {{- end -}}
+ 
+-{{/*
+-Renders a value that contains template.
+-Usage:
+-{{ include "common.tplvalues.render" ( dict "value" .Values.path.to.the.Value "context" $) }}
+-*/}}
+-{{- define "common.tplvalues.render" -}}
+-    {{- if typeIs "string" .value }}
+-        {{- tpl .value .context }}
+-    {{- else }}
+-        {{- tpl (.value | toYaml) .context }}
+-    {{- end }}
++{{/* Validate values of Redis Cluster - tls settings */}}
++{{- define "redis-cluster.validateValues.tlsParameters" -}}
++{{- if .Values.tls.enabled }}
++{{- if not .Values.tls.certFilename -}}
++redis-cluster: TLSSecretMissingSecret
++     A secret containing the certificates for the TLS traffic is required when TLS is enabled. Please set the tls.certificatesSecret value
++{{- end -}}
++{{- if not .Values.tls.certFilename -}}
++redis-cluster: TLSSecretMissingCert
++     A certificate filename is required when TLS is enabled. Please set the tls.certFilename value
++{{- end -}}
++{{- if not .Values.tls.certFilename -}}
++redis-cluster: TLSSecretMissingCert
++     A certificate filename is required when TLS is enabled. Please set the tls.certFilename value
++{{- end -}}
++{{- if not .Values.tls.certKeyFilename -}}
++redis-cluster: TLSSecretMissingCertKey
++     A certificate key filename is required when TLS is enabled. Please set the tls.certKeyFilename value
++{{- end -}}
++{{- if not .Values.tls.certCAFilename -}}
++redis-cluster: TLSSecretMissingCertCA
++     A certificate CA filename is required when TLS is enabled. Please set the tls.certCAFilename value
++{{- end -}}
++{{- end -}}
+ {{- end -}}
+diff --git a/bitnami/redis-cluster/templates/configmap.yaml b/bitnami/redis-cluster/templates/configmap.yaml
+index 54b0ba17f1..e72c3204f0 100644
+--- a/bitnami/redis-cluster/templates/configmap.yaml
++++ b/bitnami/redis-cluster/templates/configmap.yaml
+@@ -1,8 +1,14 @@
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+-  name: {{ include "redis-cluster.fullname" . }}-default
+-  labels: {{- include "redis-cluster.labels" . | nindent 4 }}
++  name: {{ include "common.names.fullname" . }}-default
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ data:
+   redis-default.conf: |-
+     # Redis configuration file example.
+@@ -1817,6 +1823,6 @@ data:
+     #
+     # Set bgsave child process to cpu affinity 1,10,11
+     # bgsave_cpulist 1,10-11
+-{{- if .Values.configmap }}
+-{{- include "common.tplvalues.render" (dict "value" .Values.configmap "context" $) | nindent 4 }}
++{{- if .Values.redis.configmap }}
++{{- include "common.tplvalues.render" (dict "value" .Values.redis.configmap "context" $) | nindent 4 }}
+ {{- end }}
+diff --git a/bitnami/redis-cluster/templates/extra-list.yaml b/bitnami/redis-cluster/templates/extra-list.yaml
+new file mode 100644
+index 0000000000..184da188e3
+--- /dev/null
++++ b/bitnami/redis-cluster/templates/extra-list.yaml
+@@ -0,0 +1,5 @@
++{{- if .Values.extraDeploy }}
++apiVersion: v1
++kind: List
++items: {{- include "common.tplvalues.render" (dict "value" .Values.extraDeploy "context" $) | nindent 2 }}
++{{- end }}
+diff --git a/bitnami/redis-cluster/templates/headless-svc.yaml b/bitnami/redis-cluster/templates/headless-svc.yaml
+index 12ed672504..88c603a455 100644
+--- a/bitnami/redis-cluster/templates/headless-svc.yaml
++++ b/bitnami/redis-cluster/templates/headless-svc.yaml
+@@ -1,18 +1,23 @@
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: {{ template "redis-cluster.fullname" . }}-headless
+-  labels: {{- include "redis-cluster.labels" . | nindent 4 }}
++  name: {{ template "common.names.fullname" . }}-headless
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ spec:
+   type: ClusterIP
+   clusterIP: None
+   publishNotReadyAddresses: true
+   ports:
+     - name: tcp-redis
+-      port: {{ .Values.redisPort }}
++      port: {{ .Values.redis.port }}
+       targetPort: tcp-redis
+     - name: tcp-redis-bus
+-      port: {{ .Values.cluster.busPort }}
++      port: {{ .Values.redis.busPort }}
+       targetPort: tcp-redis-bus
+-  selector: {{- include "redis-cluster.matchLabels" . | nindent 4 }}
+-
++  selector: {{- include "common.labels.matchLabels" . | nindent 4 }}
+diff --git a/bitnami/redis-cluster/templates/init-cluster.yaml b/bitnami/redis-cluster/templates/init-cluster.yaml
+index 3644fab26a..f555a9d0ad 100644
+--- a/bitnami/redis-cluster/templates/init-cluster.yaml
++++ b/bitnami/redis-cluster/templates/init-cluster.yaml
+@@ -2,24 +2,70 @@
+ apiVersion: batch/v1
+ kind: Job
+ metadata:
+-  name: {{ template "redis-cluster.fullname" . }}-cluster-create
+-  labels: {{- include "redis-cluster.labels" . | nindent 4 }}
++  name: {{ template "common.names.fullname" . }}-cluster-create
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
+   annotations:
+     "helm.sh/hook": post-install,post-upgrade
++  {{- if .Values.initJob.annotations }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.initJob.annotations "context" $ ) | nindent 4 }}
++  {{- end }}
++  {{- if .Values.commonAnnotations }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ spec:
+-  activeDeadlineSeconds: {{ .Values.cluster.activeDeadlineSeconds }}
++  activeDeadlineSeconds: {{ .Values.initJob.activeDeadlineSeconds }}
+   template:
++    metadata:
++      labels: {{- include "common.labels.standard" . | nindent 8 }}
++        {{- if .Values.commonLabels }}
++        {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 8 }}
++        {{- end }}
++        {{- if .Values.initJob.podLabels }}
++        {{- include "common.tplvalues.render" (dict "value" .Values.initJob.podLabels "context" $) | nindent 8 }}
++        {{- end }}
++      annotations:
++        {{- if .Values.commonAnnotations }}
++        {{- include "common.tplvalues.render" (dict "value" .Values.commonAnnotations "context" $) | nindent 8 }}
++        {{- end }}
++        {{- if .Values.initJob.podAnnotations }}
++        {{- include "common.tplvalues.render" (dict "value" .Values.initJob.podAnnotations "context" $) | nindent 8 }}
++        {{- end }}
+     spec:
++      {{- include "redis-cluster.imagePullSecrets" . | nindent 6 }}
++      {{- if .Values.initJob.affinity }}
++      affinity: {{- include "common.tplvalues.render" (dict "value" .Values.initJob.affinity "context" $) | nindent 8 }}
++      {{- end }}
++      {{- if .Values.initJob.nodeSelector }}
++      nodeSelector: {{- include "common.tplvalues.render" (dict "value" .Values.initJob.nodeSelector "context" $) | nindent 8 }}
++      {{- end }}
++      {{- if .Values.initJob.tolerations }}
++      tolerations: {{- include "common.tplvalues.render" (dict "value" .Values.initJob.tolerations "context" $) | nindent 8 }}
++      {{- end }}
++      {{- if .Values.podSecurityContext }}
++      securityContext: {{- include "common.tplvalues.render" (dict "value" .Values.podSecurityContext "context" $) | nindent 8 }}
++      {{- end }}
++      {{- if .Values.initJob.initContainers }}
++      initContainers: {{- include "common.tplvalues.render" (dict "value" .Values.initJob.initContainers "context" $) | nindent 8 }}
++      {{- end }}
+       containers:
+         - name: trigger
+-          image: "{{ template "redis-cluster.image" . }}"
++          image: {{ include "redis-cluster.image" . }}
+           imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+           {{- if .Values.containerSecurityContext.enabled }}
+           securityContext:
+             runAsUser: {{ .Values.containerSecurityContext.runAsUser }}
+           {{- end }}
+-          {{- if .Values.cluster.externalAccess.enabled }}
++          {{- if .Values.initJob.command }}
++          command: {{- include "common.tplvalues.render" (dict "value" .Values.initJob.command "context" $) | nindent 12 }}
++          {{- else if .Values.cluster.externalAccess.enabled }}
+           command: ['/bin/bash', '-c']
++          {{- end }}
++          {{- if .Values.initJob.args }}
++          args: {{- include "common.tplvalues.render" (dict "value" .Values.initJob.args "context" $) | nindent 12 }}
++          {{- else if .Values.cluster.externalAccess.enabled }}
+           args:
+             - |
+               ips=($(echo "{{ .Values.cluster.externalAccess.service.loadBalancerIP }}" | cut -d [ -f2 | cut -d ] -f 1))
+@@ -56,9 +102,9 @@ spec:
+             {{- else }}
+             - name: REDIS_PORT
+             {{- end }}
+-              value: {{ .Values.redisPort | quote }}
++              value: {{ .Values.redis.port | quote }}
+             - name: REDIS_NODES
+-              value: "{{ $count := .Values.cluster.nodes | int }}{{ range $i, $v := until $count }}{{ include "redis-cluster.fullname" $ }}-{{ $i }}.{{ template "redis-cluster.fullname" $ }}-headless {{ end }}"
++              value: "{{ $count := .Values.cluster.nodes | int }}{{ range $i, $v := until $count }}{{ include "common.names.fullname" $ }}-{{ $i }}.{{ template "common.names.fullname" $ }}-headless {{ end }}"
+             {{- end }}
+             {{- if .Values.usePassword }}
+             - name: REDISCLI_AUTH
+@@ -71,17 +117,38 @@ spec:
+               value: "yes"
+             - name: REDIS_CLUSTER_REPLICAS
+               value: {{ .Values.cluster.replicas | quote }}
+-          {{- if .Values.tls.enabled }}
++            {{- if .Values.initJob.extraEnvVars }}
++            {{- include "common.tplvalues.render" (dict "value" .Values.initJob.extraEnvVars "context" $) | nindent 12 }}
++            {{- end }}
++          envFrom:
++            {{- if .Values.initJob.extraEnvVarsCM }}
++            - configMapRef:
++                name: {{ include "common.tplvalues.render" (dict "value" .Values.initJob.extraEnvVarsCM "context" $) }}
++            {{- end }}
++            {{- if .Values.initJob.extraEnvVarsSecret }}
++            - secretRef:
++                name: {{ include "common.tplvalues.render" (dict "value" .Values.initJob.extraEnvVarsSecret "context" $) }}
++            {{- end }}
++          {{- if .Values.initJob.resources }}
++          resources: {{- toYaml .Values.initJob.resources | nindent 12 }}
++          {{- end }}
+           volumeMounts:
++            {{- if .Values.tls.enabled }}
+             - name: redis-certificates
+               mountPath: /opt/bitnami/redis/certs
+               readOnly: true
+-          {{- end }}
++            {{- end }}
++            {{- if .Values.initJob.extraVolumeMounts }}
++            {{- include "common.tplvalues.render" (dict "value" .Values.initJob.extraVolumeMounts "context" $) | nindent 12 }}
++            {{- end }}
+       restartPolicy: OnFailure
+-      {{- if .Values.tls.enabled }}
+       volumes:
++      {{- if .Values.tls.enabled }}
+         - name: redis-certificates
+           secret:
+-            secretName: {{ required "A secret containing the certificates for the TLS traffic is required when TLS in enabled" .Values.tls.certificatesSecret }}
+-    {{- end }}
++            secretName: {{ include "common.tplvalues.render" (dict "value" .Values.tls.certificatesSecret "context" $) }}
++      {{- end }}
++      {{- if .Values.initJob.extraVolumes }}
++      {{- include "common.tplvalues.render" (dict "value" .Values.initJob.extraVolumes "context" $) | nindent 6 }}
++      {{- end }}
+ {{- end }}
+diff --git a/bitnami/redis-cluster/templates/metrics-prometheus.yaml b/bitnami/redis-cluster/templates/metrics-prometheus.yaml
+index 8a4713c7fa..f7ee6c9aa9 100644
+--- a/bitnami/redis-cluster/templates/metrics-prometheus.yaml
++++ b/bitnami/redis-cluster/templates/metrics-prometheus.yaml
+@@ -2,14 +2,17 @@
+ apiVersion: monitoring.coreos.com/v1
+ kind: ServiceMonitor
+ metadata:
+-  name: {{ template "redis-cluster.fullname" . }}
++  name: {{ template "common.names.fullname" . }}
+   {{- if .Values.metrics.serviceMonitor.namespace }}
+   namespace: {{ .Values.metrics.serviceMonitor.namespace }}
+   {{- end }}
+-  labels: {{- include "redis-cluster.labels" . | nindent 4 }}
+-    {{- range $key, $value := .Values.metrics.serviceMonitor.selector }}
+-    {{ $key }}: {{ $value | quote }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
+     {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ spec:
+   endpoints:
+   - port: metrics
+@@ -17,7 +20,7 @@ spec:
+     interval: {{ .Values.metrics.serviceMonitor.interval }}
+     {{- end }}
+   selector:
+-    matchLabels: {{- include "redis-cluster.matchLabels" . | nindent 6 }}
++    matchLabels: {{- include "common.labels.matchLabels" . | nindent 6 }}
+       app.kubernetes.io/component: "metrics"
+   namespaceSelector:
+     matchNames:
+diff --git a/bitnami/redis-cluster/templates/metrics-svc.yaml b/bitnami/redis-cluster/templates/metrics-svc.yaml
+index ecd07c5435..856d6d62b2 100644
+--- a/bitnami/redis-cluster/templates/metrics-svc.yaml
++++ b/bitnami/redis-cluster/templates/metrics-svc.yaml
+@@ -2,14 +2,21 @@
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: {{ template "redis-cluster.fullname" . }}-metrics
+-  labels: {{- include "redis-cluster.labels" . | nindent 4 }}
++  name: {{ template "common.names.fullname" . }}-metrics
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
+     {{- if .Values.metrics.service.labels }}
+     {{ include "common.tplvalues.render" ( dict "value" .Values.metrics.service.labels "context" $ ) | indent 4 }}
+     {{- end }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
+     app.kubernetes.io/component: "metrics"
++  annotations:
++  {{- if .Values.commonAnnotations }}
++  {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+   {{- if .Values.metrics.service.annotations }}
+-  annotations: {{ include "common.tplvalues.render" ( dict "value" .Values.metrics.service.annotations "context" $ ) | nindent 4 }}
++  {{ include "common.tplvalues.render" ( dict "value" .Values.metrics.service.annotations "context" $ ) | nindent 4 }}
+   {{- end }}
+ spec:
+   type: {{ .Values.metrics.service.type }}
+@@ -20,5 +27,5 @@ spec:
+     - name: metrics
+       port: 9121
+       targetPort: http-metrics
+-  selector: {{- include "redis-cluster.matchLabels" $ | nindent 4 }}
++  selector: {{- include "common.labels.matchLabels" . | nindent 4 }}
+ {{- end }}
+diff --git a/bitnami/redis-cluster/templates/networkpolicy.yaml b/bitnami/redis-cluster/templates/networkpolicy.yaml
+index 614aaea135..393bbfdad7 100644
+--- a/bitnami/redis-cluster/templates/networkpolicy.yaml
++++ b/bitnami/redis-cluster/templates/networkpolicy.yaml
+@@ -2,13 +2,19 @@
+ kind: NetworkPolicy
+ apiVersion: {{ template "networkPolicy.apiVersion" . }}
+ metadata:
+-  name: {{ template "redis-cluster.fullname" . }}
+-  labels: {{- include "redis-cluster.labels" . | nindent 4 }}
++  name: {{ template "common.names.fullname" . }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ spec:
+   podSelector:
+     matchLabels:
+-      app: {{ template "redis-cluster.name" . }}
+-      release: {{ .Release.Name }}
++      app.kubernetes.io/name: {{ template "common.names.name" . }}
++      app.kubernetes.io/instance: {{ .Release.Name }}
+   policyTypes:
+     - Ingress
+     - Egress
+@@ -19,23 +25,23 @@ spec:
+         protocol: UDP
+     # Allow outbound connections to other cluster pods
+     - ports:
+-        - port: {{ .Values.redisPort }}
+-        - port: {{ .Values.cluster.busPort }}
++        - port: {{ .Values.redis.port }}
++        - port: {{ .Values.redis.busPort }}
+       to:
+         - podSelector:
+-            matchLabels: {{- include "redis-cluster.matchLabels" . | nindent 14 }}
++            matchLabels: {{- include "common.labels.matchLabels" . | nindent 14 }}
+   ingress:
+     # Allow inbound connections
+     - ports:
+-        - port: {{ .Values.redisPort }}
+-        - port: {{ .Values.cluster.busPort }}
++        - port: {{ .Values.redis.port }}
++        - port: {{ .Values.redis.busPort }}
+       {{- if not .Values.networkPolicy.allowExternal }}
+       from:
+         - podSelector:
+             matchLabels:
+-              {{ template "redis-cluster.fullname" . }}-client: "true"
++              {{ template "common.names.fullname" . }}-client: "true"
+         - podSelector:
+-            matchLabels: {{- include "redis-cluster.matchLabels" . | nindent 14 }}
++            matchLabels: {{- include "common.labels.matchLabels" . | nindent 14 }}
+       {{- if .Values.networkPolicy.ingressNSMatchLabels }}
+       - namespaceSelector:
+           matchLabels:
+diff --git a/bitnami/redis-cluster/templates/poddisruptionbudget.yaml b/bitnami/redis-cluster/templates/poddisruptionbudget.yaml
+index 6a38cb6aee..6bdb3188ba 100644
+--- a/bitnami/redis-cluster/templates/poddisruptionbudget.yaml
++++ b/bitnami/redis-cluster/templates/poddisruptionbudget.yaml
+@@ -2,10 +2,16 @@
+ apiVersion: policy/v1beta1
+ kind: PodDisruptionBudget
+ metadata:
+-  name: {{ template "redis-cluster.fullname" . }}
+-  labels: {{- include "redis-cluster.labels" . | nindent 4 }}
++  name: {{ template "common.names.fullname" . }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ spec:
+   selector:
+-    matchLabels: {{- include "redis-cluster.matchLabels" . | nindent 6 }}
++    matchLabels: {{- include "common.labels.matchLabels" . | nindent 6 }}
+   {{- toYaml .Values.podDisruptionBudget | nindent 2 }}
+ {{- end }}
+diff --git a/bitnami/redis-cluster/templates/prometheusrule.yaml b/bitnami/redis-cluster/templates/prometheusrule.yaml
+index fbb0c195fa..819a50b582 100644
+--- a/bitnami/redis-cluster/templates/prometheusrule.yaml
++++ b/bitnami/redis-cluster/templates/prometheusrule.yaml
+@@ -2,18 +2,24 @@
+ apiVersion: monitoring.coreos.com/v1
+ kind: PrometheusRule
+ metadata:
+-  name: {{ template "redis-cluster.fullname" . }}
++  name: {{ template "common.names.fullname" . }}
+ {{- with .Values.metrics.prometheusRule.namespace }}
+   namespace: {{ . }}
+ {{- end }}
+-  labels: {{- include "redis-cluster.labels" . | nindent 4 }}
+-{{- with .Values.metrics.prometheusRule.additionalLabels }}
+-{{- toYaml . | nindent 4 }}
+-{{- end }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++    {{- if .Values.metrics.prometheusRule.additionalLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.metrics.prometheusRule.additionalLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ spec:
+-{{- with .Values.metrics.prometheusRule.rules }}
++  {{- with .Values.metrics.prometheusRule.rules }}
+   groups:
+-    - name: {{ template "redis-cluster.name" $ }}
++    - name: {{ template "common.names.name" $ }}
+       rules: {{- include "common.tplvalues.render" ( dict "value" . "context" $ ) | nindent 8 }}
+-{{- end }}
++  {{- end }}
+ {{- end }}
+diff --git a/bitnami/redis-cluster/templates/psp.yaml b/bitnami/redis-cluster/templates/psp.yaml
+index d63a7627e9..daa06e0141 100644
+--- a/bitnami/redis-cluster/templates/psp.yaml
++++ b/bitnami/redis-cluster/templates/psp.yaml
+@@ -2,8 +2,14 @@
+ apiVersion: {{ template "podSecurityPolicy.apiVersion" . }}
+ kind: PodSecurityPolicy
+ metadata:
+-  name: {{ template "redis-cluster.fullname" . }}
+-  labels: {{- include "redis-cluster.labels" . | nindent 4 }}
++  name: {{ template "common.names.fullname" . }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ spec:
+   allowPrivilegeEscalation: false
+   fsGroup:
+diff --git a/bitnami/redis-cluster/templates/redis-role.yaml b/bitnami/redis-cluster/templates/redis-role.yaml
+index f8ea190afc..c6710fda2a 100644
+--- a/bitnami/redis-cluster/templates/redis-role.yaml
++++ b/bitnami/redis-cluster/templates/redis-role.yaml
+@@ -2,14 +2,20 @@
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: Role
+ metadata:
+-  name: {{ template "redis-cluster.fullname" . }}
+-  labels: {{- include "redis-cluster.labels" . | nindent 4 }}
++  name: {{ template "common.names.fullname" . }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ rules:
+ {{- if .Values.podSecurityPolicy.create }}
+   - apiGroups: ['{{ template "podSecurityPolicy.apiGroup" . }}']
+     resources: ['podsecuritypolicies']
+     verbs: ['use']
+-    resourceNames: [{{ template "redis-cluster.fullname" . }}]
++    resourceNames: [{{ template "common.names.fullname" . }}]
+ {{- end -}}
+ {{- if .Values.rbac.role.rules }}
+ {{- toYaml .Values.rbac.role.rules | nindent 2 }}
+diff --git a/bitnami/redis-cluster/templates/redis-rolebinding.yaml b/bitnami/redis-cluster/templates/redis-rolebinding.yaml
+index ca2b8766da..77d2441676 100644
+--- a/bitnami/redis-cluster/templates/redis-rolebinding.yaml
++++ b/bitnami/redis-cluster/templates/redis-rolebinding.yaml
+@@ -2,12 +2,18 @@
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: RoleBinding
+ metadata:
+-  name: {{ template "redis-cluster.fullname" . }}
+-  labels: {{- include "redis-cluster.labels" . | nindent 4 }}
++  name: {{ template "common.names.fullname" . }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: Role
+-  name: {{ template "redis-cluster.fullname" . }}
++  name: {{ template "common.names.fullname" . }}
+ subjects:
+   - kind: ServiceAccount
+     name: {{ template "redis-cluster.serviceAccountName" . }}
+diff --git a/bitnami/redis-cluster/templates/redis-serviceaccount.yaml b/bitnami/redis-cluster/templates/redis-serviceaccount.yaml
+index 35ca297dae..e85848198e 100644
+--- a/bitnami/redis-cluster/templates/redis-serviceaccount.yaml
++++ b/bitnami/redis-cluster/templates/redis-serviceaccount.yaml
+@@ -3,5 +3,11 @@ apiVersion: v1
+ kind: ServiceAccount
+ metadata:
+   name: {{ template "redis-cluster.serviceAccountName" . }}
+-  labels: {{- include "redis-cluster.labels" . | nindent 4 }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ {{- end -}}
+diff --git a/bitnami/redis-cluster/templates/redis-statefulset.yaml b/bitnami/redis-cluster/templates/redis-statefulset.yaml
+index 6ef1d89632..d52b96273b 100644
+--- a/bitnami/redis-cluster/templates/redis-statefulset.yaml
++++ b/bitnami/redis-cluster/templates/redis-statefulset.yaml
+@@ -2,22 +2,28 @@
+ apiVersion: apps/v1
+ kind: StatefulSet
+ metadata:
+-  name: {{ include "redis-cluster.fullname" . }}
+-  labels: {{- include "redis-cluster.labels" . | nindent 4 }}
++  name: {{ include "common.names.fullname" . }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ spec:
+   selector:
+-    matchLabels: {{- include "redis-cluster.matchLabels" . | nindent 6 }}
++    matchLabels: {{- include "common.labels.matchLabels" . | nindent 6 }}
+   {{- if .Values.updateStrategy }}
+   strategy: {{- toYaml .Values.updateStrategy | nindent 4 }}
+   {{- end }}
+   replicas: {{ .Values.cluster.nodes }}
+-  serviceName: {{ include "redis-cluster.fullname" . }}-headless
++  serviceName: {{ include "common.names.fullname" . }}-headless
+   podManagementPolicy: "Parallel"
+   template:
+     metadata:
+-      labels: {{- include "redis-cluster.labels" . | nindent 8 }}
+-      {{- if .Values.podLabels }}
+-      {{- toYaml .Values.podLabels | nindent 8 }}
++      labels: {{- include "common.labels.standard" . | nindent 8 }}
++      {{- if .Values.redis.podLabels }}
++      {{- toYaml .Values.redis.podLabels | nindent 8 }}
+       {{- end }}
+       {{- if and .Values.metrics.enabled .Values.metrics.podLabels }}
+       {{- toYaml .Values.metrics.podLabels | nindent 8 }}
+@@ -27,7 +33,7 @@ spec:
+         {{- if not .Values.existingSecret }}
+         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+         {{- end }}
+-      {{- if .Values.podAnnotations }}
++      {{- if .Values.redis.podAnnotations }}
+       {{- toYaml .Values.podAnnotations | nindent 8 }}
+       {{- end }}
+       {{- if and .Values.metrics.enabled .Values.metrics.podAnnotations }}
+@@ -44,42 +50,32 @@ spec:
+           {{- toYaml .Values.podSecurityContext.sysctls | nindent 8 }}
+         {{- end }}
+       {{- end }}
+-      serviceAccountName: "{{ template "redis-cluster.serviceAccountName" . }}"
+-      {{- if .Values.priorityClassName }}
+-      priorityClassName: "{{ .Values.priorityClassName }}"
+-      {{- end }}
+-      {{- with .Values.affinity }}
+-      affinity:
+-      {{- include "common.tplvalues.render" ( dict "value" . "context" $ ) | nindent 8 }}
+-      {{- end }}
+-      {{- if .Values.nodeSelector }}
+-      nodeSelector:
+-      {{- toYaml .Values.nodeSelector | nindent 8 }}
++      serviceAccountName: {{ include "redis-cluster.serviceAccountName" . }}
++      {{- if .Values.redis.priorityClassName }}
++      priorityClassName: {{ .Values.redis.priorityClassName }}
+       {{- end }}
+-      {{- if .Values.tolerations }}
+-      tolerations:
+-      {{- toYaml .Values.tolerations | nindent 8 }}
+-      {{- end }}
+-      {{- if .Values.schedulerName }}
+-      schedulerName: {{ .Values.schedulerName | quote }}
++      affinity: {{- include "common.tplvalues.render" ( dict "value" .Values.redis.affinity "context" $ ) | nindent 8 }}
++      nodeSelector: {{- include "common.tplvalues.render" ( dict "value" .Values.redis.nodeSelector "context" $ ) | nindent 8 }}
++      tolerations: {{- include "common.tplvalues.render" ( dict "value" .Values.redis.tolerations "context" $ ) | nindent 8 }}
++      {{- if .Values.redis.schedulerName }}
++      schedulerName: {{ .Values.redis.schedulerName | quote }}
+       {{- end }}
+       containers:
+-        - name: {{ include "redis-cluster.fullname" . }}
+-          image: "{{ include "redis-cluster.image" . }}"
++        - name: {{ include "common.names.fullname" . }}
++          image: {{ include "redis-cluster.image" . }}
+           imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+           {{- if .Values.containerSecurityContext.enabled }}
+           securityContext:
+             runAsUser: {{ .Values.containerSecurityContext.runAsUser }}
+           {{- end }}
+-          {{- if .Values.command }}
+-          command: {{- include "common.tplvalues.render" (dict "value" .Values.command "context" $) | nindent 12 }}
+-          {{- end }}
+-          {{- if .Values.args }}
+-          args: {{- include "common.tplvalues.render" (dict "value" .Values.args "context" $) | nindent 12 }}
+-          {{- end }}
+-          {{- if and (not .Values.command) (not .Values.args) }}
+-          {{- if .Values.cluster.externalAccess.enabled }}
++          {{- if .Values.redis.command }}
++          command: {{- include "common.tplvalues.render" (dict "value" .Values.redis.command "context" $) | nindent 12 }}
++          {{- else if .Values.cluster.externalAccess.enabled }}
+           command: ['/bin/bash', '-c']
++          {{- end }}
++          {{- if .Values.redis.args }}
++          args: {{- include "common.tplvalues.render" (dict "value" .Values.redis.args "context" $) | nindent 12 }}
++          {{- else if .Values.cluster.externalAccess.enabled }}
+           args:
+             - |
+               pod_index=($(echo "$POD_NAME" | tr "-" "\n"))
+@@ -89,6 +85,8 @@ spec:
+               export REDIS_NODES="${ips[@]}"
+               /entrypoint.sh /run.sh
+           {{- end }}
++          {{- if .Values.redis.lifecycleHooks }}
++          lifecycle: {{- include "common.tplvalues.render" (dict "value" .Values.redis.lifecycleHooks "context" $) | nindent 12 }}
+           {{- end }}
+           env:
+             {{- if .Values.cluster.externalAccess.enabled }}
+@@ -100,7 +98,7 @@ spec:
+                   fieldPath: metadata.name
+             {{- else }}
+             - name: REDIS_NODES
+-              value: "{{ $count := .Values.cluster.nodes | int }}{{ range $i, $v := until $count }}{{ include "redis-cluster.fullname" $ }}-{{ $i }}.{{ template "redis-cluster.fullname" $ }}-headless {{ end }}"
++              value: "{{ $count := .Values.cluster.nodes | int }}{{ range $i, $v := until $count }}{{ include "common.names.fullname" $ }}-{{ $i }}.{{ template "common.names.fullname" $ }}-headless {{ end }}"
+             {{- end }}
+             {{- if .Values.usePassword }}
+             - name: REDISCLI_AUTH
+@@ -123,12 +121,12 @@ spec:
+               value: "yes"
+             {{- end }}
+             - name: REDIS_AOF_ENABLED
+-              value: {{ .Values.useAOFPersistence | quote }}
++              value: {{ .Values.redis.useAOFPersistence | quote }}
+             - name: REDIS_TLS_ENABLED
+               value: {{ ternary "yes" "no" .Values.tls.enabled | quote }}
+             {{- if .Values.tls.enabled }}
+             - name: REDIS_TLS_PORT
+-              value: {{ .Values.redisPort | quote }}
++              value: {{ .Values.redis.port | quote }}
+             - name:  REDIS_TLS_AUTH_CLIENTS
+               value: {{ ternary "yes" "no" .Values.tls.authClients | quote }}
+             - name:  REDIS_TLS_CERT_FILE
+@@ -143,56 +141,58 @@ spec:
+             {{- end }}
+             {{- else }}
+             - name: REDIS_PORT
+-              value: {{ .Values.redisPort | quote }}
++              value: {{ .Values.redis.port | quote }}
+             {{- end }}
+-            {{- if .Values.extraEnvVars }}
+-            {{- include "common.tplvalues.render" ( dict "value" .Values.extraEnvVars "context" $ ) | nindent 8 }}
++            {{- if .Values.redis.extraEnvVars }}
++            {{- include "common.tplvalues.render" ( dict "value" .Values.redis.extraEnvVars "context" $ ) | nindent 8 }}
++            {{- end }}
++          envFrom:
++            {{- if .Values.redis.extraEnvVarsCM }}
++            - configMapRef:
++                name: {{ include "common.tplvalues.render" ( dict "value" .Values.redis.extraEnvVarsCM "context" $ ) }}
++            {{- end }}
++            {{- if .Values.redis.extraEnvVarsSecret }}
++            - secretRef:
++                name: {{ include "common.tplvalues.render" ( dict "value" .Values.redis.extraEnvVarsSecret "context" $ ) }}
+             {{- end }}
+-            {{- if or .Values.extraEnvVarsConfigMap .Values.extraEnvVarsSecret }}
+-            envFrom:
+-              {{- if .Values.extraEnvVarsConfigMap }}
+-              - configMapRef:
+-                  name: {{ include "common.tplvalues.render" ( dict "value" .Values.extraEnvVarsConfigMap "context" $ ) }}
+-              {{- end }}
+-              {{- if .Values.extraEnvVarsSecret }}
+-              - secretRef:
+-                  name: {{ include "common.tplvalues.render" ( dict "value" .Values.extraEnvVarsSecret "context" $ ) }}
+-              {{- end }}
+-              {{- end }}
+           ports:
+             - name: tcp-redis
+-              containerPort: {{ .Values.redisPort }}
++              containerPort: {{ .Values.redis.port }}
+             - name: tcp-redis-bus
+-              containerPort: {{ .Values.cluster.busPort }}
+-          {{- if .Values.livenessProbe.enabled }}
++              containerPort: {{ .Values.redis.busPort }}
++          {{- if .Values.redis.livenessProbe.enabled }}
+           livenessProbe:
+-            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+-            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+-            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+-            successThreshold: {{ .Values.livenessProbe.successThreshold }}
+-            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
++            initialDelaySeconds: {{ .Values.redis.livenessProbe.initialDelaySeconds }}
++            periodSeconds: {{ .Values.redis.livenessProbe.periodSeconds }}
++            timeoutSeconds: {{ .Values.redis.livenessProbe.timeoutSeconds }}
++            successThreshold: {{ .Values.redis.livenessProbe.successThreshold }}
++            failureThreshold: {{ .Values.redis.livenessProbe.failureThreshold }}
+             exec:
+               command:
+                 - sh
+                 - -c
+-                - /scripts/ping_liveness_local.sh {{ .Values.livenessProbe.timeoutSeconds }}
++                - /scripts/ping_liveness_local.sh {{ .Values.redis.livenessProbe.timeoutSeconds }}
++          {{- else if .Values.redis.customLivenessProbe }}
++          livenessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.redis.customLivenessProbe "context" $) | nindent 12 }}
+           {{- end }}
+-          {{- if .Values.readinessProbe.enabled }}
++          {{- if .Values.redis.readinessProbe.enabled }}
+           readinessProbe:
+-            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+-            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+-            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+-            successThreshold: {{ .Values.readinessProbe.successThreshold }}
+-            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
++            initialDelaySeconds: {{ .Values.redis.readinessProbe.initialDelaySeconds }}
++            periodSeconds: {{ .Values.redis.readinessProbe.periodSeconds }}
++            timeoutSeconds: {{ .Values.redis.readinessProbe.timeoutSeconds }}
++            successThreshold: {{ .Values.redis.readinessProbe.successThreshold }}
++            failureThreshold: {{ .Values.redis.readinessProbe.failureThreshold }}
+             exec:
+               command:
+                 - sh
+                 - -c
+-                - /scripts/ping_readiness_local.sh {{ .Values.livenessProbe.timeoutSeconds }}
++                - /scripts/ping_readiness_local.sh {{ .Values.redis.readinessProbe.timeoutSeconds }}
++          {{- else if .Values.redis.customReadinessProbe }}
++          readinessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.redis.customReadinessProbe "context" $) | nindent 12 }}
+           {{- end }}
+-          {{- if .Values.resources }}
++          {{- if .Values.redis.resources }}
+           resources:
+-          {{- include "common.tplvalues.render" (dict "value" .Values.resources "context" $) | nindent 12 }}
++          {{- include "common.tplvalues.render" (dict "value" .Values.redis.resources "context" $) | nindent 12 }}
+           {{- end }}
+           volumeMounts:
+             - name: scripts
+@@ -214,8 +214,8 @@ spec:
+               mountPath: /opt/bitnami/redis/certs
+               readOnly: true
+             {{- end }}
+-            {{- if .Values.extraVolumeMounts }}
+-            {{- include "common.tplvalues.render" ( dict "value" .Values.extraVolumeMounts "context" $ ) | nindent 12 }}
++            {{- if .Values.redis.extraVolumeMounts }}
++            {{- include "common.tplvalues.render" ( dict "value" .Values.redis.extraVolumeMounts "context" $ ) | nindent 12 }}
+             {{- end }}
+         {{- if .Values.metrics.enabled }}
+         - name: metrics
+@@ -231,7 +231,7 @@ spec:
+               redis_exporter{{- range $key, $value := .Values.metrics.extraArgs }} --{{ $key }}={{ $value }}{{- end }}
+           env:
+             - name: REDIS_ALIAS
+-              value: {{ template "redis-cluster.fullname" . }}
++              value: {{ template "common.names.fullname" . }}
+             {{- if and .Values.usePassword (not .Values.usePasswordFile) }}
+             - name: REDIS_PASSWORD
+               valueFrom:
+@@ -265,15 +265,15 @@ spec:
+           resources:
+         {{- toYaml .Values.metrics.resources | nindent 12 }}
+         {{- end }}
+-        {{- if .Values.sidecars }}
+-        {{- include "common.tplvalues.render" ( dict "value" .Values.sidecars "context" $ ) | nindent 8 }}
++        {{- if .Values.redis.sidecars }}
++        {{- include "common.tplvalues.render" ( dict "value" .Values.redis.sidecars "context" $ ) | nindent 8 }}
+         {{- end }}
+       {{- $needsVolumePermissions := and .Values.volumePermissions.enabled (and  .Values.persistence.enabled .Values.containerSecurityContext.enabled) }}
+       {{- if or $needsVolumePermissions .Values.sysctlImage.enabled }}
+       initContainers:
+         {{- if $needsVolumePermissions }}
+         - name: volume-permissions
+-          image: "{{ template "redis-cluster.volumePermissions.image" . }}"
++          image: {{ include "redis-cluster.volumePermissions.image" . }}
+           imagePullPolicy: {{ .Values.volumePermissions.image.pullPolicy | quote }}
+           command: ["/bin/chown", "-R", "{{ .Values.containerSecurityContext.runAsUser }}:{{ .Values.containerSecurityContext.fsGroup }}", "{{ .Values.persistence.path }}"]
+           securityContext:
+@@ -302,14 +302,14 @@ spec:
+             privileged: true
+             runAsUser: 0
+         {{- end }}
+-        {{- if .Values.extraInitContainers }}
+-        {{- toYaml .Values.extraInitContainers | nindent 10 }}
++        {{- if .Values.redis.initContainers }}
++        {{- toYaml .Values.redis.initContainers | nindent 10 }}
+         {{- end }}
+       {{- end }}
+       volumes:
+         - name: scripts
+           configMap:
+-            name: {{ include "redis-cluster.fullname" . }}-scripts
++            name: {{ include "common.names.fullname" . }}-scripts
+             defaultMode: 0755
+         {{- if .Values.usePasswordFile }}
+         - name: redis-password
+@@ -321,7 +321,7 @@ spec:
+         {{- end }}
+         - name: default-config
+           configMap:
+-            name: {{ include "redis-cluster.fullname" . }}-default
++            name: {{ include "common.names.fullname" . }}-default
+         {{- if not .Values.persistence.enabled }}
+         - name: "redis-data"
+           emptyDir: {}
+@@ -333,13 +333,13 @@ spec:
+         {{- end }}
+         - name: redis-tmp-conf
+           emptyDir: {}
+-        {{- if .Values.extraVolumes }}
++        {{- if .Values.redis.extraVolumes }}
+         {{- include "common.tplvalues.render" ( dict "value" .Values.extraVolumes "context" $ ) | nindent 8 }}
+         {{- end }}
+         {{- if .Values.tls.enabled }}
+         - name: redis-certificates
+           secret:
+-            secretName: {{ required "A secret containing the certificates for the TLS traffic is required when TLS in enabled" .Values.tls.certificatesSecret }}
++            secretName: {{ include "common.tplvalues.render" (dict "value" .Values.tls.certificatesSecret "context" $) }}
+             defaultMode: 256
+         {{- end }}
+   {{- if .Values.persistence.enabled }}
+diff --git a/bitnami/redis-cluster/templates/redis-svc.yaml b/bitnami/redis-cluster/templates/redis-svc.yaml
+index 387f21c37a..68ac4bf506 100644
+--- a/bitnami/redis-cluster/templates/redis-svc.yaml
++++ b/bitnami/redis-cluster/templates/redis-svc.yaml
+@@ -1,14 +1,21 @@
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: {{ template "redis-cluster.fullname" . }}
+-  labels: {{- include "redis-cluster.labels" . | nindent 4 }}
++  name: {{ template "common.names.fullname" . }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
+     {{- if .Values.service.labels -}}
+     {{ include "common.tplvalues.render" ( dict "value" .Values.service.labels "context" $ ) | indent 4 }}
+     {{- end -}}
+-{{- if .Values.service.annotations }}
+-  annotations: {{ include "common.tplvalues.render" ( dict "value" .Values.service.annotations "context" $ ) | nindent 4 }}
+-{{- end }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  annotations:
++  {{- if .Values.service.annotations }}
++  {{ include "common.tplvalues.render" ( dict "value" .Values.service.annotations "context" $ ) | nindent 4 }}
++  {{- end }}
++  {{- if .Values.commonAnnotations }}
++  {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ spec:
+   type: {{ .Values.service.type }}
+   {{- if and (eq "LoadBalancer" .Values.service.type) .Values.service.loadBalancerIP }}
+@@ -18,4 +25,4 @@ spec:
+     - name: tcp-redis
+       port: {{ .Values.service.port }}
+       targetPort: tcp-redis
+-  selector: {{- include "redis-cluster.matchLabels" $ | nindent 4 }}
++  selector: {{- include "common.labels.matchLabels" $ | nindent 4 }}
+diff --git a/bitnami/redis-cluster/templates/scripts-configmap.yaml b/bitnami/redis-cluster/templates/scripts-configmap.yaml
+index c70140747d..192ff958a8 100644
+--- a/bitnami/redis-cluster/templates/scripts-configmap.yaml
++++ b/bitnami/redis-cluster/templates/scripts-configmap.yaml
+@@ -1,8 +1,14 @@
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+-  name: {{ include "redis-cluster.fullname" . }}-scripts
+-  labels: {{- include "redis-cluster.labels" . | nindent 4 }}
++  name: {{ include "common.names.fullname" . }}-scripts
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ data:
+   ping_readiness_local.sh: |-
+     {{- if .Values.usePasswordFile }}
+diff --git a/bitnami/redis-cluster/templates/secret.yaml b/bitnami/redis-cluster/templates/secret.yaml
+index b4cab5e4a7..0cb941fea2 100644
+--- a/bitnami/redis-cluster/templates/secret.yaml
++++ b/bitnami/redis-cluster/templates/secret.yaml
+@@ -2,8 +2,14 @@
+ apiVersion: v1
+ kind: Secret
+ metadata:
+-  name: {{ template "redis-cluster.fullname" . }}
+-  labels: {{- include "redis-cluster.labels" . | nindent 4 }}
++  name: {{ template "common.names.fullname" . }}
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  {{- if .Values.commonAnnotations }}
++  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
+ type: Opaque
+ data:
+   redis-password: {{ include "redis-cluster.password" . | b64enc | quote }}
+diff --git a/bitnami/redis-cluster/templates/svc-cluster-external-access.yaml b/bitnami/redis-cluster/templates/svc-cluster-external-access.yaml
+index 16ce25442d..04a1ec89e5 100644
+--- a/bitnami/redis-cluster/templates/svc-cluster-external-access.yaml
++++ b/bitnami/redis-cluster/templates/svc-cluster-external-access.yaml
+@@ -1,5 +1,5 @@
+ {{- if .Values.cluster.externalAccess.enabled }}
+-{{- $fullName := include "redis-cluster.fullname" . }}
++{{- $fullName := include "common.names.fullname" . }}
+ {{- $nodesCount := .Values.cluster.nodes | int }}
+ {{- $root := . }}
+ 
+@@ -10,10 +10,19 @@
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: {{ template "redis-cluster.fullname" $ }}-{{ $i }}-svc
+-  labels: {{- include "redis-cluster.labels" $ | nindent 4 }}
++  name: {{ template "common.names.fullname" $ }}-{{ $i }}-svc
++  labels: {{- include "common.labels.standard" $ | nindent 4 }}
+     pod: {{ $targetPod }}
+-  annotations: {{ include "common.tplvalues.render" ( dict "value" $root.Values.cluster.externalAccess.service.annotations "context" $) | nindent 4 }}
++    {{- if $root.Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" $root.Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
++  annotations:
++  {{- if $root.Values.commonAnnotations }}
++  {{- include "common.tplvalues.render" ( dict "value" $root.Values.commonAnnotations "context" $ ) | nindent 4 }}
++  {{- end }}
++  {{- if $root.Values.cluster.externalAccess.service.annotations }}
++  {{ include "common.tplvalues.render" ( dict "value" $root.Values.cluster.externalAccess.service.annotations "context" $) | nindent 4 }}
++  {{- end }}
+ spec:
+   type: {{ $root.Values.cluster.externalAccess.service.type }}
+   {{- if $root.Values.cluster.externalAccess.service.loadBalancerIP }}
+@@ -25,8 +34,8 @@ spec:
+       targetPort: tcp-redis
+     - name: tcp-redis-bus
+       targetPort: tcp-redis-bus
+-      port: {{ $root.Values.cluster.busPort }}
+-  selector: {{- include "redis-cluster.matchLabels" $ | nindent 4 }}
++      port: {{ $root.Values.redis.busPort }}
++  selector: {{- include "common.labels.matchLabels" $ | nindent 4 }}
+     statefulset.kubernetes.io/pod-name: {{ $targetPod }}
+ ---
+ {{- end }}
+diff --git a/bitnami/redis-cluster/templates/update-cluster.yaml b/bitnami/redis-cluster/templates/update-cluster.yaml
+index f530561767..0cb2809b44 100644
+--- a/bitnami/redis-cluster/templates/update-cluster.yaml
++++ b/bitnami/redis-cluster/templates/update-cluster.yaml
+@@ -2,23 +2,70 @@
+ apiVersion: batch/v1
+ kind: Job
+ metadata:
+-  name: {{ template "redis-cluster.fullname" . }}-cluster-update
+-  labels: {{- include "redis-cluster.labels" . | nindent 4 }}
++  name: {{ template "common.names.fullname" . }}-cluster-update
++  labels: {{- include "common.labels.standard" . | nindent 4 }}
++    {{- if .Values.commonLabels }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
++    {{- end }}
+   annotations:
+     "helm.sh/hook": post-upgrade
++    {{- if .Values.updateJob.annotations }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.updateJob.annotations "context" $ ) | nindent 4 }}
++    {{- end }}
++    {{- if .Values.commonAnnotations }}
++    {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
++    {{- end }}
+ spec:
+-  activeDeadlineSeconds: {{ .Values.cluster.activeDeadlineSeconds }}
++  activeDeadlineSeconds: {{ .Values.updateJob.activeDeadlineSeconds }}
+   template:
++    metadata:
++      labels: {{- include "common.labels.standard" . | nindent 8 }}
++        {{- if .Values.commonLabels }}
++        {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 8 }}
++        {{- end }}
++        {{- if .Values.updateJob.podLabels }}
++        {{- include "common.tplvalues.render" (dict "value" .Values.updateJob.podLabels "context" $) | nindent 8 }}
++        {{- end }}
++      annotations:
++        {{- if .Values.commonAnnotations }}
++        {{- include "common.tplvalues.render" (dict "value" .Values.commonAnnotations "context" $) | nindent 8 }}
++        {{- end }}
++        {{- if .Values.updateJob.podAnnotations }}
++        {{- include "common.tplvalues.render" (dict "value" .Values.updateJob.podAnnotations "context" $) | nindent 8 }}
++        {{- end }}
+     spec:
++      {{- include "redis-cluster.imagePullSecrets" . | nindent 6 }}
++      {{- if .Values.updateJob.affinity }}
++      affinity: {{- include "common.tplvalues.render" (dict "value" .Values.updateJob.affinity "context" $) | nindent 8 }}
++      {{- end }}
++      {{- if .Values.updateJob.nodeSelector }}
++      nodeSelector: {{- include "common.tplvalues.render" (dict "value" .Values.updateJob.nodeSelector "context" $) | nindent 8 }}
++      {{- end }}
++      {{- if .Values.updateJob.tolerations }}
++      tolerations: {{- include "common.tplvalues.render" (dict "value" .Values.updateJob.tolerations "context" $) | nindent 8 }}
++      {{- end }}
++      {{- if .Values.podSecurityContext }}
++      securityContext: {{- include "common.tplvalues.render" (dict "value" .Values.podSecurityContext "context" $) | nindent 8 }}
++      {{- end }}
++      {{- if .Values.updateJob.initContainers }}
++      initContainers: {{- include "common.tplvalues.render" (dict "value" .Values.updateJob.initContainers "context" $) | nindent 8 }}
++      {{- end }}
+       containers:
+         - name: trigger
+-          image: "{{ template "redis-cluster.image" . }}"
++          image: {{ include "redis-cluster.image" . }}
+           imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+           {{- if .Values.containerSecurityContext.enabled }}
+           securityContext:
+             runAsUser: {{ .Values.containerSecurityContext.runAsUser }}
+           {{- end }}
++          {{- if .Values.updateJob.command }}
++          command: {{- include "common.tplvalues.render" (dict "value" .Values.updateJob.command "context" $) | nindent 12 }}
++          {{- else }}
+           command: ['/bin/bash', '-c']
++          {{- end }}
++          {{- if .Values.updateJob.args }}
++          args: {{- include "common.tplvalues.render" (dict "value" .Values.updateJob.args "context" $) | nindent 12 }}
++          {{- else }}
+           args:
+             - |
+               . /opt/bitnami/scripts/libnet.sh
+@@ -42,7 +89,7 @@ spec:
+               {{- else }}
+               for node in $(seq $((1+{{ .Values.cluster.update.currentNumberOfNodes }})) {{ .Values.cluster.nodes }}); do
+                 new_node_index="$(($node - 1))"
+-                new_node_ip=$(wait_for_dns_lookup {{ template "redis-cluster.fullname" . }}-"$new_node_index".{{ template "redis-cluster.fullname" . }}-headless 120 5)
++                new_node_ip=$(wait_for_dns_lookup {{ template "common.names.fullname" . }}-"$new_node_index".{{ template "common.names.fullname" . }}-headless 120 5)
+                 {{- if .Values.tls.enabled }}
+                 while [[ $(redis-cli -h "$new_node_ip" -p "$REDIS_TLS_PORT" --tls --cert ${REDIS_TLS_CERT_FILE} --key ${REDIS_TLS_KEY_FILE} --cacert ${REDIS_TLS_CA_FILE} ping) != 'PONG' ]]; do
+                 {{- else }}
+@@ -51,7 +98,7 @@ spec:
+                   echo "Node $new_node_ip not ready, waiting for all the nodes to be ready..."
+                   sleep 5
+                 done
+-                firstNodeIp=$(wait_for_dns_lookup {{ template "redis-cluster.fullname" . }}-0.{{ template "redis-cluster.fullname" . }}-headless 120 5)
++                firstNodeIp=$(wait_for_dns_lookup {{ template "common.names.fullname" . }}-0.{{ template "common.names.fullname" . }}-headless 120 5)
+                 {{- if .Values.tls.enabled }}
+                 redis-cli --cluster add-node --tls --cert ${REDIS_TLS_CERT_FILE} --key ${REDIS_TLS_KEY_FILE} --cacert ${REDIS_TLS_CA_FILE} "${new_node_ip}:${REDIS_TLS_PORT}" "${firstNodeIp}:${REDIS_TLS_PORT}"
+                 {{- else }}
+@@ -59,6 +106,7 @@ spec:
+                 {{- end }}
+               done
+               {{- end }}
++          {{- end }}
+           env:
+             {{- if .Values.cluster.externalAccess.enabled }}
+             {{- if .Values.tls.enabled }}
+@@ -73,7 +121,7 @@ spec:
+             {{- else }}
+             - name: REDIS_PORT
+             {{- end }}
+-              value: {{ .Values.redisPort | quote }}
++              value: {{ .Values.redis.port | quote }}
+             {{- end }}
+             {{- if .Values.usePassword }}
+             - name: REDISCLI_AUTH
+@@ -82,15 +130,36 @@ spec:
+                   name: {{ template "redis-cluster.secretName" . }}
+                   key: {{ template "redis-cluster.secretPasswordKey" . }}
+             {{- end }}
++            {{- if .Values.updateJob.extraEnvVars }}
++            {{- include "common.tplvalues.render" (dict "value" .Values.updateJob.extraEnvVars "context" $) | nindent 12 }}
++            {{- end }}
++          envFrom:
++            {{- if .Values.updateJob.extraEnvVarsCM }}
++            - configMapRef:
++                name: {{ include "common.tplvalues.render" (dict "value" .Values.updateJob.extraEnvVarsCM "context" $) }}
++            {{- end }}
++            {{- if .Values.updateJob.extraEnvVarsSecret }}
++            - secretRef:
++                name: {{ include "common.tplvalues.render" (dict "value" .Values.updateJob.extraEnvVarsSecret "context" $) }}
++            {{- end }}
++          {{- if .Values.updateJob.resources }}
++          resources: {{- toYaml .Values.updateJob.resources | nindent 12 }}
++          {{- end }}
+           volumeMounts:
+             - name: redis-certificates
+               mountPath: /opt/bitnami/redis/certs
+               readOnly: true
++            {{- if .Values.updateJob.extraVolumeMounts }}
++            {{- include "common.tplvalues.render" (dict "value" .Values.updateJob.extraVolumeMounts "context" $) | nindent 12 }}
++            {{- end }}
+       restartPolicy: OnFailure
+-      {{- if .Values.tls.enabled }}
+       volumes:
++      {{- if .Values.tls.enabled }}
+         - name: redis-certificates
+           secret:
+-            secretName: {{ required "A secret containing the certificates for the TLS traffic is required when TLS in enabled" .Values.tls.certificatesSecret }}
+-    {{- end }}
++            secretName: {{ include "common.tplvalues.render" (dict "value" .Values.tls.certificatesSecret "context" $) }}
++      {{- end }}
++      {{- if .Values.updateJob.extraVolumes }}
++      {{- include "common.tplvalues.render" (dict "value" .Values.updateJob.extraVolumes "context" $) | nindent 6 }}
++      {{- end }}
+ {{- end }}
+diff --git a/bitnami/redis-cluster/values-production.yaml b/bitnami/redis-cluster/values-production.yaml
+index 7fbb4a2d20..9f6c568068 100644
+--- a/bitnami/redis-cluster/values-production.yaml
++++ b/bitnami/redis-cluster/values-production.yaml
+@@ -28,16 +28,16 @@ image:
+   ## Secrets must be manually created in the namespace.
+   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+   ##
+-  # pullSecrets:
++  pullSecrets:
+   #   - myRegistryKeySecretName
+ 
+ ## String to partially override redis.fullname template (will maintain the release name)
+ ##
+-# nameOverride:
++nameOverride:
+ 
+ ## String to fully override redis.fullname template
+ ##
+-# fullnameOverride:
++fullnameOverride:
+ 
+ ## Redis Cluster settings
+ ##
+@@ -45,9 +45,6 @@ cluster:
+   ## Enable the creation of a Job that will execute the proper command to create the Redis Cluster.
+   ##
+   init: true
+-  ## Number of seconds the Job to create the cluster will be waiting for the Nodes to be ready.
+-  ##
+-  activeDeadlineSeconds: 600
+   ## Number of Redis nodes to be deployed
+   ##
+   nodes: 6
+@@ -55,11 +52,9 @@ cluster:
+   ## 1 means that we want a replica for every master created
+   ##
+   replicas: 1
+-  ## The busPort should be obtained adding 10000 to the redisPort. By default: 10000 + 6379 = 16379
+-  ##
+-  busPort: 16379
+ 
+   ## Configuration to access the Redis Cluster from outside the Kubernetes cluster
++  ##
+   externalAccess:
+     enabled: false
+     service:
+@@ -73,6 +68,7 @@ cluster:
+       ##
+       loadBalancerIP: []
+       ## Service annotations done as key:value pairs
++      ##
+       annotations: {}
+ 
+   ## This section allows to update the Redis cluster nodes.
+@@ -89,9 +85,298 @@ cluster:
+     ##
+     newExternalIPs: []
+ 
+-## Specifies the Kubernetes Cluster's Domain Name.
++redis:
++  ## Custom command to override image cmd
++  ##
++  command: []
++
++  ## Custom args for the custom command:
++  ##
++  args: []
++
++  # Whether to use AOF Persistence mode or not
++  # It is strongly recommended to use this type when dealing with clusters
++  #
++  # ref: https://redis.io/topics/persistence#append-only-file
++  # ref: https://redis.io/topics/cluster-tutorial#creating-and-using-a-redis-cluster
++  useAOFPersistence: "yes"
++
++  # Redis port
++  port: 6379
++
++  ## lifecycleHooks for the container to automate configuration before or after startup.
++  ##
++  lifecycleHooks:
++
++  ## Extra volumes to add to the deployment
++  ##
++  extraVolumes: []
++
++  ## Extra volume mounts to add to the container
++  ##
++  extraVolumeMounts: []
++
++  ## Custom Liveness probe
++  ##
++  customLivenessProbe: {}
++
++  ## Custom Rediness probe
++  ##
++  customReadinessProbe: {}
++
++  ## Extra init containers to add to the deployment
++  ##
++  initContainers: []
++
++  ## Extra sidecar containers to add to the deployment
++  ##
++  sidecars: []
++
++  ## Pod extra labels
++  ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
++  ##
++  podLabels: {}
++
++  ## Priority class name
++  ##
++  priorityClassName:
++
++  ## Additional Redis configuration for the nodes
++  ## ref: https://redis.io/topics/config
++  ##
++  configmap:
++
++  ## An array to add extra env vars
++  ## For example:
++  ##
++  extraEnvVars: []
++  #  - name: BEARER_AUTH
++  #    value: true
++
++  ## ConfigMap with extra environment variables
++  ##
++  extraEnvVarsCM:
++
++  ## Secret with extra environment variables
++  ##
++  extraEnvVarsSecret:
++
++  ## Redis additional annotations
++  ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
++  ##
++  podAnnotations: {}
++
++  ## Redis resource requests and limits
++  ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
++  ##
++  resources:
++  #   requests:
++  #     memory: 256Mi
++  #     cpu: 100m
++
++  ## Use an alternate scheduler, e.g. "stork".
++  ## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
++  ##
++  schedulerName:
++
++  ## Configure extra options for Redis liveness and readiness probes
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#configure-probes)
++  ##
++  livenessProbe:
++    enabled: true
++    initialDelaySeconds: 5
++    periodSeconds: 5
++    timeoutSeconds: 5
++    successThreshold: 1
++    failureThreshold: 5
++  readinessProbe:
++    enabled: true
++    initialDelaySeconds: 5
++    periodSeconds: 5
++    timeoutSeconds: 1
++    successThreshold: 1
++    failureThreshold: 5
++
++  ## Redis Node selectors and tolerations for pod assignment
++  ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
++  ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#taints-and-tolerations-beta-feature
++  ##
++  # nodeSelector: {"beta.kubernetes.io/arch": "amd64"}
++  nodeSelector:
++  tolerations: []
++  ## Redis pod/node affinity/anti-affinity
++  ##
++  affinity: {}
++  ## The busPort should be obtained adding 10000 to the redisPort. By default: 10000 + 6379 = 16379
++  ##
++  busPort: 16379
++
++## Cluster init job settings
+ ##
+-clusterDomain: cluster.local
++initJob:
++  ## Number of seconds the Job to create the cluster will be waiting for the Nodes to be ready.
++  ##
++  activeDeadlineSeconds: 600
++  ## Container command (using container default if not set)
++  ##
++  command:
++
++  ## Container args (using container default if ot set)
++  ##
++  args:
++
++  ## Job annotations
++  ##
++  annotations: {}
++
++  ## Pod annotations
++  ##
++  podAnnotations: {}
++
++  ## An array to add extra env vars
++  ## For example:
++  ##
++  extraEnvVars: []
++  #  - name: BEARER_AUTH
++  #    value: true
++
++  ## ConfigMap with extra environment variables
++  ##
++  extraEnvVarsCM:
++
++  ## Secret with extra environment variables
++  ##
++  extraEnvVarsSecret:
++
++  ## Extra volumes to add to the deployment
++  ##
++  extraVolumes: []
++
++  ## Extra volume mounts to add to the container
++  ##
++  extraVolumeMounts: []
++
++  ## Extra init containers to add to the deployment
++  ##
++  initContainers: []
++  ## Node labels for pod assignment. Evaluated as a template.
++  ## Ref: https://kubernetes.io/docs/user-guide/node-selection/
++  ##
++  nodeSelector: {}
++  ## Pod extra labels
++  ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
++  ##
++  podLabels: {}
++  ## Tolerations for pod assignment. Evaluated as a template.
++  ## Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
++  ##
++  tolerations: []
++  ## Affinity for pod assignment. Evaluated as a template.
++  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
++  ##
++  affinity: {}
++  ## Container resource requests and limits
++  ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
++  ##
++  resources:
++    ## We usually recommend not to specify default resources and to leave this as a conscious
++    ## choice for the user. This also increases chances charts run on environments with little
++    ## resources, such as Minikube. If you do want to specify resources, uncomment the following
++    ## lines, adjust them as necessary, and remove the curly braces after 'resources:'.
++    ##
++    limits: {}
++    ##   cpu: 500m
++    ##   memory: 1Gi
++    ##
++    requests: {}
++    ##   cpu: 250m
++    ##   memory: 256Mi
++    ##
++
++## Cluster init job settings
++##
++updateJob:
++  ## Number of seconds the Job to create the cluster will be waiting for the Nodes to be ready.
++  ##
++  activeDeadlineSeconds: 600
++  ## Container command (using container default if not set)
++  ##
++  command:
++
++  ## Container args (using container default if ot set)
++  ##
++  args:
++
++  ## Job annotations
++  ##
++  annotations: {}
++
++  ## Pod annotations
++  ##
++  podAnnotations: {}
++
++  ## Pod extra labels
++  ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
++  ##
++  podLabels: {}
++
++  ## An array to add extra env vars
++  ## For example:
++  ##
++  extraEnvVars: []
++  #  - name: BEARER_AUTH
++  #    value: true
++
++  ## ConfigMap with extra environment variables
++  ##
++  extraEnvVarsCM:
++
++  ## Secret with extra environment variables
++  ##
++  extraEnvVarsSecret:
++
++  ## Extra volumes to add to the deployment
++  ##
++  extraVolumes: []
++
++  ## Extra volume mounts to add to the container
++  ##
++  extraVolumeMounts: []
++
++  ## Extra init containers to add to the deployment
++  ##
++  initContainers: []
++
++  ## Node labels for pod assignment. Evaluated as a template.
++  ## Ref: https://kubernetes.io/docs/user-guide/node-selection/
++  ##
++  nodeSelector:
++
++  ## Tolerations for pod assignment. Evaluated as a template.
++  ## Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
++  ##
++  tolerations: []
++
++  ## Redis pod/node affinity/anti-affinity
++  ##
++  affinity: {}
++  ## Container resource requests and limits
++  ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
++  ##
++  resources:
++    ## We usually recommend not to specify default resources and to leave this as a conscious
++    ## choice for the user. This also increases chances charts run on environments with little
++    ## resources, such as Minikube. If you do want to specify resources, uncomment the following
++    ## lines, adjust them as necessary, and remove the curly braces after 'resources:'.
++    ##
++    limits: {}
++    ##   cpu: 500m
++    ##   memory: 1Gi
++    ##
++    requests: {}
++    ##   cpu: 250m
++    ##   memory: 256Mi
++    ##
+ 
+ networkPolicy:
+   ## Specifies whether a NetworkPolicy should be created
+@@ -103,7 +388,7 @@ networkPolicy:
+   ## on. When true, Redis will accept connections from any source
+   ## (with the correct destination port).
+   ##
+-  # allowExternal: true
++  allowExternal: true
+ 
+   ## Allow connections from other namespacess. Just set label for namespace and set label for pods (optional).
+   ##
+@@ -116,6 +401,7 @@ serviceAccount:
+   create: false
+   ## The name of the ServiceAccount to use.
+   ## If not set and create is true, a name is generated using the fullname template
++  ##
+   name:
+ 
+ rbac:
+@@ -137,6 +423,7 @@ rbac:
+     rules: []
+ 
+ ## Redis pod Security Context
++##
+ podSecurityContext:
+   enabled: true
+   fsGroup: 1001
+@@ -145,7 +432,7 @@ podSecurityContext:
+   ##
+   ## Uncomment the setting below to increase the net.core.somaxconn value
+   ##
+-  # sysctls:
++  sysctls:
+   # - name: net.core.somaxconn
+   #   value: "10000"
+ 
+@@ -153,27 +440,28 @@ podSecurityContext:
+ ## ref: https://kubernetes.io/docs/concepts/workloads/pods/disruptions
+ ##
+ podDisruptionBudget: {}
+-  ## Min number of pods that must still be available after the eviction
+-  ##
+-  # minAvailable: 1
+-  ## Max number of pods that can be unavailable after the eviction
+-  ##
+-  # maxUnavailable: 1
++## Min number of pods that must still be available after the eviction
++##
++#   minAvailable: 1
++## Max number of pods that can be unavailable after the eviction
++##
++#   maxUnavailable: 1
+ 
+ ## Containers Security Context
++##
+ containerSecurityContext:
+   enabled: true
+-  fsGroup: 1001
+   runAsUser: 1001
+   ## sysctl settings
+   ##
+   ## Uncomment the setting below to increase the net.core.somaxconn value
+   ##
+-  # sysctls:
++  sysctls:
+   # - name: net.core.somaxconn
+   #   value: "10000"
+ 
+ ## Use password authentication
++##
+ usePassword: true
+ ## Redis password
+ ## Defaults to a random 10-character alphanumeric string if not set and usePassword is true
+@@ -181,24 +469,16 @@ usePassword: true
+ ##
+ password: ""
+ ## Use existing secret (ignores previous password)
+-# existingSecret:
++##
++existingSecret:
+ ## Password key to be retrieved from Redis secret
+ ##
+-# existingSecretPasswordKey:
++existingSecretPasswordKey:
+ 
+ ## Mount secrets as files instead of environment variables
++##
+ usePasswordFile: false
+ 
+-# Whether to use AOF Persistence mode or not
+-# It is strongly recommended to use this type when dealing with clusters
+-#
+-# ref: https://redis.io/topics/persistence#append-only-file
+-# ref: https://redis.io/topics/cluster-tutorial#creating-and-using-a-redis-cluster
+-useAOFPersistence: "yes"
+-
+-# Redis port
+-redisPort: 6379
+-
+ ##
+ ## TLS configuration
+ ##
+@@ -222,76 +502,18 @@ tls:
+   certCAFilename:
+   #
+   # File containing DH params (in order to support DH based ciphers)
+-  # dhParamsFilename:
+-
+-##
+-## Redis parameters
+-##
++  dhParamsFilename:
+ 
+-## Custom command to override image cmd
++## Annotations for all the deployed objects
+ ##
+-# command: []
+-
+-## Custom args for the cutom commad:
+-# args: []
++commonAnnotations:
+ 
+-## Additional Redis configuration for the nodes
+-## ref: https://redis.io/topics/config
+-##
+-configmap:
+-## Redis additional command line flags
++## Labels for all the deployed objects
+ ##
+-## Can be used to specify command line flags, for example:
+-##
+-## extraFlags:
+-##  - "--maxmemory-policy volatile-ttl"
+-##  - "--repl-backlog-size 1024mb"
+-extraFlags: []
+-
+-## Redis additional annotations
+-## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+-podAnnotations: {}
+-
+-## Redis resource requests and limits
+-## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+-# resources:
+-#   requests:
+-#     memory: 256Mi
+-#     cpu: 100m
+-## Use an alternate scheduler, e.g. "stork".
+-## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
+-##
+-# schedulerName:
+-
+-## Configure extra options for Redis liveness and readiness probes
+-## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#configure-probes)
+-##
+-livenessProbe:
+-  enabled: true
+-  initialDelaySeconds: 5
+-  periodSeconds: 5
+-  timeoutSeconds: 5
+-  successThreshold: 1
+-  failureThreshold: 5
+-readinessProbe:
+-  enabled: true
+-  initialDelaySeconds: 5
+-  periodSeconds: 5
+-  timeoutSeconds: 1
+-  successThreshold: 1
+-  failureThreshold: 5
+-
+-## Redis Node selectors and tolerations for pod assignment
+-## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
+-## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#taints-and-tolerations-beta-feature
+-##
+-# nodeSelector: {"beta.kubernetes.io/arch": "amd64"}
+-# tolerations: []
+-## Redis pod/node affinity/anti-affinity
+-##
+-affinity: {}
++commonLabels:
+ 
+ ## Redis Service properties for standalone mode.
++##
+ service:
+   port: 6379
+ 
+@@ -305,6 +527,7 @@ service:
+   ## Set the service type.
+   ## Setting this to LoadBalancer may require corresponding service annotations for loadbalancer creation to succeed.
+   ## Currently supported types are ClusterIP (default) and LoadBalancer
++  ##
+   type: ClusterIP
+ 
+   ## If service.type is LoadBalancer, request a specific static IP address if supported by the cloud provider.
+@@ -318,9 +541,11 @@ persistence:
+   enabled: true
+   ## The path the volume will be mounted at, useful when using different
+   ## Redis images.
++  ##
+   path: /bitnami/redis/data
+   ## The subdirectory of the volume to mount to, useful in dev environments
+   ## and one PV for multiple services.
++  ##
+   subPath: ""
+   ## Redis data Persistent Volume Storage Class
+   ## If defined, storageClassName: <storageClass>
+@@ -329,25 +554,25 @@ persistence:
+   ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+   ##   GKE, AWS & OpenStack)
+   ##
+-  # storageClass: "-"
++  storageClass:
+   accessModes:
+     - ReadWriteOnce
+   size: 8Gi
+   ## Persistent Volume selectors
+   ## https://kubernetes.io/docs/concepts/storage/persistent-volumes/#selector
++  ##
+   matchLabels: {}
+   matchExpressions: {}
+ 
+ ## Update strategy, can be set to RollingUpdate or onDelete by default.
+ ## https://kubernetes.io/docs/tutorials/stateful-application/basic-stateful-set/#updating-statefulsets
++##
+ statefulset:
+   updateStrategy: RollingUpdate
+   ## Partition update strategy
+   ## https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#partitions
+-  # rollingUpdatePartition:
+-
+-## Redis pod priorityClassName
+-# priorityClassName: {}
++  ##
++  rollingUpdatePartition:
+ 
+ ## Prometheus Exporter / Metrics
+ ##
+@@ -363,41 +588,41 @@ metrics:
+     ## Secrets must be manually created in the namespace.
+     ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+     ##
+-    # pullSecrets:
++    pullSecrets:
+     #   - myRegistryKeySecretName
+ 
+   ## Metrics exporter resource requests and limits
+   ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+   ##
+-  # resources: {}
++  resources: {}
+ 
+   ## Extra arguments for Metrics exporter, for example:
+   ## extraArgs:
+   ##   check-keys: myKey,myOtherKey
+-  # extraArgs: {}
++  ##
++  extraArgs: {}
+ 
+   ## Metrics exporter pod Annotation and Labels
++  ##
+   podAnnotations:
+     prometheus.io/scrape: "true"
+     prometheus.io/port: "9121"
+-  # podLabels: {}
++  podLabels: {}
+ 
+   # Enable this if you're using https://github.com/coreos/prometheus-operator
+   serviceMonitor:
+     enabled: false
+     ## Specify a namespace if needed
+-    # namespace: monitoring
+-    # fallback to the prometheus default unless specified
+-    # interval: 10s
+-    ## Defaults to what's used if you follow CoreOS [Prometheus Install Instructions](https://github.com/helm/charts/tree/master/stable/prometheus-operator#tldr)
+-    ## [Prometheus Selector Label](https://github.com/helm/charts/tree/master/stable/prometheus-operator#prometheus-operator-1)
+-    ## [Kube Prometheus Selector Label](https://github.com/helm/charts/tree/master/stable/prometheus-operator#exporters)
+-    selector:
+-      prometheus: kube-prometheus
++    ##
++    namespace:
++    ## fallback to the prometheus default unless specified
++    ##
++    interval:
+ 
+   ## Custom PrometheusRule to be defined
+   ## The value is evaluated as a template, so, for example, the value can depend on .Release or .Chart
+   ## ref: https://github.com/coreos/prometheus-operator#customresourcedefinitions
++  ##
+   prometheusRule:
+     enabled: false
+     additionalLabels: {}
+@@ -406,7 +631,7 @@ metrics:
+     ## These are just examples rules, please adapt them to your needs.
+     ## Make sure to constraint the rules to the current postgresql service.
+     #  - alert: RedisDown
+-    #    expr: redis_up{service="{{ template "redis-cluster.fullname" . }}-metrics"} == 0
++    #    expr: redis_up{service="{{ template "common.names.fullname" . }}-metrics"} == 0
+     #    for: 2m
+     #    labels:
+     #      severity: error
+@@ -415,9 +640,9 @@ metrics:
+     #      description: Redis instance {{ "{{ $instance }}" }} is down.
+     #  - alert: RedisMemoryHigh
+     #    expr: >
+-    #       redis_memory_used_bytes{service="{{ template "redis-cluster.fullname" . }}-metrics"} * 100
++    #       redis_memory_used_bytes{service="{{ template "common.names.fullname" . }}-metrics"} * 100
+     #       /
+-    #       redis_memory_max_bytes{service="{{ template "redis-cluster.fullname" . }}-metrics"}
++    #       redis_memory_max_bytes{service="{{ template "common.names.fullname" . }}-metrics"}
+     #       > 90 =< 100
+     #    for: 2m
+     #    labels:
+@@ -426,7 +651,7 @@ metrics:
+     #      summary: Redis instance {{ "{{ $instance }}" }} is using too much memory
+     #      description: Redis instance {{ "{{ $instance }}" }} is using {{ "{{ $value }}" }}% of its available memory.
+     #  - alert: RedisKeyEviction
+-    #    expr: increase(redis_evicted_keys_total{service="{{ template "redis-cluster.fullname" . }}-metrics"}[5m]) > 0
++    #    expr: increase(redis_evicted_keys_total{service="{{ template "common.names.fullname" . }}-metrics"}[5m]) > 0
+     #    for: 1s
+     #    labels:
+     #      severity: error
+@@ -440,7 +665,8 @@ metrics:
+     type: ClusterIP
+     ## Use serviceLoadBalancerIP to request a specific static IP,
+     ## otherwise leave blank
+-    # loadBalancerIP:
++    ##
++    loadBalancerIP:
+     annotations: {}
+     labels: {}
+ 
+@@ -459,7 +685,7 @@ volumePermissions:
+     ## Secrets must be manually created in the namespace.
+     ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+     ##
+-    # pullSecrets:
++    pullSecrets:
+     #   - myRegistryKeySecretName
+   resources: {}
+   # resources:
+@@ -469,6 +695,7 @@ volumePermissions:
+ 
+ ## Sysctl InitContainer
+ ## used to perform sysctl operation to modify Kernel settings (needed sometimes to avoid warnings)
++##
+ sysctlImage:
+   enabled: false
+   command: []
+@@ -480,7 +707,7 @@ sysctlImage:
+   ## Secrets must be manually created in the namespace.
+   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+   ##
+-  # pullSecrets:
++  pullSecrets:
+   #   - myRegistryKeySecretName
+   mountHostSys: false
+   resources: {}
+@@ -497,41 +724,6 @@ podSecurityPolicy:
+   ##
+   create: false
+ 
+-## Array to add extra volumes
+-##
+-extraVolumes: []
+-
+-## Array to add extra mounts (normally used with extraVolumes)
+-##
+-extraVolumeMounts: []
+-
+-## An array to add extra env vars
+-## For example:
+-## extraEnvVars:
+-##  - name: MY_ENV_VAR
+-##    value: env_var_value
+-##
+-extraEnvVars: []
+-
+-## Name of a ConfigMap containing extra env vars
+-##
+-extraEnvVarsConfigMap:
+-
+-## Name of a Secret containing extra env vars
+-##
+-extraEnvVarsSecret:
+-
+-## Add your own init container or uncomment and modify the given example.
+-##
+-extraInitContainers: {}
+-
+-## Add sidecars to the pod
++## Array with extra yaml to deploy with the chart. Evaluated as a template
+ ##
+-sidecars: {}
+-## e.g.
+-# - name: your-image-name
+-#   image: your-image
+-#   imagePullPolicy: Always
+-#   ports:
+-#     - name: portname
+-#       containerPort: 1234
++extraDeploy: []
+diff --git a/bitnami/redis-cluster/values.yaml b/bitnami/redis-cluster/values.yaml
+index 3ab6972bad..ca4a7be142 100644
+--- a/bitnami/redis-cluster/values.yaml
++++ b/bitnami/redis-cluster/values.yaml
+@@ -28,16 +28,16 @@ image:
+   ## Secrets must be manually created in the namespace.
+   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+   ##
+-  # pullSecrets:
++  pullSecrets:
+   #   - myRegistryKeySecretName
+ 
+ ## String to partially override redis.fullname template (will maintain the release name)
+ ##
+-# nameOverride:
++nameOverride:
+ 
+ ## String to fully override redis.fullname template
+ ##
+-# fullnameOverride:
++fullnameOverride:
+ 
+ ## Redis Cluster settings
+ ##
+@@ -45,9 +45,6 @@ cluster:
+   ## Enable the creation of a Job that will execute the proper command to create the Redis Cluster.
+   ##
+   init: true
+-  ## Number of seconds the Job to create the cluster will be waiting for the Nodes to be ready.
+-  ##
+-  activeDeadlineSeconds: 600
+   ## Number of Redis nodes to be deployed
+   ##
+   nodes: 6
+@@ -55,11 +52,9 @@ cluster:
+   ## 1 means that we want a replica for every master created
+   ##
+   replicas: 1
+-  ## The busPort should be obtained adding 10000 to the redisPort. By default: 10000 + 6379 = 16379
+-  ##
+-  busPort: 16379
+ 
+   ## Configuration to access the Redis Cluster from outside the Kubernetes cluster
++  ##
+   externalAccess:
+     enabled: false
+     service:
+@@ -73,6 +68,7 @@ cluster:
+       ##
+       loadBalancerIP: []
+       ## Service annotations done as key:value pairs
++      ##
+       annotations: {}
+ 
+   ## This section allows to update the Redis cluster nodes.
+@@ -89,9 +85,298 @@ cluster:
+     ##
+     newExternalIPs: []
+ 
+-## Specifies the Kubernetes Cluster's Domain Name.
++redis:
++  ## Custom command to override image cmd
++  ##
++  command: []
++
++  ## Custom args for the custom command:
++  ##
++  args: []
++
++  # Whether to use AOF Persistence mode or not
++  # It is strongly recommended to use this type when dealing with clusters
++  #
++  # ref: https://redis.io/topics/persistence#append-only-file
++  # ref: https://redis.io/topics/cluster-tutorial#creating-and-using-a-redis-cluster
++  useAOFPersistence: "yes"
++
++  # Redis port
++  port: 6379
++
++  ## lifecycleHooks for the container to automate configuration before or after startup.
++  ##
++  lifecycleHooks:
++
++  ## Extra volumes to add to the deployment
++  ##
++  extraVolumes: []
++
++  ## Extra volume mounts to add to the container
++  ##
++  extraVolumeMounts: []
++
++  ## Custom Liveness probe
++  ##
++  customLivenessProbe: {}
++
++  ## Custom Rediness probe
++  ##
++  customReadinessProbe: {}
++
++  ## Extra init containers to add to the deployment
++  ##
++  initContainers: []
++
++  ## Extra sidecar containers to add to the deployment
++  ##
++  sidecars: []
++
++  ## Pod extra labels
++  ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
++  ##
++  podLabels: {}
++
++  ## Priority class name
++  ##
++  priorityClassName:
++
++  ## Additional Redis configuration for the nodes
++  ## ref: https://redis.io/topics/config
++  ##
++  configmap:
++
++  ## An array to add extra env vars
++  ## For example:
++  ##
++  extraEnvVars: []
++  #  - name: BEARER_AUTH
++  #    value: true
++
++  ## ConfigMap with extra environment variables
++  ##
++  extraEnvVarsCM:
++
++  ## Secret with extra environment variables
++  ##
++  extraEnvVarsSecret:
++
++  ## Redis additional annotations
++  ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
++  ##
++  podAnnotations: {}
++
++  ## Redis resource requests and limits
++  ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
++  ##
++  resources:
++  #   requests:
++  #     memory: 256Mi
++  #     cpu: 100m
++
++  ## Use an alternate scheduler, e.g. "stork".
++  ## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
++  ##
++  schedulerName:
++
++  ## Configure extra options for Redis liveness and readiness probes
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#configure-probes)
++  ##
++  livenessProbe:
++    enabled: true
++    initialDelaySeconds: 5
++    periodSeconds: 5
++    timeoutSeconds: 5
++    successThreshold: 1
++    failureThreshold: 5
++  readinessProbe:
++    enabled: true
++    initialDelaySeconds: 5
++    periodSeconds: 5
++    timeoutSeconds: 1
++    successThreshold: 1
++    failureThreshold: 5
++
++  ## Redis Node selectors and tolerations for pod assignment
++  ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
++  ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#taints-and-tolerations-beta-feature
++  ##
++  # nodeSelector: {"beta.kubernetes.io/arch": "amd64"}
++  nodeSelector:
++  tolerations: []
++  ## Redis pod/node affinity/anti-affinity
++  ##
++  affinity: {}
++  ## The busPort should be obtained adding 10000 to the redisPort. By default: 10000 + 6379 = 16379
++  ##
++  busPort: 16379
++
++## Cluster init job settings
+ ##
+-clusterDomain: cluster.local
++initJob:
++  ## Number of seconds the Job to create the cluster will be waiting for the Nodes to be ready.
++  ##
++  activeDeadlineSeconds: 600
++  ## Container command (using container default if not set)
++  ##
++  command:
++
++  ## Container args (using container default if ot set)
++  ##
++  args:
++
++  ## Job annotations
++  ##
++  annotations: {}
++
++  ## Pod annotations
++  ##
++  podAnnotations: {}
++
++  ## An array to add extra env vars
++  ## For example:
++  ##
++  extraEnvVars: []
++  #  - name: BEARER_AUTH
++  #    value: true
++
++  ## ConfigMap with extra environment variables
++  ##
++  extraEnvVarsCM:
++
++  ## Secret with extra environment variables
++  ##
++  extraEnvVarsSecret:
++
++  ## Extra volumes to add to the deployment
++  ##
++  extraVolumes: []
++
++  ## Extra volume mounts to add to the container
++  ##
++  extraVolumeMounts: []
++
++  ## Extra init containers to add to the deployment
++  ##
++  initContainers: []
++  ## Node labels for pod assignment. Evaluated as a template.
++  ## Ref: https://kubernetes.io/docs/user-guide/node-selection/
++  ##
++  nodeSelector: {}
++  ## Pod extra labels
++  ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
++  ##
++  podLabels: {}
++  ## Tolerations for pod assignment. Evaluated as a template.
++  ## Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
++  ##
++  tolerations: []
++  ## Affinity for pod assignment. Evaluated as a template.
++  ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
++  ##
++  affinity: {}
++  ## Container resource requests and limits
++  ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
++  ##
++  resources:
++    ## We usually recommend not to specify default resources and to leave this as a conscious
++    ## choice for the user. This also increases chances charts run on environments with little
++    ## resources, such as Minikube. If you do want to specify resources, uncomment the following
++    ## lines, adjust them as necessary, and remove the curly braces after 'resources:'.
++    ##
++    limits: {}
++    ##   cpu: 500m
++    ##   memory: 1Gi
++    ##
++    requests: {}
++    ##   cpu: 250m
++    ##   memory: 256Mi
++    ##
++
++## Cluster init job settings
++##
++updateJob:
++  ## Number of seconds the Job to create the cluster will be waiting for the Nodes to be ready.
++  ##
++  activeDeadlineSeconds: 600
++  ## Container command (using container default if not set)
++  ##
++  command:
++
++  ## Container args (using container default if ot set)
++  ##
++  args:
++
++  ## Job annotations
++  ##
++  annotations: {}
++
++  ## Pod annotations
++  ##
++  podAnnotations: {}
++
++  ## Pod extra labels
++  ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
++  ##
++  podLabels: {}
++
++  ## An array to add extra env vars
++  ## For example:
++  ##
++  extraEnvVars: []
++  #  - name: BEARER_AUTH
++  #    value: true
++
++  ## ConfigMap with extra environment variables
++  ##
++  extraEnvVarsCM:
++
++  ## Secret with extra environment variables
++  ##
++  extraEnvVarsSecret:
++
++  ## Extra volumes to add to the deployment
++  ##
++  extraVolumes: []
++
++  ## Extra volume mounts to add to the container
++  ##
++  extraVolumeMounts: []
++
++  ## Extra init containers to add to the deployment
++  ##
++  initContainers: []
++
++  ## Node labels for pod assignment. Evaluated as a template.
++  ## Ref: https://kubernetes.io/docs/user-guide/node-selection/
++  ##
++  nodeSelector:
++
++  ## Tolerations for pod assignment. Evaluated as a template.
++  ## Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
++  ##
++  tolerations: []
++
++  ## Redis pod/node affinity/anti-affinity
++  ##
++  affinity: {}
++  ## Container resource requests and limits
++  ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
++  ##
++  resources:
++    ## We usually recommend not to specify default resources and to leave this as a conscious
++    ## choice for the user. This also increases chances charts run on environments with little
++    ## resources, such as Minikube. If you do want to specify resources, uncomment the following
++    ## lines, adjust them as necessary, and remove the curly braces after 'resources:'.
++    ##
++    limits: {}
++    ##   cpu: 500m
++    ##   memory: 1Gi
++    ##
++    requests: {}
++    ##   cpu: 250m
++    ##   memory: 256Mi
++    ##
+ 
+ networkPolicy:
+   ## Specifies whether a NetworkPolicy should be created
+@@ -103,7 +388,7 @@ networkPolicy:
+   ## on. When true, Redis will accept connections from any source
+   ## (with the correct destination port).
+   ##
+-  # allowExternal: true
++  allowExternal: true
+ 
+   ## Allow connections from other namespacess. Just set label for namespace and set label for pods (optional).
+   ##
+@@ -116,6 +401,7 @@ serviceAccount:
+   create: false
+   ## The name of the ServiceAccount to use.
+   ## If not set and create is true, a name is generated using the fullname template
++  ##
+   name:
+ 
+ rbac:
+@@ -137,15 +423,15 @@ rbac:
+     rules: []
+ 
+ ## Redis pod Security Context
++##
+ podSecurityContext:
+-  enabled: true
+   fsGroup: 1001
+   runAsUser: 1001
+   ## sysctl settings
+   ##
+   ## Uncomment the setting below to increase the net.core.somaxconn value
+   ##
+-  # sysctls:
++  sysctls:
+   # - name: net.core.somaxconn
+   #   value: "10000"
+ 
+@@ -153,27 +439,27 @@ podSecurityContext:
+ ## ref: https://kubernetes.io/docs/concepts/workloads/pods/disruptions
+ ##
+ podDisruptionBudget: {}
+-  ## Min number of pods that must still be available after the eviction
+-  ##
+-  # minAvailable: 1
+-  ## Max number of pods that can be unavailable after the eviction
+-  ##
+-  # maxUnavailable: 1
++## Min number of pods that must still be available after the eviction
++##
++#   minAvailable: 1
++## Max number of pods that can be unavailable after the eviction
++##
++#   maxUnavailable: 1
+ 
+ ## Containers Security Context
++##
+ containerSecurityContext:
+-  enabled: true
+-  fsGroup: 1001
+   runAsUser: 1001
+   ## sysctl settings
+   ##
+   ## Uncomment the setting below to increase the net.core.somaxconn value
+   ##
+-  # sysctls:
++  sysctls:
+   # - name: net.core.somaxconn
+   #   value: "10000"
+ 
+ ## Use password authentication
++##
+ usePassword: true
+ ## Redis password
+ ## Defaults to a random 10-character alphanumeric string if not set and usePassword is true
+@@ -181,24 +467,16 @@ usePassword: true
+ ##
+ password: ""
+ ## Use existing secret (ignores previous password)
+-# existingSecret:
++##
++existingSecret:
+ ## Password key to be retrieved from Redis secret
+ ##
+-# existingSecretPasswordKey:
++existingSecretPasswordKey:
+ 
+ ## Mount secrets as files instead of environment variables
++##
+ usePasswordFile: false
+ 
+-# Whether to use AOF Persistence mode or not
+-# It is strongly recommended to use this type when dealing with clusters
+-#
+-# ref: https://redis.io/topics/persistence#append-only-file
+-# ref: https://redis.io/topics/cluster-tutorial#creating-and-using-a-redis-cluster
+-useAOFPersistence: "yes"
+-
+-# Redis port
+-redisPort: 6379
+-
+ ##
+ ## TLS configuration
+ ##
+@@ -222,76 +500,18 @@ tls:
+   certCAFilename:
+   #
+   # File containing DH params (in order to support DH based ciphers)
+-  # dhParamsFilename:
+-
+-##
+-## Redis parameters
+-##
++  dhParamsFilename:
+ 
+-## Custom command to override image cmd
++## Annotations for all the deployed objects
+ ##
+-# command: []
+-
+-## Custom args for the cutom commad:
+-# args: []
++commonAnnotations:
+ 
+-## Additional Redis configuration for the nodes
+-## ref: https://redis.io/topics/config
+-##
+-configmap:
+-## Redis additional command line flags
+-##
+-## Can be used to specify command line flags, for example:
+-##
+-## extraFlags:
+-##  - "--maxmemory-policy volatile-ttl"
+-##  - "--repl-backlog-size 1024mb"
+-extraFlags: []
+-
+-## Redis additional annotations
+-## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+-podAnnotations: {}
+-
+-## Redis resource requests and limits
+-## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+-# resources:
+-#   requests:
+-#     memory: 256Mi
+-#     cpu: 100m
+-## Use an alternate scheduler, e.g. "stork".
+-## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
++## Labels for all the deployed objects
+ ##
+-# schedulerName:
+-
+-## Configure extra options for Redis liveness and readiness probes
+-## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#configure-probes)
+-##
+-livenessProbe:
+-  enabled: true
+-  initialDelaySeconds: 5
+-  periodSeconds: 5
+-  timeoutSeconds: 5
+-  successThreshold: 1
+-  failureThreshold: 5
+-readinessProbe:
+-  enabled: true
+-  initialDelaySeconds: 5
+-  periodSeconds: 5
+-  timeoutSeconds: 1
+-  successThreshold: 1
+-  failureThreshold: 5
+-
+-## Redis Node selectors and tolerations for pod assignment
+-## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
+-## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#taints-and-tolerations-beta-feature
+-##
+-# nodeSelector: {"beta.kubernetes.io/arch": "amd64"}
+-# tolerations: []
+-## Redis pod/node affinity/anti-affinity
+-##
+-affinity: {}
++commonLabels:
+ 
+ ## Redis Service properties for standalone mode.
++##
+ service:
+   port: 6379
+ 
+@@ -305,6 +525,7 @@ service:
+   ## Set the service type.
+   ## Setting this to LoadBalancer may require corresponding service annotations for loadbalancer creation to succeed.
+   ## Currently supported types are ClusterIP (default) and LoadBalancer
++  ##
+   type: ClusterIP
+ 
+   ## If service.type is LoadBalancer, request a specific static IP address if supported by the cloud provider.
+@@ -318,9 +539,11 @@ persistence:
+   enabled: true
+   ## The path the volume will be mounted at, useful when using different
+   ## Redis images.
++  ##
+   path: /bitnami/redis/data
+   ## The subdirectory of the volume to mount to, useful in dev environments
+   ## and one PV for multiple services.
++  ##
+   subPath: ""
+   ## Redis data Persistent Volume Storage Class
+   ## If defined, storageClassName: <storageClass>
+@@ -329,25 +552,25 @@ persistence:
+   ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+   ##   GKE, AWS & OpenStack)
+   ##
+-  # storageClass: "-"
++  storageClass:
+   accessModes:
+     - ReadWriteOnce
+   size: 8Gi
+   ## Persistent Volume selectors
+   ## https://kubernetes.io/docs/concepts/storage/persistent-volumes/#selector
++  ##
+   matchLabels: {}
+   matchExpressions: {}
+ 
+ ## Update strategy, can be set to RollingUpdate or onDelete by default.
+ ## https://kubernetes.io/docs/tutorials/stateful-application/basic-stateful-set/#updating-statefulsets
++##
+ statefulset:
+   updateStrategy: RollingUpdate
+   ## Partition update strategy
+   ## https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#partitions
+-  # rollingUpdatePartition:
+-
+-## Redis pod priorityClassName
+-# priorityClassName: {}
++  ##
++  rollingUpdatePartition:
+ 
+ ## Prometheus Exporter / Metrics
+ ##
+@@ -363,41 +586,41 @@ metrics:
+     ## Secrets must be manually created in the namespace.
+     ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+     ##
+-    # pullSecrets:
++    pullSecrets:
+     #   - myRegistryKeySecretName
+ 
+   ## Metrics exporter resource requests and limits
+   ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+   ##
+-  # resources: {}
++  resources: {}
+ 
+   ## Extra arguments for Metrics exporter, for example:
+   ## extraArgs:
+   ##   check-keys: myKey,myOtherKey
+-  # extraArgs: {}
++  ##
++  extraArgs: {}
+ 
+   ## Metrics exporter pod Annotation and Labels
++  ##
+   podAnnotations:
+     prometheus.io/scrape: "true"
+     prometheus.io/port: "9121"
+-  # podLabels: {}
++  podLabels: {}
+ 
+   # Enable this if you're using https://github.com/coreos/prometheus-operator
+   serviceMonitor:
+     enabled: false
+     ## Specify a namespace if needed
+-    # namespace: monitoring
+-    # fallback to the prometheus default unless specified
+-    # interval: 10s
+-    ## Defaults to what's used if you follow CoreOS [Prometheus Install Instructions](https://github.com/helm/charts/tree/master/stable/prometheus-operator#tldr)
+-    ## [Prometheus Selector Label](https://github.com/helm/charts/tree/master/stable/prometheus-operator#prometheus-operator-1)
+-    ## [Kube Prometheus Selector Label](https://github.com/helm/charts/tree/master/stable/prometheus-operator#exporters)
+-    selector:
+-      prometheus: kube-prometheus
++    ##
++    namespace:
++    ## fallback to the prometheus default unless specified
++    ##
++    interval:
+ 
+   ## Custom PrometheusRule to be defined
+   ## The value is evaluated as a template, so, for example, the value can depend on .Release or .Chart
+   ## ref: https://github.com/coreos/prometheus-operator#customresourcedefinitions
++  ##
+   prometheusRule:
+     enabled: false
+     additionalLabels: {}
+@@ -406,7 +629,7 @@ metrics:
+     ## These are just examples rules, please adapt them to your needs.
+     ## Make sure to constraint the rules to the current postgresql service.
+     #  - alert: RedisDown
+-    #    expr: redis_up{service="{{ template "redis-cluster.fullname" . }}-metrics"} == 0
++    #    expr: redis_up{service="{{ template "common.names.fullname" . }}-metrics"} == 0
+     #    for: 2m
+     #    labels:
+     #      severity: error
+@@ -415,9 +638,9 @@ metrics:
+     #      description: Redis instance {{ "{{ $instance }}" }} is down.
+     #  - alert: RedisMemoryHigh
+     #    expr: >
+-    #       redis_memory_used_bytes{service="{{ template "redis-cluster.fullname" . }}-metrics"} * 100
++    #       redis_memory_used_bytes{service="{{ template "common.names.fullname" . }}-metrics"} * 100
+     #       /
+-    #       redis_memory_max_bytes{service="{{ template "redis-cluster.fullname" . }}-metrics"}
++    #       redis_memory_max_bytes{service="{{ template "common.names.fullname" . }}-metrics"}
+     #       > 90 =< 100
+     #    for: 2m
+     #    labels:
+@@ -426,7 +649,7 @@ metrics:
+     #      summary: Redis instance {{ "{{ $instance }}" }} is using too much memory
+     #      description: Redis instance {{ "{{ $instance }}" }} is using {{ "{{ $value }}" }}% of its available memory.
+     #  - alert: RedisKeyEviction
+-    #    expr: increase(redis_evicted_keys_total{service="{{ template "redis-cluster.fullname" . }}-metrics"}[5m]) > 0
++    #    expr: increase(redis_evicted_keys_total{service="{{ template "common.names.fullname" . }}-metrics"}[5m]) > 0
+     #    for: 1s
+     #    labels:
+     #      severity: error
+@@ -440,7 +663,8 @@ metrics:
+     type: ClusterIP
+     ## Use serviceLoadBalancerIP to request a specific static IP,
+     ## otherwise leave blank
+-    # loadBalancerIP:
++    ##
++    loadBalancerIP:
+     annotations: {}
+     labels: {}
+ 
+@@ -459,7 +683,7 @@ volumePermissions:
+     ## Secrets must be manually created in the namespace.
+     ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+     ##
+-    # pullSecrets:
++    pullSecrets:
+     #   - myRegistryKeySecretName
+   resources: {}
+   # resources:
+@@ -469,6 +693,7 @@ volumePermissions:
+ 
+ ## Sysctl InitContainer
+ ## used to perform sysctl operation to modify Kernel settings (needed sometimes to avoid warnings)
++##
+ sysctlImage:
+   enabled: false
+   command: []
+@@ -480,7 +705,7 @@ sysctlImage:
+   ## Secrets must be manually created in the namespace.
+   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+   ##
+-  # pullSecrets:
++  pullSecrets:
+   #   - myRegistryKeySecretName
+   mountHostSys: false
+   resources: {}
+@@ -497,41 +722,6 @@ podSecurityPolicy:
+   ##
+   create: false
+ 
+-## Array to add extra volumes
+-##
+-extraVolumes: []
+-
+-## Array to add extra mounts (normally used with extraVolumes)
+-##
+-extraVolumeMounts: []
+-
+-## An array to add extra env vars
+-## For example:
+-## extraEnvVars:
+-##  - name: MY_ENV_VAR
+-##    value: env_var_value
+-##
+-extraEnvVars: []
+-
+-## Name of a ConfigMap containing extra env vars
+-##
+-extraEnvVarsConfigMap:
+-
+-## Name of a Secret containing extra env vars
+-##
+-extraEnvVarsSecret:
+-
+-## Add your own init container or uncomment and modify the given example.
+-##
+-extraInitContainers: {}
+-
+-## Add sidecars to the pod
++## Array with extra yaml to deploy with the chart. Evaluated as a template
+ ##
+-sidecars: {}
+-## e.g.
+-# - name: your-image-name
+-#   image: your-image
+-#   imagePullPolicy: Always
+-#   ports:
+-#     - name: portname
+-#       containerPort: 1234
++extraDeploy: []

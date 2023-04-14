@@ -1,0 +1,5043 @@
+commit 7eacbd2eb917a38cdb3f1cd13e18d091ab86dc6c (from 16317aa36a903d7eae8c513deb367b3fe4a46b2d)
+Merge: 16317aa36 af63f0807
+Author: jetstack-bot <32282838+jetstack-bot@users.noreply.github.com>
+Date:   Tue Jan 28 23:37:03 2020 +0000
+
+    Merge pull request #2534 from munnerz/e3e-setup
+    
+    Refactor e2e setup to be useful for local development and clean up e2e test addons
+
+diff --git a/BUILD.bazel b/BUILD.bazel
+index f4125270a..0e09c6fdc 100644
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -50,6 +50,7 @@ filegroup(
+         "//cmd/controller:all-srcs",
+         "//cmd/webhook:all-srcs",
+         "//deploy:all-srcs",
++        "//devel:all-srcs",
+         "//hack:all-srcs",
+         "//pkg/acme:all-srcs",
+         "//pkg/api:all-srcs",
+diff --git a/Makefile b/Makefile
+index 82d3893ad..2031f9661 100644
+--- a/Makefile
++++ b/Makefile
+@@ -86,24 +86,6 @@ $(CMDS):
+ 	bazel build \
+ 		//cmd/$@
+ 
+-e2e_test:
+-	mkdir -p "$$(pwd)/_artifacts"
+-	bazel build //hack/bin:helm //test/e2e:e2e.test
+-	# Run e2e tests
+-	KUBECONFIG=$(KUBECONFIG) \
+-		bazel run @com_github_onsi_ginkgo//ginkgo -- \
+-			-nodes 10 \
+-			-flakeAttempts $(FLAKE_ATTEMPTS) \
+-			$$(bazel info bazel-genfiles)/test/e2e/e2e.test \
+-			-- \
+-			--helm-binary-path=$$(bazel info bazel-genfiles)/hack/bin/helm \
+-			--repo-root="$$(pwd)" \
+-			--report-dir="$${ARTIFACTS:-./_artifacts}" \
+-			--ginkgo.skip="$(GINKGO_SKIP)" \
+-			--ginkgo.focus="$(GINKGO_FOCUS)" \
+-			--skip-globals=$(SKIP_GLOBALS) \
+-			--kubectl-path="$(KUBECTL)"
+-
+ # Generate targets
+ ##################
+ generate:
+diff --git a/devel/BUILD.bazel b/devel/BUILD.bazel
+new file mode 100644
+index 000000000..710dad719
+--- /dev/null
++++ b/devel/BUILD.bazel
+@@ -0,0 +1,20 @@
++filegroup(
++    name = "package-srcs",
++    srcs = glob(["**"]),
++    tags = ["automanaged"],
++    visibility = ["//visibility:private"],
++)
++
++filegroup(
++    name = "all-srcs",
++    srcs = [
++        ":package-srcs",
++        "//devel/addon/certmanager:all-srcs",
++        "//devel/addon/ingressnginx:all-srcs",
++        "//devel/addon/pebble:all-srcs",
++        "//devel/addon/samplewebhook:all-srcs",
++        "//devel/addon/vault:all-srcs",
++    ],
++    tags = ["automanaged"],
++    visibility = ["//visibility:public"],
++)
+diff --git a/devel/README.md b/devel/README.md
+new file mode 100644
+index 000000000..fae3db7b9
+--- /dev/null
++++ b/devel/README.md
+@@ -0,0 +1,100 @@
++# Development tooling
++
++This directory contains tools and scripts used to create development and
++testing environments for cert-manager.
++
++## Tool dependencies
++
++The scripts in this directory commonly require additional tooling, such as
++access to `kubectl`, `helm`, `kind` and a bunch of other things.
++
++If you already have these tools available on your host system, the scripts
++should just work, so long as the versions you have installed are roughly
++compatible.
++
++If you are running into issues with your host-installed tools, Bazel provides
++versioned access to all of the required tools for the e3e scripts.
++
++To setup your shell to use the Bazel provided versions of these tools, run the
++following from the **root of the repository**:
++
++```console
++export PATH="$(pwd)/devel/bin:$PATH"
++```
++
++## Common usages
++
++This section describes common usage patterns for development and testing.
++
++### Creating a kind cluster
++
++To create a kind cluster that can be used for both development and testing, run
++`./devel/cluster/create.sh` from the root of the cert-manager repository:
++
++```console
++./devel/cluster/create.sh
++```
++
++You can change the name of the kind cluster created by setting:
++
++```console
++export KIND_CLUSTER_NAME=custom-cluster-name
++```
++
++If a cluster with the same name already exists, it will **not** be recreated
++and instead will be reused.
++
++### Installing a development build of cert-manager
++
++Once you have a kind cluster running, you can install a development version of
++cert-manager by running:
++
++```console
++./devel/addon/certmanager/install.sh
++```
++
++This will build, load and install cert-manager from source into your kind
++development cluster.
++
++Further invocations of the `install.sh` script will rebuild and upgrade the
++installed version of cert-manager, making it possible to iteratively work on
++the codebase and test changes.
++
++### Running end-to-end tests
++
++Before running the end-to-end tests, you must install some additional
++components used during the tests into your kind cluster.
++
++Run the following to setup persistent test instances of Pebble, ingress-nginx,
++and a sample DNS01 webhook:
++
++```console
++./devel/setup-e2e-deps.sh
++```
++
++You only need to run this command once for the lifetime of your test cluster.
++
++If you haven't already, deploy a new test build of cert-manager:
++
++```console
++./devel/addon/certmanager/install.sh
++```
++
++Finally, run the end-to-test tests using:
++
++```console
++./devel/run-e2e.sh
++```
++
++You can run this command multiple times against the same cluster without
++adverse effects.
++
++### Deleting the test cluster
++
++Once you have finished with your testing environment, or if you have
++encountered a strange state you cannot recover from, you can tear down the
++testing environment by using `kind` directly:
++
++```console
++kind delete cluster [--name=$KIND_CLUSTER_NAME]
++```
+diff --git a/devel/addon/README.md b/devel/addon/README.md
+new file mode 100644
+index 000000000..501399cf3
+--- /dev/null
++++ b/devel/addon/README.md
+@@ -0,0 +1,11 @@
++# End-to-end test addons
++
++This directory contains code for deploying instances of addons used during
++end-to-end tests and whilst developing.
++
++This includes things like [Vault](https://www.vaultproject.io/),
++[ingress-nginx](https://github.com/kubernetes/ingress-nginx) and
++[Pebble](https://github.com/letsencrypt/pebble) amongst others.
++
++These tools are designed to be easily reusable during tests or by developers
++when testing out new features or writing tests.
+diff --git a/devel/addon/certmanager/BUILD.bazel b/devel/addon/certmanager/BUILD.bazel
+new file mode 100644
+index 000000000..c02127cb3
+--- /dev/null
++++ b/devel/addon/certmanager/BUILD.bazel
+@@ -0,0 +1,26 @@
++load("@io_bazel_rules_docker//container:bundle.bzl", "container_bundle")
++
++container_bundle(
++    name = "bundle",
++    images = {
++        "{STABLE_DOCKER_REPO}/cert-manager-controller:{STABLE_DOCKER_TAG}": "//cmd/controller:image",
++        "{STABLE_DOCKER_REPO}/cert-manager-acmesolver:{STABLE_DOCKER_TAG}": "//cmd/acmesolver:image",
++        "{STABLE_DOCKER_REPO}/cert-manager-webhook:{STABLE_DOCKER_TAG}": "//cmd/webhook:image",
++        "{STABLE_DOCKER_REPO}/cert-manager-cainjector:{STABLE_DOCKER_TAG}": "//cmd/cainjector:image",
++    },
++    tags = ["manual"],
++)
++
++filegroup(
++    name = "package-srcs",
++    srcs = glob(["**"]),
++    tags = ["automanaged"],
++    visibility = ["//visibility:private"],
++)
++
++filegroup(
++    name = "all-srcs",
++    srcs = [":package-srcs"],
++    tags = ["automanaged"],
++    visibility = ["//visibility:public"],
++)
+diff --git a/devel/addon/certmanager/install.sh b/devel/addon/certmanager/install.sh
+new file mode 100755
+index 000000000..5b08cb05e
+--- /dev/null
++++ b/devel/addon/certmanager/install.sh
+@@ -0,0 +1,63 @@
++#!/usr/bin/env bash
++
++# Copyright 2020 The Jetstack cert-manager contributors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++set -o nounset
++set -o errexit
++set -o pipefail
++
++# Namespace to deploy into
++NAMESPACE="${NAMESPACE:-cert-manager}"
++# Release name to use with Helm
++RELEASE_NAME="${RELEASE_NAME:-cert-manager}"
++
++SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")
++source "${SCRIPT_ROOT}/../../lib/lib.sh"
++SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")
++
++# Require kubectl & helm available on PATH
++check_tool kubectl
++check_tool helm
++
++# Use the current timestamp as the APP_VERSION so a rolling update will be
++# triggered on every call to this script.
++export APP_VERSION="$(date +"%s")"
++# Build a copy of the cert-manager release images using the :bazel image tag
++bazel run --stamp=true --platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 "//devel/addon/certmanager:bundle"
++
++# Load all images into the kind cluster
++kind load docker-image --name "$KIND_CLUSTER_NAME" "quay.io/jetstack/cert-manager-controller:${APP_VERSION}" &
++kind load docker-image --name "$KIND_CLUSTER_NAME" "quay.io/jetstack/cert-manager-acmesolver:${APP_VERSION}" &
++kind load docker-image --name "$KIND_CLUSTER_NAME" "quay.io/jetstack/cert-manager-cainjector:${APP_VERSION}" &
++kind load docker-image --name "$KIND_CLUSTER_NAME" "quay.io/jetstack/cert-manager-webhook:${APP_VERSION}" &
++
++wait
++
++# Ensure the pebble namespace exists
++kubectl get namespace "${NAMESPACE}" || kubectl create namespace "${NAMESPACE}"
++
++# Install a copy of the CRDs
++kubectl apply -f "${REPO_ROOT}/deploy/charts/cert-manager/crds/"
++
++# Upgrade or install Pebble
++helm upgrade \
++    --install \
++    --wait \
++    --namespace "${NAMESPACE}" \
++    --set image.tag="${APP_VERSION}" \
++    --set cainjector.image.tag="${APP_VERSION}" \
++    --set webhook.image.tag="${APP_VERSION}" \
++    "$RELEASE_NAME" \
++    "$REPO_ROOT/deploy/charts/cert-manager"
+diff --git a/devel/addon/ingressnginx/BUILD.bazel b/devel/addon/ingressnginx/BUILD.bazel
+new file mode 100644
+index 000000000..9bb21871c
+--- /dev/null
++++ b/devel/addon/ingressnginx/BUILD.bazel
+@@ -0,0 +1,24 @@
++load("@io_bazel_rules_docker//container:bundle.bzl", "container_bundle")
++
++container_bundle(
++    name = "bundle",
++    images = {
++        "quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.26.1": "@io_kubernetes_ingress-nginx//image",
++        "k8s.gcr.io/defaultbackend-amd64:bazel": "@io_gcr_k8s_defaultbackend//image",
++    },
++    tags = ["manual"],
++)
++
++filegroup(
++    name = "package-srcs",
++    srcs = glob(["**"]),
++    tags = ["automanaged"],
++    visibility = ["//visibility:private"],
++)
++
++filegroup(
++    name = "all-srcs",
++    srcs = [":package-srcs"],
++    tags = ["automanaged"],
++    visibility = ["//visibility:public"],
++)
+diff --git a/devel/addon/ingressnginx/install.sh b/devel/addon/ingressnginx/install.sh
+new file mode 100755
+index 000000000..e72008542
+--- /dev/null
++++ b/devel/addon/ingressnginx/install.sh
+@@ -0,0 +1,61 @@
++#!/usr/bin/env bash
++
++# Copyright 2020 The Jetstack cert-manager contributors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++set -o nounset
++set -o errexit
++set -o pipefail
++
++# Installs an instance of ingress-nginx using the 'stable' Helm chart.
++# Configure the cluster to target using the KUBECONFIG environment variable.
++# Additional parameters can be configured by overriding the variables below.
++
++# Namespace to deploy into
++NAMESPACE="${NAMESPACE:-ingress-nginx}"
++# Release name to use with Helm
++RELEASE_NAME="${RELEASE_NAME:-ingress-nginx}"
++
++SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")
++source "${SCRIPT_ROOT}/../../lib/lib.sh"
++SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")
++
++# Require helm available on PATH
++check_tool kubectl
++check_tool helm
++require_image "quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.26.1" "//devel/addon/ingressnginx:bundle"
++require_image "k8s.gcr.io/defaultbackend-amd64:bazel" "//devel/addon/ingressnginx:bundle"
++
++# Ensure the pebble namespace exists
++kubectl get namespace "${NAMESPACE}" || kubectl create namespace "${NAMESPACE}"
++
++helm repo add stable https://kubernetes-charts.storage.googleapis.com
++
++helm repo update
++
++# Upgrade or install Pebble
++helm upgrade \
++    --install \
++    --wait \
++    --version 1.23.0 \
++    --namespace "${NAMESPACE}" \
++    --set controller.image.tag=0.26.1 \
++    --set controller.image.pullPolicy=Never \
++    --set defaultBackend.image.tag=bazel \
++    --set defaultBackend.image.pullPolicy=Never \
++    --set controller.service.clusterIP=10.0.0.15 \
++    --set controller.service.type=ClusterIP \
++    --set controller.config.no-tls-redirect-locations="" \
++    "$RELEASE_NAME" \
++    stable/nginx-ingress
+diff --git a/test/e2e/charts/pebble/BUILD.bazel b/devel/addon/pebble/BUILD.bazel
+similarity index 77%
+rename from test/e2e/charts/pebble/BUILD.bazel
+rename to devel/addon/pebble/BUILD.bazel
+index 1ee3f6c03..0da887d61 100644
+--- a/test/e2e/charts/pebble/BUILD.bazel
++++ b/devel/addon/pebble/BUILD.bazel
+@@ -1,8 +1,17 @@
+ load("@io_bazel_rules_go//go:def.bzl", "go_binary")
+ load("@io_bazel_rules_docker//go:image.bzl", "go_image")
++load("@io_bazel_rules_docker//container:bundle.bzl", "container_bundle")
+ 
+ # gazelle:ignore
+ 
++container_bundle(
++    name = "bundle",
++    images = {
++        "pebble:bazel": ":image",
++    },
++    tags = ["manual"],
++)
++
+ go_image(
+     name = "image",
+     base = "@static_base//image",
+diff --git a/test/e2e/charts/pebble/.helmignore b/devel/addon/pebble/chart/.helmignore
+similarity index 100%
+rename from test/e2e/charts/pebble/.helmignore
+rename to devel/addon/pebble/chart/.helmignore
+diff --git a/test/e2e/charts/pebble/Chart.yaml b/devel/addon/pebble/chart/Chart.yaml
+similarity index 100%
+rename from test/e2e/charts/pebble/Chart.yaml
+rename to devel/addon/pebble/chart/Chart.yaml
+diff --git a/test/e2e/charts/pebble/templates/_helpers.tpl b/devel/addon/pebble/chart/templates/_helpers.tpl
+similarity index 100%
+rename from test/e2e/charts/pebble/templates/_helpers.tpl
+rename to devel/addon/pebble/chart/templates/_helpers.tpl
+diff --git a/test/e2e/charts/pebble/templates/configmap.yaml b/devel/addon/pebble/chart/templates/configmap.yaml
+similarity index 100%
+rename from test/e2e/charts/pebble/templates/configmap.yaml
+rename to devel/addon/pebble/chart/templates/configmap.yaml
+diff --git a/test/e2e/charts/pebble/templates/deployment.yaml b/devel/addon/pebble/chart/templates/deployment.yaml
+similarity index 100%
+rename from test/e2e/charts/pebble/templates/deployment.yaml
+rename to devel/addon/pebble/chart/templates/deployment.yaml
+diff --git a/test/e2e/charts/pebble/templates/service.yaml b/devel/addon/pebble/chart/templates/service.yaml
+similarity index 100%
+rename from test/e2e/charts/pebble/templates/service.yaml
+rename to devel/addon/pebble/chart/templates/service.yaml
+diff --git a/test/e2e/charts/pebble/values.yaml b/devel/addon/pebble/chart/values.yaml
+similarity index 100%
+rename from test/e2e/charts/pebble/values.yaml
+rename to devel/addon/pebble/chart/values.yaml
+diff --git a/devel/addon/pebble/install.sh b/devel/addon/pebble/install.sh
+new file mode 100755
+index 000000000..64db1ae60
+--- /dev/null
++++ b/devel/addon/pebble/install.sh
+@@ -0,0 +1,50 @@
++#!/usr/bin/env bash
++
++# Copyright 2020 The Jetstack cert-manager contributors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++set -o nounset
++set -o errexit
++set -o pipefail
++
++# Installs an instance of pebble using the Helm chart located in chart/
++# Configure the cluster to target using the KUBECONFIG environment variable.
++# Additional parameters can be configured by overriding the variables below.
++
++# Namespace to deploy into
++NAMESPACE="${NAMESPACE:-pebble}"
++# Release name to use with Helm
++RELEASE_NAME="${RELEASE_NAME:-pebble}"
++# Image to use - by default uses a Bazel built image
++IMAGE="${IMAGE:-pebble:bazel}"
++
++SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")
++source "${SCRIPT_ROOT}/../../lib/lib.sh"
++SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")
++
++# Require helm available on PATH
++check_tool kubectl
++check_tool helm
++require_image "pebble:bazel" "//devel/addon/pebble:bundle"
++
++# Ensure the pebble namespace exists
++kubectl get namespace "${NAMESPACE}" || kubectl create namespace "${NAMESPACE}"
++
++# Upgrade or install Pebble
++helm upgrade \
++    --install \
++    --wait \
++    --namespace "${NAMESPACE}" \
++    "$RELEASE_NAME" \
++    "$SCRIPT_ROOT/chart"
+diff --git a/devel/addon/samplewebhook/BUILD.bazel b/devel/addon/samplewebhook/BUILD.bazel
+new file mode 100644
+index 000000000..74a01297a
+--- /dev/null
++++ b/devel/addon/samplewebhook/BUILD.bazel
+@@ -0,0 +1,26 @@
++load("@io_bazel_rules_docker//container:bundle.bzl", "container_bundle")
++
++container_bundle(
++    name = "bundle",
++    images = {
++        "sample-webhook:bazel": "//devel/addon/samplewebhook/sample:image",
++    },
++    tags = ["manual"],
++)
++
++filegroup(
++    name = "package-srcs",
++    srcs = glob(["**"]),
++    tags = ["automanaged"],
++    visibility = ["//visibility:private"],
++)
++
++filegroup(
++    name = "all-srcs",
++    srcs = [
++        ":package-srcs",
++        "//devel/addon/samplewebhook/sample:all-srcs",
++    ],
++    tags = ["automanaged"],
++    visibility = ["//visibility:public"],
++)
+diff --git a/test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/.helmignore b/devel/addon/samplewebhook/chart/.helmignore
+similarity index 100%
+rename from test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/.helmignore
+rename to devel/addon/samplewebhook/chart/.helmignore
+diff --git a/test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/Chart.yaml b/devel/addon/samplewebhook/chart/Chart.yaml
+similarity index 100%
+rename from test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/Chart.yaml
+rename to devel/addon/samplewebhook/chart/Chart.yaml
+diff --git a/test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/templates/NOTES.txt b/devel/addon/samplewebhook/chart/templates/NOTES.txt
+similarity index 100%
+rename from test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/templates/NOTES.txt
+rename to devel/addon/samplewebhook/chart/templates/NOTES.txt
+diff --git a/test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/templates/_helpers.tpl b/devel/addon/samplewebhook/chart/templates/_helpers.tpl
+similarity index 100%
+rename from test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/templates/_helpers.tpl
+rename to devel/addon/samplewebhook/chart/templates/_helpers.tpl
+diff --git a/test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/templates/apiservice.yaml b/devel/addon/samplewebhook/chart/templates/apiservice.yaml
+similarity index 100%
+rename from test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/templates/apiservice.yaml
+rename to devel/addon/samplewebhook/chart/templates/apiservice.yaml
+diff --git a/test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/templates/deployment.yaml b/devel/addon/samplewebhook/chart/templates/deployment.yaml
+similarity index 100%
+rename from test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/templates/deployment.yaml
+rename to devel/addon/samplewebhook/chart/templates/deployment.yaml
+diff --git a/test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/templates/pki.yaml b/devel/addon/samplewebhook/chart/templates/pki.yaml
+similarity index 100%
+rename from test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/templates/pki.yaml
+rename to devel/addon/samplewebhook/chart/templates/pki.yaml
+diff --git a/test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/templates/rbac.yaml b/devel/addon/samplewebhook/chart/templates/rbac.yaml
+similarity index 100%
+rename from test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/templates/rbac.yaml
+rename to devel/addon/samplewebhook/chart/templates/rbac.yaml
+diff --git a/test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/templates/service.yaml b/devel/addon/samplewebhook/chart/templates/service.yaml
+similarity index 100%
+rename from test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/templates/service.yaml
+rename to devel/addon/samplewebhook/chart/templates/service.yaml
+diff --git a/test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/values.yaml b/devel/addon/samplewebhook/chart/values.yaml
+similarity index 91%
+rename from test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/values.yaml
+rename to devel/addon/samplewebhook/chart/values.yaml
+index 31eb15140..4ac331a4a 100644
+--- a/test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook/values.yaml
++++ b/devel/addon/samplewebhook/chart/values.yaml
+@@ -6,16 +6,16 @@
+ # solve the DNS01 challenge.
+ # This group name should be **unique**, hence using your own company's domain
+ # here is recommended.
+-groupName: acme.mycompany.com
++groupName: acme.testing.cert-manager.io
+ 
+ certManager:
+   namespace: cert-manager
+   serviceAccountName: cert-manager
+ 
+ image:
+-  repository: mycompany/webhook-image
+-  tag: latest
+-  pullPolicy: IfNotPresent
++  repository: sample-webhook
++  tag: bazel
++  pullPolicy: Never
+ 
+ nameOverride: ""
+ fullnameOverride: ""
+diff --git a/devel/addon/samplewebhook/install.sh b/devel/addon/samplewebhook/install.sh
+new file mode 100755
+index 000000000..916e36753
+--- /dev/null
++++ b/devel/addon/samplewebhook/install.sh
+@@ -0,0 +1,49 @@
++#!/usr/bin/env bash
++
++# Copyright 2020 The Jetstack cert-manager contributors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++set -o nounset
++set -o errexit
++set -o pipefail
++
++# Installs an instance of the sample-webhook using the Helm chart located in
++# chart/.
++# Configure the cluster to target using the KUBECONFIG environment variable.
++# Additional parameters can be configured by overriding the variables below.
++
++# Namespace to deploy into
++NAMESPACE="${NAMESPACE:-sample-webhook}"
++# Release name to use with Helm
++RELEASE_NAME="${RELEASE_NAME:-sample-webhook}"
++
++SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")
++source "${SCRIPT_ROOT}/../../lib/lib.sh"
++SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")
++
++# Require helm available on PATH
++check_tool kubectl
++check_tool helm
++require_image "sample-webhook:bazel" "//devel/addon/samplewebhook:bundle"
++
++# Ensure the pebble namespace exists
++kubectl get namespace "${NAMESPACE}" || kubectl create namespace "${NAMESPACE}"
++
++# Upgrade or install Pebble
++helm upgrade \
++    --install \
++    --wait \
++    --namespace "${NAMESPACE}" \
++    "$RELEASE_NAME" \
++    "$SCRIPT_ROOT/chart"
+diff --git a/test/e2e/framework/addon/samplewebhook/sample/BUILD.bazel b/devel/addon/samplewebhook/sample/BUILD.bazel
+similarity index 91%
+rename from test/e2e/framework/addon/samplewebhook/sample/BUILD.bazel
+rename to devel/addon/samplewebhook/sample/BUILD.bazel
+index e4b699971..49f1cf2a0 100644
+--- a/test/e2e/framework/addon/samplewebhook/sample/BUILD.bazel
++++ b/devel/addon/samplewebhook/sample/BUILD.bazel
+@@ -11,7 +11,7 @@ go_image(
+ go_library(
+     name = "go_default_library",
+     srcs = ["main.go"],
+-    importpath = "github.com/jetstack/cert-manager/test/e2e/framework/addon/samplewebhook/sample",
++    importpath = "github.com/jetstack/cert-manager/devel/addon/samplewebhook/sample",
+     visibility = ["//visibility:private"],
+     deps = [
+         "//pkg/acme/webhook/apis/acme/v1alpha1:go_default_library",
+diff --git a/test/e2e/framework/addon/samplewebhook/sample/main.go b/devel/addon/samplewebhook/sample/main.go
+similarity index 100%
+rename from test/e2e/framework/addon/samplewebhook/sample/main.go
+rename to devel/addon/samplewebhook/sample/main.go
+diff --git a/devel/addon/vault/BUILD.bazel b/devel/addon/vault/BUILD.bazel
+new file mode 100644
+index 000000000..32d1683c4
+--- /dev/null
++++ b/devel/addon/vault/BUILD.bazel
+@@ -0,0 +1,23 @@
++load("@io_bazel_rules_docker//container:bundle.bzl", "container_bundle")
++
++container_bundle(
++    name = "bundle",
++    images = {
++        "vault:bazel": "@com_hashicorp_vault//image",
++    },
++    tags = ["manual"],
++)
++
++filegroup(
++    name = "package-srcs",
++    srcs = glob(["**"]),
++    tags = ["automanaged"],
++    visibility = ["//visibility:private"],
++)
++
++filegroup(
++    name = "all-srcs",
++    srcs = [":package-srcs"],
++    tags = ["automanaged"],
++    visibility = ["//visibility:public"],
++)
+diff --git a/devel/addon/vault/install.sh b/devel/addon/vault/install.sh
+new file mode 100755
+index 000000000..127f6b471
+--- /dev/null
++++ b/devel/addon/vault/install.sh
+@@ -0,0 +1,39 @@
++#!/usr/bin/env bash
++
++# Copyright 2020 The Jetstack cert-manager contributors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++set -o nounset
++set -o errexit
++set -o pipefail
++
++# Installs an instance of Vault using the Helm chart located in chart/
++# Configure the cluster to target using the KUBECONFIG environment variable.
++# Additional parameters can be configured by overriding the variables below.
++
++# Namespace to deploy into
++NAMESPACE="${NAMESPACE:-vault}"
++# Release name to use with Helm
++RELEASE_NAME="${RELEASE_NAME:-vault}"
++# Image to use - by default uses a Bazel built image
++IMAGE="${IMAGE:-vault:bazel}"
++
++SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")
++source "${SCRIPT_ROOT}/../../lib/lib.sh"
++SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")
++
++# Require helm available on PATH
++check_tool kubectl
++check_tool helm
++require_image "vault:bazel" "//devel/addon/vault:bundle"
+diff --git a/devel/bin/BUILD.bazel b/devel/bin/BUILD.bazel
+new file mode 100644
+index 000000000..32e4a4522
+--- /dev/null
++++ b/devel/bin/BUILD.bazel
+@@ -0,0 +1,21 @@
++genrule(
++    name = "_ginkgo",
++    srcs = ["@com_github_onsi_ginkgo//ginkgo"],
++    outs = ["ginkgo"],
++    cmd = "cp $(SRCS) $@",
++    visibility = ["//visibility:public"],
++)
++
++filegroup(
++    name = "package-srcs",
++    srcs = glob(["**"]),
++    tags = ["automanaged"],
++    visibility = ["//visibility:private"],
++)
++
++filegroup(
++    name = "all-srcs",
++    srcs = [":package-srcs"],
++    tags = ["automanaged"],
++    visibility = ["//visibility:public"],
++)
+diff --git a/devel/bin/ginkgo b/devel/bin/ginkgo
+new file mode 100755
+index 000000000..9b9500a76
+--- /dev/null
++++ b/devel/bin/ginkgo
+@@ -0,0 +1,31 @@
++#!/usr/bin/env bash
++
++# Copyright 2020 The Jetstack cert-manager contributors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++set -o nounset
++set -o errexit
++set -o pipefail
++
++if ! command -v bazel &>/dev/null; then
++  echo "Install bazel at https://bazel.build" >&2
++  exit 1
++fi
++
++if [ -z "${GINKGO:-}" ]; then
++    bazel build //devel/bin:ginkgo
++    export GINKGO="$(bazel info bazel-genfiles)/devel/bin/ginkgo"
++fi
++
++"${GINKGO}" "$@"
+diff --git a/hack/ci/lib/cluster_destroy.sh b/devel/bin/helm
+similarity index 65%
+rename from hack/ci/lib/cluster_destroy.sh
+rename to devel/bin/helm
+index 64bb88666..763643f17 100755
+--- a/hack/ci/lib/cluster_destroy.sh
++++ b/devel/bin/helm
+@@ -1,6 +1,6 @@
+-#!/bin/bash
++#!/usr/bin/env bash
+ 
+-# Copyright 2019 The Jetstack cert-manager contributors.
++# Copyright 2020 The Jetstack cert-manager contributors.
+ #
+ # Licensed under the Apache License, Version 2.0 (the "License");
+ # you may not use this file except in compliance with the License.
+@@ -14,11 +14,18 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
+-set -o errexit
+ set -o nounset
++set -o errexit
+ set -o pipefail
+ 
+-SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")
+-source "${SCRIPT_ROOT}/lib.sh"
++if ! command -v bazel &>/dev/null; then
++  echo "Install bazel at https://bazel.build" >&2
++  exit 1
++fi
++
++if [ -z "${HELM:-}" ]; then
++    bazel build //hack/bin:helm
++    export HELM="$(bazel info bazel-genfiles)/hack/bin/helm"
++fi
+ 
+-"${KIND}" delete cluster --name="${KIND_CLUSTER_NAME}"
++"${HELM}" "$@"
+diff --git a/devel/bin/kind b/devel/bin/kind
+new file mode 100755
+index 000000000..75261dad7
+--- /dev/null
++++ b/devel/bin/kind
+@@ -0,0 +1,31 @@
++#!/usr/bin/env bash
++
++# Copyright 2020 The Jetstack cert-manager contributors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++set -o nounset
++set -o errexit
++set -o pipefail
++
++if ! command -v bazel &>/dev/null; then
++  echo "Install bazel at https://bazel.build" >&2
++  exit 1
++fi
++
++if [ -z "${KIND:-}" ]; then
++    bazel build //hack/bin:kind
++    export KIND="$(bazel info bazel-genfiles)/hack/bin/kind"
++fi
++
++"${KIND}" "$@"
+diff --git a/devel/bin/kubectl b/devel/bin/kubectl
+new file mode 100755
+index 000000000..7eda48b1c
+--- /dev/null
++++ b/devel/bin/kubectl
+@@ -0,0 +1,31 @@
++#!/usr/bin/env bash
++
++# Copyright 2020 The Jetstack cert-manager contributors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++set -o nounset
++set -o errexit
++set -o pipefail
++
++if ! command -v bazel &>/dev/null; then
++  echo "Install bazel at https://bazel.build" >&2
++  exit 1
++fi
++
++if [ -z "${KUBECTL:-}" ]; then
++    bazel build //hack/bin:kubectl
++    export KUBECTL="$(bazel info bazel-genfiles)/hack/bin/kubectl"
++fi
++
++"${KUBECTL}" "$@"
+diff --git a/devel/ci-run-e2e.sh b/devel/ci-run-e2e.sh
+new file mode 100755
+index 000000000..17a250435
+--- /dev/null
++++ b/devel/ci-run-e2e.sh
+@@ -0,0 +1,42 @@
++#!/usr/bin/env bash
++
++# Copyright 2020 The Jetstack cert-manager contributors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++set -o nounset
++set -o errexit
++set -o pipefail
++
++# This script will build an entirely new testing environment using kind.
++# This is inteded to be run in a CI environment and *not* for development.
++# It is not optimised for quick, iterative development.
++
++SCRIPT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" > /dev/null && pwd )"
++export REPO_ROOT="${SCRIPT_ROOT}/.."
++source "${SCRIPT_ROOT}/lib/lib.sh"
++
++# Configure PATH to use bazel provided e2e tools
++setup_tools
++
++echo "Ensuring a kind cluster exists..."
++"${SCRIPT_ROOT}/cluster/create.sh"
++
++echo "Ensuring all e2e test dependencies are installed..."
++"${SCRIPT_ROOT}/setup-e2e-deps.sh"
++
++echo "Running e2e test suite..."
++# Skip Venafi end-to-end tests in CI
++FLAKE_ATTEMPTS=2 "${SCRIPT_ROOT}/run-e2e.sh" \
++  --ginkgo.skip=Venafi \
++  "$@"
+diff --git a/devel/cluster/config/v1alpha2.yaml b/devel/cluster/config/v1alpha2.yaml
+new file mode 100644
+index 000000000..96756794c
+--- /dev/null
++++ b/devel/cluster/config/v1alpha2.yaml
+@@ -0,0 +1,22 @@
++# this config file is similar to the default, except we set the cluster's
++# service cidr range to be 10.0.0.0/16.
++# we do this because we need a fixed/predictable clusterIP of 10.0.0.15 for the
++# nginx-ingress service, in order to perform HTTP01 validations during tests.
++
++apiVersion: kind.sigs.k8s.io/v1alpha3
++kind: Cluster
++kubeadmConfigPatches:
++  - |
++    # config generated by kind
++    apiVersion: kubeadm.k8s.io/v1alpha2
++    kind: MasterConfiguration
++    metadata:
++      name: config
++    networking:
++      serviceSubnet: 10.0.0.0/16
++    kubeletConfiguration:
++      baseConfig:
++        clusterDNS:
++        - 10.0.0.10
++nodes:
++- role: control-plane
+diff --git a/devel/cluster/config/v1alpha3.yaml b/devel/cluster/config/v1alpha3.yaml
+new file mode 100644
+index 000000000..79c1ac3e6
+--- /dev/null
++++ b/devel/cluster/config/v1alpha3.yaml
+@@ -0,0 +1,18 @@
++# this config file is similar to the default, except we set the cluster's
++# service cidr range to be 10.0.0.0/16.
++# we do this because we need a fixed/predictable clusterIP of 10.0.0.15 for the
++# nginx-ingress service, in order to perform HTTP01 validations during tests.
++
++apiVersion: kind.sigs.k8s.io/v1alpha3
++kind: Cluster
++kubeadmConfigPatches:
++  - |
++    # config generated by kind
++    apiVersion: kubeadm.k8s.io/v1alpha3
++    kind: ClusterConfiguration
++    metadata:
++      name: config
++    networking:
++      serviceSubnet: 10.0.0.0/16
++nodes:
++- role: control-plane
+diff --git a/devel/cluster/config/v1beta1.yaml b/devel/cluster/config/v1beta1.yaml
+new file mode 100644
+index 000000000..1126c8b7c
+--- /dev/null
++++ b/devel/cluster/config/v1beta1.yaml
+@@ -0,0 +1,18 @@
++# this config file is similar to the default, except we set the cluster's
++# service cidr range to be 10.0.0.0/16.
++# we do this because we need a fixed/predictable clusterIP of 10.0.0.15 for the
++# nginx-ingress service, in order to perform HTTP01 validations during tests.
++
++apiVersion: kind.sigs.k8s.io/v1alpha3
++kind: Cluster
++kubeadmConfigPatches:
++  - |
++    # config generated by kind
++    apiVersion: kubeadm.k8s.io/v1beta1
++    kind: ClusterConfiguration
++    metadata:
++      name: config
++    networking:
++      serviceSubnet: 10.0.0.0/16
++nodes:
++- role: control-plane
+diff --git a/devel/cluster/config/v1beta2.yaml b/devel/cluster/config/v1beta2.yaml
+new file mode 100644
+index 000000000..e5db5747f
+--- /dev/null
++++ b/devel/cluster/config/v1beta2.yaml
+@@ -0,0 +1,18 @@
++# this config file is similar to the default, except we set the cluster's
++# service cidr range to be 10.0.0.0/16.
++# we do this because we need a fixed/predictable clusterIP of 10.0.0.15 for the
++# nginx-ingress service, in order to perform HTTP01 validations during tests.
++
++apiVersion: kind.sigs.k8s.io/v1alpha3
++kind: Cluster
++kubeadmConfigPatches:
++  - |
++    # config generated by kind
++    apiVersion: kubeadm.k8s.io/v1beta2
++    kind: ClusterConfiguration
++    metadata:
++      name: config
++    networking:
++      serviceSubnet: 10.0.0.0/16
++nodes:
++  - role: control-plane
+diff --git a/devel/cluster/create.sh b/devel/cluster/create.sh
+new file mode 100755
+index 000000000..f1ee24031
+--- /dev/null
++++ b/devel/cluster/create.sh
+@@ -0,0 +1,83 @@
++#!/usr/bin/env bash
++
++# Copyright 2020 The Jetstack cert-manager contributors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++set -o nounset
++set -o errexit
++set -o pipefail
++
++SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")
++source "${SCRIPT_ROOT}/../lib/lib.sh"
++SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")
++
++# Require helm available on PATH
++check_tool kind
++
++export KIND_IMAGE_REPO="kindest/node"
++# Default Kubernetes version to use to 1.17
++export K8S_VERSION=${K8S_VERSION:-1.17}
++
++# Compute the details of the kind image to use
++export KIND_IMAGE_SHA=""
++export KIND_IMAGE_CONFIG=""
++if [[ "$K8S_VERSION" =~ 1\.11 ]]; then
++  # v1.11.10 @ sha256:e6f3dade95b7cb74081c5b9f3291aaaa6026a90a977e0b990778b6adc9ea6248
++  KIND_IMAGE_SHA="sha256:e6f3dade95b7cb74081c5b9f3291aaaa6026a90a977e0b990778b6adc9ea6248"
++  KIND_IMAGE_CONFIG="v1alpha2"
++elif [[ "$K8S_VERSION" =~ 1\.12 ]]; then
++  # v1.12.10 @ sha256:68a6581f64b54994b824708286fafc37f1227b7b54cbb8865182ce1e036ed1cc
++  KIND_IMAGE_SHA="sha256:68a6581f64b54994b824708286fafc37f1227b7b54cbb8865182ce1e036ed1cc"
++  KIND_IMAGE_CONFIG="v1alpha3"
++elif [[ "$K8S_VERSION" =~ 1\.13 ]] ; then
++  # v1.13.12 @sha256:5e8ae1a4e39f3d151d420ef912e18368745a2ede6d20ea87506920cd947a7e3a
++  KIND_IMAGE_SHA="sha256:5e8ae1a4e39f3d151d420ef912e18368745a2ede6d20ea87506920cd947a7e3a"
++  KIND_IMAGE_CONFIG="v1beta1"
++elif [[ "$K8S_VERSION" =~ 1\.14 ]] ; then
++  # v1.14.10 @ sha256:81ae5a3237c779efc4dda43cc81c696f88a194abcc4f8fa34f86cf674aa14977
++  KIND_IMAGE_SHA="sha256:81ae5a3237c779efc4dda43cc81c696f88a194abcc4f8fa34f86cf674aa14977"
++  KIND_IMAGE_CONFIG="v1beta1"
++elif [[ "$K8S_VERSION" =~ 1\.15 ]] ; then
++  # v1.15.7 @ sha256:e2df133f80ef633c53c0200114fce2ed5e1f6947477dbc83261a6a921169488d
++  KIND_IMAGE_SHA="sha256:e2df133f80ef633c53c0200114fce2ed5e1f6947477dbc83261a6a921169488d"
++  KIND_IMAGE_CONFIG="v1beta2"
++elif [[ "$K8S_VERSION" =~ 1\.16 ]] ; then
++  # v1.16.4 @ sha256:b91a2c2317a000f3a783489dfb755064177dbc3a0b2f4147d50f04825d016f55
++  KIND_IMAGE_SHA="sha256:b91a2c2317a000f3a783489dfb755064177dbc3a0b2f4147d50f04825d016f55"
++  KIND_IMAGE_CONFIG="v1beta2"
++elif [[ "$K8S_VERSION" =~ 1\.17 ]] ; then
++  # v1.17.0 @ sha256:9512edae126da271b66b990b6fff768fbb7cd786c7d39e86bdf55906352fdf62
++  KIND_IMAGE_SHA="sha256:9512edae126da271b66b990b6fff768fbb7cd786c7d39e86bdf55906352fdf62"
++  KIND_IMAGE_CONFIG="v1beta2"
++else
++  echo "Unrecognised Kubernetes version '${K8S_VERSION}'! Aborting..."
++  exit 1
++fi
++export KIND_IMAGE="${KIND_IMAGE_REPO}@${KIND_IMAGE_SHA}"
++echo "kind image details:"
++echo "  repo:    ${KIND_IMAGE_REPO}"
++echo "  sha256:  ${KIND_IMAGE_SHA}"
++echo "  version: ${K8S_VERSION}"
++echo "  config:  ${KIND_IMAGE_CONFIG}"
++
++if kind get clusters | grep "^$KIND_CLUSTER_NAME\$" &>/dev/null; then
++  echo "Existing cluster '$KIND_CLUSTER_NAME' found, skipping creating cluster..."
++  exit 0
++fi
++
++# Create the kind cluster
++kind create cluster \
++  --config "${SCRIPT_ROOT}/config/${KIND_IMAGE_CONFIG}.yaml" \
++  --image "${KIND_IMAGE}" \
++  --name "${KIND_CLUSTER_NAME}"
+diff --git a/devel/lib/lib.sh b/devel/lib/lib.sh
+new file mode 100644
+index 000000000..f0bc897be
+--- /dev/null
++++ b/devel/lib/lib.sh
+@@ -0,0 +1,82 @@
++#!/usr/bin/env bash
++
++# Copyright 2020 The Jetstack cert-manager contributors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++set -o nounset
++set -o errexit
++set -o pipefail
++
++LIB_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" > /dev/null && pwd )"
++export REPO_ROOT="$LIB_ROOT/../.."
++
++export SKIP_BUILD_ADDON_IMAGES="${SKIP_BUILD_ADDON_IMAGES:-}"
++export KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-kind}"
++
++# setup_tools will build and set up the environment to use bazel-provided
++# versions of the tools required for development
++setup_tools() {
++  check_bazel
++  bazel build //hack/bin:helm //hack/bin:kind //hack/bin:kubectl //devel/bin:ginkgo
++  local bindir="$(bazel info bazel-genfiles)"
++  export HELM="${bindir}/hack/bin/helm"
++  export KIND="${bindir}/hack/bin/kind"
++  export KUBECTL="${bindir}/hack/bin/kubectl"
++  export GINKGO="${bindir}/devel/bin/ginkgo"
++  # Configure PATH to use bazel provided e2e tools
++  export PATH="${SCRIPT_ROOT}/bin:$PATH"
++}
++
++# check_tool ensures that the tool with the given name is available, or advises
++# users to setup their PATH for the test/e3e/bin directory if not.
++check_tool() {
++  tool="$1"
++  if ! command -v "$tool" &>/dev/null; then
++    echo "Install $tool or run: export PATH=\"$REPO_ROOT/devel/bin:\$PATH\"" >&2
++    exit 1
++  fi
++}
++
++# check_bazel ensures that bazel is installed/available.
++check_bazel() {
++  if ! command -v bazel &>/dev/null; then
++    echo "Install bazel at https://bazel.build" >&2
++    exit 1
++  fi
++}
++
++# require_image will attempt to ensure that the named docker image exists
++# within the kind cluster with name $KIND_CLUSTER_NAME.
++# If $SKIP_BUILD_ADDON_IMAGES is 'true', the image will not be built and a
++# warning message will be printed instead.
++require_image() {
++  IMAGE_NAME="$1"
++  BAZEL_TARGET="$2"
++  # Skip building and loading the image if SKIP_BUILD_ADDON_IMAGES=true
++  if [ "${SKIP_BUILD_ADDON_IMAGES:-}" == "true" ]; then
++    echo "Skipping building and loading image '$IMAGE_NAME' because SKIP_BUILD_ADDON_IMAGES=true"
++    return
++  fi
++
++  # Ensure bazel is available
++  check_bazel
++  # Ensure kind is available
++  check_tool kind
++
++  # Build and export the docker image
++  bazel run --platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 "${BAZEL_TARGET}"
++
++  # Load the image into the kind cluster
++  kind load docker-image --name "$KIND_CLUSTER_NAME" "$IMAGE_NAME"
++}
+diff --git a/devel/run-e2e.sh b/devel/run-e2e.sh
+new file mode 100755
+index 000000000..4c040fc28
+--- /dev/null
++++ b/devel/run-e2e.sh
+@@ -0,0 +1,47 @@
++#!/usr/bin/env bash
++
++# Copyright 2020 The Jetstack cert-manager contributors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++set -o nounset
++set -o errexit
++set -o pipefail
++
++# This script will run the end-to-end test suite against an already configured
++# kind cluster.
++# If a cluster does not already exist, create one with 'cluster/create.sh'.
++
++SCRIPT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" > /dev/null && pwd )"
++export REPO_ROOT="${SCRIPT_ROOT}/.."
++source "${SCRIPT_ROOT}/lib/lib.sh"
++
++# Configure PATH to use bazel provided e2e tools
++setup_tools
++
++# Ensure bazel is installed
++check_bazel
++
++# Create output directory for JUnit output
++mkdir -p "${REPO_ROOT}/_artifacts"
++
++# Build the e2e test binary
++bazel build //test/e2e:e2e.test
++
++# Run e2e tests
++ginkgo -nodes 10 -flakeAttempts ${FLAKE_ATTEMPTS:-1} \
++	$(bazel info bazel-genfiles)/test/e2e/e2e.test \
++	-- \
++	--repo-root="${REPO_ROOT}" \
++	--report-dir="${ARTIFACTS:-$REPO_ROOT/_artifacts}" \
++	"$@"
+diff --git a/devel/setup-e2e-deps.sh b/devel/setup-e2e-deps.sh
+new file mode 100755
+index 000000000..393ac91c6
+--- /dev/null
++++ b/devel/setup-e2e-deps.sh
+@@ -0,0 +1,47 @@
++#!/usr/bin/env bash
++
++# Copyright 2020 The Jetstack cert-manager contributors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++set -o nounset
++set -o errexit
++set -o pipefail
++
++# This script will load end-to-end test dependencies into the kind cluster, as
++# well as installing all 'global' components such as cert-manager itself,
++# pebble, ingress-nginx etc.
++# If you are running the *full* test suite, you should be sure to run this
++# script beforehand.
++
++SCRIPT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" > /dev/null && pwd )"
++export REPO_ROOT="${SCRIPT_ROOT}/.."
++source "${SCRIPT_ROOT}/lib/lib.sh"
++
++# Configure PATH to use bazel provided e2e tools
++setup_tools
++
++echo "Installing cert-manager into the kind cluster..."
++"${SCRIPT_ROOT}/addon/certmanager/install.sh"
++
++echo "Installing sample-webhook into the kind cluster..."
++"${SCRIPT_ROOT}/addon/samplewebhook/install.sh"
++
++echo "Installing pebble into the kind cluster..."
++"${SCRIPT_ROOT}/addon/pebble/install.sh"
++
++echo "Installing ingress-nginx into the kind cluster..."
++"${SCRIPT_ROOT}/addon/ingressnginx/install.sh"
++
++echo "Loading vault into the kind cluster..."
++"${SCRIPT_ROOT}/addon/vault/install.sh"
+diff --git a/hack/bin/deps.bzl b/hack/bin/deps.bzl
+index e574bb5fc..7d5975467 100644
+--- a/hack/bin/deps.bzl
++++ b/hack/bin/deps.bzl
+@@ -109,8 +109,8 @@ def install_helm():
+     ## the version numbers in these rules.
+     http_archive(
+         name = "helm_darwin",
+-        sha256 = "f51830036f746b7f758a40bf49e02527cc5a9f1b78c5809023e570d318eaff5c",
+-        urls = ["https://get.helm.sh/helm-v2.15.1-darwin-amd64.tar.gz"],
++        sha256 = "05c7748da0ea8d5f85576491cd3c615f94063f20986fd82a0f5658ddc286cdb1",
++        urls = ["https://get.helm.sh/helm-v3.0.2-darwin-amd64.tar.gz"],
+         build_file_content =
+             """
+ filegroup(
+@@ -125,8 +125,8 @@ filegroup(
+ 
+     http_archive(
+         name = "helm_linux",
+-        sha256 = "b4d366bd6625477b2954941aeb7b601946aa4226af6728e3a84eac4e62a84042",
+-        urls = ["https://get.helm.sh/helm-v2.15.1-linux-amd64.tar.gz"],
++        sha256 = "c6b7aa7e4ffc66e8abb4be328f71d48c643cb8f398d95c74d075cfb348710e1d",
++        urls = ["https://get.helm.sh/helm-v3.0.2-linux-amd64.tar.gz"],
+         build_file_content =
+             """
+ filegroup(
+@@ -141,20 +141,6 @@ filegroup(
+ 
+ # Define rules for different kubectl versions
+ def install_kubectl():
+-    http_file(
+-        name = "kubectl_1_11_darwin",
+-        executable = 1,
+-        sha256 = "cf1feeac2fdedfb069131e7d62735b99b49ec43bf0d7565a30379c35056906c4",
+-        urls = ["https://storage.googleapis.com/kubernetes-release/release/v1.11.3/bin/darwin/amd64/kubectl"],
+-    )
+-
+-    http_file(
+-        name = "kubectl_1_11_linux",
+-        executable = 1,
+-        sha256 = "0d4c70484e90d4310f03f997b4432e0a97a7f5b5be5c31d281f3d05919f8b46c",
+-        urls = ["https://storage.googleapis.com/kubernetes-release/release/v1.11.3/bin/linux/amd64/kubectl"],
+-    )
+-
+     http_file(
+         name = "kubectl_1_12_darwin",
+         executable = 1,
+@@ -231,61 +217,13 @@ def install_kind():
+     http_file(
+         name = "kind_darwin",
+         executable = 1,
+-        sha256 = "023f1886207132dcfc62139a86f09488a79210732b00c9ec6431d6f6b7e9d2d3",
+-        urls = ["https://github.com/kubernetes-sigs/kind/releases/download/v0.4.0/kind-darwin-amd64"],
++        sha256 = "11b8a7fda7c9d6230f0f28ffe57831a7227c0655dfb8d38e838e8f03db6612de",
++        urls = ["https://github.com/kubernetes-sigs/kind/releases/download/v0.7.0/kind-darwin-amd64"],
+     )
+ 
+     http_file(
+         name = "kind_linux",
+         executable = 1,
+-        sha256 = "a97f7d6d97bc0e261ea85433ca564269f117baf0fae051f16b296d2d7541f8dd",
+-        urls = ["https://github.com/kubernetes-sigs/kind/releases/download/v0.4.0/kind-linux-amd64"],
+-    )
+-
+-    container_pull(
+-        name = "kind-1.11",
+-        registry = "index.docker.io",
+-        repository = "kindest/node",
+-        tag = "v1.11.10",
+-        digest = "sha256:176845d919899daef63d0dbd1cf62f79902c38b8d2a86e5fa041e491ab795d33",
+-    )
+-
+-    container_pull(
+-        name = "kind-1.12",
+-        registry = "index.docker.io",
+-        repository = "kindest/node",
+-        tag = "v1.12.9",
+-        digest = "sha256:bcb79eb3cd6550c1ba9584ce57c832dcd6e442913678d2785307a7ad9addc029",
+-    )
+-
+-    container_pull(
+-        name = "kind-1.13",
+-        registry = "index.docker.io",
+-        repository = "kindest/node",
+-        tag = "v1.13.7",
+-        digest = "sha256:f3f1cfc2318d1eb88d91253a9c5fa45f6e9121b6b1e65aea6c7ef59f1549aaaf",
+-    )    
+-
+-    container_pull(
+-        name = "kind-1.14",
+-        registry = "index.docker.io",
+-        repository = "kindest/node",
+-        tag = "v1.14.3",
+-        digest = "sha256:583166c121482848cd6509fbac525dd62d503c52a84ff45c338ee7e8b5cfe114",
+-    )
+-
+-    container_pull(
+-        name = "kind-1.15",
+-        registry = "index.docker.io",
+-        repository = "kindest/node",
+-        tag = "v1.15.0",
+-        digest = "sha256:b4d092fd2b507843dd096fe6c85d06a27a0cbd740a0b32a880fe61aba24bb478",
+-    )
+-
+-    container_pull(
+-        name = "kind-1.16",
+-        registry = "eu.gcr.io",
+-        repository = "jetstack-build-infra-images/kind-node",
+-        tag = "1.16.0-alpha.1",
+-        digest = "sha256:b9775b688fda2e6434cda1b9016baf876f381a8325961f59b9ae238166259885",
++        sha256 = "0e07d5a9d5b8bf410a1ad8a7c8c9c2ea2a4b19eda50f1c629f1afadb7c80fae7",
++        urls = ["https://github.com/kubernetes-sigs/kind/releases/download/v0.7.0/kind-linux-amd64"],
+     )
+diff --git a/hack/ci/lib/build_images.sh b/hack/ci/lib/build_images.sh
+deleted file mode 100755
+index 9fde9553c..000000000
+--- a/hack/ci/lib/build_images.sh
++++ /dev/null
+@@ -1,60 +0,0 @@
+-#!/bin/bash
+-
+-# Copyright 2019 The Jetstack cert-manager contributors.
+-#
+-# Licensed under the Apache License, Version 2.0 (the "License");
+-# you may not use this file except in compliance with the License.
+-# You may obtain a copy of the License at
+-#
+-#     http://www.apache.org/licenses/LICENSE-2.0
+-#
+-# Unless required by applicable law or agreed to in writing, software
+-# distributed under the License is distributed on an "AS IS" BASIS,
+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-# See the License for the specific language governing permissions and
+-# limitations under the License.
+-
+-set -o errexit
+-set -o nounset
+-set -o pipefail
+-
+-# build_images will build Docker images for all of cert-manager's components.
+-# It will transfer them to the 'kind' docker container so they are available
+-# in a testing environment.
+-
+-SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")
+-source "${SCRIPT_ROOT}/lib.sh"
+-
+-build_images() {
+-    # Build cert-manager binaries & docker image
+-    # Set --stamp=true when running a build to workaround issues introduced
+-    # in bazelbuild/rules_go#2110. For more information, see: https://github.com/bazelbuild/rules_go/pull/2110#issuecomment-508713878
+-    # We should be able to remove the `--stamp=true` arg once this has been fixed!
+-    APP_VERSION="${DOCKER_TAG}" \
+-    DOCKER_REPO="${DOCKER_REPO}" \
+-    DOCKER_TAG="${DOCKER_TAG}" \
+-    bazel run --platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 --stamp=true //test/e2e:images
+-
+-    echo "All images built"
+-
+-    for IMG in \
+-        "${DOCKER_REPO}"/cert-manager-controller:"${DOCKER_TAG}" \
+-        "${DOCKER_REPO}"/cert-manager-cainjector:"${DOCKER_TAG}" \
+-        "${DOCKER_REPO}"/cert-manager-acmesolver:"${DOCKER_TAG}" \
+-        "${DOCKER_REPO}"/cert-manager-webhook:"${DOCKER_TAG}" \
+-        "pebble:bazel" \
+-        "quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.26.1" \
+-        "k8s.gcr.io/defaultbackend-amd64:bazel" \
+-        "sample-webhook:bazel" \
+-        "vault:bazel" \
+-        "gcr.io/kubernetes-helm/tiller:bazel" \
+-    ; do
+-        echo "Loading image ${IMG} into kind container"
+-        "${KIND}" load docker-image --name "${KIND_CLUSTER_NAME}" "${IMG}" &
+-    done
+-    echo "Waiting for all images to be loaded..."
+-    wait
+-    echo "All images loaded!"
+-}
+-
+-build_images
+diff --git a/hack/ci/lib/cluster_create.sh b/hack/ci/lib/cluster_create.sh
+deleted file mode 100755
+index f8c909f87..000000000
+--- a/hack/ci/lib/cluster_create.sh
++++ /dev/null
+@@ -1,62 +0,0 @@
+-#!/bin/bash
+-
+-# Copyright 2019 The Jetstack cert-manager contributors.
+-#
+-# Licensed under the Apache License, Version 2.0 (the "License");
+-# you may not use this file except in compliance with the License.
+-# You may obtain a copy of the License at
+-#
+-#     http://www.apache.org/licenses/LICENSE-2.0
+-#
+-# Unless required by applicable law or agreed to in writing, software
+-# distributed under the License is distributed on an "AS IS" BASIS,
+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-# See the License for the specific language governing permissions and
+-# limitations under the License.
+-
+-set -o errexit
+-set -o nounset
+-set -o pipefail
+-
+-SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")
+-source "${SCRIPT_ROOT}/lib.sh"
+-
+-# deploy_kind will deploy a kubernetes-in-docker cluster
+-deploy_kind() {
+-    echo "Exporting kind image to docker daemon..."
+-    bazel run "${KIND_IMAGE_TARGET}"
+-
+-    function kubeVersion() {
+-        echo $(docker run \
+-            --entrypoint="cat" \
+-            "${KIND_IMAGE}" \
+-            /kind/version)
+-    }
+-
+-    # default to v1beta2
+-    # - if 1.13.x or 1.14.x use v1beta1
+-    # - if 1.12.x then use v1alpha3
+-    # - if 1.11.x then use v1alpha2
+-    vers="$(kubeVersion)"
+-    config="v1beta2"
+-    if [[ "$vers" =~ v1\.11\..+ ]]; then
+-        config="v1alpha2"
+-    fi
+-    if [[ "$vers" =~ v1\.12\..+ ]]; then
+-        config="v1alpha3"
+-    fi
+-    if [[ "$vers" =~ v1\.1[3-4]\..+ ]] ; then
+-        config="v1beta1"
+-    fi
+-
+-
+-    echo "Booting Kubernetes version: $vers"
+-    echo "Using kubeadm config api version '$config'"
+-    # create the kind cluster
+-    "${KIND}" create cluster \
+-        --name="${KIND_CLUSTER_NAME}" \
+-        --image="${KIND_IMAGE}" \
+-        --config "${REPO_ROOT}"/test/fixtures/kind/config-"$config".yaml
+-}
+-
+-deploy_kind
+diff --git a/hack/ci/lib/lib.sh b/hack/ci/lib/lib.sh
+deleted file mode 100644
+index 99e709af9..000000000
+--- a/hack/ci/lib/lib.sh
++++ /dev/null
+@@ -1,56 +0,0 @@
+-#!/bin/bash
+-
+-# Copyright 2019 The Jetstack cert-manager contributors.
+-#
+-# Licensed under the Apache License, Version 2.0 (the "License");
+-# you may not use this file except in compliance with the License.
+-# You may obtain a copy of the License at
+-#
+-#     http://www.apache.org/licenses/LICENSE-2.0
+-#
+-# Unless required by applicable law or agreed to in writing, software
+-# distributed under the License is distributed on an "AS IS" BASIS,
+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-# See the License for the specific language governing permissions and
+-# limitations under the License.
+-
+-set -o errexit
+-set -o nounset
+-set -o pipefail
+-
+-_SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")
+-REPO_ROOT="${_SCRIPT_ROOT}/../../.."
+-
+-# This file contains common definitions that are re-used in other scripts
+-
+-export K8S_VERSION="${K8S_VERSION:-1.15}"
+-KUBECTL_TARGET="${KUBECTL_TARGET:-//hack/bin:kubectl-${K8S_VERSION}}"
+-KIND_IMAGE_TARGET="${KIND_IMAGE_TARGET:-@kind-${K8S_VERSION}//image}"
+-
+-export KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-cm-local-cluster}"
+-export KIND_CONTAINER_NAME="kind-${KIND_CLUSTER_NAME}-control-plane"
+-
+-# DOCKER_REPO is the docker repo to use for cert-manager images, either when
+-# building or deploying cert-manager using these scripts.
+-export DOCKER_REPO="quay.io/jetstack"
+-
+-# DOCKER_TAG is the docker tag to use for the cert-manager images.
+-# This defaults to 'build' so it doesn't conflict with images built for any
+-# other purpose
+-export DOCKER_TAG="build"
+-
+-if [ ! "${CM_DEPS_LOADED:-}" = "1" ]; then
+-    # Build all e2e test dependencies
+-    bazel build \
+-        "${KUBECTL_TARGET}" \
+-        "${KIND_IMAGE_TARGET}" \
+-        //hack/bin:kind
+-
+-    genfiles="$(bazel info bazel-genfiles)"
+-    export KUBECTL="${genfiles}/hack/bin/kubectl-${K8S_VERSION}"
+-    # TODO: use a more unique name for the kind image
+-    export KIND_IMAGE="bazel/image:image"
+-    export KIND="${genfiles}/hack/bin/kind"
+-
+-    export CM_DEPS_LOADED="1"
+-fi
+diff --git a/hack/ci/run-dev-kind.sh b/hack/ci/run-dev-kind.sh
+deleted file mode 100755
+index 2270aa99d..000000000
+--- a/hack/ci/run-dev-kind.sh
++++ /dev/null
+@@ -1,75 +0,0 @@
+-#!/bin/bash
+-
+-# Copyright 2019 The Jetstack cert-manager contributors.
+-#
+-# Licensed under the Apache License, Version 2.0 (the "License");
+-# you may not use this file except in compliance with the License.
+-# You may obtain a copy of the License at
+-#
+-#     http://www.apache.org/licenses/LICENSE-2.0
+-#
+-# Unless required by applicable law or agreed to in writing, software
+-# distributed under the License is distributed on an "AS IS" BASIS,
+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-# See the License for the specific language governing permissions and
+-# limitations under the License.
+-
+-# This script will provision a development environment using kind on your local
+-# machine.
+-# The end result should be an environment that can pass e2e tests.
+-
+-set -o errexit
+-set -o nounset
+-set -o pipefail
+-
+-SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")
+-source "${SCRIPT_ROOT}/lib/lib.sh"
+-
+-echo "+++ Creating cluster using kind"
+-"${SCRIPT_ROOT}/lib/cluster_create.sh"
+-
+-echo "+++ Building cert-manager images from source and exporting them to the development cluster"
+-"${SCRIPT_ROOT}/lib/build_images.sh"
+-
+-echo ""
+-echo ""
+-echo "Your development environment is now ready."
+-echo
+-echo "A single node Kubernetes cluster has been provisioned in a Docker container"
+-echo "on your machine."
+-echo ""
+-echo "You should now configure your shell to use the KUBECONFIG file that has"
+-echo "been generated in order to access this cluster:"
+-echo ""
+-echo "  export KUBECONFIG=\$HOME/.kube/kind-config-${KIND_CLUSTER_NAME}"
+-echo ""
+-echo ""
+-echo "A freshly built copy of the cert-manager images have also been exported to"
+-echo "the docker daemon in this single node Kubernetes cluster."
+-echo ""
+-echo "You can build and export a fresh copy of these images with:"
+-echo ""
+-echo "  ./hack/ci/lib/build_images.sh"
+-echo ""
+-echo ""
+-echo "You should now be able to run end-to-end tests using:"
+-echo ""
+-echo "  make e2e_test"
+-echo ""
+-echo ""
+-echo "We have \*\*not\*\* automatically deployed cert-manager into this cluster."
+-echo "To deploy cert-manager into this cluster, run:"
+-echo ""
+-echo "  bazel run //hack/bin:helm -- install \\"
+-echo "      --name cert-manager \\"
+-echo "      --namespace cert-manager \\"
+-echo "      --values ./test/fixtures/cert-manager-values.yaml \\"
+-echo "      ./deploy/charts/cert-manager"
+-echo ""
+-echo ""
+-echo "Each time you make a change and run build_images.sh, you will need to manually"
+-echo "delete the cert-manager pod that is deployed in the cert-manager namespace."
+-echo ""
+-echo "Thanks for contributing!"
+-echo ""
+-echo ""
+diff --git a/hack/ci/run-e2e-kind.sh b/hack/ci/run-e2e-kind.sh
+index 23bfc732c..243e5a60d 100755
+--- a/hack/ci/run-e2e-kind.sh
++++ b/hack/ci/run-e2e-kind.sh
+@@ -25,25 +25,6 @@ set -o nounset
+ set -o pipefail
+ 
+ SCRIPT_ROOT=$(dirname "${BASH_SOURCE}")
+-source "${SCRIPT_ROOT}/lib/lib.sh"
+ 
+-cleanup() {
+-    # Ignore errors here
+-    "${SCRIPT_ROOT}/lib/cluster_destroy.sh" || true
+-}
+-trap cleanup EXIT
+-
+-"${SCRIPT_ROOT}/lib/cluster_create.sh"
+-
+-export KUBECONFIG="${HOME}/.kube/kind-config-${KIND_CLUSTER_NAME}"
+-
+-echo "Testing kind apiserver connectivity"
+-# Ensure the apiserver is responding
+-"${KUBECTL}" get nodes
+-
+-"${SCRIPT_ROOT}/lib/build_images.sh"
+-
+-make e2e_test \
+-    KUBECONFIG="${KUBECONFIG}" \
+-    KUBECTL="${KUBECTL}" \
+-    FLAKE_ATTEMPTS="${FLAKE_ATTEMPTS:-1}"
++echo "DEPRECATED: This script will be removed. Invoke './devel/ci-run-e2e.sh' directly instead."
++"${SCRIPT_ROOT}/../../devel/ci-run-e2e.sh"
+diff --git a/hack/ci/run-e2e-minikube.sh b/hack/ci/run-e2e-minikube.sh
+deleted file mode 100755
+index be001ef41..000000000
+--- a/hack/ci/run-e2e-minikube.sh
++++ /dev/null
+@@ -1,36 +0,0 @@
+-#!/bin/bash
+-
+-# Copyright 2019 The Jetstack cert-manager contributors.
+-#
+-# Licensed under the Apache License, Version 2.0 (the "License");
+-# you may not use this file except in compliance with the License.
+-# You may obtain a copy of the License at
+-#
+-#     http://www.apache.org/licenses/LICENSE-2.0
+-#
+-# Unless required by applicable law or agreed to in writing, software
+-# distributed under the License is distributed on an "AS IS" BASIS,
+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-# See the License for the specific language governing permissions and
+-# limitations under the License.
+-
+-# This file is the entrypoint to our legacy minikube e2e testing environment
+-# for cert-manager. It is currently used to run e2e test jobs against a
+-# 1.9 or lower minikube built cluster.
+-# This script should not be used for anything except for our CI process.
+-
+-set -o errexit
+-set -o nounset
+-set -o pipefail
+-
+-# Build images while we wait for services to start
+-make images APP_VERSION=build
+-
+-# Wait for e2e service dependencies
+-echo "Waiting for minikube cluster to be ready..."
+-
+-while true; do if kubectl get nodes; then break; fi; echo "Waiting 5s for kubernetes to be ready..."; sleep 5; done
+-
+-echo "Running e2e tests"
+-# Skip RBAC tests as they do not pass on Kubernetes <1.9
+-make e2e_test GINKGO_SKIP="RBAC"
+diff --git a/test/e2e/charts/BUILD.bazel b/test/e2e/charts/BUILD.bazel
+index 427c08114..91c378fe9 100644
+--- a/test/e2e/charts/BUILD.bazel
++++ b/test/e2e/charts/BUILD.bazel
+@@ -22,10 +22,7 @@ filegroup(
+ 
+ filegroup(
+     name = "all-srcs",
+-    srcs = [
+-        ":package-srcs",
+-        "//test/e2e/charts/pebble:all-srcs",
+-    ],
++    srcs = [":package-srcs"],
+     tags = ["automanaged"],
+     visibility = ["//visibility:public"],
+ )
+diff --git a/test/e2e/e2e.go b/test/e2e/e2e.go
+index 750bd8401..b6e03702c 100644
+--- a/test/e2e/e2e.go
++++ b/test/e2e/e2e.go
+@@ -33,9 +33,7 @@ var (
+ )
+ 
+ var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
+-	if !cfg.Addons.SkipGlobals {
+-		addon.InitGlobals(cfg)
+-	}
++	addon.InitGlobals(cfg)
+ 
+ 	ginkgo.By("Provisioning shared cluster addons")
+ 
+@@ -83,11 +81,9 @@ var _ = ginkgo.SynchronizedAfterSuite(func() {},
+ 			}
+ 		}
+ 
+-		if !cfg.Addons.SkipGlobals {
+-			ginkgo.By("Cleaning up the provisioned globals")
+-			err = addon.DeprovisionGlobals(cfg)
+-			if err != nil {
+-				framework.Failf("Error deprovisioning global addons: %v", err)
+-			}
++		ginkgo.By("Cleaning up the provisioned globals")
++		err = addon.DeprovisionGlobals(cfg)
++		if err != nil {
++			framework.Failf("Error deprovisioning global addons: %v", err)
+ 		}
+ 	})
+diff --git a/test/e2e/e2e_test.go b/test/e2e/e2e_test.go
+index ad6d96c3b..245060cfa 100644
+--- a/test/e2e/e2e_test.go
++++ b/test/e2e/e2e_test.go
+@@ -57,6 +57,7 @@ func TestE2E(t *testing.T) {
+ 		t.Fail()
+ 	}
+ 
++	gomega.NewWithT(t)
+ 	gomega.RegisterFailHandler(ginkgo.Fail)
+ 
+ 	// TODO: properly make use of default SkipString
+diff --git a/test/e2e/framework/addon/BUILD.bazel b/test/e2e/framework/addon/BUILD.bazel
+index f18d4e9cc..cd82eda9e 100644
+--- a/test/e2e/framework/addon/BUILD.bazel
++++ b/test/e2e/framework/addon/BUILD.bazel
+@@ -8,10 +8,6 @@ go_library(
+     visibility = ["//visibility:public"],
+     deps = [
+         "//test/e2e/framework/addon/base:go_default_library",
+-        "//test/e2e/framework/addon/certmanager:go_default_library",
+-        "//test/e2e/framework/addon/nginxingress:go_default_library",
+-        "//test/e2e/framework/addon/pebble:go_default_library",
+-        "//test/e2e/framework/addon/tiller:go_default_library",
+         "//test/e2e/framework/config:go_default_library",
+         "//test/e2e/framework/log:go_default_library",
+         "@io_k8s_apimachinery//pkg/util/errors:go_default_library",
+@@ -30,12 +26,7 @@ filegroup(
+     srcs = [
+         ":package-srcs",
+         "//test/e2e/framework/addon/base:all-srcs",
+-        "//test/e2e/framework/addon/certmanager:all-srcs",
+         "//test/e2e/framework/addon/chart:all-srcs",
+-        "//test/e2e/framework/addon/nginxingress:all-srcs",
+-        "//test/e2e/framework/addon/pebble:all-srcs",
+-        "//test/e2e/framework/addon/samplewebhook:all-srcs",
+-        "//test/e2e/framework/addon/tiller:all-srcs",
+         "//test/e2e/framework/addon/vault:all-srcs",
+     ],
+     tags = ["automanaged"],
+diff --git a/test/e2e/framework/addon/certmanager/BUILD.bazel b/test/e2e/framework/addon/certmanager/BUILD.bazel
+deleted file mode 100644
+index 016aae788..000000000
+--- a/test/e2e/framework/addon/certmanager/BUILD.bazel
++++ /dev/null
+@@ -1,29 +0,0 @@
+-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+-
+-go_library(
+-    name = "go_default_library",
+-    srcs = ["addon.go"],
+-    importpath = "github.com/jetstack/cert-manager/test/e2e/framework/addon/certmanager",
+-    tags = ["manual"],
+-    visibility = ["//visibility:public"],
+-    deps = [
+-        "//test/e2e/framework/addon/chart:go_default_library",
+-        "//test/e2e/framework/addon/tiller:go_default_library",
+-        "//test/e2e/framework/config:go_default_library",
+-        "//test/e2e/framework/log:go_default_library",
+-    ],
+-)
+-
+-filegroup(
+-    name = "package-srcs",
+-    srcs = glob(["**"]),
+-    tags = ["automanaged"],
+-    visibility = ["//visibility:private"],
+-)
+-
+-filegroup(
+-    name = "all-srcs",
+-    srcs = [":package-srcs"],
+-    tags = ["automanaged"],
+-    visibility = ["//visibility:public"],
+-)
+diff --git a/test/e2e/framework/addon/certmanager/addon.go b/test/e2e/framework/addon/certmanager/addon.go
+deleted file mode 100644
+index 44e195310..000000000
+--- a/test/e2e/framework/addon/certmanager/addon.go
++++ /dev/null
+@@ -1,130 +0,0 @@
+-/*
+-Copyright 2019 The Jetstack cert-manager contributors.
+-
+-Licensed under the Apache License, Version 2.0 (the "License");
+-you may not use this file except in compliance with the License.
+-You may obtain a copy of the License at
+-
+-    http://www.apache.org/licenses/LICENSE-2.0
+-
+-Unless required by applicable law or agreed to in writing, software
+-distributed under the License is distributed on an "AS IS" BASIS,
+-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-See the License for the specific language governing permissions and
+-limitations under the License.
+-*/
+-
+-package certmanager
+-
+-import (
+-	"fmt"
+-	"os/exec"
+-
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/chart"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/tiller"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/config"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/log"
+-)
+-
+-// Certmanager defines an addon that installs an instance of certmanager in the
+-// target cluster.
+-// Currently, only one instance of Certmanager can be deployed in a single
+-// invocation of the test suite (i.e. it *must* be instantiated globally).
+-// In future we can restrict Certmanager to a single namespace in order to enforce
+-// isolation between tests.
+-type Certmanager struct {
+-	config        *config.Config
+-	chart         *chart.Chart
+-	tillerDetails *tiller.Details
+-
+-	// Tiller is the tiller instance used to deploy the chart
+-	Tiller *tiller.Tiller
+-
+-	Name string
+-
+-	// Required namespace to deploy Certmanager into.
+-	Namespace string
+-}
+-
+-// Details return the details about the certmanager instance deployed
+-type Details struct {
+-	ClusterResourceNamespace string
+-	ServiceAccountName       string
+-}
+-
+-func (p *Certmanager) Setup(cfg *config.Config) error {
+-	p.config = cfg
+-	if p.Name == "" {
+-		return fmt.Errorf("Name field must be set on Certmanager addon")
+-	}
+-	if p.Namespace == "" {
+-		// TODO: in non-global instances, we could generate a new namespace just
+-		// for this addon to be used from.
+-		return fmt.Errorf("Namespace name must be specified")
+-	}
+-	if p.Tiller == nil {
+-		return fmt.Errorf("Tiller field must be set on Certmanager addon")
+-	}
+-	if p.config.Kubectl == "" {
+-		return fmt.Errorf("path to kubectl must be provided")
+-	}
+-	var err error
+-	p.tillerDetails, err = p.Tiller.Details()
+-	if err != nil {
+-		return err
+-	}
+-	p.chart = &chart.Chart{
+-		Tiller:      p.Tiller,
+-		ReleaseName: "chart-certmanager-" + p.Name,
+-		Namespace:   p.Namespace,
+-		ChartName:   cfg.RepoRoot + "/deploy/charts/cert-manager",
+-		// TODO: move resource requests/limits into Vars so they are always set
+-		Values: []string{cfg.RepoRoot + "/test/fixtures/cert-manager-values.yaml"},
+-		Vars: []chart.StringTuple{
+-			{Key: "serviceAccount.name", Value: "chart-certmanager-cert-manager"},
+-		},
+-		// doesn't matter when installing from disk
+-		ChartVersion: "0",
+-		UpdateDeps:   true,
+-	}
+-	err = p.chart.Setup(cfg)
+-	if err != nil {
+-		return err
+-	}
+-	return nil
+-}
+-
+-// Provision will actually deploy this instance of Pebble-ingress to the cluster.
+-func (p *Certmanager) Provision() error {
+-	cmd := exec.Command(p.config.Kubectl, "apply", "--validate=false", "-f", p.config.RepoRoot+"/deploy/manifests/00-crds.yaml")
+-	cmd.Stdout = log.Writer
+-	cmd.Stderr = log.Writer
+-	if err := cmd.Run(); err != nil {
+-		return fmt.Errorf("error install cert-manager CRD manifests: %v", err)
+-	}
+-
+-	return p.chart.Provision()
+-}
+-
+-// Details returns details that can be used to utilise the instance of Pebble.
+-func (p *Certmanager) Details() *Details {
+-	return &Details{
+-		ClusterResourceNamespace: p.Namespace,
+-		ServiceAccountName:       "chart-certmanager-cert-manager",
+-	}
+-}
+-
+-// Deprovision will destroy this instance of Pebble
+-func (p *Certmanager) Deprovision() error {
+-	return p.chart.Deprovision()
+-}
+-
+-func (p *Certmanager) SupportsGlobal() bool {
+-	// Pebble does support a global configuration, as the 'usage details' for
+-	// it are deterministic (i.e. not a result of the call to helm install).
+-	return true
+-}
+-
+-func (p *Certmanager) Logs() (map[string]string, error) {
+-	return p.chart.Logs()
+-}
+diff --git a/test/e2e/framework/addon/chart/BUILD.bazel b/test/e2e/framework/addon/chart/BUILD.bazel
+index 673e1ce02..717ed7d40 100644
+--- a/test/e2e/framework/addon/chart/BUILD.bazel
++++ b/test/e2e/framework/addon/chart/BUILD.bazel
+@@ -7,9 +7,8 @@ go_library(
+     tags = ["manual"],
+     visibility = ["//visibility:public"],
+     deps = [
+-        "//test/e2e/framework/addon/tiller:go_default_library",
++        "//test/e2e/framework/addon/base:go_default_library",
+         "//test/e2e/framework/config:go_default_library",
+-        "//test/e2e/framework/log:go_default_library",
+         "@io_k8s_api//core/v1:go_default_library",
+         "@io_k8s_apimachinery//pkg/apis/meta/v1:go_default_library",
+     ],
+diff --git a/test/e2e/framework/addon/chart/addon.go b/test/e2e/framework/addon/chart/addon.go
+index 652d2a832..98770fb3e 100644
+--- a/test/e2e/framework/addon/chart/addon.go
++++ b/test/e2e/framework/addon/chart/addon.go
+@@ -26,21 +26,19 @@ import (
+ 	corev1 "k8s.io/api/core/v1"
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+ 
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/tiller"
++	"github.com/jetstack/cert-manager/test/e2e/framework/addon/base"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/config"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/log"
+ )
+ 
+ // Chart is a generic Helm chart addon for the test environment
+ type Chart struct {
+-	config        *config.Config
+-	tillerDetails *tiller.Details
++	Base *base.Base
++
++	config *config.Config
++
+ 	// temporary directory used as the --home flag to Helm
+ 	home string
+ 
+-	// Tiller is the tiller instance to submit the release to
+-	Tiller *tiller.Tiller
+-
+ 	// ReleaseName for this Helm release
+ 	// `helm install --name {{ReleaseName}}`
+ 	ReleaseName string
+@@ -93,13 +91,6 @@ func (c *Chart) Setup(cfg *config.Config) error {
+ 	if c.config.Addons.Helm.Path == "" {
+ 		return fmt.Errorf("--helm-binary-path must be set")
+ 	}
+-	if c.Tiller == nil {
+-		return fmt.Errorf("tiller base addon must be provided")
+-	}
+-	c.tillerDetails, err = c.Tiller.Details()
+-	if err != nil {
+-		return err
+-	}
+ 
+ 	c.home, err = ioutil.TempDir("", "helm-chart-install")
+ 	if err != nil {
+@@ -111,11 +102,6 @@ func (c *Chart) Setup(cfg *config.Config) error {
+ 
+ // Provision an instance of tiller-deploy
+ func (c *Chart) Provision() error {
+-	err := c.runHelmClientInit()
+-	if err != nil {
+-		return fmt.Errorf("error running 'helm init': %v", err)
+-	}
+-
+ 	if c.UpdateDeps {
+ 		err := c.runDepUpdate()
+ 		if err != nil {
+@@ -123,12 +109,12 @@ func (c *Chart) Provision() error {
+ 		}
+ 	}
+ 
+-	err = c.runInstall()
++	err := c.runInstall()
+ 	if err != nil {
+ 		return fmt.Errorf("error install helm chart: %v", err)
+ 	}
+ 
+-	err = c.Tiller.Base.Details().Helper().WaitForAllPodsRunningInNamespace(c.Namespace)
++	err = c.Base.Details().Helper().WaitForAllPodsRunningInNamespace(c.Namespace)
+ 	if err != nil {
+ 		return err
+ 	}
+@@ -136,14 +122,6 @@ func (c *Chart) Provision() error {
+ 	return nil
+ }
+ 
+-func (c *Chart) runHelmClientInit() error {
+-	err := c.buildHelmCmd("init", "--client-only").Run()
+-	if err != nil {
+-		return err
+-	}
+-	return nil
+-}
+-
+ func (c *Chart) runDepUpdate() error {
+ 	err := c.buildHelmCmd("dep", "update", c.ChartName).Run()
+ 	if err != nil {
+@@ -153,10 +131,9 @@ func (c *Chart) runDepUpdate() error {
+ }
+ 
+ func (c *Chart) runInstall() error {
+-	args := []string{"install", c.ChartName,
++	args := []string{"install", c.ReleaseName, c.ChartName,
+ 		"--wait",
+ 		"--namespace", c.Namespace,
+-		"--name", c.ReleaseName,
+ 		"--version", c.ChartVersion}
+ 
+ 	for _, v := range c.Values {
+@@ -178,14 +155,12 @@ func (c *Chart) runInstall() error {
+ 
+ func (c *Chart) buildHelmCmd(args ...string) *exec.Cmd {
+ 	args = append([]string{
+-		"--home", c.home,
+-		"--kubeconfig", c.tillerDetails.KubeConfig,
+-		"--kube-context", c.tillerDetails.KubeContext,
+-		"--tiller-namespace", c.tillerDetails.Namespace,
++		"--kubeconfig", c.config.KubeConfig,
++		"--kube-context", c.config.KubeContext,
+ 	}, args...)
+ 	cmd := exec.Command(c.config.Addons.Helm.Path, args...)
+-	cmd.Stdout = log.Writer
+-	cmd.Stderr = log.Writer
++	cmd.Stdout = os.Stdout
++	cmd.Stderr = os.Stderr
+ 	return cmd
+ }
+ 
+@@ -213,7 +188,7 @@ func (c *Chart) getHelmVersion() (string, error) {
+ 
+ // Deprovision the deployed instance of tiller-deploy
+ func (c *Chart) Deprovision() error {
+-	err := c.buildHelmCmd("delete", "--purge", c.ReleaseName).Run()
++	err := c.buildHelmCmd("delete", "--namespace", c.Namespace, c.ReleaseName).Run()
+ 	if err != nil {
+ 		// Ignore deprovisioning errors
+ 		// TODO: only ignore failed to delete because it doesn't exist errors
+@@ -250,7 +225,7 @@ func (c *Chart) SupportsGlobal() bool {
+ }
+ 
+ func (c *Chart) Logs() (map[string]string, error) {
+-	kc := c.Tiller.Base.Details().KubeClient
++	kc := c.Base.Details().KubeClient
+ 	oldLabelPods, err := kc.CoreV1().Pods(c.Namespace).List(metav1.ListOptions{LabelSelector: "release=" + c.ReleaseName})
+ 	if err != nil {
+ 		return nil, err
+diff --git a/test/e2e/framework/addon/globals.go b/test/e2e/framework/addon/globals.go
+index 2b26c1d85..bee6fe18e 100644
+--- a/test/e2e/framework/addon/globals.go
++++ b/test/e2e/framework/addon/globals.go
+@@ -22,10 +22,6 @@ import (
+ 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+ 
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/addon/base"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/certmanager"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/nginxingress"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/pebble"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/tiller"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/config"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/log"
+ )
+@@ -45,14 +41,6 @@ type Addon interface {
+ var (
+ 	// Base is a base addon containing Kubernetes clients
+ 	Base = &base.Base{}
+-	// Tiller is a shared tiller addon
+-	Tiller = &tiller.Tiller{}
+-	// NginxIngress installs nginx-ingress as a helm chart
+-	NginxIngress = &nginxingress.Nginx{}
+-	// Certmanager install cert-manager as a helm chart
+-	CertManager = &certmanager.Certmanager{}
+-	// Pebble is a global deployment of the Pebble acme server
+-	Pebble = &pebble.Pebble{}
+ 
+ 	// allAddons is populated by InitGlobals and defines the order in which
+ 	// addons will be provisioned
+@@ -73,35 +61,8 @@ func InitGlobals(cfg *config.Config) {
+ 	}
+ 	globalsInited = true
+ 	*Base = base.Base{}
+-	*Tiller = tiller.Tiller{
+-		Base:               Base,
+-		Name:               "tiller-deploy",
+-		Namespace:          "cm-e2e-global-tiller-deploy",
+-		ClusterPermissions: true,
+-	}
+-	*NginxIngress = nginxingress.Nginx{
+-		Tiller:    Tiller,
+-		Name:      "nginx-ingress",
+-		Namespace: "cm-e2e-global-nginx-ingress",
+-		IPAddress: cfg.Addons.Nginx.Global.IPAddress,
+-		Domain:    cfg.Addons.Nginx.Global.Domain,
+-	}
+-	*CertManager = certmanager.Certmanager{
+-		Tiller:    Tiller,
+-		Name:      "cert-manager",
+-		Namespace: "cm-e2e-global-cert-manager",
+-	}
+-	*Pebble = pebble.Pebble{
+-		Tiller:    Tiller,
+-		Name:      "pebble",
+-		Namespace: "cm-e2e-global-pebble",
+-	}
+ 	allAddons = []Addon{
+ 		Base,
+-		Tiller,
+-		CertManager,
+-		NginxIngress,
+-		Pebble,
+ 	}
+ }
+ 
+diff --git a/test/e2e/framework/addon/nginxingress/BUILD.bazel b/test/e2e/framework/addon/nginxingress/BUILD.bazel
+deleted file mode 100644
+index 3fb1375c9..000000000
+--- a/test/e2e/framework/addon/nginxingress/BUILD.bazel
++++ /dev/null
+@@ -1,29 +0,0 @@
+-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+-
+-go_library(
+-    name = "go_default_library",
+-    srcs = ["nginx.go"],
+-    importpath = "github.com/jetstack/cert-manager/test/e2e/framework/addon/nginxingress",
+-    tags = ["manual"],
+-    visibility = ["//visibility:public"],
+-    deps = [
+-        "//pkg/util:go_default_library",
+-        "//test/e2e/framework/addon/chart:go_default_library",
+-        "//test/e2e/framework/addon/tiller:go_default_library",
+-        "//test/e2e/framework/config:go_default_library",
+-    ],
+-)
+-
+-filegroup(
+-    name = "package-srcs",
+-    srcs = glob(["**"]),
+-    tags = ["automanaged"],
+-    visibility = ["//visibility:private"],
+-)
+-
+-filegroup(
+-    name = "all-srcs",
+-    srcs = [":package-srcs"],
+-    tags = ["automanaged"],
+-    visibility = ["//visibility:public"],
+-)
+diff --git a/test/e2e/framework/addon/nginxingress/nginx.go b/test/e2e/framework/addon/nginxingress/nginx.go
+deleted file mode 100644
+index c427eab25..000000000
+--- a/test/e2e/framework/addon/nginxingress/nginx.go
++++ /dev/null
+@@ -1,175 +0,0 @@
+-/*
+-Copyright 2019 The Jetstack cert-manager contributors.
+-
+-Licensed under the Apache License, Version 2.0 (the "License");
+-you may not use this file except in compliance with the License.
+-You may obtain a copy of the License at
+-
+-    http://www.apache.org/licenses/LICENSE-2.0
+-
+-Unless required by applicable law or agreed to in writing, software
+-distributed under the License is distributed on an "AS IS" BASIS,
+-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-See the License for the specific language governing permissions and
+-limitations under the License.
+-*/
+-
+-// package nginx contains an addon that installs nginx-ingress
+-package nginxingress
+-
+-import (
+-	"fmt"
+-
+-	cmutil "github.com/jetstack/cert-manager/pkg/util"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/chart"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/tiller"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/config"
+-)
+-
+-// Nginx describes the configuration details for an instance of nginx-ingress
+-// deployed to a cluster.
+-type Nginx struct {
+-	config        *config.Config
+-	chart         *chart.Chart
+-	tillerDetails *tiller.Details
+-
+-	// Name is a unique name for this nginx-ingress deployment
+-	Name string
+-
+-	// Namespace is the namespace to deploy nginx into
+-	Namespace string
+-
+-	// Tiller is the tiller instance used to deploy the chart
+-	Tiller *tiller.Tiller
+-
+-	// IPAddress is the IP address that the nginx-ingress service will be
+-	// exposed on.
+-	// This must be a part of the service CIDR, and must not already be allocated
+-	// else provisioning will fail.
+-	IPAddress string
+-
+-	// Domain is a domain name that can be used during e2e tests.
+-	// This domain should have records for *.example.com and example.com pointing
+-	// to the IP listed above.
+-	Domain string
+-}
+-
+-type Details struct {
+-	// BaseDomain is a domain name that can be used during e2e tests.
+-	// This domain should have records for *.example.com and example.com pointing
+-	// to the IP listed above.
+-	BaseDomain string
+-
+-	// IngressClass configured for this controller
+-	IngressClass string
+-}
+-
+-func (n *Nginx) Setup(cfg *config.Config) error {
+-	if n.Name == "" {
+-		return fmt.Errorf("Name field must be set on nginx addon")
+-	}
+-	if n.Namespace == "" {
+-		// TODO: in non-global instances, we could generate a new namespace just
+-		// for this addon to be used from.
+-		return fmt.Errorf("Namespace name must be specified")
+-	}
+-	if n.Tiller == nil {
+-		return fmt.Errorf("Tiller field must be set on nginx addon")
+-	}
+-	if n.IPAddress == "" {
+-		return fmt.Errorf("Nginx service IP address must be provided")
+-	}
+-	if n.Domain == "" {
+-		return fmt.Errorf("Nginx service domain must be provided")
+-	}
+-	var err error
+-	n.tillerDetails, err = n.Tiller.Details()
+-	if err != nil {
+-		return err
+-	}
+-	n.chart = &chart.Chart{
+-		Tiller:       n.Tiller,
+-		ReleaseName:  "chart-nginx-" + n.Name,
+-		Namespace:    n.Namespace,
+-		ChartName:    "stable/nginx-ingress",
+-		ChartVersion: cfg.Addons.Nginx.ChartVersion,
+-		Vars: []chart.StringTuple{
+-			{
+-				Key:   "controller.image.pullPolicy",
+-				Value: "Never",
+-			},
+-			{
+-				Key:   "controller.image.tag",
+-				Value: "0.26.1",
+-			},
+-			{
+-				Key:   "defaultBackend.image.pullPolicy",
+-				Value: "Never",
+-			},
+-			{
+-				Key:   "defaultBackend.image.tag",
+-				Value: "bazel",
+-			},
+-			{
+-				Key:   "controller.service.clusterIP",
+-				Value: n.IPAddress,
+-			},
+-			{
+-				Key:   "controller.service.type",
+-				Value: "ClusterIP",
+-			},
+-			// nginx-ingress will by default not redirect http to https if
+-			// the url is ".well-known"
+-			{
+-				Key:   "controller.config.no-tls-redirect-locations",
+-				Value: "",
+-			},
+-		},
+-	}
+-	err = n.chart.Setup(cfg)
+-	if err != nil {
+-		return err
+-	}
+-	return nil
+-}
+-
+-// Provision will actually deploy this instance of nginx-ingress to the cluster.
+-func (n *Nginx) Provision() error {
+-	return n.chart.Provision()
+-}
+-
+-// Details returns details that can be used to utilise the instance of nginx ingress.
+-func (n *Nginx) Details() *Details {
+-	return &Details{
+-		BaseDomain:   n.Domain,
+-		IngressClass: "nginx",
+-	}
+-}
+-
+-// Deprovision will destroy this instance of nginx-ingress
+-func (n *Nginx) Deprovision() error {
+-	return n.chart.Deprovision()
+-}
+-
+-// SupportsGlobal will return whether this addon supports having a global,
+-// shared instance deployed.
+-// In order for an addon to support 'global mode', the Config() *must* be able
+-// to be derived from the inputs to the addon only, i.e. there must be no state
+-// created by Provision that is required for the output of Config().
+-// This is because multiple test processes are started in order to run tests
+-// in parallel, and only one invocation (the 'root') will actually call the
+-// Provision function.
+-// Tests themselves will only call the Details() function.
+-func (n *Nginx) SupportsGlobal() bool {
+-	// nginx does support a global configuration, as the 'usage details' for
+-	// it are deterministic (i.e. not a result of the call to helm install).
+-	return true
+-}
+-
+-func (n *Nginx) Logs() (map[string]string, error) {
+-	return n.chart.Logs()
+-}
+-
+-func (d *Details) NewTestDomain() string {
+-	return fmt.Sprintf("%s.%s", cmutil.RandStringRunes(5), d.BaseDomain)
+-}
+diff --git a/test/e2e/framework/addon/pebble/BUILD.bazel b/test/e2e/framework/addon/pebble/BUILD.bazel
+deleted file mode 100644
+index 631ae411d..000000000
+--- a/test/e2e/framework/addon/pebble/BUILD.bazel
++++ /dev/null
+@@ -1,28 +0,0 @@
+-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+-
+-go_library(
+-    name = "go_default_library",
+-    srcs = ["pebble.go"],
+-    importpath = "github.com/jetstack/cert-manager/test/e2e/framework/addon/pebble",
+-    tags = ["manual"],
+-    visibility = ["//visibility:public"],
+-    deps = [
+-        "//test/e2e/framework/addon/chart:go_default_library",
+-        "//test/e2e/framework/addon/tiller:go_default_library",
+-        "//test/e2e/framework/config:go_default_library",
+-    ],
+-)
+-
+-filegroup(
+-    name = "package-srcs",
+-    srcs = glob(["**"]),
+-    tags = ["automanaged"],
+-    visibility = ["//visibility:private"],
+-)
+-
+-filegroup(
+-    name = "all-srcs",
+-    srcs = [":package-srcs"],
+-    tags = ["automanaged"],
+-    visibility = ["//visibility:public"],
+-)
+diff --git a/test/e2e/framework/addon/pebble/pebble.go b/test/e2e/framework/addon/pebble/pebble.go
+deleted file mode 100644
+index 27a59463a..000000000
+--- a/test/e2e/framework/addon/pebble/pebble.go
++++ /dev/null
+@@ -1,113 +0,0 @@
+-/*
+-Copyright 2019 The Jetstack cert-manager contributors.
+-
+-Licensed under the Apache License, Version 2.0 (the "License");
+-you may not use this file except in compliance with the License.
+-You may obtain a copy of the License at
+-
+-    http://www.apache.org/licenses/LICENSE-2.0
+-
+-Unless required by applicable law or agreed to in writing, software
+-distributed under the License is distributed on an "AS IS" BASIS,
+-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-See the License for the specific language governing permissions and
+-limitations under the License.
+-*/
+-
+-// package Pebble contains an addon that installs Pebble
+-package pebble
+-
+-import (
+-	"fmt"
+-
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/chart"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/tiller"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/config"
+-)
+-
+-// Pebble describes the configuration details for an instance of Pebble
+-// deployed to the test cluster
+-type Pebble struct {
+-	config        *config.Config
+-	chart         *chart.Chart
+-	tillerDetails *tiller.Details
+-
+-	// Tiller is the tiller instance used to deploy the chart
+-	Tiller *tiller.Tiller
+-
+-	// Name is a unique name for this Pebble deployment
+-	Name string
+-
+-	// Namespace is the namespace to deploy Pebble into
+-	Namespace string
+-}
+-
+-type Details struct {
+-	// Host is the hostname that can be used to connect to Pebble
+-	Host string
+-}
+-
+-func (p *Pebble) Setup(cfg *config.Config) error {
+-	if p.Name == "" {
+-		return fmt.Errorf("Name field must be set on Pebble addon")
+-	}
+-	if p.Namespace == "" {
+-		// TODO: in non-global instances, we could generate a new namespace just
+-		// for this addon to be used from.
+-		return fmt.Errorf("Namespace name must be specified")
+-	}
+-	if p.Tiller == nil {
+-		return fmt.Errorf("Tiller field must be set on Pebble addon")
+-	}
+-	var err error
+-	p.tillerDetails, err = p.Tiller.Details()
+-	if err != nil {
+-		return err
+-	}
+-	p.chart = &chart.Chart{
+-		Tiller:      p.Tiller,
+-		ReleaseName: "chart-pebble-" + p.Name,
+-		Namespace:   p.Namespace,
+-		ChartName:   cfg.RepoRoot + "/test/e2e/charts/pebble",
+-		Vars: []chart.StringTuple{
+-			{
+-				Key:   "strict",
+-				Value: fmt.Sprintf("%t", cfg.Addons.Pebble.Strict),
+-			},
+-		},
+-		// doesn't matter when installing from disk
+-		ChartVersion: "0",
+-	}
+-	err = p.chart.Setup(cfg)
+-	if err != nil {
+-		return err
+-	}
+-	return nil
+-}
+-
+-// Provision will actually deploy this instance of Pebble to the cluster.
+-func (p *Pebble) Provision() error {
+-	return p.chart.Provision()
+-}
+-
+-// Details returns details that can be used to utilise the instance of Pebble.
+-func (p *Pebble) Details() *Details {
+-	return &Details{
+-		Host: fmt.Sprintf("https://pebble.%s.svc.cluster.local/dir", p.Namespace),
+-	}
+-}
+-
+-// Deprovision will destroy this instance of Pebble
+-func (p *Pebble) Deprovision() error {
+-	return p.chart.Deprovision()
+-}
+-
+-func (p *Pebble) SupportsGlobal() bool {
+-	// Pebble does support a global configuration, as the 'usage details' for
+-	// it are deterministic (i.e. not a result of the call to helm install).
+-	return true
+-}
+-
+-func (p *Pebble) Logs() (map[string]string, error) {
+-	return p.chart.Logs()
+-}
+diff --git a/test/e2e/framework/addon/samplewebhook/BUILD.bazel b/test/e2e/framework/addon/samplewebhook/BUILD.bazel
+deleted file mode 100644
+index a1137f539..000000000
+--- a/test/e2e/framework/addon/samplewebhook/BUILD.bazel
++++ /dev/null
+@@ -1,31 +0,0 @@
+-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+-
+-go_library(
+-    name = "go_default_library",
+-    srcs = ["addon.go"],
+-    importpath = "github.com/jetstack/cert-manager/test/e2e/framework/addon/samplewebhook",
+-    visibility = ["//visibility:public"],
+-    deps = [
+-        "//test/e2e/framework/addon/certmanager:go_default_library",
+-        "//test/e2e/framework/addon/chart:go_default_library",
+-        "//test/e2e/framework/addon/tiller:go_default_library",
+-        "//test/e2e/framework/config:go_default_library",
+-    ],
+-)
+-
+-filegroup(
+-    name = "package-srcs",
+-    srcs = glob(["**"]),
+-    tags = ["automanaged"],
+-    visibility = ["//visibility:private"],
+-)
+-
+-filegroup(
+-    name = "all-srcs",
+-    srcs = [
+-        ":package-srcs",
+-        "//test/e2e/framework/addon/samplewebhook/sample:all-srcs",
+-    ],
+-    tags = ["automanaged"],
+-    visibility = ["//visibility:public"],
+-)
+diff --git a/test/e2e/framework/addon/samplewebhook/addon.go b/test/e2e/framework/addon/samplewebhook/addon.go
+deleted file mode 100644
+index cc6c9f02d..000000000
+--- a/test/e2e/framework/addon/samplewebhook/addon.go
++++ /dev/null
+@@ -1,127 +0,0 @@
+-/*
+-Copyright 2019 The Jetstack cert-manager contributors.
+-
+-Licensed under the Apache License, Version 2.0 (the "License");
+-you may not use this file except in compliance with the License.
+-You may obtain a copy of the License at
+-
+-    http://www.apache.org/licenses/LICENSE-2.0
+-
+-Unless required by applicable law or agreed to in writing, software
+-distributed under the License is distributed on an "AS IS" BASIS,
+-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-See the License for the specific language governing permissions and
+-limitations under the License.
+-*/
+-
+-package samplewebhook
+-
+-import (
+-	"fmt"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/certmanager"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/chart"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/tiller"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/config"
+-)
+-
+-// CertmanagerWebhook defines an addon that installs a cert-manager DNS01
+-// webhook
+-type CertmanagerWebhook struct {
+-	config        *config.Config
+-	chart         *chart.Chart
+-	tillerDetails *tiller.Details
+-
+-	// Tiller is the tiller instance used to deploy the chart
+-	Tiller *tiller.Tiller
+-
+-	Certmanager *certmanager.Certmanager
+-
+-	Name string
+-
+-	// Required namespace to deploy the webhook into.
+-	Namespace string
+-
+-	// Optional override for the group name to use for the webhook
+-	GroupName string
+-}
+-
+-// Details return the details about the webhook instance deployed
+-type Details struct {
+-	GroupName  string
+-	SolverName string
+-}
+-
+-func (p *CertmanagerWebhook) Setup(cfg *config.Config) error {
+-	p.config = cfg
+-	if p.Name == "" {
+-		return fmt.Errorf("name field must be set")
+-	}
+-	if p.Namespace == "" {
+-		return fmt.Errorf("namespace name must be specified")
+-	}
+-	if p.Tiller == nil {
+-		return fmt.Errorf("tiller field must be set")
+-	}
+-	if p.Certmanager == nil {
+-		return fmt.Errorf("certmanager field must be set")
+-	}
+-	if p.config.Kubectl == "" {
+-		return fmt.Errorf("path to kubectl must be provided")
+-	}
+-	if p.GroupName == "" {
+-		p.GroupName = p.Name + ".acme.example.com"
+-	}
+-	var err error
+-	p.tillerDetails, err = p.Tiller.Details()
+-	if err != nil {
+-		return err
+-	}
+-	p.chart = &chart.Chart{
+-		Tiller:      p.Tiller,
+-		ReleaseName: "wh-" + p.Name,
+-		Namespace:   p.Namespace,
+-		ChartName:   cfg.RepoRoot + "/test/e2e/framework/addon/samplewebhook/sample/chart/example-webhook",
+-		Vars: []chart.StringTuple{
+-			{Key: "certManager.namespace", Value: p.Certmanager.Namespace},
+-			{Key: "certManager.serviceAccountName", Value: p.Certmanager.Details().ServiceAccountName},
+-			{Key: "image.repository", Value: "sample-webhook"},
+-			{Key: "image.tag", Value: "bazel"},
+-			{Key: "groupName", Value: p.GroupName},
+-		},
+-		Values: []string{cfg.RepoRoot + "/test/fixtures/example-webhook-values.yaml"},
+-		// doesn't matter when installing from disk
+-		ChartVersion: "0",
+-		UpdateDeps:   true,
+-	}
+-	err = p.chart.Setup(cfg)
+-	if err != nil {
+-		return err
+-	}
+-	return nil
+-}
+-
+-// Provision will actually deploy this instance of Pebble-ingress to the cluster.
+-func (p *CertmanagerWebhook) Provision() error {
+-	return p.chart.Provision()
+-}
+-
+-// Details returns details that can be used to utilise the instance of Pebble.
+-func (p *CertmanagerWebhook) Details() *Details {
+-	return &Details{
+-		GroupName:  p.GroupName,
+-		SolverName: "my-custom-solver",
+-	}
+-}
+-
+-// Deprovision will destroy this instance of Pebble
+-func (p *CertmanagerWebhook) Deprovision() error {
+-	return p.chart.Deprovision()
+-}
+-
+-func (p *CertmanagerWebhook) SupportsGlobal() bool {
+-	return false
+-}
+-
+-func (p *CertmanagerWebhook) Logs() (map[string]string, error) {
+-	return p.chart.Logs()
+-}
+diff --git a/test/e2e/framework/addon/tiller/BUILD.bazel b/test/e2e/framework/addon/tiller/BUILD.bazel
+deleted file mode 100644
+index 9ef663999..000000000
+--- a/test/e2e/framework/addon/tiller/BUILD.bazel
++++ /dev/null
+@@ -1,35 +0,0 @@
+-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+-
+-go_library(
+-    name = "go_default_library",
+-    srcs = ["addon.go"],
+-    importpath = "github.com/jetstack/cert-manager/test/e2e/framework/addon/tiller",
+-    tags = ["manual"],
+-    visibility = ["//visibility:public"],
+-    deps = [
+-        "//test/e2e/framework/addon/base:go_default_library",
+-        "//test/e2e/framework/config:go_default_library",
+-        "@io_k8s_api//apps/v1:go_default_library",
+-        "@io_k8s_api//core/v1:go_default_library",
+-        "@io_k8s_api//rbac/v1:go_default_library",
+-        "@io_k8s_apimachinery//pkg/api/errors:go_default_library",
+-        "@io_k8s_apimachinery//pkg/api/resource:go_default_library",
+-        "@io_k8s_apimachinery//pkg/apis/meta/v1:go_default_library",
+-        "@io_k8s_apimachinery//pkg/util/errors:go_default_library",
+-        "@io_k8s_apimachinery//pkg/util/intstr:go_default_library",
+-    ],
+-)
+-
+-filegroup(
+-    name = "package-srcs",
+-    srcs = glob(["**"]),
+-    tags = ["automanaged"],
+-    visibility = ["//visibility:private"],
+-)
+-
+-filegroup(
+-    name = "all-srcs",
+-    srcs = [":package-srcs"],
+-    tags = ["automanaged"],
+-    visibility = ["//visibility:public"],
+-)
+diff --git a/test/e2e/framework/addon/tiller/addon.go b/test/e2e/framework/addon/tiller/addon.go
+deleted file mode 100644
+index 940656d89..000000000
+--- a/test/e2e/framework/addon/tiller/addon.go
++++ /dev/null
+@@ -1,397 +0,0 @@
+-/*
+-Copyright 2019 The Jetstack cert-manager contributors.
+-
+-Licensed under the Apache License, Version 2.0 (the "License");
+-you may not use this file except in compliance with the License.
+-You may obtain a copy of the License at
+-
+-    http://www.apache.org/licenses/LICENSE-2.0
+-
+-Unless required by applicable law or agreed to in writing, software
+-distributed under the License is distributed on an "AS IS" BASIS,
+-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-See the License for the specific language governing permissions and
+-limitations under the License.
+-*/
+-
+-package tiller
+-
+-import (
+-	"fmt"
+-
+-	appsv1 "k8s.io/api/apps/v1"
+-	corev1 "k8s.io/api/core/v1"
+-	rbacv1 "k8s.io/api/rbac/v1"
+-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+-	"k8s.io/apimachinery/pkg/api/resource"
+-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+-	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+-	"k8s.io/apimachinery/pkg/util/intstr"
+-
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/base"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/config"
+-)
+-
+-var (
+-	// all permissions on everything
+-	tillerClusterRole = rbacv1.ClusterRole{
+-		Rules: []rbacv1.PolicyRule{
+-			{
+-				Verbs:     []string{"*"},
+-				APIGroups: []string{"*"},
+-				Resources: []string{"*"},
+-			},
+-		},
+-	}
+-	tillerDeployment = appsv1.Deployment{
+-		ObjectMeta: metav1.ObjectMeta{},
+-		Spec: appsv1.DeploymentSpec{
+-			Selector: &metav1.LabelSelector{
+-				MatchLabels: map[string]string{
+-					"app":  "helm",
+-					"name": "tiller",
+-				},
+-			},
+-			Template: corev1.PodTemplateSpec{
+-				ObjectMeta: metav1.ObjectMeta{
+-					Labels: map[string]string{
+-						"app":  "helm",
+-						"name": "tiller",
+-					},
+-				},
+-				Spec: corev1.PodSpec{
+-					Containers: []corev1.Container{
+-						{
+-							Name: "tiller-deploy",
+-							Args: []string{"/tiller", "--listen=localhost:44134"},
+-							Ports: []corev1.ContainerPort{
+-								{
+-									Name:          "tiller",
+-									ContainerPort: 44134,
+-									Protocol:      corev1.ProtocolTCP,
+-								},
+-							},
+-							Resources: corev1.ResourceRequirements{
+-								Limits: corev1.ResourceList{
+-									corev1.ResourceCPU:    resource.MustParse("100m"),
+-									corev1.ResourceMemory: resource.MustParse("100Mi"),
+-								},
+-								Requests: corev1.ResourceList{
+-									corev1.ResourceCPU:    resource.MustParse("10m"),
+-									corev1.ResourceMemory: resource.MustParse("10Mi"),
+-								},
+-							},
+-							LivenessProbe:  buildProbe("/liveness"),
+-							ReadinessProbe: buildProbe("/readiness"),
+-						},
+-					},
+-				},
+-			},
+-		},
+-	}
+-)
+-
+-func buildProbe(path string) *corev1.Probe {
+-	return &corev1.Probe{
+-		Handler: corev1.Handler{
+-			HTTPGet: &corev1.HTTPGetAction{
+-				Path:   path,
+-				Port:   intstr.FromInt(44135),
+-				Scheme: corev1.URISchemeHTTP,
+-			},
+-		},
+-		FailureThreshold:    3,
+-		InitialDelaySeconds: 1,
+-		PeriodSeconds:       10,
+-		SuccessThreshold:    1,
+-		TimeoutSeconds:      1,
+-	}
+-}
+-
+-// Tiller defines an addon that installs an instance of tiller in the target cluster.
+-type Tiller struct {
+-	config      *config.Config
+-	baseDetails *base.Details
+-
+-	// Base is the base addon to use for Kubernetes API interactions
+-	Base *base.Base
+-
+-	// Optional name to use for the tiller deployment.
+-	// If not specified, 'tiller-deploy' will be used.
+-	Name string
+-
+-	// Optional namespace to deploy Tiller into.
+-	// If not specified, the 'kube-system' namespace will be used.
+-	Namespace string
+-
+-	// ImageRepo is the image repo to use for Tiller.
+-	// If not set, the global tiller image repo set in the config will be used.
+-	ImageRepo string
+-
+-	// ImageTag is the image tag to use for Tiller.
+-	// If not set, the global tiller image tag set in the config will be used.
+-	ImageTag string
+-
+-	// ClusterPermissions will cause the addon to give this tiller instance
+-	// global permissions over the cluster.
+-	ClusterPermissions bool
+-
+-	// provisionedDeployment contains a reference to a copy of the instance of
+-	// tiller that has been deployed.
+-	// Use of this field must be guarded, as when tiller is deployed as a shared
+-	// test resource and tests are run in parallel, only one instance of this
+-	// structure will actually have the field set.
+-	// We only store this field so that Deprovision can be called after Provision.
+-	provisionedNamespace          *corev1.Namespace
+-	provisionedServiceAccount     *corev1.ServiceAccount
+-	provisionedClusterRole        *rbacv1.ClusterRole
+-	provisionedClusterRoleBinding *rbacv1.ClusterRoleBinding
+-	provisionedRoleBinding        *rbacv1.RoleBinding
+-	provisionedDeployment         *appsv1.Deployment
+-
+-	createdNs bool
+-}
+-
+-// Details return the details about the Tiller instance deployed
+-type Details struct {
+-	// Name of the deployment created for Tiller
+-	Name string
+-
+-	// Namespace that Tiller has been deployed into
+-	Namespace string
+-
+-	// KubeConfig is the path to a kubeconfig file that can be used to speak
+-	// to the tiller instance
+-	KubeConfig string
+-
+-	// KubeContext is the name of the kubeconfig context to use to speak to the
+-	// tiller instance
+-	KubeContext string
+-}
+-
+-// Setup will configure this addon but not provision it
+-func (t *Tiller) Setup(c *config.Config) error {
+-	t.config = c
+-
+-	if t.Base == nil {
+-		t.Base = &base.Base{}
+-		if err := t.Base.Setup(c); err != nil {
+-			return err
+-		}
+-	}
+-	t.baseDetails = t.Base.Details()
+-
+-	if t.Name == "" {
+-		return fmt.Errorf("name of the tiller instance must be specified")
+-	}
+-
+-	if t.Namespace == "" {
+-		return fmt.Errorf("namespace for the tiller instance must be specified")
+-	}
+-
+-	if t.ImageRepo == "" {
+-		t.ImageRepo = t.config.Addons.Tiller.ImageRepo
+-	}
+-
+-	if t.ImageTag == "" {
+-		t.ImageTag = t.config.Addons.Tiller.ImageTag
+-	}
+-
+-	return nil
+-}
+-
+-// Provision an instance of tiller-deploy
+-func (t *Tiller) Provision() error {
+-	var err error
+-
+-	ns := t.buildNamespace()
+-	sa := t.buildServiceAccount()
+-	clusterRole := t.buildClusterRole()
+-	depl := t.buildDeployment()
+-
+-	t.provisionedNamespace, err = t.baseDetails.KubeClient.CoreV1().Namespaces().Create(ns)
+-	t.createdNs = true
+-	if err != nil {
+-		if !apierrors.IsAlreadyExists(err) {
+-			return err
+-		} else {
+-			t.createdNs = false
+-		}
+-	}
+-
+-	t.provisionedServiceAccount, err = t.baseDetails.KubeClient.CoreV1().ServiceAccounts(sa.Namespace).Create(sa)
+-	if err != nil {
+-		return err
+-	}
+-
+-	t.provisionedClusterRole, err = t.baseDetails.KubeClient.RbacV1().ClusterRoles().Create(clusterRole)
+-	if err != nil {
+-		return err
+-	}
+-
+-	if t.ClusterPermissions {
+-		crb := t.buildClusterRoleBinding()
+-		t.provisionedClusterRoleBinding, err = t.baseDetails.KubeClient.RbacV1().ClusterRoleBindings().Create(crb)
+-		if err != nil {
+-			return err
+-		}
+-	} else {
+-		rb := t.buildRoleBinding()
+-		t.provisionedRoleBinding, err = t.baseDetails.KubeClient.RbacV1().RoleBindings(rb.Namespace).Create(rb)
+-		if err != nil {
+-			return err
+-		}
+-	}
+-
+-	t.provisionedDeployment, err = t.baseDetails.KubeClient.AppsV1().Deployments(depl.Namespace).Create(depl)
+-	if err != nil {
+-		return err
+-	}
+-
+-	// otherwise lookup the newly created pods name
+-	err = t.Base.Details().Helper().WaitForAllPodsRunningInNamespace(t.Namespace)
+-	if err != nil {
+-		return err
+-	}
+-
+-	return nil
+-}
+-
+-// Deprovision the deployed instance of tiller-deploy
+-func (t *Tiller) Deprovision() error {
+-	var errs []error
+-
+-	if t.provisionedDeployment != nil {
+-		err := t.baseDetails.KubeClient.AppsV1().Deployments(t.provisionedDeployment.Namespace).Delete(t.provisionedDeployment.Name, nil)
+-		if !apierrors.IsNotFound(err) {
+-			errs = append(errs, err)
+-		}
+-	}
+-
+-	if t.provisionedClusterRoleBinding != nil {
+-		err := t.baseDetails.KubeClient.RbacV1().ClusterRoleBindings().Delete(t.provisionedClusterRoleBinding.Name, nil)
+-		if !apierrors.IsNotFound(err) {
+-			errs = append(errs, err)
+-		}
+-	}
+-
+-	if t.provisionedRoleBinding != nil {
+-		err := t.baseDetails.KubeClient.RbacV1().RoleBindings(t.provisionedRoleBinding.Namespace).Delete(t.provisionedRoleBinding.Name, nil)
+-		if !apierrors.IsNotFound(err) {
+-			errs = append(errs, err)
+-		}
+-	}
+-
+-	if t.provisionedClusterRole != nil {
+-		err := t.baseDetails.KubeClient.RbacV1().ClusterRoles().Delete(t.provisionedClusterRole.Name, nil)
+-		if !apierrors.IsNotFound(err) {
+-			errs = append(errs, err)
+-		}
+-	}
+-
+-	if t.provisionedServiceAccount != nil {
+-		err := t.baseDetails.KubeClient.CoreV1().ServiceAccounts(t.provisionedServiceAccount.Namespace).Delete(t.provisionedServiceAccount.Name, nil)
+-		if !apierrors.IsNotFound(err) {
+-			errs = append(errs, err)
+-		}
+-	}
+-
+-	if t.createdNs {
+-		// TODO: wait for namespace to be deleted
+-		err := t.baseDetails.KubeClient.CoreV1().Namespaces().Delete(t.Namespace, nil)
+-		if !apierrors.IsNotFound(err) {
+-			errs = append(errs, err)
+-		}
+-	}
+-
+-	return utilerrors.NewAggregate(errs)
+-}
+-
+-// Details must be possible to compute without Provision being called if we want
+-// to be able to provision global/shared instances of Tiller.
+-func (t *Tiller) Details() (*Details, error) {
+-	d := &Details{
+-		Name:      t.Name,
+-		Namespace: t.Namespace,
+-	}
+-
+-	return d, nil
+-}
+-
+-func (t *Tiller) SupportsGlobal() bool {
+-	return true
+-}
+-
+-func (t *Tiller) buildNamespace() *corev1.Namespace {
+-	return &corev1.Namespace{
+-		ObjectMeta: metav1.ObjectMeta{
+-			Name: t.Namespace,
+-		},
+-	}
+-}
+-
+-func (t *Tiller) buildServiceAccount() *corev1.ServiceAccount {
+-	return &corev1.ServiceAccount{
+-		ObjectMeta: metav1.ObjectMeta{
+-			Name:      t.Name,
+-			Namespace: t.Namespace,
+-		},
+-	}
+-}
+-
+-func (t *Tiller) buildClusterRole() *rbacv1.ClusterRole {
+-	role := tillerClusterRole.DeepCopy()
+-	role.GenerateName = t.Name
+-	return role
+-}
+-
+-func (t *Tiller) buildRoleBinding() *rbacv1.RoleBinding {
+-	crb := t.buildClusterRoleBinding()
+-	return &rbacv1.RoleBinding{
+-		ObjectMeta: metav1.ObjectMeta{
+-			Name:      t.Name,
+-			Namespace: t.Namespace,
+-		},
+-		Subjects: crb.Subjects,
+-		RoleRef:  crb.RoleRef,
+-	}
+-}
+-
+-func (t *Tiller) buildClusterRoleBinding() *rbacv1.ClusterRoleBinding {
+-	return &rbacv1.ClusterRoleBinding{
+-		ObjectMeta: metav1.ObjectMeta{
+-			GenerateName: t.Name + "-",
+-		},
+-		Subjects: []rbacv1.Subject{
+-			{
+-				Name:      t.Name,
+-				Namespace: t.Namespace,
+-				Kind:      "ServiceAccount",
+-			},
+-		},
+-		RoleRef: rbacv1.RoleRef{
+-			APIGroup: "rbac.authorization.k8s.io",
+-			Kind:     "ClusterRole",
+-			Name:     t.provisionedClusterRole.Name,
+-		},
+-	}
+-}
+-
+-func (t *Tiller) buildDeployment() *appsv1.Deployment {
+-	depl := tillerDeployment.DeepCopy()
+-
+-	depl.Name = t.Name
+-	depl.Namespace = t.Namespace
+-
+-	// we add the name of the tiller instance as a label to prevent clashes
+-	// if more than one tiller gets deployed to a single namespace
+-	depl.Spec.Selector.MatchLabels["tiller-name"] = t.Name
+-	depl.Spec.Template.ObjectMeta.Labels["tiller-name"] = t.Name
+-
+-	// Set the image repo and tag
+-	depl.Spec.Template.Spec.Containers[0].Image = t.config.Addons.Tiller.ImageRepo + ":" + t.config.Addons.Tiller.ImageTag
+-	depl.Spec.Template.Spec.ServiceAccountName = t.Name
+-	// TODO: set the TILLER_NAMESPACE environment variable
+-
+-	return depl
+-}
+diff --git a/test/e2e/framework/addon/vault/BUILD.bazel b/test/e2e/framework/addon/vault/BUILD.bazel
+index 4c77a638f..dcbcad196 100644
+--- a/test/e2e/framework/addon/vault/BUILD.bazel
++++ b/test/e2e/framework/addon/vault/BUILD.bazel
+@@ -11,8 +11,8 @@ go_library(
+     tags = ["manual"],
+     visibility = ["//visibility:public"],
+     deps = [
++        "//test/e2e/framework/addon/base:go_default_library",
+         "//test/e2e/framework/addon/chart:go_default_library",
+-        "//test/e2e/framework/addon/tiller:go_default_library",
+         "//test/e2e/framework/config:go_default_library",
+         "//test/e2e/framework/log:go_default_library",
+         "@com_github_hashicorp_vault_api//:go_default_library",
+diff --git a/test/e2e/framework/addon/vault/vault.go b/test/e2e/framework/addon/vault/vault.go
+index eb8c5dac6..0c1a68702 100644
+--- a/test/e2e/framework/addon/vault/vault.go
++++ b/test/e2e/framework/addon/vault/vault.go
+@@ -32,20 +32,18 @@ import (
+ 
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+ 
++	"github.com/jetstack/cert-manager/test/e2e/framework/addon/base"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/addon/chart"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/tiller"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/config"
+ )
+ 
+ // Vault describes the configuration details for an instance of Vault
+ // deployed to the test cluster
+ type Vault struct {
+-	config        *config.Config
+-	chart         *chart.Chart
+-	tillerDetails *tiller.Details
++	config *config.Config
++	chart  *chart.Chart
+ 
+-	// Tiller is the tiller instance used to deploy the chart
+-	Tiller *tiller.Tiller
++	Base *base.Base
+ 
+ 	// Name is a unique name for this Vault deployment
+ 	Name string
+@@ -87,8 +85,8 @@ func (v *Vault) Setup(cfg *config.Config) error {
+ 		// for this addon to be used from.
+ 		return fmt.Errorf("Namespace name must be specified")
+ 	}
+-	if v.Tiller == nil {
+-		return fmt.Errorf("Tiller field must be set on Vault addon")
++	if v.Base == nil {
++		return fmt.Errorf("Base field must be set on Vault addon")
+ 	}
+ 
+ 	var err error
+@@ -105,12 +103,8 @@ func (v *Vault) Setup(cfg *config.Config) error {
+ 		return fmt.Errorf("path to kubectl must be set")
+ 	}
+ 	v.details.Kubectl = cfg.Kubectl
+-	v.tillerDetails, err = v.Tiller.Details()
+-	if err != nil {
+-		return err
+-	}
+ 	v.chart = &chart.Chart{
+-		Tiller:      v.Tiller,
++		Base:        v.Base,
+ 		ReleaseName: "chart-vault-" + v.Name,
+ 		Namespace:   v.Namespace,
+ 		ChartName:   cfg.RepoRoot + "/test/e2e/charts/vault",
+@@ -142,7 +136,7 @@ func (v *Vault) Provision() error {
+ 	}
+ 
+ 	// otherwise lookup the newly created pods name
+-	kubeClient := v.Tiller.Base.Details().KubeClient
++	kubeClient := v.Base.Details().KubeClient
+ 
+ 	retries := 5
+ 	for {
+diff --git a/test/e2e/framework/config/BUILD.bazel b/test/e2e/framework/config/BUILD.bazel
+index 5032e8bc1..247e11ee4 100644
+--- a/test/e2e/framework/config/BUILD.bazel
++++ b/test/e2e/framework/config/BUILD.bazel
+@@ -3,13 +3,15 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
+ go_library(
+     name = "go_default_library",
+     srcs = [
++        "acme.go",
+         "addons.go",
++        "certmanager.go",
+         "config.go",
+         "framework.go",
+         "ginkgo.go",
+         "helm.go",
+-        "nginx.go",
+-        "pebble.go",
++        "ingress_controller.go",
++        "samplewebhook.go",
+         "suite.go",
+         "tiller.go",
+         "venafi.go",
+diff --git a/test/e2e/framework/config/acme.go b/test/e2e/framework/config/acme.go
+new file mode 100644
+index 000000000..d2dfb35ec
+--- /dev/null
++++ b/test/e2e/framework/config/acme.go
+@@ -0,0 +1,33 @@
++/*
++Copyright 2019 The Jetstack cert-manager contributors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package config
++
++import (
++	"flag"
++)
++
++type ACMEServer struct {
++	URL string
++}
++
++func (p *ACMEServer) AddFlags(fs *flag.FlagSet) {
++	fs.StringVar(&p.URL, "acme-server-url", "https://pebble.pebble.svc.cluster.local/dir", "URL for the ACME server used during end-to-end tests")
++}
++
++func (p *ACMEServer) Validate() []error {
++	return nil
++}
+diff --git a/test/e2e/framework/config/addons.go b/test/e2e/framework/config/addons.go
+index cba38ee89..903a47fc5 100644
+--- a/test/e2e/framework/config/addons.go
++++ b/test/e2e/framework/config/addons.go
+@@ -28,41 +28,43 @@ type Addons struct {
+ 	// Helm describes the global configuration values for helm
+ 	Helm Helm
+ 
+-	// Pebble describes the global configuration values for the pebble addon
+-	Pebble Pebble
++	// Connection details for the ACME server used during ACME end-to-end
++	// tests.
++	ACMEServer ACMEServer
+ 
+-	// Nginx describes global configuration variables for the nginx addon.
+-	// Because we currently can only run one instance of nginx per cluster due
+-	// to the way we provision DNS, this structure currently also describes
+-	// the runtime configuration for a global shared Nginx instance as well.
+-	Nginx Nginx
++	// IngressController contains configuration for the ingress controller
++	// being used during ACME HTTP01 tests.
++	IngressController IngressController
+ 
+ 	// Venafi describes global configuration variables for the Venafi tests.
+ 	// This includes credentials for the Venafi TPP server to use during runs.
+ 	Venafi Venafi
+ 
+-	// If true, global addons will not be provisioned before running tests.
+-	// This is useful when developing locally.
+-	SkipGlobals bool
++	// CertManager contains configuration options for the cert-manager
++	// deployment under test.
++	CertManager CertManager
++
++	DNS01Webhook DNS01Webhook
+ }
+ 
+ func (a *Addons) AddFlags(fs *flag.FlagSet) {
+ 	a.Tiller.AddFlags(fs)
+ 	a.Helm.AddFlags(fs)
+-	a.Pebble.AddFlags(fs)
+-	a.Nginx.AddFlags(fs)
++	a.ACMEServer.AddFlags(fs)
++	a.IngressController.AddFlags(fs)
+ 	a.Venafi.AddFlags(fs)
+-
+-	fs.BoolVar(&a.SkipGlobals, "skip-globals", false, "If true, global addons will not be "+
+-		"provisioned before running tests")
++	a.CertManager.AddFlags(fs)
++	a.DNS01Webhook.AddFlags(fs)
+ }
+ 
+ func (c *Addons) Validate() []error {
+ 	var errs []error
+ 	errs = append(errs, c.Tiller.Validate()...)
+ 	errs = append(errs, c.Helm.Validate()...)
+-	errs = append(errs, c.Pebble.Validate()...)
+-	errs = append(errs, c.Nginx.Validate()...)
++	errs = append(errs, c.ACMEServer.Validate()...)
++	errs = append(errs, c.IngressController.Validate()...)
+ 	errs = append(errs, c.Venafi.Validate()...)
++	errs = append(errs, c.CertManager.Validate()...)
++	errs = append(errs, c.DNS01Webhook.Validate()...)
+ 	return errs
+ }
+diff --git a/test/e2e/framework/config/certmanager.go b/test/e2e/framework/config/certmanager.go
+new file mode 100644
+index 000000000..23a9ecca0
+--- /dev/null
++++ b/test/e2e/framework/config/certmanager.go
+@@ -0,0 +1,40 @@
++/*
++Copyright 2020 The Jetstack cert-manager contributors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package config
++
++import (
++	"flag"
++)
++
++type CertManager struct {
++	// The --cluster-resource-namespace configured for the cert-manager
++	// installation
++	ClusterResourceNamespace string
++
++	// ServiceAccountName is the name of the Kubernetes ServiceAccount that the
++	// cert-manager-controller deployment is using.
++	ServiceAccountName string
++}
++
++func (c *CertManager) AddFlags(fs *flag.FlagSet) {
++	fs.StringVar(&c.ClusterResourceNamespace, "cluster-resource-namespace", "cert-manager", "The --cluster-resource-namespace configured for the cert-manager installation")
++	fs.StringVar(&c.ServiceAccountName, "cert-manager-service-account-name", "chart-certmanager-cert-manager", "ServiceAccountName is the name of the Kubernetes ServiceAccount that the cert-manager-controller deployment is using")
++}
++
++func (c *CertManager) Validate() []error {
++	return nil
++}
+diff --git a/test/e2e/framework/config/config.go b/test/e2e/framework/config/config.go
+index 62e552ed3..6c5d105ce 100644
+--- a/test/e2e/framework/config/config.go
++++ b/test/e2e/framework/config/config.go
+@@ -20,6 +20,7 @@ import (
+ 	"flag"
+ 	"fmt"
+ 	"os"
++	"path/filepath"
+ 
+ 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+ 	"k8s.io/client-go/tools/clientcmd"
+@@ -62,8 +63,16 @@ func (c *Config) Validate() error {
+ 
+ // Register flags common to all e2e test suites.
+ func (c *Config) AddFlags(fs *flag.FlagSet) {
++	kubeConfigFile := os.Getenv(clientcmd.RecommendedConfigPathEnvVar)
++	if kubeConfigFile == "" {
++		homeDir, err := os.UserHomeDir()
++		if err != nil {
++			panic("Failed to get user home directory: " + err.Error())
++		}
++		kubeConfigFile = filepath.Join(homeDir, clientcmd.RecommendedHomeDir, clientcmd.RecommendedFileName)
++	}
+ 	// Kubernetes API server config
+-	fs.StringVar(&c.KubeConfig, "kubernetes-config", os.Getenv(clientcmd.RecommendedConfigPathEnvVar), "Path to config containing embedded authinfo for kubernetes. Default value is from environment variable "+clientcmd.RecommendedConfigPathEnvVar)
++	fs.StringVar(&c.KubeConfig, "kubernetes-config", kubeConfigFile, "Path to config containing embedded authinfo for kubernetes. Default value is from environment variable "+clientcmd.RecommendedConfigPathEnvVar)
+ 	fs.StringVar(&c.KubeContext, "kubernetes-context", "", "config context to use for kuberentes. If unset, will use value from 'current-context'")
+ 	fs.StringVar(&c.Kubectl, "kubectl-path", "kubectl", "path to the kubectl binary to use during e2e tests.")
+ 	fs.BoolVar(&c.Cleanup, "cleanup", true, "If true, addons will be cleaned up both before and after provisioning")
+diff --git a/test/e2e/framework/config/ingress_controller.go b/test/e2e/framework/config/ingress_controller.go
+new file mode 100644
+index 000000000..f33e212ef
+--- /dev/null
++++ b/test/e2e/framework/config/ingress_controller.go
+@@ -0,0 +1,42 @@
++/*
++Copyright 2019 The Jetstack cert-manager contributors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package config
++
++import (
++	"flag"
++)
++
++type IngressController struct {
++	// Domain is a domain name that can be used during e2e tests.
++	// This domain should have records for *.example.com and example.com pointing
++	// to the IP of the ingress controller's Service resource.
++	Domain string
++
++	// IngressClass of the ingress controller under test, used for the HTTP01
++	// ACME validation tests.
++	IngressClass string
++}
++
++func (n *IngressController) AddFlags(fs *flag.FlagSet) {
++	fs.StringVar(&n.Domain, "ingress-controller-domain", "certmanager.kubernetes.network", "The domain name used during ACME DNS01 validation tests. "+
++		"All subdomains of this domain must also resolve to the IP of the ingress controller's Service.")
++	fs.StringVar(&n.IngressClass, "ingress-controller-class", "nginx", "Ingress class of the ingress controller under test, used for the HTTP01 ACME validation tests.")
++}
++
++func (n *IngressController) Validate() []error {
++	return nil
++}
+diff --git a/test/e2e/framework/config/nginx.go b/test/e2e/framework/config/nginx.go
+deleted file mode 100644
+index 4bcc46826..000000000
+--- a/test/e2e/framework/config/nginx.go
++++ /dev/null
+@@ -1,79 +0,0 @@
+-/*
+-Copyright 2019 The Jetstack cert-manager contributors.
+-
+-Licensed under the Apache License, Version 2.0 (the "License");
+-you may not use this file except in compliance with the License.
+-You may obtain a copy of the License at
+-
+-    http://www.apache.org/licenses/LICENSE-2.0
+-
+-Unless required by applicable law or agreed to in writing, software
+-distributed under the License is distributed on an "AS IS" BASIS,
+-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-See the License for the specific language governing permissions and
+-limitations under the License.
+-*/
+-
+-package config
+-
+-import (
+-	"fmt"
+-
+-	"flag"
+-)
+-
+-type Nginx struct {
+-	// Helm chart version to deploy during tests
+-	ChartVersion string
+-
+-	Global NginxRuntimeConfig
+-}
+-
+-// NginxRuntimeConfig is a copy of the runtime configuration for an instance of
+-// the nginx addon.
+-// It is copied to avoid dependency cycle issues, as the nginx addon depends
+-// upon this package for global configuration.
+-type NginxRuntimeConfig struct {
+-	// IPAddress is the IP address that the nginx-ingress service will be
+-	// exposed on.
+-	// This must be a part of the service CIDR, and must not already be allocated
+-	// else provisioning will fail.
+-	IPAddress string
+-
+-	// Domain is a domain name that can be used during e2e tests.
+-	// This domain should have records for *.example.com and example.com pointing
+-	// to the IP listed above.
+-	Domain string
+-}
+-
+-func (n *Nginx) AddFlags(fs *flag.FlagSet) {
+-	fs.StringVar(&n.ChartVersion, "nginx-ingress-chart-version", "1.23.0", "nginx-ingress chart version to use during tests")
+-
+-	n.Global.AddFlags(fs)
+-}
+-
+-func (n *Nginx) Validate() []error {
+-	var errs []error
+-	if n.ChartVersion == "" {
+-		errs = append(errs, fmt.Errorf("--nginx-ingress-chart-version must be specified"))
+-	}
+-	errs = append(errs, n.Global.Validate()...)
+-	return errs
+-}
+-
+-func (n *NginxRuntimeConfig) AddFlags(fs *flag.FlagSet) {
+-	fs.StringVar(&n.IPAddress, "global-nginx-ingress-ip-address", "10.0.0.15", "The IP address to expose the shared nginx-ingress used during tests on.")
+-	fs.StringVar(&n.Domain, "global-nginx-ingress-domain", "certmanager.kubernetes.network", "The domain name that points to the global-nginx-ingress-ip-address. "+
+-		"All subdomains of this domain must also point to the IP as well.")
+-}
+-
+-func (n *NginxRuntimeConfig) Validate() []error {
+-	var errs []error
+-	if n.Domain == "" {
+-		errs = append(errs, fmt.Errorf("--global-nginx-ingress-domain must be specified"))
+-	}
+-	if n.IPAddress == "" {
+-		errs = append(errs, fmt.Errorf("--global-nginx-ingress-ip-address must be specified"))
+-	}
+-	return errs
+-}
+diff --git a/test/e2e/framework/config/pebble.go b/test/e2e/framework/config/pebble.go
+deleted file mode 100644
+index c7b237441..000000000
+--- a/test/e2e/framework/config/pebble.go
++++ /dev/null
+@@ -1,44 +0,0 @@
+-/*
+-Copyright 2019 The Jetstack cert-manager contributors.
+-
+-Licensed under the Apache License, Version 2.0 (the "License");
+-you may not use this file except in compliance with the License.
+-You may obtain a copy of the License at
+-
+-    http://www.apache.org/licenses/LICENSE-2.0
+-
+-Unless required by applicable law or agreed to in writing, software
+-distributed under the License is distributed on an "AS IS" BASIS,
+-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-See the License for the specific language governing permissions and
+-limitations under the License.
+-*/
+-
+-package config
+-
+-import (
+-	"flag"
+-)
+-
+-// Pebble global configuration for new Pebble instances
+-type Pebble struct {
+-	// Not currently exposed in Pebble addon
+-	// // ImageRepo for Pebble
+-	// ImageRepo string
+-
+-	// // ImageTag for Pebble
+-	// ImageTag string
+-
+-	// Strict enables Pebble's 'strict mode'
+-	Strict bool
+-}
+-
+-func (p *Pebble) AddFlags(fs *flag.FlagSet) {
+-	fs.BoolVar(&p.Strict, "pebble-strict", true, "If true, tests using Pebble will have strict mode enabled")
+-	// fs.StringVar(&p.ImageRepo, "pebble-image-repo", "", "The container image repository for pebble to use in e2e tests")
+-	// fs.StringVar(&p.ImageTag, "pebble-image-tag", "", "The container image tag for pebble to use in e2e tests")
+-}
+-
+-func (p *Pebble) Validate() []error {
+-	return nil
+-}
+diff --git a/test/e2e/framework/config/samplewebhook.go b/test/e2e/framework/config/samplewebhook.go
+new file mode 100644
+index 000000000..705505639
+--- /dev/null
++++ b/test/e2e/framework/config/samplewebhook.go
+@@ -0,0 +1,38 @@
++/*
++Copyright 2019 The Jetstack cert-manager contributors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package config
++
++import (
++	"flag"
++)
++
++type DNS01Webhook struct {
++	// GroupName of the deployed DNS01 webhook
++	GroupName string
++
++	// SolverName to use with the DNS01 webhook
++	SolverName string
++}
++
++func (d *DNS01Webhook) AddFlags(fs *flag.FlagSet) {
++	fs.StringVar(&d.GroupName, "dns01-webhook-group-name", "acme.testing.cert-manager.io", "GroupName of the deployed DNS01 webhook.")
++	fs.StringVar(&d.SolverName, "dns01-webhook-solver-name", "my-custom-solver", "SolverName to use with the DNS01 webhook.")
++}
++
++func (n *DNS01Webhook) Validate() []error {
++	return nil
++}
+diff --git a/test/e2e/framework/util/BUILD.bazel b/test/e2e/framework/util/BUILD.bazel
+index db6b651ab..906735392 100644
+--- a/test/e2e/framework/util/BUILD.bazel
++++ b/test/e2e/framework/util/BUILD.bazel
+@@ -2,11 +2,15 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
+ 
+ go_library(
+     name = "go_default_library",
+-    srcs = ["config.go"],
++    srcs = [
++        "config.go",
++        "domains.go",
++    ],
+     importpath = "github.com/jetstack/cert-manager/test/e2e/framework/util",
+     tags = ["manual"],
+     visibility = ["//visibility:public"],
+     deps = [
++        "//pkg/util:go_default_library",
+         "@io_k8s_client_go//rest:go_default_library",
+         "@io_k8s_client_go//tools/clientcmd:go_default_library",
+         "@io_k8s_client_go//tools/clientcmd/api:go_default_library",
+diff --git a/test/e2e/framework/util/domains.go b/test/e2e/framework/util/domains.go
+new file mode 100644
+index 000000000..01e3b00e7
+--- /dev/null
++++ b/test/e2e/framework/util/domains.go
+@@ -0,0 +1,27 @@
++/*
++Copyright 2020 The Jetstack cert-manager contributors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package util
++
++import (
++	"fmt"
++
++	cmutil "github.com/jetstack/cert-manager/pkg/util"
++)
++
++func RandomSubdomain(domain string) string {
++	return fmt.Sprintf("%s.%s", cmutil.RandStringRunes(5), domain)
++}
+diff --git a/test/e2e/images.bzl b/test/e2e/images.bzl
+index 9c7775878..29f7ab355 100644
+--- a/test/e2e/images.bzl
++++ b/test/e2e/images.bzl
+@@ -17,14 +17,6 @@ load("@bazel_gazelle//:deps.bzl", "go_repository")
+ 
+ # Defines Bazel WORKSPACE targets that are used during e2e tests
+ def install():
+-    container_pull(
+-        name = "io_gcr_helm_tiller",
+-        registry = "gcr.io",
+-        repository = "kubernetes-helm/tiller",
+-        tag = "v2.15.1",
+-        digest = "sha256:39bb81aa9299390ef1d9e472531da24e98234db46664e431001a5fd6d0611114",
+-    )
+-
+     ## Fetch pebble for use during e2e tests
+     ## You can change the version of Pebble used for tests by changing the 'commit'
+     ## field in this rule
+diff --git a/test/e2e/suite/conformance/certificates/acme/BUILD.bazel b/test/e2e/suite/conformance/certificates/acme/BUILD.bazel
+index e9ca56905..ee6107caf 100644
+--- a/test/e2e/suite/conformance/certificates/acme/BUILD.bazel
++++ b/test/e2e/suite/conformance/certificates/acme/BUILD.bazel
+@@ -10,9 +10,7 @@ go_library(
+         "//pkg/apis/certmanager/v1alpha2:go_default_library",
+         "//pkg/apis/meta/v1:go_default_library",
+         "//test/e2e/framework:go_default_library",
+-        "//test/e2e/framework/addon:go_default_library",
+-        "//test/e2e/framework/addon/pebble:go_default_library",
+-        "//test/e2e/framework/addon/tiller:go_default_library",
++        "//test/e2e/framework/util/errors:go_default_library",
+         "//test/e2e/suite/conformance/certificates:go_default_library",
+         "//test/e2e/suite/issuers/acme/dnsproviders:go_default_library",
+         "@com_github_onsi_ginkgo//:go_default_library",
+diff --git a/test/e2e/suite/conformance/certificates/acme/acme.go b/test/e2e/suite/conformance/certificates/acme/acme.go
+index 8a16a76ec..f367f0858 100644
+--- a/test/e2e/suite/conformance/certificates/acme/acme.go
++++ b/test/e2e/suite/conformance/certificates/acme/acme.go
+@@ -29,9 +29,7 @@ import (
+ 	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha2"
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/pebble"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/tiller"
++	"github.com/jetstack/cert-manager/test/e2e/framework/util/errors"
+ 	"github.com/jetstack/cert-manager/test/e2e/suite/conformance/certificates"
+ 	"github.com/jetstack/cert-manager/test/e2e/suite/issuers/acme/dnsproviders"
+ )
+@@ -106,8 +104,6 @@ func runACMEIssuerTests(eab *cmacme.ACMEExternalAccountBinding) {
+ }
+ 
+ type acmeIssuerProvisioner struct {
+-	tiller     *tiller.Tiller
+-	pebble     *pebble.Pebble
+ 	cloudflare *dnsproviders.Cloudflare
+ 
+ 	eab             *cmacme.ACMEExternalAccountBinding
+@@ -120,13 +116,9 @@ func (a *acmeIssuerProvisioner) delete(f *framework.Framework, ref cmmeta.Object
+ 		Expect(err).NotTo(HaveOccurred())
+ 	}
+ 
+-	if a.pebble != nil {
+-		Expect(a.pebble.Deprovision()).NotTo(HaveOccurred(), "failed to deprovision pebble")
+-	}
+ 	if a.cloudflare != nil {
+ 		Expect(a.cloudflare.Deprovision()).NotTo(HaveOccurred(), "failed to deprovision cloudflare")
+ 	}
+-	Expect(a.tiller.Deprovision()).NotTo(HaveOccurred(), "failed to deprovision tiller")
+ 
+ 	if ref.Kind == "ClusterIssuer" {
+ 		err := f.CertManagerClientSet.CertmanagerV1alpha2().ClusterIssuers().Delete(ref.Name, nil)
+@@ -141,16 +133,14 @@ func (a *acmeIssuerProvisioner) delete(f *framework.Framework, ref cmmeta.Object
+ // - a properly configured Issuer resource
+ 
+ func (a *acmeIssuerProvisioner) createHTTP01Issuer(f *framework.Framework) cmmeta.ObjectReference {
+-	a.deployTiller(f, "http01")
+-
+-	a.ensureEABSecret(f, f.Namespace.Name)
++	a.ensureEABSecret(f, "")
+ 
+ 	By("Creating an ACME HTTP01 Issuer")
+ 	issuer := &cmapi.Issuer{
+ 		ObjectMeta: metav1.ObjectMeta{
+ 			GenerateName: "acme-issuer-http01-",
+ 		},
+-		Spec: a.createHTTP01IssuerSpec(),
++		Spec: a.createHTTP01IssuerSpec(f.Config.Addons.ACMEServer.URL),
+ 	}
+ 
+ 	issuer, err := f.CertManagerClientSet.CertmanagerV1alpha2().Issuers(f.Namespace.Name).Create(issuer)
+@@ -164,16 +154,14 @@ func (a *acmeIssuerProvisioner) createHTTP01Issuer(f *framework.Framework) cmmet
+ }
+ 
+ func (a *acmeIssuerProvisioner) createHTTP01ClusterIssuer(f *framework.Framework) cmmeta.ObjectReference {
+-	a.deployTiller(f, "http01")
+-
+-	a.ensureEABSecret(f, addon.CertManager.Namespace)
++	a.ensureEABSecret(f, f.Config.Addons.CertManager.ClusterResourceNamespace)
+ 
+ 	By("Creating an ACME HTTP01 ClusterIssuer")
+ 	issuer := &cmapi.ClusterIssuer{
+ 		ObjectMeta: metav1.ObjectMeta{
+ 			GenerateName: "acme-cluster-issuer-http01-",
+ 		},
+-		Spec: a.createHTTP01IssuerSpec(),
++		Spec: a.createHTTP01IssuerSpec(f.Config.Addons.ACMEServer.URL),
+ 	}
+ 
+ 	issuer, err := f.CertManagerClientSet.CertmanagerV1alpha2().ClusterIssuers().Create(issuer)
+@@ -186,11 +174,11 @@ func (a *acmeIssuerProvisioner) createHTTP01ClusterIssuer(f *framework.Framework
+ 	}
+ }
+ 
+-func (a *acmeIssuerProvisioner) createHTTP01IssuerSpec() cmapi.IssuerSpec {
++func (a *acmeIssuerProvisioner) createHTTP01IssuerSpec(serverURL string) cmapi.IssuerSpec {
+ 	return cmapi.IssuerSpec{
+ 		IssuerConfig: cmapi.IssuerConfig{
+ 			ACME: &cmacme.ACMEIssuer{
+-				Server:        addon.Pebble.Details().Host,
++				Server:        serverURL,
+ 				SkipTLSVerify: true,
+ 				PrivateKey: cmmeta.SecretKeySelector{
+ 					LocalObjectReference: cmmeta.LocalObjectReference{
+@@ -214,14 +202,18 @@ func (a *acmeIssuerProvisioner) createHTTP01IssuerSpec() cmapi.IssuerSpec {
+ }
+ 
+ func (a *acmeIssuerProvisioner) createDNS01Issuer(f *framework.Framework) cmmeta.ObjectReference {
+-	a.deployTiller(f, "dns01")
+-
+ 	a.ensureEABSecret(f, f.Namespace.Name)
+ 
+ 	a.cloudflare = &dnsproviders.Cloudflare{
+ 		Namespace: f.Namespace.Name,
+ 	}
+-	Expect(a.cloudflare.Setup(f.Config)).NotTo(HaveOccurred(), "failed to setup cloudflare")
++	err := a.cloudflare.Setup(f.Config)
++	if errors.IsSkip(err) {
++		framework.Skipf("Cannot setup DNS01 provider addon, skipping: %v", err)
++		return cmmeta.ObjectReference{}
++	} else {
++		Expect(a.cloudflare.Setup(f.Config)).NotTo(HaveOccurred(), "failed to setup cloudflare")
++	}
+ 	Expect(a.cloudflare.Provision()).NotTo(HaveOccurred(), "failed to provision cloudflare")
+ 
+ 	By("Creating an ACME DNS01 Issuer")
+@@ -231,7 +223,7 @@ func (a *acmeIssuerProvisioner) createDNS01Issuer(f *framework.Framework) cmmeta
+ 		},
+ 		Spec: a.createDNS01IssuerSpec(),
+ 	}
+-	issuer, err := f.CertManagerClientSet.CertmanagerV1alpha2().Issuers(f.Namespace.Name).Create(issuer)
++	issuer, err = f.CertManagerClientSet.CertmanagerV1alpha2().Issuers(f.Namespace.Name).Create(issuer)
+ 	Expect(err).NotTo(HaveOccurred(), "failed to create acme DNS01 Issuer")
+ 
+ 	return cmmeta.ObjectReference{
+@@ -242,14 +234,18 @@ func (a *acmeIssuerProvisioner) createDNS01Issuer(f *framework.Framework) cmmeta
+ }
+ 
+ func (a *acmeIssuerProvisioner) createDNS01ClusterIssuer(f *framework.Framework) cmmeta.ObjectReference {
+-	a.deployTiller(f, "dns01")
+-
+-	a.ensureEABSecret(f, addon.CertManager.Namespace)
++	a.ensureEABSecret(f, f.Config.Addons.CertManager.ClusterResourceNamespace)
+ 
+ 	a.cloudflare = &dnsproviders.Cloudflare{
+-		Namespace: addon.CertManager.Namespace,
++		Namespace: f.Config.Addons.CertManager.ClusterResourceNamespace,
++	}
++	err := a.cloudflare.Setup(f.Config)
++	if errors.IsSkip(err) {
++		framework.Skipf("Cannot setup DNS01 provider addon, skipping: %v", err)
++		return cmmeta.ObjectReference{}
++	} else {
++		Expect(a.cloudflare.Setup(f.Config)).NotTo(HaveOccurred(), "failed to setup cloudflare")
+ 	}
+-	Expect(a.cloudflare.Setup(f.Config)).NotTo(HaveOccurred(), "failed to setup cloudflare")
+ 	Expect(a.cloudflare.Provision()).NotTo(HaveOccurred(), "failed to provision cloudflare")
+ 
+ 	By("Creating an ACME DNS01 ClusterIssuer")
+@@ -259,7 +255,7 @@ func (a *acmeIssuerProvisioner) createDNS01ClusterIssuer(f *framework.Framework)
+ 		},
+ 		Spec: a.createDNS01IssuerSpec(),
+ 	}
+-	issuer, err := f.CertManagerClientSet.CertmanagerV1alpha2().ClusterIssuers().Create(issuer)
++	issuer, err = f.CertManagerClientSet.CertmanagerV1alpha2().ClusterIssuers().Create(issuer)
+ 	Expect(err).NotTo(HaveOccurred(), "failed to create acme DNS01 ClusterIssuer")
+ 
+ 	return cmmeta.ObjectReference{
+@@ -292,21 +288,14 @@ func (a *acmeIssuerProvisioner) createDNS01IssuerSpec() cmapi.IssuerSpec {
+ 	}
+ }
+ 
+-func (a *acmeIssuerProvisioner) deployTiller(f *framework.Framework, solverType string) {
+-	a.tiller = &tiller.Tiller{
+-		Name:               "tiller-deploy-" + solverType,
+-		ClusterPermissions: false,
+-		Namespace:          f.Namespace.Name,
+-	}
+-	Expect(a.tiller.Setup(f.Config)).NotTo(HaveOccurred(), "failed to setup tiller")
+-	Expect(a.tiller.Provision()).NotTo(HaveOccurred(), "failed to provision tiller")
+-}
+-
+ func (a *acmeIssuerProvisioner) ensureEABSecret(f *framework.Framework, ns string) {
+ 	if a.eab == nil {
+ 		return
+ 	}
+ 
++	if ns == "" {
++		ns = f.Namespace.Name
++	}
+ 	sec, err := f.KubeClientSet.CoreV1().Secrets(ns).Create(&corev1.Secret{
+ 		ObjectMeta: metav1.ObjectMeta{
+ 			GenerateName: "external-account-binding-",
+diff --git a/test/e2e/suite/conformance/certificates/ca/BUILD.bazel b/test/e2e/suite/conformance/certificates/ca/BUILD.bazel
+index 24524b26c..ff486eafd 100644
+--- a/test/e2e/suite/conformance/certificates/ca/BUILD.bazel
++++ b/test/e2e/suite/conformance/certificates/ca/BUILD.bazel
+@@ -9,7 +9,6 @@ go_library(
+         "//pkg/apis/certmanager/v1alpha2:go_default_library",
+         "//pkg/apis/meta/v1:go_default_library",
+         "//test/e2e/framework:go_default_library",
+-        "//test/e2e/framework/addon:go_default_library",
+         "//test/e2e/suite/conformance/certificates:go_default_library",
+         "@com_github_onsi_ginkgo//:go_default_library",
+         "@com_github_onsi_gomega//:go_default_library",
+diff --git a/test/e2e/suite/conformance/certificates/ca/ca.go b/test/e2e/suite/conformance/certificates/ca/ca.go
+index c7fe142e9..b9b90e73b 100644
+--- a/test/e2e/suite/conformance/certificates/ca/ca.go
++++ b/test/e2e/suite/conformance/certificates/ca/ca.go
+@@ -25,7 +25,6 @@ import (
+ 	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha2"
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon"
+ 	"github.com/jetstack/cert-manager/test/e2e/suite/conformance/certificates"
+ )
+ 
+@@ -75,7 +74,7 @@ func (c *ca) createCAIssuer(f *framework.Framework) cmmeta.ObjectReference {
+ func (c *ca) createCAClusterIssuer(f *framework.Framework) cmmeta.ObjectReference {
+ 	By("Creating a CA ClusterIssuer")
+ 
+-	rootCertSecret, err := f.KubeClientSet.CoreV1().Secrets(addon.CertManager.Namespace).Create(newSigningKeypairSecret("root-ca-cert-"))
++	rootCertSecret, err := f.KubeClientSet.CoreV1().Secrets(f.Config.Addons.CertManager.ClusterResourceNamespace).Create(newSigningKeypairSecret("root-ca-cert-"))
+ 	Expect(err).NotTo(HaveOccurred(), "failed to create root signing keypair secret")
+ 
+ 	c.secretName = rootCertSecret.Name
+@@ -99,7 +98,7 @@ func (c *ca) createCAClusterIssuer(f *framework.Framework) cmmeta.ObjectReferenc
+ func (c *ca) deleteCAClusterIssuer(f *framework.Framework, issuer cmmeta.ObjectReference) {
+ 	By("Deleting CA ClusterIssuer")
+ 
+-	err := f.KubeClientSet.CoreV1().Secrets(addon.CertManager.Namespace).Delete(c.secretName, nil)
++	err := f.KubeClientSet.CoreV1().Secrets(f.Config.Addons.CertManager.ClusterResourceNamespace).Delete(c.secretName, nil)
+ 	Expect(err).NotTo(HaveOccurred(), "failed to delete root signing keypair secret")
+ 
+ 	err = f.CertManagerClientSet.CertmanagerV1alpha2().ClusterIssuers().Delete(issuer.Name, nil)
+diff --git a/test/e2e/suite/conformance/certificates/suite.go b/test/e2e/suite/conformance/certificates/suite.go
+index 08d01bb0c..258ded81f 100644
+--- a/test/e2e/suite/conformance/certificates/suite.go
++++ b/test/e2e/suite/conformance/certificates/suite.go
+@@ -80,7 +80,7 @@ func (s *Suite) complete(f *framework.Framework) {
+ 	//Expect(s.CreateIssuerFunc).NotTo(BeNil(), "CreateIssuerFunc must be set")
+ 
+ 	if s.DomainSuffix == "" {
+-		s.DomainSuffix = f.Config.Addons.Nginx.Global.Domain
++		s.DomainSuffix = f.Config.Addons.IngressController.Domain
+ 	}
+ 
+ 	if s.UnsupportedFeatures == nil {
+diff --git a/test/e2e/suite/conformance/certificates/vault/BUILD.bazel b/test/e2e/suite/conformance/certificates/vault/BUILD.bazel
+index 0131bb301..e522ff955 100644
+--- a/test/e2e/suite/conformance/certificates/vault/BUILD.bazel
++++ b/test/e2e/suite/conformance/certificates/vault/BUILD.bazel
+@@ -10,7 +10,6 @@ go_library(
+         "//pkg/apis/meta/v1:go_default_library",
+         "//test/e2e/framework:go_default_library",
+         "//test/e2e/framework/addon:go_default_library",
+-        "//test/e2e/framework/addon/tiller:go_default_library",
+         "//test/e2e/framework/addon/vault:go_default_library",
+         "//test/e2e/suite/conformance/certificates:go_default_library",
+         "@com_github_onsi_ginkgo//:go_default_library",
+diff --git a/test/e2e/suite/conformance/certificates/vault/vault_approle.go b/test/e2e/suite/conformance/certificates/vault/vault_approle.go
+index 282a47c35..a65a192b4 100644
+--- a/test/e2e/suite/conformance/certificates/vault/vault_approle.go
++++ b/test/e2e/suite/conformance/certificates/vault/vault_approle.go
+@@ -27,8 +27,7 @@ import (
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/addon"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/tiller"
+-	vault "github.com/jetstack/cert-manager/test/e2e/framework/addon/vault"
++	"github.com/jetstack/cert-manager/test/e2e/framework/addon/vault"
+ 	"github.com/jetstack/cert-manager/test/e2e/suite/conformance/certificates"
+ )
+ 
+@@ -62,7 +61,6 @@ var _ = framework.ConformanceDescribe("Certificates", func() {
+ })
+ 
+ type vaultAppRoleProvisioner struct {
+-	tiller    *tiller.Tiller
+ 	vault     *vault.Vault
+ 	vaultInit *vault.VaultInitializer
+ 
+@@ -80,7 +78,6 @@ type vaultSecrets struct {
+ func (v *vaultAppRoleProvisioner) delete(f *framework.Framework, ref cmmeta.ObjectReference) {
+ 	Expect(v.vaultInit.Clean()).NotTo(HaveOccurred(), "failed to deprovision vault initializer")
+ 	Expect(v.vault.Deprovision()).NotTo(HaveOccurred(), "failed to deprovision vault")
+-	Expect(v.tiller.Deprovision()).NotTo(HaveOccurred(), "failed to deprovision tiller")
+ 
+ 	err := f.KubeClientSet.CoreV1().Secrets(v.secretNamespace).Delete(v.secretName, nil)
+ 	Expect(err).NotTo(HaveOccurred())
+@@ -122,7 +119,7 @@ func (v *vaultAppRoleProvisioner) createClusterIssuer(f *framework.Framework) cm
+ 
+ 	v.vaultSecrets = v.initVault(f)
+ 
+-	sec, err := f.KubeClientSet.CoreV1().Secrets(addon.CertManager.Namespace).Create(vault.NewVaultAppRoleSecret(vaultSecretAppRoleName, v.secretID))
++	sec, err := f.KubeClientSet.CoreV1().Secrets(f.Config.Addons.CertManager.ClusterResourceNamespace).Create(vault.NewVaultAppRoleSecret(vaultSecretAppRoleName, v.secretID))
+ 	Expect(err).NotTo(HaveOccurred(), "vault to store app role secret from vault")
+ 
+ 	v.secretName = sec.Name
+@@ -144,16 +141,8 @@ func (v *vaultAppRoleProvisioner) createClusterIssuer(f *framework.Framework) cm
+ }
+ 
+ func (v *vaultAppRoleProvisioner) initVault(f *framework.Framework) *vaultSecrets {
+-	v.tiller = &tiller.Tiller{
+-		Name:               "tiller-deploy",
+-		Namespace:          f.Namespace.Name,
+-		ClusterPermissions: false,
+-	}
+-	Expect(v.tiller.Setup(f.Config)).NotTo(HaveOccurred(), "failed to setup tiller")
+-	Expect(v.tiller.Provision()).NotTo(HaveOccurred(), "failed to provision tiller")
+-
+ 	v.vault = &vault.Vault{
+-		Tiller:    v.tiller,
++		Base:      addon.Base,
+ 		Namespace: f.Namespace.Name,
+ 		Name:      "cm-e2e-create-vault-issuer",
+ 	}
+diff --git a/test/e2e/suite/conformance/certificates/venafi/BUILD.bazel b/test/e2e/suite/conformance/certificates/venafi/BUILD.bazel
+index cbb98bd64..99f62c15d 100644
+--- a/test/e2e/suite/conformance/certificates/venafi/BUILD.bazel
++++ b/test/e2e/suite/conformance/certificates/venafi/BUILD.bazel
+@@ -9,7 +9,6 @@ go_library(
+         "//pkg/apis/certmanager/v1alpha2:go_default_library",
+         "//pkg/apis/meta/v1:go_default_library",
+         "//test/e2e/framework:go_default_library",
+-        "//test/e2e/framework/addon:go_default_library",
+         "//test/e2e/framework/util/errors:go_default_library",
+         "//test/e2e/suite/issuers/venafi/addon:go_default_library",
+         "@com_github_onsi_ginkgo//:go_default_library",
+diff --git a/test/e2e/suite/conformance/certificates/venafi/venafi.go b/test/e2e/suite/conformance/certificates/venafi/venafi.go
+index 3f3cbf483..ada5bc019 100644
+--- a/test/e2e/suite/conformance/certificates/venafi/venafi.go
++++ b/test/e2e/suite/conformance/certificates/venafi/venafi.go
+@@ -23,7 +23,6 @@ import (
+ 	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha2"
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/util/errors"
+ 	vaddon "github.com/jetstack/cert-manager/test/e2e/suite/issuers/venafi/addon"
+ )
+@@ -99,7 +98,7 @@ func (v *venafiProvisioner) createClusterIssuer(f *framework.Framework) cmmeta.O
+ 	By("Creating a Venafi ClusterIssuer")
+ 
+ 	v.tpp = &vaddon.VenafiTPP{
+-		Namespace: addon.CertManager.Namespace,
++		Namespace: f.Config.Addons.CertManager.ClusterResourceNamespace,
+ 	}
+ 
+ 	err := v.tpp.Setup(f.Config)
+diff --git a/test/e2e/suite/issuers/acme/BUILD.bazel b/test/e2e/suite/issuers/acme/BUILD.bazel
+index bb89b8959..ca9f32ab4 100644
+--- a/test/e2e/suite/issuers/acme/BUILD.bazel
++++ b/test/e2e/suite/issuers/acme/BUILD.bazel
+@@ -13,9 +13,6 @@ go_library(
+         "//pkg/apis/certmanager/v1alpha2:go_default_library",
+         "//pkg/apis/meta/v1:go_default_library",
+         "//test/e2e/framework:go_default_library",
+-        "//test/e2e/framework/addon:go_default_library",
+-        "//test/e2e/framework/addon/pebble:go_default_library",
+-        "//test/e2e/framework/addon/tiller:go_default_library",
+         "//test/e2e/suite/issuers/acme/certificate:go_default_library",
+         "//test/e2e/suite/issuers/acme/certificaterequest:go_default_library",
+         "//test/e2e/util:go_default_library",
+diff --git a/test/e2e/suite/issuers/acme/certificate/BUILD.bazel b/test/e2e/suite/issuers/acme/certificate/BUILD.bazel
+index faa0a20cd..42bef1fa9 100644
+--- a/test/e2e/suite/issuers/acme/certificate/BUILD.bazel
++++ b/test/e2e/suite/issuers/acme/certificate/BUILD.bazel
+@@ -18,10 +18,9 @@ go_library(
+         "//pkg/util:go_default_library",
+         "//test/e2e/framework:go_default_library",
+         "//test/e2e/framework/addon:go_default_library",
+-        "//test/e2e/framework/addon/samplewebhook:go_default_library",
+-        "//test/e2e/framework/addon/tiller:go_default_library",
+         "//test/e2e/framework/log:go_default_library",
+         "//test/e2e/framework/matcher:go_default_library",
++        "//test/e2e/framework/util:go_default_library",
+         "//test/e2e/suite/issuers/acme/dnsproviders:go_default_library",
+         "//test/e2e/util:go_default_library",
+         "//test/unit/gen:go_default_library",
+diff --git a/test/e2e/suite/issuers/acme/certificate/http01.go b/test/e2e/suite/issuers/acme/certificate/http01.go
+index 15de3247f..e716a52b5 100644
+--- a/test/e2e/suite/issuers/acme/certificate/http01.go
++++ b/test/e2e/suite/issuers/acme/certificate/http01.go
+@@ -34,9 +34,9 @@ import (
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	cmutil "github.com/jetstack/cert-manager/pkg/util"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/log"
+ 	. "github.com/jetstack/cert-manager/test/e2e/framework/matcher"
++	frameworkutil "github.com/jetstack/cert-manager/test/e2e/framework/util"
+ 	"github.com/jetstack/cert-manager/test/e2e/util"
+ 	"github.com/jetstack/cert-manager/test/unit/gen"
+ )
+@@ -49,9 +49,6 @@ var _ = framework.CertManagerDescribe("ACME Certificate (HTTP01)", func() {
+ 	f := framework.NewDefaultFramework("create-acme-certificate-http01")
+ 	h := f.Helper()
+ 
+-	f.RequireGlobalAddon(addon.NginxIngress)
+-	f.RequireGlobalAddon(addon.Pebble)
+-
+ 	var acmeIngressDomain string
+ 	issuerName := "test-acme-issuer"
+ 	certificateName := "test-acme-certificate"
+@@ -62,13 +59,12 @@ var _ = framework.CertManagerDescribe("ACME Certificate (HTTP01)", func() {
+ 	fixedIngressName := "testingress"
+ 
+ 	BeforeEach(func() {
+-		acmeURL := addon.Pebble.Details().Host
+-		acmeIssuer := util.NewCertManagerACMEIssuer(issuerName, acmeURL, testingACMEEmail, testingACMEPrivateKey)
++		acmeIssuer := util.NewCertManagerACMEIssuer(issuerName, f.Config.Addons.ACMEServer.URL, testingACMEEmail, testingACMEPrivateKey)
+ 		acmeIssuer.Spec.ACME.Solvers = []cmacme.ACMEChallengeSolver{
+ 			{
+ 				HTTP01: &cmacme.ACMEChallengeSolverHTTP01{
+ 					Ingress: &cmacme.ACMEChallengeSolverHTTP01Ingress{
+-						Class: &addon.NginxIngress.Details().IngressClass,
++						Class: &f.Config.Addons.IngressController.IngressClass,
+ 					},
+ 				},
+ 			},
+@@ -115,7 +111,7 @@ var _ = framework.CertManagerDescribe("ACME Certificate (HTTP01)", func() {
+ 	})
+ 
+ 	JustBeforeEach(func() {
+-		acmeIngressDomain = addon.NginxIngress.Details().NewTestDomain()
++		acmeIngressDomain = frameworkutil.RandomSubdomain(f.Config.Addons.IngressController.Domain)
+ 	})
+ 
+ 	AfterEach(func() {
+diff --git a/test/e2e/suite/issuers/acme/certificate/webhook.go b/test/e2e/suite/issuers/acme/certificate/webhook.go
+index edf312bf8..fcd560389 100644
+--- a/test/e2e/suite/issuers/acme/certificate/webhook.go
++++ b/test/e2e/suite/issuers/acme/certificate/webhook.go
+@@ -30,9 +30,6 @@ import (
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	"github.com/jetstack/cert-manager/pkg/client/clientset/versioned"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/samplewebhook"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/tiller"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/log"
+ 	"github.com/jetstack/cert-manager/test/e2e/util"
+ 	"github.com/jetstack/cert-manager/test/unit/gen"
+@@ -43,28 +40,6 @@ var _ = framework.CertManagerDescribe("ACME webhook DNS provider", func() {
+ 	//h := f.Helper()
+ 
+ 	Context("with the sample webhook solver deployed", func() {
+-		var (
+-			tiller = &tiller.Tiller{
+-				Name:               "tiller-deploy-sample-webhook",
+-				ClusterPermissions: true,
+-			}
+-			webhook = &samplewebhook.CertmanagerWebhook{
+-				Name:        "cm-e2e-acme-dns01-sample-webhook",
+-				Tiller:      tiller,
+-				Certmanager: addon.CertManager,
+-			}
+-		)
+-
+-		BeforeEach(func() {
+-			tiller.Namespace = f.Namespace.Name
+-			webhook.Namespace = f.Namespace.Name
+-		})
+-
+-		f.RequireGlobalAddon(addon.CertManager)
+-		f.RequireGlobalAddon(addon.Pebble)
+-		f.RequireAddon(tiller)
+-		f.RequireAddon(webhook)
+-
+ 		issuerName := "test-acme-issuer"
+ 		certificateName := "test-acme-certificate"
+ 		certificateSecretName := "test-acme-certificate"
+@@ -77,7 +52,7 @@ var _ = framework.CertManagerDescribe("ACME webhook DNS provider", func() {
+ 			issuer := gen.Issuer(issuerName,
+ 				gen.SetIssuerACME(cmacme.ACMEIssuer{
+ 					SkipTLSVerify: true,
+-					Server:        addon.Pebble.Details().Host,
++					Server:        f.Config.Addons.ACMEServer.URL,
+ 					Email:         testingACMEEmail,
+ 					PrivateKey: cmmeta.SecretKeySelector{
+ 						LocalObjectReference: cmmeta.LocalObjectReference{
+@@ -88,8 +63,8 @@ var _ = framework.CertManagerDescribe("ACME webhook DNS provider", func() {
+ 						{
+ 							DNS01: &cmacme.ACMEChallengeSolverDNS01{
+ 								Webhook: &cmacme.ACMEIssuerDNS01ProviderWebhook{
+-									GroupName:  webhook.Details().GroupName,
+-									SolverName: webhook.Details().SolverName,
++									GroupName:  f.Config.Addons.DNS01Webhook.GroupName,
++									SolverName: f.Config.Addons.DNS01Webhook.SolverName,
+ 									Config: &v1beta1.JSON{
+ 										Raw: []byte(`{}`),
+ 									},
+diff --git a/test/e2e/suite/issuers/acme/certificaterequest/BUILD.bazel b/test/e2e/suite/issuers/acme/certificaterequest/BUILD.bazel
+index 9149c741e..b3b384784 100644
+--- a/test/e2e/suite/issuers/acme/certificaterequest/BUILD.bazel
++++ b/test/e2e/suite/issuers/acme/certificaterequest/BUILD.bazel
+@@ -17,6 +17,7 @@ go_library(
+         "//test/e2e/framework/addon:go_default_library",
+         "//test/e2e/framework/log:go_default_library",
+         "//test/e2e/framework/matcher:go_default_library",
++        "//test/e2e/framework/util:go_default_library",
+         "//test/e2e/suite/issuers/acme/dnsproviders:go_default_library",
+         "//test/e2e/util:go_default_library",
+         "//test/unit/gen:go_default_library",
+diff --git a/test/e2e/suite/issuers/acme/certificaterequest/http01.go b/test/e2e/suite/issuers/acme/certificaterequest/http01.go
+index 129da3387..10e261c0b 100644
+--- a/test/e2e/suite/issuers/acme/certificaterequest/http01.go
++++ b/test/e2e/suite/issuers/acme/certificaterequest/http01.go
+@@ -33,9 +33,9 @@ import (
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	cmutil "github.com/jetstack/cert-manager/pkg/util"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/log"
+ 	. "github.com/jetstack/cert-manager/test/e2e/framework/matcher"
++	frameworkutil "github.com/jetstack/cert-manager/test/e2e/framework/util"
+ 	"github.com/jetstack/cert-manager/test/e2e/util"
+ )
+ 
+@@ -43,9 +43,6 @@ var _ = framework.CertManagerDescribe("ACME CertificateRequest (HTTP01)", func()
+ 	f := framework.NewDefaultFramework("create-acme-certificate-request-http01")
+ 	h := f.Helper()
+ 
+-	f.RequireGlobalAddon(addon.NginxIngress)
+-	f.RequireGlobalAddon(addon.Pebble)
+-
+ 	var acmeIngressDomain string
+ 	issuerName := "test-acme-issuer"
+ 	certificateRequestName := "test-acme-certificate-request"
+@@ -55,13 +52,12 @@ var _ = framework.CertManagerDescribe("ACME CertificateRequest (HTTP01)", func()
+ 	fixedIngressName := "testingress"
+ 
+ 	BeforeEach(func() {
+-		acmeURL := addon.Pebble.Details().Host
+-		acmeIssuer := util.NewCertManagerACMEIssuer(issuerName, acmeURL, testingACMEEmail, testingACMEPrivateKey)
++		acmeIssuer := util.NewCertManagerACMEIssuer(issuerName, f.Config.Addons.ACMEServer.URL, testingACMEEmail, testingACMEPrivateKey)
+ 		acmeIssuer.Spec.ACME.Solvers = []cmacme.ACMEChallengeSolver{
+ 			{
+ 				HTTP01: &cmacme.ACMEChallengeSolverHTTP01{
+ 					Ingress: &cmacme.ACMEChallengeSolverHTTP01Ingress{
+-						Class: &addon.NginxIngress.Details().IngressClass,
++						Class: &f.Config.Addons.IngressController.IngressClass,
+ 					},
+ 				},
+ 			},
+@@ -108,7 +104,7 @@ var _ = framework.CertManagerDescribe("ACME CertificateRequest (HTTP01)", func()
+ 	})
+ 
+ 	JustBeforeEach(func() {
+-		acmeIngressDomain = addon.NginxIngress.Details().NewTestDomain()
++		acmeIngressDomain = frameworkutil.RandomSubdomain(f.Config.Addons.IngressController.Domain)
+ 	})
+ 
+ 	AfterEach(func() {
+diff --git a/test/e2e/suite/issuers/acme/issuer.go b/test/e2e/suite/issuers/acme/issuer.go
+index 68b6cd3ce..892a4ca11 100644
+--- a/test/e2e/suite/issuers/acme/issuer.go
++++ b/test/e2e/suite/issuers/acme/issuer.go
+@@ -26,9 +26,6 @@ import (
+ 	"github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha2"
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/pebble"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/tiller"
+ 	"github.com/jetstack/cert-manager/test/e2e/util"
+ )
+ 
+@@ -40,26 +37,6 @@ const testingACMEPrivateKey = "test-acme-private-key"
+ var _ = framework.CertManagerDescribe("ACME Issuer", func() {
+ 	f := framework.NewDefaultFramework("create-acme-issuer")
+ 
+-	var (
+-		tiller = &tiller.Tiller{
+-			Name:               "tiller-deploy",
+-			ClusterPermissions: false,
+-		}
+-		pebble = &pebble.Pebble{
+-			Tiller: tiller,
+-			Name:   "cm-e2e-create-acme-issuer",
+-		}
+-	)
+-
+-	BeforeEach(func() {
+-		tiller.Namespace = f.Namespace.Name
+-		pebble.Namespace = f.Namespace.Name
+-	})
+-
+-	f.RequireGlobalAddon(addon.NginxIngress)
+-	f.RequireAddon(tiller)
+-	f.RequireAddon(pebble)
+-
+ 	issuerName := "test-acme-issuer"
+ 
+ 	AfterEach(func() {
+@@ -69,8 +46,7 @@ var _ = framework.CertManagerDescribe("ACME Issuer", func() {
+ 	})
+ 
+ 	It("should register ACME account", func() {
+-		acmeURL := pebble.Details().Host
+-		acmeIssuer := util.NewCertManagerACMEIssuer(issuerName, acmeURL, testingACMEEmail, testingACMEPrivateKey)
++		acmeIssuer := util.NewCertManagerACMEIssuer(issuerName, f.Config.Addons.ACMEServer.URL, testingACMEEmail, testingACMEPrivateKey)
+ 
+ 		By("Creating an Issuer")
+ 		_, err := f.CertManagerClientSet.CertmanagerV1alpha2().Issuers(f.Namespace.Name).Create(acmeIssuer)
+@@ -105,8 +81,7 @@ var _ = framework.CertManagerDescribe("ACME Issuer", func() {
+ 	})
+ 
+ 	It("should recover a lost ACME account URI", func() {
+-		acmeURL := pebble.Details().Host
+-		acmeIssuer := util.NewCertManagerACMEIssuer(issuerName, acmeURL, testingACMEEmail, testingACMEPrivateKey)
++		acmeIssuer := util.NewCertManagerACMEIssuer(issuerName, f.Config.Addons.ACMEServer.URL, testingACMEEmail, testingACMEPrivateKey)
+ 
+ 		By("Creating an Issuer")
+ 		_, err := f.CertManagerClientSet.CertmanagerV1alpha2().Issuers(f.Namespace.Name).Create(acmeIssuer)
+@@ -147,7 +122,7 @@ var _ = framework.CertManagerDescribe("ACME Issuer", func() {
+ 		Expect(err).NotTo(HaveOccurred())
+ 
+ 		By("Recreating the Issuer")
+-		acmeIssuer = util.NewCertManagerACMEIssuer(issuerName, acmeURL, testingACMEEmail, testingACMEPrivateKey)
++		acmeIssuer = util.NewCertManagerACMEIssuer(issuerName, f.Config.Addons.ACMEServer.URL, testingACMEEmail, testingACMEPrivateKey)
+ 		_, err = f.CertManagerClientSet.CertmanagerV1alpha2().Issuers(f.Namespace.Name).Create(acmeIssuer)
+ 		Expect(err).NotTo(HaveOccurred())
+ 
+@@ -194,8 +169,7 @@ var _ = framework.CertManagerDescribe("ACME Issuer", func() {
+ 	})
+ 
+ 	It("should handle updates to the email field", func() {
+-		acmeURL := pebble.Details().Host
+-		acmeIssuer := util.NewCertManagerACMEIssuer(issuerName, acmeURL, testingACMEEmail, testingACMEPrivateKey)
++		acmeIssuer := util.NewCertManagerACMEIssuer(issuerName, f.Config.Addons.ACMEServer.URL, testingACMEEmail, testingACMEPrivateKey)
+ 
+ 		By("Creating an Issuer")
+ 		acmeIssuer, err := f.CertManagerClientSet.CertmanagerV1alpha2().Issuers(f.Namespace.Name).Create(acmeIssuer)
+diff --git a/test/e2e/suite/issuers/ca/BUILD.bazel b/test/e2e/suite/issuers/ca/BUILD.bazel
+index 572b8b61d..9f1e9d485 100644
+--- a/test/e2e/suite/issuers/ca/BUILD.bazel
++++ b/test/e2e/suite/issuers/ca/BUILD.bazel
+@@ -17,7 +17,6 @@ go_library(
+         "//pkg/apis/meta/v1:go_default_library",
+         "//pkg/util:go_default_library",
+         "//test/e2e/framework:go_default_library",
+-        "//test/e2e/framework/addon:go_default_library",
+         "//test/e2e/util:go_default_library",
+         "//test/unit/gen:go_default_library",
+         "@com_github_onsi_ginkgo//:go_default_library",
+diff --git a/test/e2e/suite/issuers/ca/clusterissuer.go b/test/e2e/suite/issuers/ca/clusterissuer.go
+index 73ba248b8..309cdd8e8 100644
+--- a/test/e2e/suite/issuers/ca/clusterissuer.go
++++ b/test/e2e/suite/issuers/ca/clusterissuer.go
+@@ -24,7 +24,6 @@ import (
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	cmutil "github.com/jetstack/cert-manager/pkg/util"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon"
+ 	"github.com/jetstack/cert-manager/test/e2e/util"
+ )
+ 
+@@ -33,23 +32,16 @@ var _ = framework.CertManagerDescribe("CA ClusterIssuer", func() {
+ 
+ 	issuerName := "test-ca-clusterissuer" + cmutil.RandStringRunes(5)
+ 	secretName := "ca-clusterissuer-signing-keypair-" + cmutil.RandStringRunes(5)
+-	clusterResourceNamespace := ""
+-
+-	f.RequireGlobalAddon(addon.CertManager)
+-
+-	BeforeEach(func() {
+-		clusterResourceNamespace = addon.CertManager.Details().ClusterResourceNamespace
+-	})
+ 
+ 	BeforeEach(func() {
+ 		By("Creating a signing keypair fixture")
+-		_, err := f.KubeClientSet.CoreV1().Secrets(clusterResourceNamespace).Create(newSigningKeypairSecret(secretName))
++		_, err := f.KubeClientSet.CoreV1().Secrets(f.Config.Addons.CertManager.ClusterResourceNamespace).Create(newSigningKeypairSecret(secretName))
+ 		Expect(err).NotTo(HaveOccurred())
+ 	})
+ 
+ 	AfterEach(func() {
+ 		By("Cleaning up")
+-		f.KubeClientSet.CoreV1().Secrets(clusterResourceNamespace).Delete(secretName, nil)
++		f.KubeClientSet.CoreV1().Secrets(f.Config.Addons.CertManager.ClusterResourceNamespace).Delete(secretName, nil)
+ 		f.CertManagerClientSet.CertmanagerV1alpha2().ClusterIssuers().Delete(issuerName, nil)
+ 	})
+ 
+diff --git a/test/e2e/suite/issuers/vault/BUILD.bazel b/test/e2e/suite/issuers/vault/BUILD.bazel
+index dd2236eaf..dadc996b7 100644
+--- a/test/e2e/suite/issuers/vault/BUILD.bazel
++++ b/test/e2e/suite/issuers/vault/BUILD.bazel
+@@ -13,7 +13,7 @@ go_library(
+         "//pkg/apis/certmanager/v1alpha2:go_default_library",
+         "//pkg/apis/meta/v1:go_default_library",
+         "//test/e2e/framework:go_default_library",
+-        "//test/e2e/framework/addon/tiller:go_default_library",
++        "//test/e2e/framework/addon:go_default_library",
+         "//test/e2e/framework/addon/vault:go_default_library",
+         "//test/e2e/suite/issuers/vault/certificate:go_default_library",
+         "//test/e2e/suite/issuers/vault/certificaterequest:go_default_library",
+diff --git a/test/e2e/suite/issuers/vault/certificate/BUILD.bazel b/test/e2e/suite/issuers/vault/certificate/BUILD.bazel
+index 41f3e6296..4980b7ad3 100644
+--- a/test/e2e/suite/issuers/vault/certificate/BUILD.bazel
++++ b/test/e2e/suite/issuers/vault/certificate/BUILD.bazel
+@@ -14,7 +14,6 @@ go_library(
+         "//pkg/apis/meta/v1:go_default_library",
+         "//test/e2e/framework:go_default_library",
+         "//test/e2e/framework/addon:go_default_library",
+-        "//test/e2e/framework/addon/tiller:go_default_library",
+         "//test/e2e/framework/addon/vault:go_default_library",
+         "//test/e2e/util:go_default_library",
+         "@com_github_onsi_ginkgo//:go_default_library",
+diff --git a/test/e2e/suite/issuers/vault/certificate/approle.go b/test/e2e/suite/issuers/vault/certificate/approle.go
+index b2510daa4..50ea33dbc 100644
+--- a/test/e2e/suite/issuers/vault/certificate/approle.go
++++ b/test/e2e/suite/issuers/vault/certificate/approle.go
+@@ -23,14 +23,14 @@ import (
+ 	. "github.com/onsi/ginkgo"
+ 	. "github.com/onsi/gomega"
+ 
++	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++
+ 	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha2"
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/addon"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/tiller"
+ 	vaultaddon "github.com/jetstack/cert-manager/test/e2e/framework/addon/vault"
+ 	"github.com/jetstack/cert-manager/test/e2e/util"
+-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+ )
+ 
+ var _ = framework.CertManagerDescribe("Vault Issuer Certificate (AppRole)", func() {
+@@ -46,22 +46,16 @@ func runVaultAppRoleTests(issuerKind string) {
+ 	h := f.Helper()
+ 
+ 	var (
+-		tiller = &tiller.Tiller{
+-			Name:               "tiller-deploy",
+-			ClusterPermissions: false,
+-		}
+ 		vault = &vaultaddon.Vault{
+-			Tiller: tiller,
+-			Name:   "cm-e2e-create-vault-certificate",
++			Base: addon.Base,
++			Name: "cm-e2e-create-vault-certificate",
+ 		}
+ 	)
+ 
+ 	BeforeEach(func() {
+-		tiller.Namespace = f.Namespace.Name
+ 		vault.Namespace = f.Namespace.Name
+ 	})
+ 
+-	f.RequireAddon(tiller)
+ 	f.RequireAddon(vault)
+ 
+ 	rootMount := "root-ca"
+@@ -82,7 +76,7 @@ func runVaultAppRoleTests(issuerKind string) {
+ 		if issuerKind == cmapi.IssuerKind {
+ 			vaultSecretNamespace = f.Namespace.Name
+ 		} else {
+-			vaultSecretNamespace = addon.CertManager.Namespace
++			vaultSecretNamespace = f.Config.Addons.CertManager.ClusterResourceNamespace
+ 		}
+ 
+ 		vaultInit = &vaultaddon.VaultInitializer{
+diff --git a/test/e2e/suite/issuers/vault/certificate/approle_custom_mount.go b/test/e2e/suite/issuers/vault/certificate/approle_custom_mount.go
+index 2c422b5f7..00f86ca50 100644
+--- a/test/e2e/suite/issuers/vault/certificate/approle_custom_mount.go
++++ b/test/e2e/suite/issuers/vault/certificate/approle_custom_mount.go
+@@ -27,7 +27,6 @@ import (
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/addon"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/tiller"
+ 	vaultaddon "github.com/jetstack/cert-manager/test/e2e/framework/addon/vault"
+ 	"github.com/jetstack/cert-manager/test/e2e/util"
+ )
+@@ -45,22 +44,16 @@ func runVaultCustomAppRoleTests(issuerKind string) {
+ 	h := f.Helper()
+ 
+ 	var (
+-		tiller = &tiller.Tiller{
+-			Name:               "tiller-deploy",
+-			ClusterPermissions: false,
+-		}
+ 		vault = &vaultaddon.Vault{
+-			Tiller: tiller,
+-			Name:   "cm-e2e-create-vault-certificate",
++			Base: addon.Base,
++			Name: "cm-e2e-create-vault-certificate",
+ 		}
+ 	)
+ 
+ 	BeforeEach(func() {
+-		tiller.Namespace = f.Namespace.Name
+ 		vault.Namespace = f.Namespace.Name
+ 	})
+ 
+-	f.RequireAddon(tiller)
+ 	f.RequireAddon(vault)
+ 
+ 	rootMount := "root-ca"
+@@ -81,7 +74,7 @@ func runVaultCustomAppRoleTests(issuerKind string) {
+ 		if issuerKind == cmapi.IssuerKind {
+ 			vaultSecretNamespace = f.Namespace.Name
+ 		} else {
+-			vaultSecretNamespace = addon.CertManager.Namespace
++			vaultSecretNamespace = f.Config.Addons.CertManager.ClusterResourceNamespace
+ 		}
+ 
+ 		vaultInit = &vaultaddon.VaultInitializer{
+diff --git a/test/e2e/suite/issuers/vault/certificaterequest/BUILD.bazel b/test/e2e/suite/issuers/vault/certificaterequest/BUILD.bazel
+index 584560f97..ec7f334e1 100644
+--- a/test/e2e/suite/issuers/vault/certificaterequest/BUILD.bazel
++++ b/test/e2e/suite/issuers/vault/certificaterequest/BUILD.bazel
+@@ -13,7 +13,6 @@ go_library(
+         "//pkg/apis/meta/v1:go_default_library",
+         "//test/e2e/framework:go_default_library",
+         "//test/e2e/framework/addon:go_default_library",
+-        "//test/e2e/framework/addon/tiller:go_default_library",
+         "//test/e2e/framework/addon/vault:go_default_library",
+         "//test/e2e/util:go_default_library",
+         "@com_github_onsi_ginkgo//:go_default_library",
+diff --git a/test/e2e/suite/issuers/vault/certificaterequest/approle.go b/test/e2e/suite/issuers/vault/certificaterequest/approle.go
+index 37a022d9f..54ac4ebc2 100644
+--- a/test/e2e/suite/issuers/vault/certificaterequest/approle.go
++++ b/test/e2e/suite/issuers/vault/certificaterequest/approle.go
+@@ -30,7 +30,6 @@ import (
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/addon"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/tiller"
+ 	vaultaddon "github.com/jetstack/cert-manager/test/e2e/framework/addon/vault"
+ 	"github.com/jetstack/cert-manager/test/e2e/util"
+ )
+@@ -48,13 +47,9 @@ func runVaultAppRoleTests(issuerKind string) {
+ 	h := f.Helper()
+ 
+ 	var (
+-		tiller = &tiller.Tiller{
+-			Name:               "tiller-deploy",
+-			ClusterPermissions: false,
+-		}
+ 		vault = &vaultaddon.Vault{
+-			Tiller: tiller,
+-			Name:   "cm-e2e-create-vault-certificaterequest",
++			Base: addon.Base,
++			Name: "cm-e2e-create-vault-certificaterequest",
+ 		}
+ 
+ 		crDNSNames    = []string{"dnsName1.co", "dnsName2.ninja"}
+@@ -65,11 +60,9 @@ func runVaultAppRoleTests(issuerKind string) {
+ 	)
+ 
+ 	BeforeEach(func() {
+-		tiller.Namespace = f.Namespace.Name
+ 		vault.Namespace = f.Namespace.Name
+ 	})
+ 
+-	f.RequireAddon(tiller)
+ 	f.RequireAddon(vault)
+ 
+ 	rootMount := "root-ca"
+@@ -89,7 +82,7 @@ func runVaultAppRoleTests(issuerKind string) {
+ 		if issuerKind == cmapi.IssuerKind {
+ 			vaultSecretNamespace = f.Namespace.Name
+ 		} else {
+-			vaultSecretNamespace = addon.CertManager.Namespace
++			vaultSecretNamespace = f.Config.Addons.CertManager.ClusterResourceNamespace
+ 		}
+ 
+ 		vaultInit = &vaultaddon.VaultInitializer{
+diff --git a/test/e2e/suite/issuers/vault/certificaterequest/approle_custom_mount.go b/test/e2e/suite/issuers/vault/certificaterequest/approle_custom_mount.go
+index 71582bb1a..e0feea886 100644
+--- a/test/e2e/suite/issuers/vault/certificaterequest/approle_custom_mount.go
++++ b/test/e2e/suite/issuers/vault/certificaterequest/approle_custom_mount.go
+@@ -30,7 +30,6 @@ import (
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/addon"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/tiller"
+ 	vaultaddon "github.com/jetstack/cert-manager/test/e2e/framework/addon/vault"
+ 	"github.com/jetstack/cert-manager/test/e2e/util"
+ )
+@@ -48,13 +47,9 @@ func runVaultCustomAppRoleTests(issuerKind string) {
+ 	h := f.Helper()
+ 
+ 	var (
+-		tiller = &tiller.Tiller{
+-			Name:               "tiller-deploy",
+-			ClusterPermissions: false,
+-		}
+ 		vault = &vaultaddon.Vault{
+-			Tiller: tiller,
+-			Name:   "cm-e2e-create-vault-certificaterequest",
++			Base: addon.Base,
++			Name: "cm-e2e-create-vault-certificaterequest",
+ 		}
+ 
+ 		crDNSNames    = []string{"dnsName1.co", "dnsName2.ninja"}
+@@ -65,11 +60,9 @@ func runVaultCustomAppRoleTests(issuerKind string) {
+ 	)
+ 
+ 	BeforeEach(func() {
+-		tiller.Namespace = f.Namespace.Name
+ 		vault.Namespace = f.Namespace.Name
+ 	})
+ 
+-	f.RequireAddon(tiller)
+ 	f.RequireAddon(vault)
+ 
+ 	rootMount := "root-ca"
+@@ -91,7 +84,7 @@ func runVaultCustomAppRoleTests(issuerKind string) {
+ 		if issuerKind == cmapi.IssuerKind {
+ 			vaultSecretNamespace = f.Namespace.Name
+ 		} else {
+-			vaultSecretNamespace = addon.CertManager.Namespace
++			vaultSecretNamespace = f.Config.Addons.CertManager.ClusterResourceNamespace
+ 		}
+ 
+ 		vaultInit = &vaultaddon.VaultInitializer{
+diff --git a/test/e2e/suite/issuers/vault/issuer.go b/test/e2e/suite/issuers/vault/issuer.go
+index 8600cd6ec..fb7e76e18 100644
+--- a/test/e2e/suite/issuers/vault/issuer.go
++++ b/test/e2e/suite/issuers/vault/issuer.go
+@@ -26,7 +26,7 @@ import (
+ 	"github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha2"
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+-	"github.com/jetstack/cert-manager/test/e2e/framework/addon/tiller"
++	"github.com/jetstack/cert-manager/test/e2e/framework/addon"
+ 	vaultaddon "github.com/jetstack/cert-manager/test/e2e/framework/addon/vault"
+ 	"github.com/jetstack/cert-manager/test/e2e/util"
+ )
+@@ -35,22 +35,16 @@ var _ = framework.CertManagerDescribe("Vault Issuer", func() {
+ 	f := framework.NewDefaultFramework("create-vault-issuer")
+ 
+ 	var (
+-		tiller = &tiller.Tiller{
+-			Name:               "tiller-deploy",
+-			ClusterPermissions: false,
+-		}
+ 		vault = &vaultaddon.Vault{
+-			Tiller: tiller,
+-			Name:   "cm-e2e-create-vault-issuer",
++			Base: addon.Base,
++			Name: "cm-e2e-create-vault-issuer",
+ 		}
+ 	)
+ 
+ 	BeforeEach(func() {
+-		tiller.Namespace = f.Namespace.Name
+ 		vault.Namespace = f.Namespace.Name
+ 	})
+ 
+-	f.RequireAddon(tiller)
+ 	f.RequireAddon(vault)
+ 
+ 	issuerName := "test-vault-issuer"
+
+commit 7eacbd2eb917a38cdb3f1cd13e18d091ab86dc6c (from af63f080744ef7af2089127065460f934752efa7)
+Merge: 16317aa36 af63f0807
+Author: jetstack-bot <32282838+jetstack-bot@users.noreply.github.com>
+Date:   Tue Jan 28 23:37:03 2020 +0000
+
+    Merge pull request #2534 from munnerz/e3e-setup
+    
+    Refactor e2e setup to be useful for local development and clean up e2e test addons
+
+diff --git a/deploy/charts/cert-manager/templates/cainjector-deployment.yaml b/deploy/charts/cert-manager/templates/cainjector-deployment.yaml
+index 3adafc36a..615fd05c5 100644
+--- a/deploy/charts/cert-manager/templates/cainjector-deployment.yaml
++++ b/deploy/charts/cert-manager/templates/cainjector-deployment.yaml
+@@ -1,3 +1,4 @@
++{{- if .Values.cainjector.enabled -}}
+ apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+@@ -77,3 +78,4 @@ spec:
+       tolerations:
+ {{ toYaml . | indent 8 }}
+     {{- end }}
++{{- end -}}
+diff --git a/deploy/charts/cert-manager/templates/cainjector-psp-clusterrole.yaml b/deploy/charts/cert-manager/templates/cainjector-psp-clusterrole.yaml
+index 177f13c69..28fb02162 100644
+--- a/deploy/charts/cert-manager/templates/cainjector-psp-clusterrole.yaml
++++ b/deploy/charts/cert-manager/templates/cainjector-psp-clusterrole.yaml
+@@ -1,3 +1,4 @@
++{{- if .Values.cainjector.enabled -}}
+ {{- if .Values.global.podSecurityPolicy.enabled }}
+ kind: ClusterRole
+ apiVersion: rbac.authorization.k8s.io/v1
+@@ -15,3 +16,4 @@ rules:
+   resourceNames:
+   - {{ template "cainjector.fullname" . }}
+ {{- end }}
++{{- end }}
+diff --git a/deploy/charts/cert-manager/templates/cainjector-psp-clusterrolebinding.yaml b/deploy/charts/cert-manager/templates/cainjector-psp-clusterrolebinding.yaml
+index 5baae2484..5fed384b3 100644
+--- a/deploy/charts/cert-manager/templates/cainjector-psp-clusterrolebinding.yaml
++++ b/deploy/charts/cert-manager/templates/cainjector-psp-clusterrolebinding.yaml
+@@ -1,3 +1,4 @@
++{{- if .Values.cainjector.enabled -}}
+ {{- if .Values.global.podSecurityPolicy.enabled }}
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: ClusterRoleBinding
+@@ -17,3 +18,4 @@ subjects:
+     name: {{ include "cainjector.fullname" . }}
+     namespace: {{ .Release.Namespace }}
+ {{- end }}
++{{- end }}
+diff --git a/deploy/charts/cert-manager/templates/cainjector-psp.yaml b/deploy/charts/cert-manager/templates/cainjector-psp.yaml
+index ebc465318..4210e5116 100644
+--- a/deploy/charts/cert-manager/templates/cainjector-psp.yaml
++++ b/deploy/charts/cert-manager/templates/cainjector-psp.yaml
+@@ -1,3 +1,4 @@
++{{- if .Values.cainjector.enabled -}}
+ {{- if .Values.global.podSecurityPolicy.enabled }}
+ apiVersion: policy/v1beta1
+ kind: PodSecurityPolicy
+@@ -45,4 +46,5 @@ spec:
+     ranges:
+     - min: 1000
+       max: 1000
+-{{- end }}
++{{- end -}}
++{{- end -}}
+diff --git a/deploy/charts/cert-manager/templates/cainjector-rbac.yaml b/deploy/charts/cert-manager/templates/cainjector-rbac.yaml
+index 6e3ad320b..bf9038d81 100644
+--- a/deploy/charts/cert-manager/templates/cainjector-rbac.yaml
++++ b/deploy/charts/cert-manager/templates/cainjector-rbac.yaml
+@@ -1,3 +1,4 @@
++{{- if .Values.cainjector.enabled -}}
+ {{- if .Values.global.rbac.create -}}
+ apiVersion: rbac.authorization.k8s.io/v1beta1
+ kind: ClusterRole
+@@ -94,3 +95,4 @@ subjects:
+ 
+ 
+ {{- end -}}
++{{- end -}}
+diff --git a/deploy/charts/cert-manager/templates/cainjector-serviceaccount.yaml b/deploy/charts/cert-manager/templates/cainjector-serviceaccount.yaml
+index f085ca771..f5109ebf3 100644
+--- a/deploy/charts/cert-manager/templates/cainjector-serviceaccount.yaml
++++ b/deploy/charts/cert-manager/templates/cainjector-serviceaccount.yaml
+@@ -1,3 +1,4 @@
++{{- if .Values.cainjector.enabled -}}
+ apiVersion: v1
+ kind: ServiceAccount
+ metadata:
+@@ -12,3 +13,4 @@ metadata:
+ {{- if .Values.global.imagePullSecrets }}
+ imagePullSecrets: {{ toYaml .Values.global.imagePullSecrets | nindent 2 }}
+ {{- end }}
++{{- end -}}
+diff --git a/deploy/charts/cert-manager/values.yaml b/deploy/charts/cert-manager/values.yaml
+index fc2b96ad0..4bd88b95c 100644
+--- a/deploy/charts/cert-manager/values.yaml
++++ b/deploy/charts/cert-manager/values.yaml
+@@ -203,6 +203,7 @@ webhook:
+   securePort: 10250
+ 
+ cainjector:
++  enabled: true
+   replicaCount: 1
+ 
+   strategy: {}
+diff --git a/pkg/controller/certificaterequests/acme/BUILD.bazel b/pkg/controller/certificaterequests/acme/BUILD.bazel
+index 74eff8bb9..6e7536b68 100644
+--- a/pkg/controller/certificaterequests/acme/BUILD.bazel
++++ b/pkg/controller/certificaterequests/acme/BUILD.bazel
+@@ -18,6 +18,7 @@ go_library(
+         "//pkg/issuer:go_default_library",
+         "//pkg/logs:go_default_library",
+         "//pkg/util:go_default_library",
++        "//pkg/util/errors:go_default_library",
+         "//pkg/util/pki:go_default_library",
+         "@io_k8s_apimachinery//pkg/api/errors:go_default_library",
+         "@io_k8s_apimachinery//pkg/apis/meta/v1:go_default_library",
+diff --git a/pkg/controller/certificaterequests/acme/acme.go b/pkg/controller/certificaterequests/acme/acme.go
+index ef2f23caf..314051207 100644
+--- a/pkg/controller/certificaterequests/acme/acme.go
++++ b/pkg/controller/certificaterequests/acme/acme.go
+@@ -39,6 +39,7 @@ import (
+ 	issuerpkg "github.com/jetstack/cert-manager/pkg/issuer"
+ 	logf "github.com/jetstack/cert-manager/pkg/logs"
+ 	"github.com/jetstack/cert-manager/pkg/util"
++	"github.com/jetstack/cert-manager/pkg/util/errors"
+ 	"github.com/jetstack/cert-manager/pkg/util/pki"
+ )
+ 
+@@ -137,7 +138,6 @@ func (a *ACME) Sign(ctx context.Context, cr *v1alpha2.CertificateRequest, issuer
+ 
+ 		return nil, nil
+ 	}
+-
+ 	if err != nil {
+ 		// We are probably in a network error here so we should backoff and retry
+ 		message := fmt.Sprintf("Failed to get order resource %s/%s", expectedOrder.Namespace, expectedOrder.Name)
+@@ -147,6 +147,15 @@ func (a *ACME) Sign(ctx context.Context, cr *v1alpha2.CertificateRequest, issuer
+ 
+ 		return nil, err
+ 	}
++	if !metav1.IsControlledBy(order, cr) {
++		// TODO: improve this behaviour - this issue occurs because someone
++		//  else may create a CertificateRequest with a name that is equal to
++		//  the name of the request we are creating, due to our hash function
++		//  not account for parameters stored on the CSR (i.e. the public key).
++		//  We should improve the way we hash input data or somehow avoid
++		//  relying on deterministic names for Order resources.
++		return nil, fmt.Errorf("found Order resource not owned by this CertificateRequest, retrying")
++	}
+ 
+ 	log = logf.WithRelatedResource(log, order)
+ 
+@@ -163,6 +172,20 @@ func (a *ACME) Sign(ctx context.Context, cr *v1alpha2.CertificateRequest, issuer
+ 
+ 	// Order valid, return cert. The calling controller will update with ready if its happy with the cert.
+ 	if order.Status.State == cmacme.Valid {
++		x509Cert, err := pki.DecodeX509CertificateBytes(order.Status.Certificate)
++		if errors.IsInvalidData(err) {
++			log.Error(err, "failed to decode x509 certificate data on Order resource")
++			return nil, a.acmeClientV.Orders(order.Namespace).Delete(order.Name, nil)
++		}
++		ok, err := pki.PublicKeyMatchesCertificate(csr.PublicKey, x509Cert)
++		if err != nil {
++			return nil, err
++		}
++		if !ok {
++			log.Error(err, "failed to decode x509 certificate data on Order resource, recreating...")
++			return nil, a.acmeClientV.Orders(order.Namespace).Delete(order.Name, nil)
++		}
++
+ 		log.Info("certificate issued")
+ 
+ 		return &issuerpkg.IssueResponse{
+diff --git a/pkg/controller/certificates/sync.go b/pkg/controller/certificates/sync.go
+index ce0680b4a..4f1cf322a 100644
+--- a/pkg/controller/certificates/sync.go
++++ b/pkg/controller/certificates/sync.go
+@@ -384,7 +384,10 @@ func (c *certificateRequestManager) processCertificate(ctx context.Context, crt
+ 	// Validate the CertificateRequest's CSR is valid
+ 	log.Info("validating existing CSR data")
+ 	x509CSR, err := pki.DecodeX509CertificateRequestBytes(existingReq.Spec.CSRPEM)
+-	// TODO: handle InvalidData
++	if errors.IsInvalidData(err) {
++		log.Info("failed to decode existing CSR on CertificateRequest, deleting resource...")
++		return c.cmClient.CertmanagerV1alpha2().CertificateRequests(existingReq.Namespace).Delete(existingReq.Name, nil)
++	}
+ 	if err != nil {
+ 		return err
+ 	}
+@@ -466,6 +469,16 @@ func (c *certificateRequestManager) processCertificate(ctx context.Context, crt
+ 			return err
+ 		}
+ 
++		log.Info("checking stored private key is valid for stored x509 certificate on CertificateRequest")
++		publicKeyMatches, err := pki.PublicKeyMatchesCertificate(privateKey.Public(), x509Cert)
++		if err != nil {
++			return err
++		}
++		if !publicKeyMatches {
++			log.Info("private key stored in Secret does not match public key of issued certificate, deleting the old CertificateRequest resource")
++			return c.cmClient.CertmanagerV1alpha2().CertificateRequests(existingReq.Namespace).Delete(existingReq.Name, nil)
++		}
++
+ 		// Check if the Certificate requires renewal according to the renewBefore
+ 		// specified on the Certificate resource.
+ 		log.Info("checking if certificate stored on CertificateRequest is up to date")
+diff --git a/pkg/issuer/acme/http/http.go b/pkg/issuer/acme/http/http.go
+index a6173709e..f7b224013 100644
+--- a/pkg/issuer/acme/http/http.go
++++ b/pkg/issuer/acme/http/http.go
+@@ -49,7 +49,7 @@ const (
+ )
+ 
+ var (
+-	challengeGvk = v1alpha2.SchemeGroupVersion.WithKind("Challenge")
++	challengeGvk = cmacme.SchemeGroupVersion.WithKind("Challenge")
+ )
+ 
+ // Solver is an implementation of the acme http-01 challenge solver protocol

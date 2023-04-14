@@ -1,0 +1,53 @@
+commit e672650f4c6931bae93e2aa1003e3d37f04d837f (from eb80f2c8baa4bf738404a6c9828cc549d0844d40)
+Merge: eb80f2c8 3cb048af
+Author: David <david.kaltschmidt@gmail.com>
+Date:   Wed Apr 10 17:56:41 2019 +0200
+
+    Merge pull request #467 from steven-sheehy/missing-volume
+    
+    Fix missing volume after refactor
+
+diff --git a/charts/loki-stack/Chart.yaml b/charts/loki-stack/Chart.yaml
+index 0c9c3790..14761a85 100644
+--- a/charts/loki-stack/Chart.yaml
++++ b/charts/loki-stack/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: loki-stack
+-version: 0.6.0
++version: 0.6.1
+ appVersion: 0.0.1
+ kubeVersion: "^1.10.0-0"
+ description: "Loki: like Prometheus, but for logs."
+diff --git a/charts/promtail/Chart.yaml b/charts/promtail/Chart.yaml
+index 94f7963e..1554c7e4 100644
+--- a/charts/promtail/Chart.yaml
++++ b/charts/promtail/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: promtail
+-version: 0.6.0
++version: 0.6.1
+ appVersion: 0.0.1
+ kubeVersion: "^1.10.0-0"
+ description: "Responsible for gathering logs and sending them to Loki"
+diff --git a/charts/promtail/values.yaml b/charts/promtail/values.yaml
+index 8d82183d..e9f1539b 100644
+--- a/charts/promtail/values.yaml
++++ b/charts/promtail/values.yaml
+@@ -82,11 +82,17 @@ tolerations:
+ 
+ # Extra volumes to scrape logs from
+ volumes:
++- name: docker
++  hostPath:
++    path: /var/lib/docker/containers
+ - name: pods
+   hostPath:
+     path: /var/log/pods
+ 
+ volumeMounts:
++- name: docker
++  mountPath: /var/lib/docker/containers
++  readOnly: true
+ - name: pods
+   mountPath: /var/log/pods
+   readOnly: true

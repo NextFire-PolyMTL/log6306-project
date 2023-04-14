@@ -1,0 +1,342 @@
+commit 83c63bab21a8543f01ef9a90ed5bc754b5f830ef
+Author: Naseem <naseemkullah@gmail.com>
+Date:   Tue Dec 4 15:38:29 2018 -0500
+
+    [stable/fluent-bit] Revert to og indentation... or Refactor configuration (#9008)
+    
+    * fluent-bit: Add 'fullConfigMap' option to allow entire config external
+    
+    By default this template provies different 'files' for config
+    (fluent-bit.conf, custom_parsers.conf) under a common configMap. This
+    defeats changing the configmap (since it uses subPath).  If this variable
+    is set, the user is assumed to have provided, in 'existingConfigMap'
+    the entire config (etc/*) of fluent-bit, parsers and system config. In
+    this case, no subPath is used.  ConfigMaps using 'subPath' do not
+    [update automatically](https://github.com/kubernetes/kubernetes/issues/50345)
+    
+    With this option, if the user sets 'fullConfigMap: true' it is
+    expected that the 'externalConfigMap' provided is a valid fluent-bit
+    config (with both fluent-bit.conf and parsers.conf).
+    
+    Signed-off-by: Don Bowman <db@donbowman.ca>
+    
+    * Revert to og indentation
+    
+    Signed-off-by: Naseem Ullah <naseemkullah@gmail.com>
+    
+    * bump
+    
+    Signed-off-by: Naseem Ullah <naseemkullah@gmail.com>
+    
+    * Refactoring config
+    
+    Signed-off-by: Naseem Ullah <naseemkullah@gmail.com>
+    
+    * Adding Replace_Dots option once and for all
+    
+    Signed-off-by: Naseem Ullah <naseemkullah@gmail.com>
+    
+    * v1.0.0 since chart is in stable
+    
+    Signed-off-by: Naseem Ullah <naseemkullah@gmail.com>
+    
+    * Adding upgrading section
+    
+    Signed-off-by: Naseem Ullah <naseemkullah@gmail.com>
+    
+    * Adding extraEntries
+    
+    Signed-off-by: Naseem Ullah <naseemkullah@gmail.com>
+    
+    * Specify path in tail input
+    
+    Signed-off-by: Naseem Ullah <naseemkullah@gmail.com>
+    
+    * Specify path in tail input
+    
+    Signed-off-by: Naseem Ullah <naseemkullah@gmail.com>
+
+diff --git a/stable/fluent-bit/Chart.yaml b/stable/fluent-bit/Chart.yaml
+index ce5d87cb0..2278e12ad 100755
+--- a/stable/fluent-bit/Chart.yaml
++++ b/stable/fluent-bit/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: fluent-bit
+-version: 0.16.3
++version: 1.0.0
+ appVersion: 0.14.8
+ description: Fast and Lightweight Log/Data Forwarder for Linux, BSD and OSX
+ keywords:
+diff --git a/stable/fluent-bit/README.md b/stable/fluent-bit/README.md
+index b3adc1e96..6e918eef7 100644
+--- a/stable/fluent-bit/README.md
++++ b/stable/fluent-bit/README.md
+@@ -45,6 +45,7 @@ The following table lists the configurable parameters of the Fluent-Bit chart an
+ | `backend.es.type`          | Elastic Type name | `flb_type` |
+ | `backend.es.time_key`          | Elastic Time Key | `@timestamp` |
+ | `backend.es.logstash_prefix`  | Index Prefix. If Logstash_Prefix is equals to 'mydata' your index will become 'mydata-YYYY.MM.DD'. | `kubernetes_cluster` |
++| `backend.es.replace_dots`     | Enable/Disable Replace_Dots option. | `On` |
+ | `backend.es.http_user`        | Optional username credential for Elastic X-Pack access. | `` |
+ | `backend.es.http_passwd:`     | Password for user defined in HTTP_User. | `` |
+ | `backend.es.tls`              | Enable or disable TLS support | `off` |
+@@ -77,28 +78,31 @@ The following table lists the configurable parameters of the Fluent-Bit chart an
+ | **General**                   |
+ | `annotations`                      | Optional deamonset set annotations        | `NULL`                |
+ | `podAnnotations`                   | Optional pod annotations                  | `NULL`                |
++| `fullConfigMap`                    | User has provided entire config (parsers + system)  | `false`      |
+ | `existingConfigMap`                | ConfigMap override                         | ``                    |
+-| `extraInputs`                      | Add extra Input sections to config         | ``                    |
+-| `extraFilters`                     | Add extra Filter sections to config        | ``                    |
+-| `extraOutputs`                     | Add extra Output sections to config        | ``                    |
++| `extraEntries.input`               |    Extra entries for existing [INPUT] section                     | ``                    |
++| `extraEntries.filter`               |    Extra entries for existing [FILTER] section                     | ``                    |
++| `extraEntries.output`               |   Extra entries for existing [OUPUT] section                     | ``                    |
+ | `extraVolumeMounts`                | Mount an extra volume, required to mount ssl certificates when elasticsearch has tls enabled |          |
+ | `extraVolume`                      | Extra volume                               |                                                |
++| `filter.enableExclude`                   | Enable the use of monitoring for a pod annotation of `fluentbit.io/exclude: true`. If present, discard logs from that pod.         | `true`                                 |
++| `filter.enableParser`                   | Enable the use of monitoring for a pod annotation of `fluentbit.io/parser: parser_name`. parser_name must be the name of a parser contained within parsers.conf         | `true`                                 |
+ | `filter.kubeURL`                   | Optional custom configmaps                 | `https://kubernetes.default.svc:443`            |
+ | `filter.kubeCAFile`                | Optional custom configmaps       | `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt`    |
+ | `filter.kubeTokenFile`             | Optional custom configmaps       | `/var/run/secrets/kubernetes.io/serviceaccount/token`     |
+ | `filter.kubeTag`                   | Optional top-level tag for matching in filter         | `kube`                                 |
++| `filter.mergeJSONLog`                   | If the log field content is a JSON string map, append the map fields as part of the log structure         | `true`                                 |
+ | `image.fluent_bit.repository`      | Image                                      | `fluent/fluent-bit`                               |
+ | `image.fluent_bit.tag`             | Image tag                                  | `0.14.8`                                          |
+ | `image.pullPolicy`                 | Image pull policy                          | `Always`                                          |
+ | `image.pullSecrets`                | Specify image pull secrets                 | `nil`                                             |
+ | `input.tail.memBufLimit`           | Specify Mem_Buf_Limit in tail input        | `5MB`                                             |
++| `input.tail.path`           | Specify log file(s) through the use of common wildcards.        | `/var/log/containers/*.log`                                             |
+ | `rbac.create`                      | Specifies whether RBAC resources should be created.   | `true`                                 |
+ | `serviceAccount.create`            | Specifies whether a ServiceAccount should be created. | `true`                                 |
+ | `serviceAccount.name`              | The name of the ServiceAccount to use.     | `NULL`                                            |
+-| `resources.limits.cpu`             | CPU limit                                  | `100m`                                            |
+-| `resources.limits.memory`          | Memory limit                               | `500Mi`                                           |
+-| `resources.requests.cpu`           | CPU request                                | `100m`                                            |
+-| `resources.requests.memory`        | Memory request                             | `200Mi`                                           |
++| `rawConfig`                        | Raw contents of fluent-bit.conf            | `@INCLUDE fluent-bit-service.conf`<br>`@INCLUDE fluent-bit-input.conf`<br>`@INCLUDE fluent-bit-filter.conf`<br>` @INCLUDE fluent-bit-output.conf`                                                                         |
++| `resources`                        | Pod resource requests & limits                                 | `{}`                          |
+ | `tolerations`                      | Optional daemonset tolerations             | `NULL`                                            |
+ | `nodeSelector`                     | Node labels for fluent-bit pod assignment  | `NULL`                                            |
+ | `metrics.enabled`                  | Specifies whether a service for metrics should be exposed | `false`                            |
+@@ -118,3 +122,11 @@ $ helm install --name my-release -f values.yaml stable/fluent-bit
+ ```
+ 
+ > **Tip**: You can use the default [values.yaml](values.yaml)
++
++## Upgrading
++
++### From < 1.0.0 To 1.0.0
++
++Values `extraInputs`, `extraFilters` and `extraOutputs` have been removed in version `1.0.0` of the fluent-bit chart. 
++To add additional entries to the existing sections, please use the `extraEntries.input`, `extraEntries.filter` and `extraEntries.output` values. 
++For entire sections, please use the `rawConfig` value, inserting blocks of text as desired.
+diff --git a/stable/fluent-bit/templates/config.yaml b/stable/fluent-bit/templates/config.yaml
+index 0b73beea2..f930d208c 100644
+--- a/stable/fluent-bit/templates/config.yaml
++++ b/stable/fluent-bit/templates/config.yaml
+@@ -9,7 +9,7 @@ metadata:
+     heritage: {{ .Release.Service }}
+     release: {{ .Release.Name }}
+ data:
+-  fluent-bit.conf: |-
++  fluent-bit-service.conf: |-
+     [SERVICE]
+         Flush        1
+         Daemon       Off
+@@ -24,9 +24,10 @@ data:
+         HTTP_Port    2020
+ {{- end }}
+ 
++  fluent-bit-input.conf: |-
+     [INPUT]
+         Name             tail
+-        Path             /var/log/containers/*.log
++        Path             {{ .Values.input.tail.path }}
+         Parser           docker
+         Tag              {{ .Values.filter.kubeTag }}.*
+         Refresh_Interval 5
+@@ -36,8 +37,9 @@ data:
+         DB               /tail-db/tail-containers-state.db
+         DB.Sync          Normal
+ {{- end }}
+-{{ .Values.extraInputs | indent 8 }}
++{{ .Values.extraEntries.input | indent 8 }}
+ 
++  fluent-bit-filter.conf: |-
+     [FILTER]
+         Name                kubernetes
+         Match               {{ .Values.filter.kubeTag }}.*
+@@ -53,8 +55,9 @@ data:
+ {{- if .Values.filter.enableExclude }}
+         K8S-Logging.Exclude On
+ {{- end }}
+-{{ .Values.extraFilters | indent 8 }}
++{{ .Values.extraEntries.filter | indent 8 }}
+ 
++  fluent-bit-output.conf: |-
+ {{ if eq .Values.backend.type "test" }}
+     [OUTPUT]
+         Name  file
+@@ -82,6 +85,9 @@ data:
+ {{- if .Values.backend.es.time_key }}
+         Time_Key {{ .Values.backend.es.time_key }}
+ {{- end }}
++{{- if .Values.backend.es.replace_dots }}
++        Replace_Dots {{ .Values.backend.es.replace_dots }}
++{{- end }}
+ {{- if .Values.backend.es.logstash_prefix }}
+         Logstash_Prefix {{ .Values.backend.es.logstash_prefix }}
+ {{ else if .Values.backend.es.index }}
+@@ -130,7 +136,11 @@ data:
+ {{- end }}
+         Format {{ .Values.backend.http.format }}
+ {{- end }}
+-{{ .Values.extraOutputs | indent 8 }}
++{{ .Values.extraEntries.output | indent 8 }}
++
++
++  fluent-bit.conf: |-
++{{ .Values.rawConfig | indent 4 }}
+ 
+   parsers.conf: |-
+ {{- if .Values.parsers.regex }}
+diff --git a/stable/fluent-bit/templates/daemonset.yaml b/stable/fluent-bit/templates/daemonset.yaml
+index 27b792f01..b07a36f1d 100644
+--- a/stable/fluent-bit/templates/daemonset.yaml
++++ b/stable/fluent-bit/templates/daemonset.yaml
+@@ -46,14 +46,32 @@ spec:
+         - name: varlibdockercontainers
+           mountPath: /var/lib/docker/containers
+           readOnly: true
++{{- if .Values.fullConfigMap }}
++        - name: config
++          mountPath: /fluent-bit/etc
++{{- else }}
+         - name: config
+           mountPath: /fluent-bit/etc/fluent-bit.conf
+-          subPath: fluent-bit.conf
++          subPath: fluent-bit.conf     
++        - name: config
++          mountPath: /fluent-bit/etc/fluent-bit-service.conf
++          subPath: fluent-bit-service.conf
++        - name: config
++          mountPath: /fluent-bit/etc/fluent-bit-input.conf
++          subPath: fluent-bit-input.conf
++        - name: config
++          mountPath: /fluent-bit/etc/fluent-bit-filter.conf
++          subPath: fluent-bit-filter.conf
++        - name: config
++          mountPath: /fluent-bit/etc/fluent-bit-output.conf
++          subPath: fluent-bit-output.conf
++          
+ {{- if .Values.parsers.enabled }}
+         - name: config
+           mountPath: /fluent-bit/etc/parsers_custom.conf
+           subPath: parsers.conf
+ {{- end }}
++{{- end }}
+ {{- if .Values.backend.es.tls_ca }}
+         - name: es-tls-secret
+           mountPath: /secure/es-tls-ca.crt
+diff --git a/stable/fluent-bit/values.yaml b/stable/fluent-bit/values.yaml
+index d4f427722..73db29d83 100644
+--- a/stable/fluent-bit/values.yaml
++++ b/stable/fluent-bit/values.yaml
+@@ -39,6 +39,7 @@ backend:
+     index: kubernetes_cluster
+     type: flb_type
+     logstash_prefix: kubernetes_cluster
++    replace_dots: "On"
+     time_key: "@timestamp"
+     # Optional username credential for Elastic X-Pack access
+     http_user:
+@@ -90,18 +91,34 @@ env: []
+ ## Annotations to add to the DaemonSet's Pods
+ podAnnotations: {}
+ 
++## By default there different 'files' provides in the config
++## (fluent-bit.conf, custom_parsers.conf). This defeats
++## changing a configmap (since it uses subPath). If this
++## variable is set, the user is assumed to have provided,
++## in 'existingConfigMap' the entire config (etc/*) of fluent-bit,
++## parsers and system config. In this case, no subPath is
++## used
++fullConfigMap: false
++
+ ## ConfigMap override where fullname is {{.Release.Name}}-{{.Values.existingConfigMap}}
+ ## Defining existingConfigMap will cause templates/config.yaml
+ ## to NOT generate a ConfigMap resource
+ ##
+ existingConfigMap: ""
+ 
+-## Add extra input sources
+-extraInputs: |-
+-## Add extra filters
+-extraFilters: |-
+-## Add extra outputs
+-extraOutputs: |-
++rawConfig: |-
++  @INCLUDE fluent-bit-service.conf
++  @INCLUDE fluent-bit-input.conf
++  @INCLUDE fluent-bit-filter.conf
++  @INCLUDE fluent-bit-output.conf
++
++extraEntries:
++  input: |-
++#     # >=1 additional Key/Value entrie(s) for existing Input section
++  filter: |-
++#     # >=1 additional Key/Value entrie(s) for existing Filter section
++  output: |-
++#     # >=1 additional Key/Value entrie(s) for existing Ouput section
+ 
+ ## Extra volumes containing additional files required for fluent-bit to work
+ ## (eg. CA certificates)
+@@ -114,12 +131,13 @@ extraVolumes: []
+ ##
+ extraVolumeMounts: []
+ 
+-resources:
+-  limits:
+-    memory: 100Mi
+-  requests:
+-    cpu: 100m
+-    memory: 100Mi
++resources: {}
++  # limits:
++  #   cpu: 100m
++  #   memory: 128Mi
++  # requests:
++  #   cpu: 10m
++  #   memory: 8Mi
+ 
+ ## Node tolerations for fluent-bit scheduling to nodes with taints
+ ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+@@ -138,6 +156,8 @@ nodeSelector: {}
+ input:
+   tail:
+     memBufLimit: 5MB
++    path: /var/log/containers/*.log
++
+ 
+ filter:
+   kubeURL: https://kubernetes.default.svc:443
+@@ -146,16 +166,16 @@ filter:
+   kubeTag: kube
+ # If true, check to see if the log field content is a JSON string map, if so,
+ # it append the map fields as part of the log structure.
+-#  mergeJSONLog: true
++  mergeJSONLog: true
+ 
+ # If true, enable the use of monitoring for a pod annotation of
+ # fluentbit.io/parser: parser_name. parser_name must be the name
+ # of a parser contained within parsers.conf
+-#  enableParser: true
++  enableParser: true
+ 
+ # If true, enable the use of monitoring for a pod annotation of
+ # fluentbit.io/exclude: true. If present, discard logs from that pod.
+-#  enableExclude: true
++  enableExclude: true
+ 
+ rbac:
+   # Specifies whether RBAC resources should be created

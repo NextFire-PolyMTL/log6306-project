@@ -1,0 +1,663 @@
+commit 387bb254926fbbd4cf3c2ac5b42c9ecf28b0fb4d
+Author: Ryan McCormick <rmccorm4@binghamton.edu>
+Date:   Tue Aug 13 03:11:56 2019 -0400
+
+    [stable/dask] Update stable dask with new container versions, better documentation, more options. (#12552)
+    
+    * 1) Update API versions to v1, 2) Refactor NOTES.txt to handle different serviceTypes, 3) Create OWNERS file, 4) Add comments for possible serviceType and GPU values in values.yaml, 5) Update README values and add some new sections for serviceTypes and Jupyter password, 6) Lint README, yaml files, and rendered yaml templates, 7) Update container images to v1.1.1
+    
+    Signed-off-by: Ryan McCormick <rmccormick@nvidia.com>
+    Signed-off-by: Ryan McCormick <rmccorm4@binghamton.edu>
+    
+    * address PR #1 comments, 1) Add newline to each EOF, 2) Update YAML comments to have no extra spacing, 3) Add --namespace flag description to README
+    
+    Signed-off-by: Ryan McCormick <rmccormick@nvidia.com>
+    Signed-off-by: Ryan McCormick <rmccorm4@binghamton.edu>
+    
+    * add nodeSelector and imagePullSecrets to deployments
+    
+    Signed-off-by: Ryan McCormick <rmccorm4@binghamton.edu>
+    
+    * add nodeSelector and imagePullSecrets to deployments
+    
+    Signed-off-by: Ryan McCormick <rmccorm4@binghamton.edu>
+    
+    * change worker arg to variable rather than hardcoded 'dask-worker'
+    
+    Signed-off-by: Ryan McCormick <rmccorm4@binghamton.edu>
+    
+    * Add jacobtomlinson to OWNERS
+    
+    Signed-off-by: Ryan McCormick <rmccorm4@binghamton.edu>
+    
+    * fix lint error for spaces after comments
+    
+    Signed-off-by: Ryan McCormick <rmccorm4@binghamton.edu>
+    
+    * Update README.md
+    
+    Signed-off-by: Reinhard Nägele <unguiculus@gmail.com>
+    
+    * apply left whitespace trim and nindent throughout chart templates per unguiculus suggestion
+    
+    Signed-off-by: Ryan Mccormick <rmccormick@nvidia.com>
+    
+    * improvement: replace 'default' namespace with '.Release.Namespace' in NOTES.txt output
+    
+    Signed-off-by: Ryan McCormick <rmccorm4@binghamton.edu>
+
+diff --git a/stable/dask/Chart.yaml b/stable/dask/Chart.yaml
+index 0f6abb0c3..321e1f36c 100755
+--- a/stable/dask/Chart.yaml
++++ b/stable/dask/Chart.yaml
+@@ -1,14 +1,17 @@
++---
+ apiVersion: v1
+ name: dask
+-version: 2.2.1
+-appVersion: 1.1.0
++version: 3.0.0
++appVersion: 1.1.5
+ description: Distributed computation in Python with task scheduling
+-home: https://dask.pydata.org
++home: https://dask.org
+ icon: https://avatars3.githubusercontent.com/u/17131925?v=3&s=200
+ sources:
+-- https://github.com/dask/dask
++  - https://github.com/dask/dask
+ maintainers:
+-- name: danielfrg
+-  email: df.rodriguez143@gmail.com
+-- name: mrocklin
+-  email: mrocklin@gmail.com
++  - name: danielfrg
++    email: df.rodriguez143@gmail.com
++  - name: mrocklin
++    email: mrocklin@gmail.com
++  - name: beberg
++    email: beberg@gmail.com
+diff --git a/stable/dask/OWNERS b/stable/dask/OWNERS
+new file mode 100644
+index 000000000..aed422d82
+--- /dev/null
++++ b/stable/dask/OWNERS
+@@ -0,0 +1,10 @@
++approvers:
++- danielfrg
++- mrocklin
++- beberg
++- jacobtomlinson
++reviewers:
++- danielfrg
++- mrocklin
++- beberg
++- jacobtomlinson
+diff --git a/stable/dask/README.md b/stable/dask/README.md
+index d606d066c..dd4823803 100644
+--- a/stable/dask/README.md
++++ b/stable/dask/README.md
+@@ -2,30 +2,36 @@
+ 
+ Dask allows distributed computation in Python.
+ 
+--  https://dask.pydata.org
+--  http://jupyter.org/
+-
++- <https://dask.org>
++- <https://jupyter.org/>
+ 
+ ## Chart Details
+ 
+ This chart will deploy the following:
+ 
+--   1 x Dask scheduler with port 8786 (scheduler) and 80 (Web UI) exposed on an external LoadBalancer
+--   3 x Dask workers that connect to the scheduler
+--   1 x Jupyter notebook (optional) with port 80 exposed on an external LoadBalancer
+--   All using Kubernetes Deployments
++- 1 x Dask scheduler with port 8786 (scheduler) and 80 (Web UI) exposed on an external LoadBalancer (default)
++- 3 x Dask workers that connect to the scheduler
++- 1 x Jupyter notebook (optional) with port 80 exposed on an external LoadBalancer (default)
++- All using Kubernetes Deployments
++
++> **Tip**: See the [Kubernetes Service Type Docs](https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types)
++for the differences between ClusterIP, NodePort, and LoadBalancer.
+ 
+ ## Installing the Chart
+ 
+ To install the chart with the release name `my-release`:
+ 
+ ```bash
+-$ helm install --name my-release stable/dask
++helm install --name my-release stable/dask
+ ```
+ 
+-## Configuration
++Depending on how your cluster was setup, you may also need to specify
++a namespace with the following flag: `--namespace my-namespace`.
++
++## Default Configuration
+ 
+-The following tables list the configurable parameters of the Dask chart and their default values.
++The following tables list the configurable parameters of the Dask chart and
++their default values.
+ 
+ ### Dask scheduler
+ 
+@@ -33,7 +39,7 @@ The following tables list the configurable parameters of the Dask chart and thei
+ | -------------------------- | -------------------------| -----------------|
+ | `scheduler.name`           | Dask scheduler name      | `scheduler`      |
+ | `scheduler.image`          | Container image name     | `daskdev/dask`   |
+-| `scheduler.imageTag`       | Container image tag      | `1.1.0`         |
++| `scheduler.imageTag`       | Container image tag      | `1.1.5`          |
+ | `scheduler.replicas`       | k8s deployment replicas  | `1`              |
+ | `scheduler.tolerations`    | Tolerations              | `[]`             |
+ | `scheduler.nodeSelector`   | nodeSelector             | `{}`             |
+@@ -52,22 +58,21 @@ The following tables list the configurable parameters of the Dask chart and thei
+ | -----------------------      | ---------------------------------| ---------------|
+ | `worker.name`                | Dask worker name                 | `worker`       |
+ | `worker.image`               | Container image name             | `daskdev/dask` |
+-| `worker.imageTag`            | Container image tag              | `1.1.0`        |
++| `worker.imageTag`            | Container image tag              | `1.1.5`        |
+ | `worker.replicas`            | k8s hpa and deployment replicas  | `3`            |
+ | `worker.resources`           | Container resources              | `{}`           |
+ | `worker.tolerations`         | Tolerations                      | `[]`           |
+ | `worker.nodeSelector`        | nodeSelector                     | `{}`           |
+ | `worker.affinity`            | Container affinity               | `{}`           |
+-|
+ 
+-### jupyter
++### Jupyter
+ 
+ | Parameter               | Description                      | Default                  |
+ |-------------------------|----------------------------------|--------------------------|
+ | `jupyter.name`          | Jupyter name                     | `jupyter`                |
+ | `jupyter.enabled`       | Include optional Jupyter server  | `true`                   |
+ | `jupyter.image`         | Container image name             | `daskdev/dask-notebook`  |
+-| `jupyter.imageTag`      | Container image tag              | `1.1.0`                  |
++| `jupyter.imageTag`      | Container image tag              | `1.1.5`                  |
+ | `jupyter.replicas`      | k8s deployment replicas          | `1`                      |
+ | `jupyter.servicePort`   | k8s service port                 | `80`                     |
+ | `jupyter.resources`     | Container resources              | `{}`                     |
+@@ -75,37 +80,93 @@ The following tables list the configurable parameters of the Dask chart and thei
+ | `jupyter.nodeSelector`  | nodeSelector                     | `{}`                     |
+ | `jupyter.affinity`      | Container affinity               | `{}`                     |
+ 
+-Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`.
++#### Jupyter Password
++
++When launching the Jupyter server, you will be prompted for a password. The
++default password set in [values.yaml](values.yaml) is `dask`.
++
++```yaml
++jupyter:
++  ...
++  password: 'sha1:aae8550c0a44:9507d45e087d5ee481a5ce9f4f16f37a0867318c' # 'dask'
++```
++
++To change this password, run `jupyter notebook password` in the command-line,
++example below:
++
++```bash
++$ jupyter notebook password
++Enter password: dask
++Verify password: dask
++[NotebookPasswordApp] Wrote hashed password to /home/dask/.jupyter/jupyter_notebook_config.json
++
++$ cat /home/dask/.jupyter/jupyter_notebook_config.json
++{
++  "NotebookApp": {
++    "password": "sha1:aae8550c0a44:9507d45e087d5ee481a5ce9f4f16f37a0867318c"
++  }
++}
++```
++
++Replace the `jupyter.password` field in [values.yaml](values.yaml) with the
++hash generated for your new password.
++
++## Custom Configuration
+ 
+-Alternatively, a YAML file that specifies the values for the parameters can be provided while installing the chart. For example,
++If you want to change the default parameters, you can do this in two ways.
++
++### YAML Config Files
++
++You can change the default parameters in `values.yaml`, or create your own
++custom YAML config file, and specify this file when installing your chart with
++the `-f` flag. Example:
+ 
+ ```bash
+-$ helm install --name my-release -f values.yaml stable/dask
++helm install --name my-release -f values.yaml stable/dask
+ ```
+ 
+-> **Tip**: You can use the default [values.yaml](values.yaml)
++> **Tip**: You can use the default [values.yaml](values.yaml) for reference
++
++### Command-Line Arguments
+ 
++If you want to change parameters for a specific install without changing
++`values.yaml`, you can use the `--set key=value[,key=value]` flag when running
++`helm install`, and it will override any default values. Example:
++
++```bash
++helm install --name my-release --set jupyter.enabled=false stable/dask
++```
+ 
+ ### Customizing Python Environment
+ 
+ The default `daskdev/dask` images have a standard Miniconda installation along
+ with some common packages like NumPy and Pandas.  You can install custom packages
+ with either Conda or Pip using optional environment variables.  This happens
+-when your container starts up.  Consider the following config.yaml file as an
+-example:
++when your container starts up.  
++
++> **Note**: The `IP:PORT` of this chart's services will not be accessible until
++extra packages finish installing. Expect to wait at least a minute for the
++Jupyter Server to be accessible if adding packages below, like `numba`. This
++time will vary depending on which extra packages you choose to install.
++
++Consider the following YAML config as an example:
+ 
+ ```yaml
+ jupyter:
+   env:
+-    -  EXTRA_PIP_PACKAGES: s3fs git+https://github.com/user/repo.git --upgrade
+-    -  EXTRA_CONDA_PACKAGES: scipy matplotlib -c conda-forge
++    - name: EXTRA_CONDA_PACKAGES
++      value: numba xarray -c conda-forge
++    - name: EXTRA_PIP_PACKAGES
++      value: s3fs dask-ml --upgrade
+ 
+ worker:
+   env:
+-    -  EXTRA_PIP_PACKAGES: s3fs git+https://github.com/user/repo.git --upgrade
+-    -  EXTRA_CONDA_PACKAGES: scipy -c conda-forge
++    - name: EXTRA_CONDA_PACKAGES
++      value: numba xarray -c conda-forge
++    - name: EXTRA_PIP_PACKAGES
++      value: s3fs dask-ml --upgrade
+ ```
+ 
+-Note that the Jupyter and Dask worker environments should have matching
++> **Note**: The Jupyter and Dask-worker environments should have matching
+ software environments, at least where a user is likely to distribute that
+ functionality.
+diff --git a/stable/dask/templates/NOTES.txt b/stable/dask/templates/NOTES.txt
+old mode 100644
+new mode 100755
+index 12e78dc14..d62f13b42
+--- a/stable/dask/templates/NOTES.txt
++++ b/stable/dask/templates/NOTES.txt
+@@ -9,16 +9,60 @@ This release includes a Dask scheduler, {{ .Values.worker.replicas }} Dask worke
+ 
+ The Jupyter notebook server and Dask scheduler expose external services to
+ which you can connect to manage notebooks, or connect directly to the Dask
+-cluster.   You can get these addresses by running the following:
++cluster. You can get these addresses by running the following:
++
++{{- if contains "NodePort" .Values.scheduler.serviceType }}
++
++  export DASK_SCHEDULER=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath='{.items[0].status.addresses[0].address}')
++  export DASK_SCHEDULER_UI_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath='{.items[0].status.addresses[0].address}')
++  export DASK_SCHEDULER_PORT=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "dask.fullname" . }}-scheduler -o jsonpath='{.spec.ports[?(@.name=="{{ template "dask.fullname" . }}-{{ .Values.scheduler.name }}")].nodePort}')
++  export DASK_SCHEDULER_UI_PORT=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "dask.fullname" . }}-scheduler -o jsonpath='{.spec.ports[?(@.name=="{{ template "dask.fullname" . }}-{{ .Values.webUI.name }}")].nodePort}')
++
++{{- else if contains "LoadBalancer" .Values.scheduler.serviceType }}
+ 
+   export DASK_SCHEDULER=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "dask.fullname" . }}-scheduler -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+   export DASK_SCHEDULER_UI_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "dask.fullname" . }}-scheduler -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
++  export DASK_SCHEDULER_PORT={{ .Values.scheduler.servicePort }}
++  export DASK_SCHEDULER_UI_PORT={{ .Values.webUI.servicePort }}
++
++{{- else if contains "ClusterIP"  .Values.scheduler.serviceType }}
++
++  export DASK_SCHEDULER="127.0.0.1"
++  export DASK_SCHEDULER_UI_IP="127.0.0.1"
++  export DASK_SCHEDULER_PORT=8080
++  export DASK_SCHEDULER_UI_PORT=8081
++  kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ template "dask.fullname" . }}-scheduler $DASK_SCHEDULER_PORT:{{ .Values.scheduler.servicePort }} &
++  kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ template "dask.fullname" . }}-scheduler $DASK_SCHEDULER_UI_PORT:{{ .Values.webUI.servicePort }} &
++  
++{{- end }}
++
++
++{{- if contains "NodePort" .Values.jupyter.serviceType }}
++
++  export JUPYTER_NOTEBOOK_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath='{.items[0].status.addresses[0].address}')
++  export JUPYTER_NOTEBOOK_PORT=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "dask.fullname" . }}-jupyter -o jsonpath='{.spec.ports[0].nodePort}')
++
++{{- else if contains "LoadBalancer" .Values.jupyter.serviceType }}
++
+   export JUPYTER_NOTEBOOK_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "dask.fullname" . }}-jupyter -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+-  echo http://$JUPYTER_NOTEBOOK_IP:{{ .Values.jupyter.servicePort }} -- Jupyter notebook
+-  echo http://$DASK_SCHEDULER_UI_IP:{{ .Values.webUI.servicePort }}  -- Dask dashboard
+-  echo http://$DASK_SCHEDULER:{{ .Values.scheduler.servicePort }}    -- Dask Client connection
++  export JUPYTER_NOTEBOOK_PORT={{ .Values.jupyter.servicePort }}
++
++{{- else if contains "ClusterIP"  .Values.jupyter.serviceType }}
++
++  export JUPYTER_NOTEBOOK_IP="127.0.0.1"
++  export JUPYTER_NOTEBOOK_PORT=8082
++  kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ template "dask.fullname" . }}-jupyter $JUPYTER_NOTEBOOK_PORT:{{ .Values.jupyter.servicePort }} &
++
++{{- end }}
++
++  echo tcp://$DASK_SCHEDULER:$DASK_SCHEDULER_PORT               -- Dask Client connection
++  echo http://$DASK_SCHEDULER_UI_IP:$DASK_SCHEDULER_UI_PORT     -- Dask dashboard
++  echo http://$JUPYTER_NOTEBOOK_IP:$JUPYTER_NOTEBOOK_PORT       -- Jupyter notebook
++
++NOTE: It may take a few minutes for the LoadBalancer IP to be available. Until then, the commands above will not work for the LoadBalancer service type.  
++You can watch the status by running 'kubectl get svc --namespace {{ .Release.Namespace }} -w {{ template "dask.fullname" . }}-scheduler'
+ 
+-  NOTE: The default password to login to the notebook server is `dask`.
++NOTE: It may take a few minutes for the URLs above to be available if any EXTRA_PIP_PACKAGES or EXTRA_CONDA_PACKAGES were specified,
++because they are installed before their respective services start.
+ 
+-  NOTE: It may take a few minutes for the LoadBalancer IP to be available, until that the commands below will not work.  
+-  You can watch the status by running 'kubectl get svc --namespace {{ .Release.Namespace }} -w {{ template "dask.fullname" . }}-jupyter'
++NOTE: The default password to login to the notebook server is `dask`. To change this password, refer to the Jupyter password section in values.yaml, or in the README.md.
+diff --git a/stable/dask/templates/dask-jupyter-config.yaml b/stable/dask/templates/dask-jupyter-config.yaml
+index 20dd6d73e..aa2d495c7 100644
+--- a/stable/dask/templates/dask-jupyter-config.yaml
++++ b/stable/dask/templates/dask-jupyter-config.yaml
+@@ -1,5 +1,5 @@
+ {{ if .Values.jupyter.enabled -}}
+-
++---
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+diff --git a/stable/dask/templates/dask-jupyter-deployment.yaml b/stable/dask/templates/dask-jupyter-deployment.yaml
+index 919282932..3a73d14e0 100644
+--- a/stable/dask/templates/dask-jupyter-deployment.yaml
++++ b/stable/dask/templates/dask-jupyter-deployment.yaml
+@@ -1,6 +1,6 @@
+ {{ if .Values.jupyter.enabled -}}
+ 
+-apiVersion: apps/v1beta2
++apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+   name: {{ template "dask.fullname" . }}-jupyter
+@@ -26,6 +26,8 @@ spec:
+         release: {{ .Release.Name | quote }}
+         component: jupyter
+     spec:
++      imagePullSecrets:
++        {{- toYaml .Values.jupyter.image.pullSecrets | nindent 8 }}
+       containers:
+         - name: {{ template "dask.fullname" . }}-jupyter
+           image: "{{ .Values.jupyter.image.repository }}:{{ .Values.jupyter.image.tag }}"
+@@ -33,30 +35,32 @@ spec:
+           ports:
+             - containerPort: 8888
+           resources:
+-{{ toYaml .Values.jupyter.resources | indent 12 }}
++            {{- toYaml .Values.jupyter.resources | nindent 12 }}
+           volumeMounts:
+             - name: config-volume
+               mountPath: /home/jovyan/.jupyter
+           env:
+             - name: DASK_SCHEDULER_ADDRESS
+               value: {{ template "dask.fullname" . }}-scheduler:{{ .Values.scheduler.servicePort }}
+-{{- if .Values.jupyter.env }}
+-{{ toYaml .Values.jupyter.env | indent 12 }}
+-{{- end }}
++          {{- if .Values.jupyter.env }}
++            {{- toYaml .Values.jupyter.env | nindent 12 }}
++          {{- end }}
++      nodeSelector:
++        {{- toYaml .Values.jupyter.nodeSelector | nindent 8 }}
+       volumes:
+         - name: config-volume
+           configMap:
+             name: {{ template "dask.fullname" . }}-jupyter-config
+     {{- with .Values.jupyter.nodeSelector }}
+       nodeSelector:
+-{{ toYaml . | indent 8 }}
++        {{- toYaml . | nindent 8 }}
+     {{- end }}
+     {{- with .Values.jupyter.affinity }}
+       affinity:
+-{{ toYaml . | indent 8 }}
++        {{- toYaml . | nindent 8 }}
+     {{- end }}
+     {{- with .Values.jupyter.tolerations }}
+       tolerations:
+-{{ toYaml . | indent 8 }}
++        {{- toYaml . | nindent 8 }}
+     {{- end }}
+ {{- end }}
+diff --git a/stable/dask/templates/dask-jupyter-service.yaml b/stable/dask/templates/dask-jupyter-service.yaml
+index ea30766a2..2e5f26c06 100644
+--- a/stable/dask/templates/dask-jupyter-service.yaml
++++ b/stable/dask/templates/dask-jupyter-service.yaml
+@@ -12,7 +12,8 @@ metadata:
+     component: jupyter
+ spec:
+   ports:
+-    - port: {{ .Values.jupyter.servicePort }}
++    - name: {{ template "dask.fullname" . }}-jupyter
++      port: {{ .Values.jupyter.servicePort }}
+       targetPort: 8888
+   selector:
+     app: {{ template "dask.name" . }}
+diff --git a/stable/dask/templates/dask-scheduler-deployment.yaml b/stable/dask/templates/dask-scheduler-deployment.yaml
+index 791a6c1e7..870f13247 100644
+--- a/stable/dask/templates/dask-scheduler-deployment.yaml
++++ b/stable/dask/templates/dask-scheduler-deployment.yaml
+@@ -1,4 +1,4 @@
+-apiVersion: apps/v1beta2
++apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+   name: {{ template "dask.fullname" . }}-scheduler
+@@ -24,6 +24,8 @@ spec:
+         release: {{ .Release.Name | quote }}
+         component: scheduler
+     spec:
++      imagePullSecrets:
++        {{- toYaml .Values.scheduler.image.pullSecrets | nindent 8 }}
+       containers:
+         - name: {{ template "dask.fullname" . }}-scheduler
+           image: "{{ .Values.scheduler.image.repository }}:{{ .Values.scheduler.image.tag }}"
+@@ -38,18 +40,18 @@ spec:
+             - containerPort: 8786
+             - containerPort: 8787
+           resources:
+-{{ toYaml .Values.scheduler.resources | indent 12 }}
++            {{- toYaml .Values.scheduler.resources | nindent 12 }}
+           env:
+-{{ toYaml .Values.scheduler.env | indent 12 }}
++            {{- toYaml .Values.scheduler.env | nindent 12 }}
+     {{- with .Values.scheduler.nodeSelector }}
+       nodeSelector:
+-{{ toYaml . | indent 8 }}
++        {{- toYaml . | nindent 8 }}
+     {{- end }}
+     {{- with .Values.scheduler.affinity }}
+       affinity:
+-{{ toYaml . | indent 8 }}
++        {{- toYaml . | nindent 8 }}
+     {{- end }}
+     {{- with .Values.scheduler.tolerations }}
+       tolerations:
+-{{ toYaml . | indent 8 }}
++        {{- toYaml . | nindent 8 }}
+     {{- end }}
+diff --git a/stable/dask/templates/dask-worker-deployment.yaml b/stable/dask/templates/dask-worker-deployment.yaml
+index 350aeef6a..71c7488e6 100644
+--- a/stable/dask/templates/dask-worker-deployment.yaml
++++ b/stable/dask/templates/dask-worker-deployment.yaml
+@@ -1,4 +1,4 @@
+-apiVersion: apps/v1beta2
++apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+   name: {{ template "dask.fullname" . }}-worker
+@@ -24,12 +24,14 @@ spec:
+         release: {{ .Release.Name | quote }}
+         component: worker
+     spec:
++      imagePullSecrets:
++        {{- toYaml .Values.worker.image.pullSecrets | nindent 8 }}
+       containers:
+         - name: {{ template "dask.fullname" . }}-worker
+           image: "{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag }}"
+           imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
+           args:
+-            - dask-worker
++            - {{ .Values.worker.image.dask_worker }}
+             - {{ template "dask.fullname" . }}-scheduler:{{ .Values.scheduler.servicePort }}
+           {{- if .Values.worker.resources.limits }}
+             - --nthreads
+@@ -41,18 +43,18 @@ spec:
+           ports:
+             - containerPort: 8789
+           resources:
+-{{ toYaml .Values.worker.resources | indent 12 }}
++            {{- toYaml .Values.worker.resources | nindent 12 }}
+           env:
+-{{ toYaml .Values.worker.env | indent 12 }}
++            {{- toYaml .Values.worker.env | nindent 12 }}
+     {{- with .Values.worker.nodeSelector }}
+       nodeSelector:
+-{{ toYaml . | indent 8 }}
++        {{- toYaml . | nindent 8 }}
+     {{- end }}
+     {{- with .Values.worker.affinity }}
+       affinity:
+-{{ toYaml . | indent 8 }}
++        {{- toYaml . | nindent 8 }}
+     {{- end }}
+     {{- with .Values.worker.tolerations }}
+       tolerations:
+-{{ toYaml . | indent 8 }}
++        {{- toYaml . | nindent 8 }}
+     {{- end }}
+diff --git a/stable/dask/values.yaml b/stable/dask/values.yaml
+index 874e3718b..73f4d6145 100644
+--- a/stable/dask/values.yaml
++++ b/stable/dask/values.yaml
+@@ -1,3 +1,4 @@
++---
+ # nameOverride: dask
+ # fullnameOverride: dask
+ 
+@@ -5,18 +6,23 @@ scheduler:
+   name: scheduler
+   image:
+     repository: "daskdev/dask"
+-    tag: 1.1.0
++    tag: 1.1.5
+     pullPolicy: IfNotPresent
++    # See https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++    pullSecrets:
++    #  - name: regcred
+   replicas: 1
++  # serviceType: "ClusterIP"
++  # serviceType: "NodePort"
+   serviceType: "LoadBalancer"
+   servicePort: 8786
+   resources: {}
+-    # limits:
+-    #   cpu: 1.8
+-    #   memory: 6G
+-    # requests:
+-    #   cpu: 1.8
+-    #   memory: 6G
++  #  limits:
++  #    cpu: 1.8
++  #    memory: 6G
++  #  requests:
++  #    cpu: 1.8
++  #    memory: 6G
+   tolerations: []
+   nodeSelector: {}
+   affinity: {}
+@@ -29,25 +35,31 @@ worker:
+   name: worker
+   image:
+     repository: "daskdev/dask"
+-    tag: 1.1.0
++    tag: 1.1.5
+     pullPolicy: IfNotPresent
++    # dask_worker: "dask-cuda-worker"
++    dask_worker: "dask-worker"
++    pullSecrets:
++    #  - name: regcred
+   replicas: 3
+   aptPackages: >-
+   default_resources:  # overwritten by resource limits if they exist
+     cpu: 1
+     memory: "4GiB"
+   env:
+-    # - name: EXTRA_CONDA_PACKAGES
+-    #   value: numba xarray -c conda-forge
+-    # - name: EXTRA_PIP_PACKAGES
+-    #   value: s3fs dask-ml --upgrade
++  #  - name: EXTRA_CONDA_PACKAGES
++  #    value: numba xarray -c conda-forge
++  #  - name: EXTRA_PIP_PACKAGES
++  #    value: s3fs dask-ml --upgrade
+   resources: {}
+-    # limits:
+-    #   cpu: 1
+-    #   memory: 3G
+-    # requests:
+-    #   cpu: 1
+-    #   memory: 3G
++  #  limits:
++  #    cpu: 1
++  #    memory: 3G
++  #    nvidia.com/gpu: 1
++  #  requests:
++  #    cpu: 1
++  #    memory: 3G
++  #    nvidia.com/gpu: 1
+   tolerations: []
+   nodeSelector: {}
+   affinity: {}
+@@ -57,24 +69,29 @@ jupyter:
+   enabled: true
+   image:
+     repository: "daskdev/dask-notebook"
+-    tag: 1.1.0
++    tag: 1.1.5
+     pullPolicy: IfNotPresent
++    pullSecrets:
++    #  - name: regcred
+   replicas: 1
++  # serviceType: "ClusterIP"
++  # serviceType: "NodePort"
+   serviceType: "LoadBalancer"
+   servicePort: 80
+-  password: 'sha1:aae8550c0a44:9507d45e087d5ee481a5ce9f4f16f37a0867318c'  # 'dask'
++  # This hash corresponds to the password 'dask'
++  password: 'sha1:aae8550c0a44:9507d45e087d5ee481a5ce9f4f16f37a0867318c'
+   env:
+-    # - name: EXTRA_CONDA_PACKAGES
+-    #   value: numba xarray -c conda-forge
+-    # - name: EXTRA_PIP_PACKAGES
+-    #   value: s3fs dask-ml --upgrade
++  #  - name: EXTRA_CONDA_PACKAGES
++  #    value: "numba xarray -c conda-forge"
++  #  - name: EXTRA_PIP_PACKAGES
++  #    value: "s3fs dask-ml --upgrade"
+   resources: {}
+-    # limits:
+-    #   cpu: 2
+-    #   memory: 6G
+-    # requests:
+-    #   cpu: 2
+-    #   memory: 6G
++  #  limits:
++  #    cpu: 2
++  #    memory: 6G
++  #  requests:
++  #    cpu: 2
++  #    memory: 6G
+   tolerations: []
+   nodeSelector: {}
+   affinity: {}

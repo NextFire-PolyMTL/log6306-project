@@ -1,0 +1,2589 @@
+commit 8852b48068945ee88ed5741af9eea75c110cb63c (from b7f3d2c89dba97558f3d866ea5d400cf23b5f0e9)
+Merge: b7f3d2c89 f8a798bd2
+Author: jetstack-bot <32282838+jetstack-bot@users.noreply.github.com>
+Date:   Mon Jun 24 16:39:27 2019 +0100
+
+    Merge pull request #1804 from munnerz/refactor-controllers
+    
+    Refactor controllers to not reference BaseController
+
+diff --git a/pkg/controller/BUILD.bazel b/pkg/controller/BUILD.bazel
+index 1f98604ad..993415fdb 100644
+--- a/pkg/controller/BUILD.bazel
++++ b/pkg/controller/BUILD.bazel
+@@ -16,7 +16,10 @@ go_library(
+         "//pkg/client/clientset/versioned:go_default_library",
+         "//pkg/client/informers/externalversions:go_default_library",
+         "//pkg/logs:go_default_library",
++        "//vendor/github.com/go-logr/logr:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/api/resource:go_default_library",
++        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
++        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/util/wait:go_default_library",
+         "//vendor/k8s.io/client-go/informers:go_default_library",
+diff --git a/pkg/controller/acmechallenges/BUILD.bazel b/pkg/controller/acmechallenges/BUILD.bazel
+index ed09b6ff4..06e879584 100644
+--- a/pkg/controller/acmechallenges/BUILD.bazel
++++ b/pkg/controller/acmechallenges/BUILD.bazel
+@@ -13,6 +13,7 @@ go_library(
+         "//pkg/acme:go_default_library",
+         "//pkg/acme/client:go_default_library",
+         "//pkg/apis/certmanager/v1alpha1:go_default_library",
++        "//pkg/client/clientset/versioned:go_default_library",
+         "//pkg/client/listers/certmanager/v1alpha1:go_default_library",
+         "//pkg/controller:go_default_library",
+         "//pkg/controller/acmechallenges/scheduler:go_default_library",
+@@ -24,12 +25,14 @@ go_library(
+         "//pkg/logs:go_default_library",
+         "//pkg/metrics:go_default_library",
+         "//third_party/crypto/acme:go_default_library",
++        "//vendor/github.com/go-logr/logr:go_default_library",
+         "//vendor/k8s.io/api/core/v1:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/util/errors:go_default_library",
+         "//vendor/k8s.io/apiserver/pkg/util/feature:go_default_library",
+         "//vendor/k8s.io/client-go/listers/core/v1:go_default_library",
+         "//vendor/k8s.io/client-go/tools/cache:go_default_library",
++        "//vendor/k8s.io/client-go/tools/record:go_default_library",
+         "//vendor/k8s.io/client-go/util/workqueue:go_default_library",
+     ],
+ )
+diff --git a/pkg/controller/acmechallenges/controller.go b/pkg/controller/acmechallenges/controller.go
+index f71dbdb83..bab4f9a5a 100644
+--- a/pkg/controller/acmechallenges/controller.go
++++ b/pkg/controller/acmechallenges/controller.go
+@@ -20,13 +20,16 @@ import (
+ 	"context"
+ 	"time"
+ 
++	"github.com/go-logr/logr"
+ 	corev1 "k8s.io/api/core/v1"
+ 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
+ 	corelisters "k8s.io/client-go/listers/core/v1"
+ 	"k8s.io/client-go/tools/cache"
++	"k8s.io/client-go/tools/record"
+ 	"k8s.io/client-go/util/workqueue"
+ 
+ 	"github.com/jetstack/cert-manager/pkg/acme"
++	cmclient "github.com/jetstack/cert-manager/pkg/client/clientset/versioned"
+ 	cmlisters "github.com/jetstack/cert-manager/pkg/client/listers/certmanager/v1alpha1"
+ 	controllerpkg "github.com/jetstack/cert-manager/pkg/controller"
+ 	"github.com/jetstack/cert-manager/pkg/controller/acmechallenges/scheduler"
+@@ -36,12 +39,13 @@ import (
+ 	logf "github.com/jetstack/cert-manager/pkg/logs"
+ )
+ 
+-type Controller struct {
+-	*controllerpkg.BaseController
+-
+-	helper     issuer.Helper
++type controller struct {
++	// issuer helper is used to obtain references to issuers, used by Sync()
++	helper issuer.Helper
++	// acmehelper is used to obtain references to ACME clients
+ 	acmeHelper acme.Helper
+ 
++	// all the listers used by this controller
+ 	challengeLister     cmlisters.ChallengeLister
+ 	issuerLister        cmlisters.IssuerLister
+ 	clusterIssuerLister cmlisters.ClusterIssuerLister
+@@ -52,53 +56,85 @@ type Controller struct {
+ 	// This also allows for easy mocking of the different challenge mechanisms.
+ 	dnsSolver  solver
+ 	httpSolver solver
+-
++	// scheduler marks challenges as Processing=true if they can be scheduled
++	// for processing. This job runs periodically every N seconds, so it cannot
++	// be constructed as a traditional controller.
+ 	scheduler *scheduler.Scheduler
+-}
+ 
+-func New(ctx *controllerpkg.Context) (*Controller, error) {
+-	ctrl := &Controller{}
+-	bctrl := controllerpkg.New(ctx, ControllerName, ctrl.processNextWorkItem)
++	// used to record Events about resources to the API
++	recorder record.EventRecorder
++	// clientset used to update cert-manager API resources
++	cmClient cmclient.Interface
+ 
+-	challengeInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().Challenges()
+-	bctrl.AddQueuing(workqueue.NewItemExponentialFailureRateLimiter(time.Second*5, time.Minute*30), "challenges", challengeInformer.Informer())
+-	ctrl.challengeLister = challengeInformer.Lister()
++	// maintain a reference to the workqueue for this controller
++	// so the handleOwnedResource method can enqueue resources
++	queue workqueue.RateLimitingInterface
+ 
+-	// issuerInformer.Informer().AddEventHandler(&controllerpkg.QueuingEventHandler{Queue: ctrl.queue})
+-	issuerInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().Issuers()
+-	bctrl.AddWatched(issuerInformer.Informer())
+-	ctrl.issuerLister = issuerInformer.Lister()
++	// logger to be used by this controller
++	log logr.Logger
+ 
+-	if ctx.Namespace == "" {
+-		// clusterIssuerInformer.Informer().AddEventHandler(&controllerpkg.QueuingEventHandler{Queue: ctrl.queue})
+-		clusterIssuerInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().ClusterIssuers()
+-		bctrl.AddWatched(clusterIssuerInformer.Informer())
+-		ctrl.clusterIssuerLister = clusterIssuerInformer.Lister()
+-	}
++	dns01Nameservers []string
++}
+ 
+-	secretInformer := ctx.KubeSharedInformerFactory.Core().V1().Secrets()
+-	bctrl.AddWatched(secretInformer.Informer())
+-	ctrl.secretLister = secretInformer.Lister()
++func (c *controller) Register(ctx *controllerpkg.Context) (workqueue.RateLimitingInterface, []cache.InformerSynced, error) {
++	// construct a new named logger to be reused throughout the controller
++	c.log = logf.FromContext(ctx.RootContext, ControllerName)
++
++	// create a queue used to queue up items to be processed
++	c.queue = workqueue.NewNamedRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(time.Second*5, time.Minute*30), ControllerName)
+ 
+-	// instantiate listers used by the http01 solver
++	// obtain references to all the informers used by this controller
++	challengeInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().Challenges()
++	issuerInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().Issuers()
++	secretInformer := ctx.KubeSharedInformerFactory.Core().V1().Secrets()
++	// we register these informers here so the HTTP01 solver has a synced
++	// cache when managing pod/service/ingress resources
+ 	podInformer := ctx.KubeSharedInformerFactory.Core().V1().Pods()
+ 	serviceInformer := ctx.KubeSharedInformerFactory.Core().V1().Services()
+ 	ingressInformer := ctx.KubeSharedInformerFactory.Extensions().V1beta1().Ingresses()
+-	bctrl.AddWatched(podInformer.Informer(), serviceInformer.Informer(), ingressInformer.Informer())
++	// build a list of InformerSynced functions that will be returned by the Register method.
++	// the controller will only begin processing items once all of these informers have synced.
++	mustSync := []cache.InformerSynced{
++		challengeInformer.Informer().HasSynced,
++		issuerInformer.Informer().HasSynced,
++		secretInformer.Informer().HasSynced,
++		podInformer.Informer().HasSynced,
++		serviceInformer.Informer().HasSynced,
++		ingressInformer.Informer().HasSynced,
++	}
++
++	// set all the references to the listers for used by the Sync function
++	c.challengeLister = challengeInformer.Lister()
++	c.issuerLister = issuerInformer.Lister()
++	c.secretLister = secretInformer.Lister()
++
++	// if we are running in non-namespaced mode (i.e. --namespace=""), we also
++	// register event handlers and obtain a lister for clusterissuers.
++	if ctx.Namespace == "" {
++		clusterIssuerInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().ClusterIssuers()
++		mustSync = append(mustSync, clusterIssuerInformer.Informer().HasSynced)
++		c.clusterIssuerLister = clusterIssuerInformer.Lister()
++	}
+ 
+-	ctrl.BaseController = bctrl
+-	ctrl.helper = issuer.NewHelper(ctrl.issuerLister, ctrl.clusterIssuerLister)
+-	ctrl.acmeHelper = acme.NewHelper(ctrl.secretLister, ctrl.BaseController.Context.ClusterResourceNamespace)
++	// register handler functions
++	challengeInformer.Informer().AddEventHandler(&controllerpkg.QueuingEventHandler{Queue: c.queue})
+ 
+-	ctrl.httpSolver = http.NewSolver(ctx)
++	c.helper = issuer.NewHelper(c.issuerLister, c.clusterIssuerLister)
++	c.acmeHelper = acme.NewHelper(c.secretLister, ctx.ClusterResourceNamespace)
++	c.scheduler = scheduler.New(c.challengeLister, ctx.SchedulerOptions.MaxConcurrentChallenges)
++	c.recorder = ctx.Recorder
++	c.cmClient = ctx.CMClient
++	c.httpSolver = http.NewSolver(ctx)
+ 	var err error
+-	ctrl.dnsSolver, err = dns.NewSolver(ctx)
++	c.dnsSolver, err = dns.NewSolver(ctx)
+ 	if err != nil {
+-		return nil, err
++		return nil, nil, err
+ 	}
+-	ctrl.scheduler = scheduler.New(ctrl.challengeLister, ctx.SchedulerOptions.MaxConcurrentChallenges)
+ 
+-	return ctrl, nil
++	// read options from context
++	c.dns01Nameservers = ctx.ACMEOptions.DNS01Nameservers
++
++	return c.queue, mustSync, nil
+ }
+ 
+ // MaxChallengesPerSchedule is the maximum number of challenges that can be
+@@ -113,7 +149,7 @@ const MaxChallengesPerSchedule = 20
+ // which, if any, challenges should be rescheduled.
+ // TODO: it should also only re-run the scheduler if a change to challenges has
+ // been observed, to save needless work
+-func (c *Controller) runScheduler(ctx context.Context) {
++func (c *controller) runScheduler(ctx context.Context) {
+ 	log := logf.FromContext(ctx, "scheduler")
+ 
+ 	toSchedule, err := c.scheduler.ScheduleN(MaxChallengesPerSchedule)
+@@ -127,13 +163,13 @@ func (c *Controller) runScheduler(ctx context.Context) {
+ 		ch = ch.DeepCopy()
+ 		ch.Status.Processing = true
+ 
+-		_, err := c.CMClient.CertmanagerV1alpha1().Challenges(ch.Namespace).Update(ch)
++		_, err := c.cmClient.CertmanagerV1alpha1().Challenges(ch.Namespace).Update(ch)
+ 		if err != nil {
+ 			log.Error(err, "error scheduling challenge for processing")
+ 			return
+ 		}
+ 
+-		c.Recorder.Event(ch, corev1.EventTypeNormal, "Started", "Challenge scheduled for processing")
++		c.recorder.Event(ch, corev1.EventTypeNormal, "Started", "Challenge scheduled for processing")
+ 	}
+ 
+ 	if len(toSchedule) > 0 {
+@@ -141,7 +177,7 @@ func (c *Controller) runScheduler(ctx context.Context) {
+ 	}
+ }
+ 
+-func (c *Controller) processNextWorkItem(ctx context.Context, key string) error {
++func (c *controller) ProcessItem(ctx context.Context, key string) error {
+ 	log := logf.FromContext(ctx)
+ 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+ 	if err != nil {
+@@ -164,22 +200,17 @@ func (c *Controller) processNextWorkItem(ctx context.Context, key string) error
+ 	return c.Sync(ctx, ch)
+ }
+ 
+-var keyFunc = controllerpkg.KeyFunc
+-
+ const (
+ 	ControllerName = "challenges"
+ )
+ 
+-func (c *Controller) Run(workers int, stopCh <-chan struct{}) error {
+-	return c.BaseController.RunWith(c.runScheduler, time.Second, workers, stopCh)
+-}
+-
+ func init() {
+ 	controllerpkg.Register(ControllerName, func(ctx *controllerpkg.Context) (controllerpkg.Interface, error) {
+-		i, err := New(ctx)
++		c := &controller{}
++		b, err := controllerpkg.New(ctx, ControllerName, c)
+ 		if err != nil {
+ 			return nil, err
+ 		}
+-		return i.Run, nil
++		return b.RunWith(c.runScheduler, time.Second), nil
+ 	})
+ }
+diff --git a/pkg/controller/acmechallenges/sync.go b/pkg/controller/acmechallenges/sync.go
+index c36bf8a90..1f5b76ca7 100644
+--- a/pkg/controller/acmechallenges/sync.go
++++ b/pkg/controller/acmechallenges/sync.go
+@@ -56,7 +56,7 @@ type solver interface {
+ 
+ // Sync will process this ACME Challenge.
+ // It is the core control function for ACME challenges.
+-func (c *Controller) Sync(ctx context.Context, ch *cmapi.Challenge) (err error) {
++func (c *controller) Sync(ctx context.Context, ch *cmapi.Challenge) (err error) {
+ 	metrics.Default.IncrementSyncCallCount(ControllerName)
+ 
+ 	log := logf.FromContext(ctx).WithValues("dnsName", ch.Spec.DNSName, "type", ch.Spec.Type)
+@@ -69,7 +69,7 @@ func (c *Controller) Sync(ctx context.Context, ch *cmapi.Challenge) (err error)
+ 		if reflect.DeepEqual(oldChal.Status, ch.Status) && len(oldChal.Finalizers) == len(ch.Finalizers) {
+ 			return
+ 		}
+-		_, updateErr := c.CMClient.CertmanagerV1alpha1().Challenges(ch.Namespace).Update(ch)
++		_, updateErr := c.cmClient.CertmanagerV1alpha1().Challenges(ch.Namespace).Update(ch)
+ 		if err != nil {
+ 			err = utilerrors.NewAggregate([]error{err, updateErr})
+ 		}
+@@ -102,7 +102,7 @@ func (c *Controller) Sync(ctx context.Context, ch *cmapi.Challenge) (err error)
+ 
+ 			err = solver.CleanUp(ctx, genericIssuer, ch)
+ 			if err != nil {
+-				c.Recorder.Eventf(ch, corev1.EventTypeWarning, "CleanUpError", "Error cleaning up challenge: %v", err)
++				c.recorder.Eventf(ch, corev1.EventTypeWarning, "CleanUpError", "Error cleaning up challenge: %v", err)
+ 				ch.Status.Reason = err.Error()
+ 				log.Error(err, "error cleaning up challenge")
+ 				return err
+@@ -153,7 +153,7 @@ func (c *Controller) Sync(ctx context.Context, ch *cmapi.Challenge) (err error)
+ 		// means no CAA check is performed by ACME server or if any valid
+ 		// CAA would stop issuance (strongly suspect the former)
+ 		if len(dir.CAA) != 0 {
+-			err := dnsutil.ValidateCAA(ch.Spec.DNSName, dir.CAA, ch.Spec.Wildcard, c.Context.DNS01Nameservers)
++			err := dnsutil.ValidateCAA(ch.Spec.DNSName, dir.CAA, ch.Spec.Wildcard, c.dns01Nameservers)
+ 			if err != nil {
+ 				ch.Status.Reason = fmt.Sprintf("CAA self-check failed: %s", err)
+ 				return err
+@@ -169,13 +169,13 @@ func (c *Controller) Sync(ctx context.Context, ch *cmapi.Challenge) (err error)
+ 	if !ch.Status.Presented {
+ 		err := solver.Present(ctx, genericIssuer, ch)
+ 		if err != nil {
+-			c.Recorder.Eventf(ch, corev1.EventTypeWarning, "PresentError", "Error presenting challenge: %v", err)
++			c.recorder.Eventf(ch, corev1.EventTypeWarning, "PresentError", "Error presenting challenge: %v", err)
+ 			ch.Status.Reason = err.Error()
+ 			return err
+ 		}
+ 
+ 		ch.Status.Presented = true
+-		c.Recorder.Eventf(ch, corev1.EventTypeNormal, "Presented", "Presented challenge using %s challenge mechanism", ch.Spec.Type)
++		c.recorder.Eventf(ch, corev1.EventTypeNormal, "Presented", "Presented challenge using %s challenge mechanism", ch.Spec.Type)
+ 	}
+ 
+ 	err = solver.Check(ctx, genericIssuer, ch)
+@@ -190,7 +190,7 @@ func (c *Controller) Sync(ctx context.Context, ch *cmapi.Challenge) (err error)
+ 		}
+ 
+ 		// retry after 10s
+-		c.BaseController.Queue.AddAfter(key, time.Second*10)
++		c.queue.AddAfter(key, time.Second*10)
+ 
+ 		return nil
+ 	}
+@@ -232,7 +232,7 @@ func handleError(ch *cmapi.Challenge, err error) error {
+ 	return err
+ }
+ 
+-func (c *Controller) handleFinalizer(ctx context.Context, ch *cmapi.Challenge) error {
++func (c *controller) handleFinalizer(ctx context.Context, ch *cmapi.Challenge) error {
+ 	log := logf.FromContext(ctx, "finalizer")
+ 	if len(ch.Finalizers) == 0 {
+ 		return nil
+@@ -260,7 +260,7 @@ func (c *Controller) handleFinalizer(ctx context.Context, ch *cmapi.Challenge) e
+ 
+ 	err = solver.CleanUp(ctx, genericIssuer, ch)
+ 	if err != nil {
+-		c.Recorder.Eventf(ch, corev1.EventTypeWarning, "CleanUpError", "Error cleaning up challenge: %v", err)
++		c.recorder.Eventf(ch, corev1.EventTypeWarning, "CleanUpError", "Error cleaning up challenge: %v", err)
+ 		ch.Status.Reason = err.Error()
+ 		log.Error(err, "error cleaning up challenge")
+ 		return nil
+@@ -272,7 +272,7 @@ func (c *Controller) handleFinalizer(ctx context.Context, ch *cmapi.Challenge) e
+ // syncChallengeStatus will communicate with the ACME server to retrieve the current
+ // state of the Challenge. It will then update the Challenge's status block with the new
+ // state of the Challenge.
+-func (c *Controller) syncChallengeStatus(ctx context.Context, cl acmecl.Interface, ch *cmapi.Challenge) error {
++func (c *controller) syncChallengeStatus(ctx context.Context, cl acmecl.Interface, ch *cmapi.Challenge) error {
+ 	if ch.Spec.URL == "" {
+ 		return fmt.Errorf("challenge URL is blank - challenge has not been created yet")
+ 	}
+@@ -304,7 +304,7 @@ func (c *Controller) syncChallengeStatus(ctx context.Context, cl acmecl.Interfac
+ // It will update the challenge's status to reflect the final state of the
+ // challenge if it failed, or the final state of the challenge's authorization
+ // if accepting the challenge succeeds.
+-func (c *Controller) acceptChallenge(ctx context.Context, cl acmecl.Interface, ch *cmapi.Challenge) error {
++func (c *controller) acceptChallenge(ctx context.Context, cl acmecl.Interface, ch *cmapi.Challenge) error {
+ 	log := logf.FromContext(ctx, "acceptChallenge")
+ 
+ 	log.Info("accepting challenge with ACME server")
+@@ -337,7 +337,7 @@ func (c *Controller) acceptChallenge(ctx context.Context, cl acmecl.Interface, c
+ 		ch.Status.State = cmapi.State(authErr.Authorization.Status)
+ 		ch.Status.Reason = fmt.Sprintf("Error accepting authorization: %v", authErr)
+ 
+-		c.Recorder.Eventf(ch, corev1.EventTypeWarning, "Failed", "Accepting challenge authorization failed: %v", authErr)
++		c.recorder.Eventf(ch, corev1.EventTypeWarning, "Failed", "Accepting challenge authorization failed: %v", authErr)
+ 
+ 		// return nil here, as accepting the challenge did not error, the challenge
+ 		// simply failed
+@@ -346,12 +346,12 @@ func (c *Controller) acceptChallenge(ctx context.Context, cl acmecl.Interface, c
+ 
+ 	ch.Status.State = cmapi.State(authorization.Status)
+ 	ch.Status.Reason = "Successfully authorized domain"
+-	c.Context.Recorder.Eventf(ch, corev1.EventTypeNormal, reasonDomainVerified, "Domain %q verified with %q validation", ch.Spec.DNSName, ch.Spec.Type)
++	c.recorder.Eventf(ch, corev1.EventTypeNormal, reasonDomainVerified, "Domain %q verified with %q validation", ch.Spec.DNSName, ch.Spec.Type)
+ 
+ 	return nil
+ }
+ 
+-func (c *Controller) solverFor(challengeType string) (solver, error) {
++func (c *controller) solverFor(challengeType string) (solver, error) {
+ 	switch challengeType {
+ 	case "http-01":
+ 		return c.httpSolver, nil
+diff --git a/pkg/controller/acmechallenges/util_test.go b/pkg/controller/acmechallenges/util_test.go
+index bd263b299..e82757aac 100644
+--- a/pkg/controller/acmechallenges/util_test.go
++++ b/pkg/controller/acmechallenges/util_test.go
+@@ -28,7 +28,7 @@ import (
+ )
+ 
+ type controllerFixture struct {
+-	Controller *Controller
++	Controller *controller
+ 	*test.Builder
+ 
+ 	Issuer    v1alpha1.GenericIssuer
+@@ -95,13 +95,10 @@ func (f *controllerFixture) Finish(t *testing.T, args ...interface{}) {
+ 	}
+ }
+ 
+-func (f *controllerFixture) buildFakeController(b *test.Builder, issuer v1alpha1.GenericIssuer) *Controller {
++func (f *controllerFixture) buildFakeController(b *test.Builder, issuer v1alpha1.GenericIssuer) *controller {
+ 	b.Start()
+-	c, err := New(b.Context)
+-	if err != nil {
+-		b.T.Errorf("error constructing controller: %v", err)
+-		b.T.FailNow()
+-	}
++	c := &controller{}
++	c.Register(b.Context)
+ 	c.acmeHelper = f
+ 	c.helper = f
+ 	c.httpSolver = f.HTTP01
+diff --git a/pkg/controller/acmeorders/BUILD.bazel b/pkg/controller/acmeorders/BUILD.bazel
+index 7b00a4b91..0767bb183 100644
+--- a/pkg/controller/acmeorders/BUILD.bazel
++++ b/pkg/controller/acmeorders/BUILD.bazel
+@@ -13,23 +13,25 @@ go_library(
+         "//pkg/acme:go_default_library",
+         "//pkg/acme/client:go_default_library",
+         "//pkg/apis/certmanager/v1alpha1:go_default_library",
++        "//pkg/client/clientset/versioned:go_default_library",
+         "//pkg/client/listers/certmanager/v1alpha1:go_default_library",
+         "//pkg/controller:go_default_library",
+         "//pkg/issuer:go_default_library",
+         "//pkg/logs:go_default_library",
+         "//pkg/metrics:go_default_library",
+         "//third_party/crypto/acme:go_default_library",
++        "//vendor/github.com/go-logr/logr:go_default_library",
+         "//vendor/k8s.io/api/core/v1:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/labels:go_default_library",
+-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/selection:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/util/errors:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
+         "//vendor/k8s.io/client-go/listers/core/v1:go_default_library",
+         "//vendor/k8s.io/client-go/tools/cache:go_default_library",
++        "//vendor/k8s.io/client-go/tools/record:go_default_library",
+         "//vendor/k8s.io/client-go/util/workqueue:go_default_library",
+         "//vendor/k8s.io/klog:go_default_library",
+         "//vendor/k8s.io/utils/clock:go_default_library",
+diff --git a/pkg/controller/acmeorders/checks.go b/pkg/controller/acmeorders/checks.go
+index 933457656..f623fd0cc 100644
+--- a/pkg/controller/acmeorders/checks.go
++++ b/pkg/controller/acmeorders/checks.go
+@@ -24,7 +24,7 @@ import (
+ 	"k8s.io/apimachinery/pkg/util/runtime"
+ )
+ 
+-func (c *Controller) handleGenericIssuer(obj interface{}) {
++func (c *controller) handleGenericIssuer(obj interface{}) {
+ 	iss, ok := obj.(cmapi.GenericIssuer)
+ 	if !ok {
+ 		runtime.HandleError(fmt.Errorf("Object does not implement GenericIssuer %#v", obj))
+@@ -42,11 +42,11 @@ func (c *Controller) handleGenericIssuer(obj interface{}) {
+ 			runtime.HandleError(err)
+ 			continue
+ 		}
+-		c.BaseController.Queue.Add(key)
++		c.queue.Add(key)
+ 	}
+ }
+ 
+-func (c *Controller) ordersForGenericIssuer(iss cmapi.GenericIssuer) ([]*cmapi.Order, error) {
++func (c *controller) ordersForGenericIssuer(iss cmapi.GenericIssuer) ([]*cmapi.Order, error) {
+ 	orders, err := c.orderLister.List(labels.NewSelector())
+ 
+ 	if err != nil {
+diff --git a/pkg/controller/acmeorders/controller.go b/pkg/controller/acmeorders/controller.go
+index 917d0cc39..8ecd89b53 100644
+--- a/pkg/controller/acmeorders/controller.go
++++ b/pkg/controller/acmeorders/controller.go
+@@ -20,27 +20,29 @@ import (
+ 	"context"
+ 	"time"
+ 
++	"github.com/go-logr/logr"
+ 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
+-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+-	"k8s.io/apimachinery/pkg/runtime/schema"
+ 	corelisters "k8s.io/client-go/listers/core/v1"
+ 	"k8s.io/client-go/tools/cache"
++	"k8s.io/client-go/tools/record"
+ 	"k8s.io/client-go/util/workqueue"
+ 	"k8s.io/utils/clock"
+ 
+ 	"github.com/jetstack/cert-manager/pkg/acme"
++	cmclient "github.com/jetstack/cert-manager/pkg/client/clientset/versioned"
+ 	cmlisters "github.com/jetstack/cert-manager/pkg/client/listers/certmanager/v1alpha1"
+ 	controllerpkg "github.com/jetstack/cert-manager/pkg/controller"
+ 	"github.com/jetstack/cert-manager/pkg/issuer"
+ 	logf "github.com/jetstack/cert-manager/pkg/logs"
+ )
+ 
+-type Controller struct {
+-	*controllerpkg.BaseController
+-
+-	helper     issuer.Helper
++type controller struct {
++	// issuer helper is used to obtain references to issuers, used by Sync()
++	helper issuer.Helper
++	// acmehelper is used to obtain references to ACME clients
+ 	acmeHelper acme.Helper
+ 
++	// all the listers used by this controller
+ 	orderLister         cmlisters.OrderLister
+ 	challengeLister     cmlisters.ChallengeLister
+ 	issuerLister        cmlisters.IssuerLister
+@@ -49,86 +51,80 @@ type Controller struct {
+ 
+ 	// used for testing
+ 	clock clock.Clock
++	// used to record Events about resources to the API
++	recorder record.EventRecorder
++	// clientset used to update cert-manager API resources
++	cmClient cmclient.Interface
++
++	// maintain a reference to the workqueue for this controller
++	// so the handleOwnedResource method can enqueue resources
++	queue workqueue.RateLimitingInterface
++
++	// logger to be used by this controller
++	log logr.Logger
+ }
+ 
+-func New(ctx *controllerpkg.Context) *Controller {
+-	ctrl := &Controller{}
+-	bctrl := controllerpkg.New(ctx, ControllerName, ctrl.processNextWorkItem)
++// Register registers and constructs the controller using the provided context.
++// It returns the workqueue to be used to enqueue items, a list of
++// InformerSynced functions that must be synced, or an error.
++func (c *controller) Register(ctx *controllerpkg.Context) (workqueue.RateLimitingInterface, []cache.InformerSynced, error) {
++	// construct a new named logger to be reused throughout the controller
++	c.log = logf.FromContext(ctx.RootContext, ControllerName)
+ 
+-	orderInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().Orders()
+-	bctrl.AddQueuing(workqueue.NewItemExponentialFailureRateLimiter(time.Second*5, time.Minute*30), "orders", orderInformer.Informer())
+-	ctrl.orderLister = orderInformer.Lister()
++	// create a queue used to queue up items to be processed
++	c.queue = workqueue.NewNamedRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(time.Second*5, time.Minute*30), ControllerName)
+ 
++	// obtain references to all the informers used by this controller
++	orderInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().Orders()
+ 	issuerInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().Issuers()
+-	bctrl.AddHandled(issuerInformer.Informer(), &controllerpkg.BlockingEventHandler{WorkFunc: ctrl.handleGenericIssuer})
+-	ctrl.issuerLister = issuerInformer.Lister()
++	challengeInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().Challenges()
++	secretInformer := ctx.KubeSharedInformerFactory.Core().V1().Secrets()
++	// build a list of InformerSynced functions that will be returned by the Register method.
++	// the controller will only begin processing items once all of these informers have synced.
++	mustSync := []cache.InformerSynced{
++		orderInformer.Informer().HasSynced,
++		issuerInformer.Informer().HasSynced,
++		challengeInformer.Informer().HasSynced,
++		secretInformer.Informer().HasSynced,
++	}
++
++	// set all the references to the listers for used by the Sync function
++	c.orderLister = orderInformer.Lister()
++	c.issuerLister = issuerInformer.Lister()
++	c.challengeLister = challengeInformer.Lister()
++	c.secretLister = secretInformer.Lister()
+ 
++	// if we are running in non-namespaced mode (i.e. --namespace=""), we also
++	// register event handlers and obtain a lister for clusterissuers.
+ 	if ctx.Namespace == "" {
+ 		clusterIssuerInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().ClusterIssuers()
+-		bctrl.AddHandled(clusterIssuerInformer.Informer(), &controllerpkg.BlockingEventHandler{WorkFunc: ctrl.handleGenericIssuer})
+-		ctrl.clusterIssuerLister = clusterIssuerInformer.Lister()
++		mustSync = append(mustSync, clusterIssuerInformer.Informer().HasSynced)
++		c.clusterIssuerLister = clusterIssuerInformer.Lister()
++		// register handler function for clusterissuer resources
++		clusterIssuerInformer.Informer().AddEventHandler(&controllerpkg.BlockingEventHandler{WorkFunc: c.handleGenericIssuer})
+ 	}
+ 
+-	challengeInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().Challenges()
+-	bctrl.AddHandled(challengeInformer.Informer(), &controllerpkg.BlockingEventHandler{WorkFunc: ctrl.handleOwnedResource})
+-	ctrl.challengeLister = challengeInformer.Lister()
+-
+-	// TODO: detect changes to secrets referenced by order's issuers.
+-	secretInformer := ctx.KubeSharedInformerFactory.Core().V1().Secrets()
+-	bctrl.AddWatched(secretInformer.Informer())
+-	ctrl.secretLister = secretInformer.Lister()
++	// register handler functions
++	orderInformer.Informer().AddEventHandler(&controllerpkg.QueuingEventHandler{Queue: c.queue})
++	issuerInformer.Informer().AddEventHandler(&controllerpkg.BlockingEventHandler{WorkFunc: c.handleGenericIssuer})
++	challengeInformer.Informer().AddEventHandler(&controllerpkg.BlockingEventHandler{
++		WorkFunc: controllerpkg.HandleOwnedResourceNamespacedFunc(c.log, c.queue, orderGvk, c.orderGetter),
++	})
+ 
+-	ctrl.BaseController = bctrl
+-	ctrl.helper = issuer.NewHelper(ctrl.issuerLister, ctrl.clusterIssuerLister)
+-	ctrl.acmeHelper = acme.NewHelper(ctrl.secretLister, ctrl.BaseController.Context.ClusterResourceNamespace)
+-	ctrl.clock = clock.RealClock{}
++	// instantiate additional helpers used by this controller
++	c.helper = issuer.NewHelper(c.issuerLister, c.clusterIssuerLister)
++	c.acmeHelper = acme.NewHelper(c.secretLister, ctx.ClusterResourceNamespace)
++	c.recorder = ctx.Recorder
++	c.cmClient = ctx.CMClient
+ 
+-	return ctrl
++	return c.queue, mustSync, nil
+ }
+ 
+-func (c *Controller) handleOwnedResource(obj interface{}) {
+-	log := logf.FromContext(c.BaseController.Ctx, "handleOwnedResource")
+-
+-	metaobj, ok := obj.(metav1.Object)
+-	if !ok {
+-		log.Error(nil, "item passed to handleOwnedResource does not implement metav1.Object")
+-		return
+-	}
+-	log = logf.WithResource(log, metaobj)
+-
+-	ownerRefs := metaobj.GetOwnerReferences()
+-	for _, ref := range ownerRefs {
+-		log := log.WithValues(
+-			logf.RelatedResourceNamespaceKey, metaobj.GetNamespace(),
+-			logf.RelatedResourceNameKey, ref.Name,
+-			logf.RelatedResourceKindKey, ref.Kind,
+-		)
+-
+-		// Parse the Group out of the OwnerReference to compare it to what was parsed out of the requested OwnerType
+-		refGV, err := schema.ParseGroupVersion(ref.APIVersion)
+-		if err != nil {
+-			log.Error(err, "could not parse OwnerReference GroupVersion")
+-			continue
+-		}
+-
+-		if refGV.Group == orderGvk.Group && ref.Kind == orderGvk.Kind {
+-			// TODO: how to handle namespace of owner references?
+-			order, err := c.orderLister.Orders(metaobj.GetNamespace()).Get(ref.Name)
+-			if err != nil {
+-				log.Error(err, "error getting order referenced by resource")
+-				continue
+-			}
+-			objKey, err := keyFunc(order)
+-			if err != nil {
+-				log.Error(err, "error computing key for resource")
+-				continue
+-			}
+-			c.BaseController.Queue.Add(objKey)
+-		}
+-	}
++func (c *controller) orderGetter(namespace, name string) (interface{}, error) {
++	return c.orderLister.Orders(namespace).Get(name)
+ }
+ 
+-func (c *Controller) processNextWorkItem(ctx context.Context, key string) error {
++func (c *controller) ProcessItem(ctx context.Context, key string) error {
+ 	log := logf.FromContext(ctx)
+ 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+ 	if err != nil {
+@@ -158,6 +154,10 @@ const (
+ 
+ func init() {
+ 	controllerpkg.Register(ControllerName, func(ctx *controllerpkg.Context) (controllerpkg.Interface, error) {
+-		return New(ctx).BaseController.Run, nil
++		c, err := controllerpkg.New(ctx, ControllerName, &controller{})
++		if err != nil {
++			return nil, err
++		}
++		return c.Run, nil
+ 	})
+ }
+diff --git a/pkg/controller/acmeorders/sync.go b/pkg/controller/acmeorders/sync.go
+index 93f14ac1f..aa78642dd 100644
+--- a/pkg/controller/acmeorders/sync.go
++++ b/pkg/controller/acmeorders/sync.go
+@@ -48,7 +48,7 @@ var (
+ // - deciding/validated configured challenge mechanisms
+ // - create a Challenge resource in order to fulfill required validations
+ // - waiting for Challenge resources to enter the 'ready' state
+-func (c *Controller) Sync(ctx context.Context, o *cmapi.Order) (err error) {
++func (c *controller) Sync(ctx context.Context, o *cmapi.Order) (err error) {
+ 	metrics.Default.IncrementSyncCallCount(ControllerName)
+ 
+ 	oldOrder := o
+@@ -59,7 +59,7 @@ func (c *Controller) Sync(ctx context.Context, o *cmapi.Order) (err error) {
+ 		if reflect.DeepEqual(oldOrder.Status, o.Status) {
+ 			return
+ 		}
+-		_, updateErr := c.CMClient.CertmanagerV1alpha1().Orders(o.Namespace).Update(o)
++		_, updateErr := c.cmClient.CertmanagerV1alpha1().Orders(o.Namespace).Update(o)
+ 		if err != nil {
+ 			err = utilerrors.NewAggregate([]error{err, updateErr})
+ 		}
+@@ -155,7 +155,7 @@ func (c *Controller) Sync(ctx context.Context, o *cmapi.Order) (err error) {
+ 
+ 		// Cleanup challenge resources once a final state has been reached
+ 		for _, ch := range existingChallenges {
+-			err := c.CMClient.CertmanagerV1alpha1().Challenges(ch.Namespace).Delete(ch.Name, nil)
++			err := c.cmClient.CertmanagerV1alpha1().Challenges(ch.Namespace).Delete(ch.Name, nil)
+ 			if err != nil {
+ 				return err
+ 			}
+@@ -281,13 +281,13 @@ func (c *Controller) Sync(ctx context.Context, o *cmapi.Order) (err error) {
+ 	for i, spec := range specsToCreate {
+ 		ch := buildChallenge(i, o, spec)
+ 
+-		ch, err = c.CMClient.CertmanagerV1alpha1().Challenges(o.Namespace).Create(ch)
++		ch, err = c.cmClient.CertmanagerV1alpha1().Challenges(o.Namespace).Create(ch)
+ 		if err != nil {
+ 			errs = append(errs, err)
+ 			continue
+ 		}
+ 
+-		c.Recorder.Eventf(o, corev1.EventTypeNormal, "Created", "Created Challenge resource %q for domain %q", ch.Name, ch.Spec.DNSName)
++		c.recorder.Eventf(o, corev1.EventTypeNormal, "Created", "Created Challenge resource %q for domain %q", ch.Name, ch.Spec.DNSName)
+ 
+ 		existingChallenges = append(existingChallenges, ch)
+ 	}
+@@ -324,7 +324,7 @@ func (c *Controller) Sync(ctx context.Context, o *cmapi.Order) (err error) {
+ 	return nil
+ }
+ 
+-func (c *Controller) listChallengesForOrder(o *cmapi.Order) ([]*cmapi.Challenge, error) {
++func (c *controller) listChallengesForOrder(o *cmapi.Order) ([]*cmapi.Challenge, error) {
+ 	// create a selector that we can use to find all existing Challenges for the order
+ 	sel, err := challengeSelectorForOrder(o)
+ 	if err != nil {
+@@ -339,7 +339,7 @@ const (
+ 	orderNameLabelKey = "acme.cert-manager.io/order-name"
+ )
+ 
+-func (c *Controller) createOrder(ctx context.Context, cl acmecl.Interface, issuer cmapi.GenericIssuer, o *cmapi.Order) error {
++func (c *controller) createOrder(ctx context.Context, cl acmecl.Interface, issuer cmapi.GenericIssuer, o *cmapi.Order) error {
+ 	if o.Status.URL != "" {
+ 		return fmt.Errorf("refusing to recreate a new order for Order %q. Please create a new Order resource to initiate a new order", o.Name)
+ 	}
+@@ -387,7 +387,7 @@ func (c *Controller) createOrder(ctx context.Context, cl acmecl.Interface, issue
+ 	return nil
+ }
+ 
+-func (c *Controller) challengeSpecForAuthorization(ctx context.Context, cl acmecl.Interface, issuer cmapi.GenericIssuer, o *cmapi.Order, authz *acmeapi.Authorization) (*cmapi.ChallengeSpec, error) {
++func (c *controller) challengeSpecForAuthorization(ctx context.Context, cl acmecl.Interface, issuer cmapi.GenericIssuer, o *cmapi.Order, authz *acmeapi.Authorization) (*cmapi.ChallengeSpec, error) {
+ 	// 1. fetch solvers from issuer
+ 	solvers := issuer.GetSpec().ACME.Solvers
+ 
+@@ -547,7 +547,7 @@ func orderHasOneOfDNSNames(o *cmapi.Order, dnsNames ...string) bool {
+ 	return false
+ }
+ 
+-func (c *Controller) oldFormatChallengeSpecForAuthorization(ctx context.Context, cl acmecl.Interface, issuer cmapi.GenericIssuer, o *cmapi.Order, authz *acmeapi.Authorization) (*cmapi.ChallengeSpec, error) {
++func (c *controller) oldFormatChallengeSpecForAuthorization(ctx context.Context, cl acmecl.Interface, issuer cmapi.GenericIssuer, o *cmapi.Order, authz *acmeapi.Authorization) (*cmapi.ChallengeSpec, error) {
+ 	cfg, err := solverConfigurationForAuthorization(o.Spec.Config, authz)
+ 	if err != nil {
+ 		return nil, err
+@@ -623,7 +623,7 @@ func solverConfigurationForAuthorization(cfgs []cmapi.DomainSolverConfig, authz
+ // syncOrderStatus will communicate with the ACME server to retrieve the current
+ // state of the Order. It will then update the Order's status block with the new
+ // state of the order.
+-func (c *Controller) syncOrderStatus(ctx context.Context, cl acmecl.Interface, o *cmapi.Order) error {
++func (c *controller) syncOrderStatus(ctx context.Context, cl acmecl.Interface, o *cmapi.Order) error {
+ 	if o.Status.URL == "" {
+ 		return fmt.Errorf("order URL is blank - order has not been created yet")
+ 	}
+@@ -656,7 +656,7 @@ func buildChallenge(i int, o *cmapi.Order, chalSpec cmapi.ChallengeSpec) *cmapi.
+ 
+ // setOrderStatus will populate the given OrderStatus struct with the details from
+ // the provided ACME Order.
+-func (c *Controller) setOrderStatus(o *cmapi.OrderStatus, acmeOrder *acmeapi.Order) {
++func (c *controller) setOrderStatus(o *cmapi.OrderStatus, acmeOrder *acmeapi.Order) {
+ 	// TODO: should we validate the State returned by the ACME server here?
+ 	cmState := cmapi.State(acmeOrder.Status)
+ 	// be nice to our users and check if there is an error that we
+@@ -699,7 +699,7 @@ func challengeSelectorForOrder(o *cmapi.Order) (labels.Selector, error) {
+ // setOrderState will set the 'State' field of the given Order to 's'.
+ // It will set the Orders failureTime field if the state provided is classed as
+ // a failure state.
+-func (c *Controller) setOrderState(o *cmapi.OrderStatus, s cmapi.State) {
++func (c *controller) setOrderState(o *cmapi.OrderStatus, s cmapi.State) {
+ 	o.State = s
+ 	// if the order is in a failure state, we should set the `failureTime` field
+ 	if acme.IsFailureState(o.State) {
+@@ -708,7 +708,7 @@ func (c *Controller) setOrderState(o *cmapi.OrderStatus, s cmapi.State) {
+ 	}
+ }
+ 
+-func (c *Controller) storeCertificateOnStatus(o *cmapi.Order, certs [][]byte) error {
++func (c *controller) storeCertificateOnStatus(o *cmapi.Order, certs [][]byte) error {
+ 	// encode the retrieved certificates (including the chain)
+ 	certBuffer := bytes.NewBuffer([]byte{})
+ 	for _, cert := range certs {
+@@ -720,7 +720,7 @@ func (c *Controller) storeCertificateOnStatus(o *cmapi.Order, certs [][]byte) er
+ 	}
+ 
+ 	o.Status.Certificate = certBuffer.Bytes()
+-	c.Recorder.Event(o, corev1.EventTypeNormal, "OrderValid", "Order completed successfully")
++	c.recorder.Event(o, corev1.EventTypeNormal, "OrderValid", "Order completed successfully")
+ 
+ 	return nil
+ }
+diff --git a/pkg/controller/acmeorders/util_test.go b/pkg/controller/acmeorders/util_test.go
+index 501bf3cfc..bbc5a2596 100644
+--- a/pkg/controller/acmeorders/util_test.go
++++ b/pkg/controller/acmeorders/util_test.go
+@@ -36,7 +36,7 @@ const (
+ )
+ 
+ type controllerFixture struct {
+-	Controller *Controller
++	Controller *controller
+ 	*test.Builder
+ 
+ 	Issuer v1alpha1.GenericIssuer
+@@ -105,9 +105,10 @@ func (f *controllerFixture) Finish(t *testing.T, args ...interface{}) {
+ 	}
+ }
+ 
+-func (f *controllerFixture) buildFakeController(b *test.Builder, issuer v1alpha1.GenericIssuer) *Controller {
++func (f *controllerFixture) buildFakeController(b *test.Builder, issuer v1alpha1.GenericIssuer) *controller {
+ 	b.Start()
+-	c := New(b.Context)
++	c := &controller{}
++	c.Register(b.Context)
+ 	c.acmeHelper = f
+ 	c.helper = f
+ 	c.clock = f.Clock
+diff --git a/pkg/controller/base_controller.go b/pkg/controller/base_controller.go
+index b21242c25..c431dc10a 100644
+--- a/pkg/controller/base_controller.go
++++ b/pkg/controller/base_controller.go
+@@ -22,6 +22,9 @@ import (
+ 	"sync"
+ 	"time"
+ 
++	"github.com/go-logr/logr"
++	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++	"k8s.io/apimachinery/pkg/runtime/schema"
+ 	"k8s.io/apimachinery/pkg/util/wait"
+ 	"k8s.io/client-go/tools/cache"
+ 	"k8s.io/client-go/util/workqueue"
+@@ -30,94 +33,144 @@ import (
+ )
+ 
+ type BaseController struct {
+-	// the controllers root context, containing a controller scoped logger
+-	Ctx context.Context
++	// the root controller context, used when calling Register() on
++	// the queueingController
+ 	*Context
+ 
+-	// To allow injection for testing.
++	// a reference to the root context for this controller, used
++	// as a basis for other contexts and for logging
++	ctx context.Context
++
++	// the function that should be called when an item is popped
++	// off the workqueue
+ 	syncHandler func(ctx context.Context, key string) error
+ 
+-	watchedInformers []cache.InformerSynced
+-	Queue            workqueue.RateLimitingInterface
++	// mustSync is a slice of informers that must have synced before
++	// this controller can start
++	mustSync []cache.InformerSynced
++	// queue is a reference to the queue used to enqueue resources
++	// to be processed
++	queue workqueue.RateLimitingInterface
+ }
+ 
+-// New creates a basic BaseController, setting the sync call to the one given
+-func New(ctx *Context, controllerName string, syncHandler func(ctx context.Context, key string) error) *BaseController {
+-	bctrl := &BaseController{Context: ctx}
+-	bctrl.syncHandler = syncHandler
+-	bctrl.Ctx = logf.NewContext(ctx.RootContext, nil, controllerName)
+-	return bctrl
++type queueingController interface {
++	Register(*Context) (workqueue.RateLimitingInterface, []cache.InformerSynced, error)
++	ProcessItem(ctx context.Context, key string) error
+ }
+ 
+-// AddQueuing adds the Queue field onto the BaseController, sets the informer
+-// to manage the queue, and sets the informer to be watched
+-func (bctrl *BaseController) AddQueuing(rateLimiter workqueue.RateLimiter, name string, informer cache.SharedIndexInformer) {
+-	bctrl.Queue = workqueue.NewNamedRateLimitingQueue(rateLimiter, name)
+-	informer.AddEventHandler(&QueuingEventHandler{Queue: bctrl.Queue})
+-	bctrl.watchedInformers = append(bctrl.watchedInformers, informer.HasSynced)
++func HandleOwnedResourceNamespacedFunc(log logr.Logger, queue workqueue.RateLimitingInterface, ownerGVK schema.GroupVersionKind, get func(namespace, name string) (interface{}, error)) func(obj interface{}) {
++	return func(obj interface{}) {
++		log := log.WithName("handleOwnedResource")
++
++		metaobj, ok := obj.(metav1.Object)
++		if !ok {
++			log.Error(nil, "item passed to handleOwnedResource does not implement metav1.Object")
++			return
++		}
++		log = logf.WithResource(log, metaobj)
++
++		ownerRefs := metaobj.GetOwnerReferences()
++		for _, ref := range ownerRefs {
++			log := log.WithValues(
++				logf.RelatedResourceNamespaceKey, metaobj.GetNamespace(),
++				logf.RelatedResourceNameKey, ref.Name,
++				logf.RelatedResourceKindKey, ref.Kind,
++			)
++
++			// Parse the Group out of the OwnerReference to compare it to what was parsed out of the requested OwnerType
++			refGV, err := schema.ParseGroupVersion(ref.APIVersion)
++			if err != nil {
++				log.Error(err, "could not parse OwnerReference GroupVersion")
++				continue
++			}
++
++			if refGV.Group == ownerGVK.Group && ref.Kind == ownerGVK.Kind {
++				// TODO: how to handle namespace of owner references?
++				order, err := get(metaobj.GetNamespace(), ref.Name)
++				if err != nil {
++					log.Error(err, "error getting order referenced by resource")
++					continue
++				}
++				objKey, err := KeyFunc(order)
++				if err != nil {
++					log.Error(err, "error computing key for resource")
++					continue
++				}
++				queue.Add(objKey)
++			}
++		}
++	}
+ }
+ 
+-// AddHandled links an event handler to an informer, and sets the informer
+-// to be watched
+-func (bctrl *BaseController) AddHandled(informer cache.SharedIndexInformer, handler cache.ResourceEventHandler) {
+-	informer.AddEventHandler(handler)
+-	bctrl.watchedInformers = append(bctrl.watchedInformers, informer.HasSynced)
++// New creates a basic BaseController, setting the sync call to the one given
++func New(ctx *Context, name string, qc queueingController) (*BaseController, error) {
++	queue, mustSync, err := qc.Register(ctx)
++	if err != nil {
++		return nil, err
++	}
++	c := newPreRegistered(ctx, name, qc, queue, mustSync)
++	return c, nil
+ }
+ 
+-// AddWatched sets all informers to be watched
+-func (bctrl *BaseController) AddWatched(informers ...cache.SharedIndexInformer) {
+-	for _, informer := range informers {
+-		bctrl.watchedInformers = append(bctrl.watchedInformers, informer.HasSynced)
++func newPreRegistered(ctx *Context, name string, qc queueingController, queue workqueue.RateLimitingInterface, mustSync []cache.InformerSynced) *BaseController {
++	return &BaseController{
++		Context:     ctx,
++		ctx:         logf.NewContext(ctx.RootContext, nil, name),
++		syncHandler: qc.ProcessItem,
++		mustSync:    mustSync,
++		queue:       queue,
+ 	}
+ }
+ 
+ // RunWith starts the controller loop, with an additional function to run alongside the loop
+-func (bc *BaseController) RunWith(function func(context.Context), duration time.Duration, workers int, stopCh <-chan struct{}) error {
+-	ctx, cancel := context.WithCancel(bc.Ctx)
+-	defer cancel()
+-	log := logf.FromContext(ctx)
+-
+-	log.Info("starting control loop")
+-	// wait for all the informer caches we depend on are synced
+-	if !cache.WaitForCacheSync(stopCh, bc.watchedInformers...) {
+-		// TODO: replace with Errorf call to glog
+-		return fmt.Errorf("error waiting for informer caches to sync")
+-	}
++func (bc *BaseController) RunWith(function func(context.Context), duration time.Duration) Interface {
++	return func(workers int, stopCh <-chan struct{}) error {
++		ctx, cancel := context.WithCancel(bc.ctx)
++		defer cancel()
++		log := logf.FromContext(ctx)
++
++		log.Info("starting control loop")
++		// wait for all the informer caches we depend on are synced
++		if !cache.WaitForCacheSync(stopCh, bc.mustSync...) {
++			// TODO: replace with Errorf call to glog
++			return fmt.Errorf("error waiting for informer caches to sync")
++		}
+ 
+-	var wg sync.WaitGroup
+-	for i := 0; i < workers; i++ {
+-		wg.Add(1)
+-		// TODO (@munnerz): make time.Second duration configurable
+-		go wait.Until(func() {
+-			defer wg.Done()
+-			bc.worker(ctx)
+-		}, time.Second, stopCh)
+-	}
++		var wg sync.WaitGroup
++		for i := 0; i < workers; i++ {
++			wg.Add(1)
++			// TODO (@munnerz): make time.Second duration configurable
++			go wait.Until(func() {
++				defer wg.Done()
++				bc.worker(ctx)
++			}, time.Second, stopCh)
++		}
+ 
+-	if function != nil {
+-		go wait.Until(func() { function(ctx) }, duration, stopCh)
+-	}
++		if function != nil {
++			go wait.Until(func() { function(ctx) }, duration, stopCh)
++		}
+ 
+-	<-stopCh
+-	log.Info("shutting down queue as workqueue signaled shutdown")
+-	bc.Queue.ShutDown()
+-	log.V(logf.DebugLevel).Info("waiting for workers to exit...")
+-	wg.Wait()
+-	log.V(logf.DebugLevel).Info("workers exited")
+-	return nil
++		<-stopCh
++		log.Info("shutting down queue as workqueue signaled shutdown")
++		bc.queue.ShutDown()
++		log.V(logf.DebugLevel).Info("waiting for workers to exit...")
++		wg.Wait()
++		log.V(logf.DebugLevel).Info("workers exited")
++		return nil
++	}
+ }
+ 
+ // Run starts the controller loop
+ func (bc *BaseController) Run(workers int, stopCh <-chan struct{}) error {
+-	return bc.RunWith(nil, 0, workers, stopCh)
++	return bc.RunWith(nil, 0)(workers, stopCh)
+ }
+ 
+ func (bc *BaseController) worker(ctx context.Context) {
+-	log := logf.FromContext(bc.Ctx)
++	log := logf.FromContext(bc.ctx)
+ 
+ 	log.V(logf.DebugLevel).Info("starting worker")
+ 	for {
+-		obj, shutdown := bc.Queue.Get()
++		obj, shutdown := bc.queue.Get()
+ 		if shutdown {
+ 			break
+ 		}
+@@ -125,7 +178,7 @@ func (bc *BaseController) worker(ctx context.Context) {
+ 		var key string
+ 		// use an inlined function so we can use defer
+ 		func() {
+-			defer bc.Queue.Done(obj)
++			defer bc.queue.Done(obj)
+ 			var ok bool
+ 			if key, ok = obj.(string); !ok {
+ 				return
+@@ -134,11 +187,11 @@ func (bc *BaseController) worker(ctx context.Context) {
+ 			log.Info("syncing item")
+ 			if err := bc.syncHandler(ctx, key); err != nil {
+ 				log.Error(err, "re-queuing item  due to error processing")
+-				bc.Queue.AddRateLimited(obj)
++				bc.queue.AddRateLimited(obj)
+ 				return
+ 			}
+ 			log.Info("finished processing work item")
+-			bc.Queue.Forget(obj)
++			bc.queue.Forget(obj)
+ 		}()
+ 	}
+ 	log.V(logf.DebugLevel).Info("exiting worker loop")
+diff --git a/pkg/controller/certificates/BUILD.bazel b/pkg/controller/certificates/BUILD.bazel
+index 10f02025a..297c50099 100644
+--- a/pkg/controller/certificates/BUILD.bazel
++++ b/pkg/controller/certificates/BUILD.bazel
+@@ -13,6 +13,7 @@ go_library(
+         "//pkg/api/util:go_default_library",
+         "//pkg/apis/certmanager/v1alpha1:go_default_library",
+         "//pkg/apis/certmanager/validation:go_default_library",
++        "//pkg/client/clientset/versioned:go_default_library",
+         "//pkg/client/listers/certmanager/v1alpha1:go_default_library",
+         "//pkg/controller:go_default_library",
+         "//pkg/issuer:go_default_library",
+@@ -23,15 +24,18 @@ go_library(
+         "//pkg/util/errors:go_default_library",
+         "//pkg/util/kube:go_default_library",
+         "//pkg/util/pki:go_default_library",
++        "//vendor/github.com/go-logr/logr:go_default_library",
+         "//vendor/github.com/kr/pretty:go_default_library",
+         "//vendor/k8s.io/api/core/v1:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/labels:go_default_library",
+-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/util/errors:go_default_library",
++        "//vendor/k8s.io/client-go/kubernetes:go_default_library",
+         "//vendor/k8s.io/client-go/listers/core/v1:go_default_library",
+         "//vendor/k8s.io/client-go/tools/cache:go_default_library",
++        "//vendor/k8s.io/client-go/tools/record:go_default_library",
++        "//vendor/k8s.io/client-go/util/workqueue:go_default_library",
+         "//vendor/k8s.io/utils/clock:go_default_library",
+     ],
+ )
+diff --git a/pkg/controller/certificates/checks.go b/pkg/controller/certificates/checks.go
+index f16425a0d..cf063aad1 100644
+--- a/pkg/controller/certificates/checks.go
++++ b/pkg/controller/certificates/checks.go
+@@ -19,17 +19,14 @@ package certificates
+ import (
+ 	"fmt"
+ 
+-	corev1 "k8s.io/api/core/v1"
+-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+-	"k8s.io/apimachinery/pkg/labels"
+-	"k8s.io/apimachinery/pkg/runtime/schema"
+-
+ 	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha1"
+ 	logf "github.com/jetstack/cert-manager/pkg/logs"
++	corev1 "k8s.io/api/core/v1"
++	"k8s.io/apimachinery/pkg/labels"
+ )
+ 
+-func (c *Controller) handleGenericIssuer(obj interface{}) {
+-	log := logf.FromContext(c.BaseController.Ctx, "handleGenericIssuer")
++func (c *controller) handleGenericIssuer(obj interface{}) {
++	log := c.log.WithName("handleGenericIssuer")
+ 
+ 	iss, ok := obj.(cmapi.GenericIssuer)
+ 	if !ok {
+@@ -50,12 +47,12 @@ func (c *Controller) handleGenericIssuer(obj interface{}) {
+ 			log.Error(err, "error computing key for resource")
+ 			continue
+ 		}
+-		c.BaseController.Queue.Add(key)
++		c.queue.Add(key)
+ 	}
+ }
+ 
+-func (c *Controller) handleSecretResource(obj interface{}) {
+-	log := logf.FromContext(c.BaseController.Ctx, "handleSecretResource")
++func (c *controller) handleSecretResource(obj interface{}) {
++	log := c.log.WithName("handleSecretResource")
+ 
+ 	secret, ok := obj.(*corev1.Secret)
+ 	if !ok {
+@@ -76,11 +73,11 @@ func (c *Controller) handleSecretResource(obj interface{}) {
+ 			log.Error(err, "error computing key for resource")
+ 			continue
+ 		}
+-		c.BaseController.Queue.Add(key)
++		c.queue.Add(key)
+ 	}
+ }
+ 
+-func (c *Controller) certificatesForSecret(secret *corev1.Secret) ([]*cmapi.Certificate, error) {
++func (c *controller) certificatesForSecret(secret *corev1.Secret) ([]*cmapi.Certificate, error) {
+ 	crts, err := c.certificateLister.List(labels.NewSelector())
+ 
+ 	if err != nil {
+@@ -100,7 +97,7 @@ func (c *Controller) certificatesForSecret(secret *corev1.Secret) ([]*cmapi.Cert
+ 	return affected, nil
+ }
+ 
+-func (c *Controller) certificatesForGenericIssuer(iss cmapi.GenericIssuer) ([]*cmapi.Certificate, error) {
++func (c *controller) certificatesForGenericIssuer(iss cmapi.GenericIssuer) ([]*cmapi.Certificate, error) {
+ 	crts, err := c.certificateLister.List(labels.NewSelector())
+ 
+ 	if err != nil {
+@@ -127,48 +124,3 @@ func (c *Controller) certificatesForGenericIssuer(iss cmapi.GenericIssuer) ([]*c
+ 
+ 	return affected, nil
+ }
+-
+-func (c *Controller) handleOwnedResource(obj interface{}) {
+-	log := logf.FromContext(c.BaseController.Ctx, "handleOwnedResource")
+-
+-	metaobj, ok := obj.(metav1.Object)
+-	if !ok {
+-		log.Error(nil, "item passed to handleOwnedResource does not implement ObjectMetaAccessor")
+-		return
+-	}
+-
+-	log = logf.WithResource(log, metaobj)
+-	log.V(logf.DebugLevel).Info("looking up owners for resource")
+-
+-	ownerRefs := metaobj.GetOwnerReferences()
+-	for _, ref := range ownerRefs {
+-		log := log.WithValues(
+-			logf.RelatedResourceNamespaceKey, metaobj.GetNamespace(),
+-			logf.RelatedResourceNameKey, ref.Name,
+-			logf.RelatedResourceKindKey, ref.Kind,
+-		)
+-		log.V(logf.DebugLevel).Info("evaluating ownerRef on resource")
+-
+-		// Parse the Group out of the OwnerReference to compare it to what was parsed out of the requested OwnerType
+-		refGV, err := schema.ParseGroupVersion(ref.APIVersion)
+-		if err != nil {
+-			log.Error(err, "could not parse ownerReference GroupVersion")
+-			continue
+-		}
+-
+-		if refGV.Group == certificateGvk.Group && ref.Kind == certificateGvk.Kind {
+-			// TODO: how to handle namespace of owner references?
+-			cert, err := c.certificateLister.Certificates(metaobj.GetNamespace()).Get(ref.Name)
+-			if err != nil {
+-				log.Error(err, "error getting owning certificate resource")
+-				continue
+-			}
+-			objKey, err := keyFunc(cert)
+-			if err != nil {
+-				log.Error(err, "error computing key for resource")
+-				continue
+-			}
+-			c.BaseController.Queue.Add(objKey)
+-		}
+-	}
+-}
+diff --git a/pkg/controller/certificates/controller.go b/pkg/controller/certificates/controller.go
+index 9a60af399..ef3bf39c4 100644
+--- a/pkg/controller/certificates/controller.go
++++ b/pkg/controller/certificates/controller.go
+@@ -18,13 +18,20 @@ package certificates
+ 
+ import (
+ 	"context"
++	"crypto/x509"
++	"time"
+ 
++	"github.com/go-logr/logr"
+ 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
++	"k8s.io/client-go/kubernetes"
+ 	corelisters "k8s.io/client-go/listers/core/v1"
+ 	"k8s.io/client-go/tools/cache"
++	"k8s.io/client-go/tools/record"
++	"k8s.io/client-go/util/workqueue"
+ 	"k8s.io/utils/clock"
+ 
+ 	"github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha1"
++	cmclient "github.com/jetstack/cert-manager/pkg/client/clientset/versioned"
+ 	cmlisters "github.com/jetstack/cert-manager/pkg/client/listers/certmanager/v1alpha1"
+ 	controllerpkg "github.com/jetstack/cert-manager/pkg/controller"
+ 	"github.com/jetstack/cert-manager/pkg/issuer"
+@@ -33,12 +40,14 @@ import (
+ 	"github.com/jetstack/cert-manager/pkg/scheduler"
+ )
+ 
+-type Controller struct {
+-	*controllerpkg.BaseController
+-
++type controller struct {
+ 	helper        issuer.Helper
+ 	issuerFactory issuer.IssuerFactory
+ 
++	// clientset used to update cert-manager API resources
++	cmClient cmclient.Interface
++	kClient  kubernetes.Interface
++
+ 	issuerLister        cmlisters.IssuerLister
+ 	clusterIssuerLister cmlisters.ClusterIssuerLister
+ 	certificateLister   cmlisters.CertificateLister
+@@ -49,57 +58,121 @@ type Controller struct {
+ 
+ 	// used for testing
+ 	clock clock.Clock
++	// used to record Events about resources to the API
++	recorder record.EventRecorder
++
++	// maintain a reference to the workqueue for this controller
++	// so the handleOwnedResource method can enqueue resources
++	queue workqueue.RateLimitingInterface
++
++	// logger to be used by this controller
++	log logr.Logger
+ 
+ 	// localTemporarySigner signs a certificate that is stored temporarily
+ 	localTemporarySigner func(crt *v1alpha1.Certificate, pk []byte) ([]byte, error)
++
++	// certificateNeedsRenew is a function that can be used to determine whether
++	// a certificate currently requires renewal.
++	// This is a field on the controller struct to avoid having to maintain a reference
++	// to the controller context, and to make it easier to fake out this call during tests.
++	certificateNeedsRenew func(cert *x509.Certificate, crt *v1alpha1.Certificate) bool
++
++	// calculateDurationUntilRenew returns the amount of time before the controller should
++	// begin attempting to renew the certificate, given the provided existing certificate
++	// and certificate spec.
++	// This is a field on the controller struct to avoid having to maintain a reference
++	// to the controller context, and to make it easier to fake out this call during tests.
++	calculateDurationUntilRenew func(cert *x509.Certificate, crt *v1alpha1.Certificate) time.Duration
++
++	// if addOwnerReferences is enabled then the controller will add owner references
++	// to the secret resources it creates
++	addOwnerReferences bool
+ }
+ 
+-// New returns a new Certificates controller. It sets up the informer handler
+-// functions for all the types it watches.
+-func New(ctx *controllerpkg.Context) *Controller {
+-	ctrl := &Controller{}
+-	bctrl := controllerpkg.New(ctx, ControllerName, ctrl.processNextWorkItem)
++// Register registers and constructs the controller using the provided context.
++// It returns the workqueue to be used to enqueue items, a list of
++// InformerSynced functions that must be synced, or an error.
++func (c *controller) Register(ctx *controllerpkg.Context) (workqueue.RateLimitingInterface, []cache.InformerSynced, error) {
++	// construct a new named logger to be reused throughout the controller
++	c.log = logf.FromContext(ctx.RootContext, ControllerName)
++
++	// create a queue used to queue up items to be processed
++	c.queue = workqueue.NewNamedRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(time.Second*5, time.Minute*30), ControllerName)
+ 
++	// obtain references to all the informers used by this controller
+ 	certificateInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().Certificates()
+-	bctrl.AddQueuing(controllerpkg.DefaultItemBasedRateLimiter(), "certificates", certificateInformer.Informer())
+-	ctrl.certificateLister = certificateInformer.Lister()
++	issuerInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().Issuers()
++	secretsInformer := ctx.KubeSharedInformerFactory.Core().V1().Secrets()
++	ordersInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().Orders()
+ 
+-	// Create a scheduled work queue that calls the ctrl.queue.Add method for
+-	// each object in the queue. This is used to schedule re-checks of
+-	// Certificate resources when they get near to expiry
+-	ctrl.scheduledWorkQueue = scheduler.NewScheduledWorkQueue(bctrl.Queue.AddRateLimited)
++	// build a list of InformerSynced functions that will be returned by the Register method.
++	// the controller will only begin processing items once all of these informers have synced.
++	mustSync := []cache.InformerSynced{
++		certificateInformer.Informer().HasSynced,
++		issuerInformer.Informer().HasSynced,
++		secretsInformer.Informer().HasSynced,
++		ordersInformer.Informer().HasSynced,
++	}
+ 
+-	issuerInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().Issuers()
+-	bctrl.AddHandled(issuerInformer.Informer(), &controllerpkg.BlockingEventHandler{WorkFunc: ctrl.handleGenericIssuer})
+-	ctrl.issuerLister = issuerInformer.Lister()
++	// set all the references to the listers for used by the Sync function
++	c.certificateLister = certificateInformer.Lister()
++	c.issuerLister = issuerInformer.Lister()
++	c.secretLister = secretsInformer.Lister()
+ 
+ 	// if scoped to a single namespace
++	// if we are running in non-namespaced mode (i.e. --namespace=""), we also
++	// register event handlers and obtain a lister for clusterissuers.
+ 	if ctx.Namespace == "" {
+ 		clusterIssuerInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().ClusterIssuers()
+-		bctrl.AddHandled(clusterIssuerInformer.Informer(), &controllerpkg.BlockingEventHandler{WorkFunc: ctrl.handleGenericIssuer})
+-		ctrl.clusterIssuerLister = clusterIssuerInformer.Lister()
++		c.clusterIssuerLister = clusterIssuerInformer.Lister()
++		// register handler function for clusterissuer resources
++		clusterIssuerInformer.Informer().AddEventHandler(&controllerpkg.BlockingEventHandler{WorkFunc: c.handleGenericIssuer})
++		mustSync = append(mustSync, clusterIssuerInformer.Informer().HasSynced)
+ 	}
+ 
+-	secretsInformer := ctx.KubeSharedInformerFactory.Core().V1().Secrets()
+-	bctrl.AddHandled(secretsInformer.Informer(), &controllerpkg.BlockingEventHandler{WorkFunc: ctrl.handleSecretResource})
+-	ctrl.secretLister = secretsInformer.Lister()
++	// register handler functions
++	certificateInformer.Informer().AddEventHandler(&controllerpkg.QueuingEventHandler{Queue: c.queue})
++	issuerInformer.Informer().AddEventHandler(&controllerpkg.BlockingEventHandler{WorkFunc: c.handleGenericIssuer})
++	secretsInformer.Informer().AddEventHandler(&controllerpkg.BlockingEventHandler{WorkFunc: c.handleSecretResource})
++	ordersInformer.Informer().AddEventHandler(&controllerpkg.BlockingEventHandler{
++		WorkFunc: controllerpkg.HandleOwnedResourceNamespacedFunc(c.log, c.queue, certificateGvk, c.certificateGetter),
++	})
+ 
+-	ordersInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().Orders()
+-	bctrl.AddHandled(ordersInformer.Informer(), &controllerpkg.BlockingEventHandler{WorkFunc: ctrl.handleOwnedResource})
+-
+-	ctrl.BaseController = bctrl
+-	ctrl.helper = issuer.NewHelper(ctrl.issuerLister, ctrl.clusterIssuerLister)
+-	ctrl.metrics = metrics.Default
+-	ctrl.metrics.SetActiveCertificates(ctrl.certificateLister)
+-	ctrl.helper = issuer.NewHelper(ctrl.issuerLister, ctrl.clusterIssuerLister)
+-	ctrl.issuerFactory = issuer.NewIssuerFactory(ctx)
+-	ctrl.clock = clock.RealClock{}
+-	ctrl.localTemporarySigner = generateLocallySignedTemporaryCertificate
+-
+-	return ctrl
++	// Create a scheduled work queue that calls the ctrl.queue.Add method for
++	// each object in the queue. This is used to schedule re-checks of
++	// Certificate resources when they get near to expiry
++	c.scheduledWorkQueue = scheduler.NewScheduledWorkQueue(c.queue.AddRateLimited)
++
++	// instantiate metrics interface with default metrics implementation
++	c.metrics = metrics.Default
++	// configure the metrics package to use the certificate lister for detecting
++	// 'removed' certificates and cleaning up metrics
++	// TODO: this call should be moved to somewhere more generic/global than this
++	// controller, as the metrics package is used by more than this one controller.
++	c.metrics.SetActiveCertificates(c.certificateLister)
++
++	// create an issuer helper for reading generic issuers
++	c.helper = issuer.NewHelper(c.issuerLister, c.clusterIssuerLister)
++	// issuerFactory provides an interface to obtain Issuer implementations from issuer resources
++	c.issuerFactory = issuer.NewIssuerFactory(ctx)
++	// clock is used to determine whether certificates need renewal
++	c.clock = clock.RealClock{}
++	// recorder records events about resources to the Kubernetes api
++	c.recorder = ctx.Recorder
++	// the localTemporarySigner is used to sign 'temporary certificates' during
++	// asynchronous certificate issuance flows
++	c.localTemporarySigner = generateLocallySignedTemporaryCertificate
++	// use the controller context provided versions of these two methods
++	c.certificateNeedsRenew = ctx.IssuerOptions.CertificateNeedsRenew
++	c.calculateDurationUntilRenew = ctx.IssuerOptions.CalculateDurationUntilRenew
++	c.cmClient = ctx.CMClient
++	c.kClient = ctx.Client
++	c.addOwnerReferences = ctx.CertificateOptions.EnableOwnerRef
++
++	return c.queue, mustSync, nil
+ }
+ 
+-func (c *Controller) processNextWorkItem(ctx context.Context, key string) error {
++func (c *controller) ProcessItem(ctx context.Context, key string) error {
+ 	log := logf.FromContext(ctx)
+ 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+ 	if err != nil {
+@@ -122,6 +195,10 @@ func (c *Controller) processNextWorkItem(ctx context.Context, key string) error
+ 	return c.Sync(ctx, crt)
+ }
+ 
++func (c *controller) certificateGetter(namespace, name string) (interface{}, error) {
++	return c.certificateLister.Certificates(namespace).Get(name)
++}
++
+ var keyFunc = controllerpkg.KeyFunc
+ 
+ const (
+@@ -130,6 +207,10 @@ const (
+ 
+ func init() {
+ 	controllerpkg.Register(ControllerName, func(ctx *controllerpkg.Context) (controllerpkg.Interface, error) {
+-		return New(ctx).Run, nil
++		c, err := controllerpkg.New(ctx, ControllerName, &controller{})
++		if err != nil {
++			return nil, err
++		}
++		return c.Run, nil
+ 	})
+ }
+diff --git a/pkg/controller/certificates/sync.go b/pkg/controller/certificates/sync.go
+index f273a484e..33c752ef4 100644
+--- a/pkg/controller/certificates/sync.go
++++ b/pkg/controller/certificates/sync.go
+@@ -71,7 +71,7 @@ var (
+ 	certificateGvk = v1alpha1.SchemeGroupVersion.WithKind("Certificate")
+ )
+ 
+-func (c *Controller) Sync(ctx context.Context, crt *v1alpha1.Certificate) (err error) {
++func (c *controller) Sync(ctx context.Context, crt *v1alpha1.Certificate) (err error) {
+ 	c.metrics.IncrementSyncCallCount(ControllerName)
+ 
+ 	log := logf.FromContext(ctx)
+@@ -105,7 +105,7 @@ func (c *Controller) Sync(ctx context.Context, crt *v1alpha1.Certificate) (err e
+ 
+ 	el := validation.ValidateCertificate(crtCopy)
+ 	if len(el) > 0 {
+-		c.Recorder.Eventf(crtCopy, corev1.EventTypeWarning, "BadConfig", "Resource validation failed: %v", el.ToAggregate())
++		c.recorder.Eventf(crtCopy, corev1.EventTypeWarning, "BadConfig", "Resource validation failed: %v", el.ToAggregate())
+ 		return nil
+ 	}
+ 
+@@ -123,10 +123,10 @@ func (c *Controller) Sync(ctx context.Context, crt *v1alpha1.Certificate) (err e
+ 		}
+ 	}
+ 	if duplicate != nil {
+-		c.Recorder.Eventf(crtCopy, corev1.EventTypeWarning, errorDuplicateSecretName, "Another Certificate %v already specifies spec.secretName %v, please update the secretName on either Certificate", duplicate.Name, crtCopy.Spec.SecretName)
++		c.recorder.Eventf(crtCopy, corev1.EventTypeWarning, errorDuplicateSecretName, "Another Certificate %v already specifies spec.secretName %v, please update the secretName on either Certificate", duplicate.Name, crtCopy.Spec.SecretName)
+ 		key, err := cache.MetaNamespaceKeyFunc(crtCopy)
+ 		if err != nil {
+-			c.Recorder.Eventf(crtCopy, corev1.EventTypeWarning, "KeyError", "Failed to create a key for the Certificate: %v", err)
++			c.recorder.Eventf(crtCopy, corev1.EventTypeWarning, "KeyError", "Failed to create a key for the Certificate: %v", err)
+ 			return nil
+ 		}
+ 		c.scheduledWorkQueue.Forget(key)
+@@ -137,7 +137,7 @@ func (c *Controller) Sync(ctx context.Context, crt *v1alpha1.Certificate) (err e
+ 	// step zero: check if the referenced issuer exists and is ready
+ 	issuerObj, err := c.helper.GetGenericIssuer(crtCopy.Spec.IssuerRef, crtCopy.Namespace)
+ 	if k8sErrors.IsNotFound(err) {
+-		c.Recorder.Eventf(crtCopy, corev1.EventTypeWarning, errorIssuerNotFound, err.Error())
++		c.recorder.Eventf(crtCopy, corev1.EventTypeWarning, errorIssuerNotFound, err.Error())
+ 		return nil
+ 	}
+ 	if err != nil {
+@@ -147,7 +147,7 @@ func (c *Controller) Sync(ctx context.Context, crt *v1alpha1.Certificate) (err e
+ 
+ 	el = validation.ValidateCertificateForIssuer(crtCopy, issuerObj)
+ 	if len(el) > 0 {
+-		c.Recorder.Eventf(crtCopy, corev1.EventTypeWarning, "BadConfig", "Resource validation failed: %v", el.ToAggregate())
++		c.recorder.Eventf(crtCopy, corev1.EventTypeWarning, "BadConfig", "Resource validation failed: %v", el.ToAggregate())
+ 		return nil
+ 	}
+ 
+@@ -158,13 +158,13 @@ func (c *Controller) Sync(ctx context.Context, crt *v1alpha1.Certificate) (err e
+ 		Status: v1alpha1.ConditionTrue,
+ 	})
+ 	if !issuerReady {
+-		c.Recorder.Eventf(crtCopy, corev1.EventTypeWarning, errorIssuerNotReady, "Issuer %s not ready", issuerObj.GetObjectMeta().Name)
++		c.recorder.Eventf(crtCopy, corev1.EventTypeWarning, errorIssuerNotReady, "Issuer %s not ready", issuerObj.GetObjectMeta().Name)
+ 		return nil
+ 	}
+ 
+ 	i, err := c.issuerFactory.IssuerFor(issuerObj)
+ 	if err != nil {
+-		c.Recorder.Eventf(crtCopy, corev1.EventTypeWarning, errorIssuerInit, "Internal error initialising issuer: %v", err)
++		c.recorder.Eventf(crtCopy, corev1.EventTypeWarning, errorIssuerInit, "Internal error initialising issuer: %v", err)
+ 		return nil
+ 	}
+ 
+@@ -186,7 +186,7 @@ func (c *Controller) Sync(ctx context.Context, crt *v1alpha1.Certificate) (err e
+ 	}
+ 
+ 	// check if the certificate needs renewal
+-	needsRenew := c.Context.IssuerOptions.CertificateNeedsRenew(cert, crt)
++	needsRenew := c.certificateNeedsRenew(cert, crt)
+ 	if needsRenew {
+ 		dbg.Info("invoking issue function due to certificate needing renewal")
+ 		return c.issue(ctx, i, crtCopy)
+@@ -203,7 +203,7 @@ func (c *Controller) Sync(ctx context.Context, crt *v1alpha1.Certificate) (err e
+ 
+ // setCertificateStatus will update the status subresource of the certificate.
+ // It will not actually submit the resource to the apiserver.
+-func (c *Controller) setCertificateStatus(crt *v1alpha1.Certificate, key crypto.Signer, cert *x509.Certificate) {
++func (c *controller) setCertificateStatus(crt *v1alpha1.Certificate, key crypto.Signer, cert *x509.Certificate) {
+ 	if key == nil || cert == nil {
+ 		apiutil.SetCertificateCondition(crt, v1alpha1.CertificateConditionReady, v1alpha1.ConditionFalse, "NotFound", "Certificate does not exist")
+ 		return
+@@ -240,7 +240,7 @@ func (c *Controller) setCertificateStatus(crt *v1alpha1.Certificate, key crypto.
+ 	return
+ }
+ 
+-func (c *Controller) certificateMatchesSpec(crt *v1alpha1.Certificate, key crypto.Signer, cert *x509.Certificate) (bool, []string) {
++func (c *controller) certificateMatchesSpec(crt *v1alpha1.Certificate, key crypto.Signer, cert *x509.Certificate) (bool, []string) {
+ 	var errs []string
+ 
+ 	// TODO: add checks for KeySize, KeyAlgorithm fields
+@@ -290,7 +290,7 @@ func (c *Controller) certificateMatchesSpec(crt *v1alpha1.Certificate, key crypt
+ 	return len(errs) == 0, errs
+ }
+ 
+-func (c *Controller) scheduleRenewal(ctx context.Context, crt *v1alpha1.Certificate) {
++func (c *controller) scheduleRenewal(ctx context.Context, crt *v1alpha1.Certificate) {
+ 	log := logf.FromContext(ctx)
+ 	log = log.WithValues(
+ 		logf.RelatedResourceNameKey, crt.Spec.SecretName,
+@@ -312,7 +312,7 @@ func (c *Controller) scheduleRenewal(ctx context.Context, crt *v1alpha1.Certific
+ 		return
+ 	}
+ 
+-	renewIn := c.Context.IssuerOptions.CalculateDurationUntilRenew(cert, crt)
++	renewIn := c.calculateDurationUntilRenew(cert, crt)
+ 	c.scheduledWorkQueue.Add(key, renewIn)
+ 
+ 	log.WithValues("duration_until_renewal", renewIn.String()).Info("certificate scheduled for renewal")
+@@ -344,7 +344,7 @@ func ownerRef(crt *v1alpha1.Certificate) metav1.OwnerReference {
+ // - If the provided certificate is a temporary certificate and the certificate
+ //   stored in the secret is already a temporary certificate, then the Secret
+ //   **will not** be updated.
+-func (c *Controller) updateSecret(ctx context.Context, crt *v1alpha1.Certificate, namespace string, cert, key, ca []byte) (*corev1.Secret, error) {
++func (c *controller) updateSecret(ctx context.Context, crt *v1alpha1.Certificate, namespace string, cert, key, ca []byte) (*corev1.Secret, error) {
+ 	log := logf.FromContext(ctx, "updateSecret")
+ 	log = logf.WithRelatedResourceName(log, crt.Spec.SecretName, namespace, "Secret")
+ 
+@@ -429,7 +429,7 @@ func (c *Controller) updateSecret(ctx context.Context, crt *v1alpha1.Certificate
+ 			return nil, fmt.Errorf("invalid certificate data: %v", err)
+ 		}
+ 
+-		c.Recorder.Event(crt, corev1.EventTypeNormal, "GenerateSelfSigned", "Generated temporary self signed certificate")
++		c.recorder.Event(crt, corev1.EventTypeNormal, "GenerateSelfSigned", "Generated temporary self signed certificate")
+ 	}
+ 
+ 	// TODO: move metadata setting out of this method, and support
+@@ -451,13 +451,12 @@ func (c *Controller) updateSecret(ctx context.Context, crt *v1alpha1.Certificate
+ 
+ 	// if it is a new resource
+ 	if secret.SelfLink == "" {
+-		enableOwner := c.CertificateOptions.EnableOwnerRef
+-		if enableOwner {
++		if c.addOwnerReferences {
+ 			secret.SetOwnerReferences(append(secret.GetOwnerReferences(), ownerRef(crt)))
+ 		}
+-		secret, err = c.Client.CoreV1().Secrets(namespace).Create(secret)
++		secret, err = c.kClient.CoreV1().Secrets(namespace).Create(secret)
+ 	} else {
+-		secret, err = c.Client.CoreV1().Secrets(namespace).Update(secret)
++		secret, err = c.kClient.CoreV1().Secrets(namespace).Update(secret)
+ 	}
+ 	if err != nil {
+ 		return nil, err
+@@ -467,7 +466,7 @@ func (c *Controller) updateSecret(ctx context.Context, crt *v1alpha1.Certificate
+ 
+ // return an error on failure. If retrieval is succesful, the certificate data
+ // and private key will be stored in the named secret
+-func (c *Controller) issue(ctx context.Context, issuer issuer.Interface, crt *v1alpha1.Certificate) error {
++func (c *controller) issue(ctx context.Context, issuer issuer.Interface, crt *v1alpha1.Certificate) error {
+ 	log := logf.FromContext(ctx)
+ 
+ 	resp, err := issuer.Issue(ctx, crt)
+@@ -483,12 +482,12 @@ func (c *Controller) issue(ctx context.Context, issuer issuer.Interface, crt *v1
+ 	if _, err := c.updateSecret(ctx, crt, crt.Namespace, resp.Certificate, resp.PrivateKey, resp.CA); err != nil {
+ 		s := messageErrorSavingCertificate + err.Error()
+ 		log.Error(err, "error saving certificate")
+-		c.Recorder.Event(crt, corev1.EventTypeWarning, errorSavingCertificate, s)
++		c.recorder.Event(crt, corev1.EventTypeWarning, errorSavingCertificate, s)
+ 		return err
+ 	}
+ 
+ 	if len(resp.Certificate) > 0 {
+-		c.Recorder.Event(crt, corev1.EventTypeNormal, successCertificateIssued, "Certificate issued successfully")
++		c.recorder.Event(crt, corev1.EventTypeNormal, successCertificateIssued, "Certificate issued successfully")
+ 		// as we have just written a certificate, we should schedule it for renewal
+ 		c.scheduleRenewal(ctx, crt)
+ 	}
+@@ -572,7 +571,7 @@ func generateLocallySignedTemporaryCertificate(crt *v1alpha1.Certificate, pk []b
+ 	return b, nil
+ }
+ 
+-func (c *Controller) updateCertificateStatus(ctx context.Context, old, new *v1alpha1.Certificate) (*v1alpha1.Certificate, error) {
++func (c *controller) updateCertificateStatus(ctx context.Context, old, new *v1alpha1.Certificate) (*v1alpha1.Certificate, error) {
+ 	log := logf.FromContext(ctx, "updateStatus")
+ 	oldBytes, _ := json.Marshal(old.Status)
+ 	newBytes, _ := json.Marshal(new.Status)
+@@ -583,5 +582,5 @@ func (c *Controller) updateCertificateStatus(ctx context.Context, old, new *v1al
+ 	// TODO: replace Update call with UpdateStatus. This requires a custom API
+ 	// server with the /status subresource enabled and/or subresource support
+ 	// for CRDs (https://github.com/kubernetes/kubernetes/issues/38113)
+-	return c.CMClient.CertmanagerV1alpha1().Certificates(new.Namespace).Update(new)
++	return c.cmClient.CertmanagerV1alpha1().Certificates(new.Namespace).Update(new)
+ }
+diff --git a/pkg/controller/certificates/util_test.go b/pkg/controller/certificates/util_test.go
+index 27b1dc9c3..d30528247 100644
+--- a/pkg/controller/certificates/util_test.go
++++ b/pkg/controller/certificates/util_test.go
+@@ -32,7 +32,7 @@ import (
+ )
+ 
+ type controllerFixture struct {
+-	Controller *Controller
++	Controller *controller
+ 	*test.Builder
+ 
+ 	Issuer      v1alpha1.GenericIssuer
+@@ -96,9 +96,10 @@ func (f *controllerFixture) Finish(t *testing.T, args ...interface{}) {
+ 	apiutil.Clock = realclock.RealClock{}
+ }
+ 
+-func (f *controllerFixture) buildFakeController(b *test.Builder, issuer v1alpha1.GenericIssuer) *Controller {
++func (f *controllerFixture) buildFakeController(b *test.Builder, issuer v1alpha1.GenericIssuer) *controller {
+ 	b.Start()
+-	c := New(b.Context)
++	c := &controller{}
++	c.Register(b.Context)
+ 	c.helper = f
+ 	c.issuerFactory = f
+ 	c.localTemporarySigner = f.localTemporarySigner
+diff --git a/pkg/controller/clusterissuers/BUILD.bazel b/pkg/controller/clusterissuers/BUILD.bazel
+index 18f88b612..f1aa6f344 100644
+--- a/pkg/controller/clusterissuers/BUILD.bazel
++++ b/pkg/controller/clusterissuers/BUILD.bazel
+@@ -13,17 +13,21 @@ go_library(
+         "//pkg/api/util:go_default_library",
+         "//pkg/apis/certmanager/v1alpha1:go_default_library",
+         "//pkg/apis/certmanager/validation:go_default_library",
++        "//pkg/client/clientset/versioned:go_default_library",
+         "//pkg/client/listers/certmanager/v1alpha1:go_default_library",
+         "//pkg/controller:go_default_library",
+         "//pkg/issuer:go_default_library",
+         "//pkg/logs:go_default_library",
+         "//pkg/metrics:go_default_library",
++        "//vendor/github.com/go-logr/logr:go_default_library",
+         "//vendor/k8s.io/api/core/v1:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/labels:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/util/errors:go_default_library",
+         "//vendor/k8s.io/client-go/listers/core/v1:go_default_library",
+         "//vendor/k8s.io/client-go/tools/cache:go_default_library",
++        "//vendor/k8s.io/client-go/tools/record:go_default_library",
++        "//vendor/k8s.io/client-go/util/workqueue:go_default_library",
+     ],
+ )
+ 
+diff --git a/pkg/controller/clusterissuers/checks.go b/pkg/controller/clusterissuers/checks.go
+index e321afb3f..bc6e42173 100644
+--- a/pkg/controller/clusterissuers/checks.go
++++ b/pkg/controller/clusterissuers/checks.go
+@@ -25,7 +25,7 @@ import (
+ 	"github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha1"
+ )
+ 
+-func (c *Controller) issuersForSecret(secret *corev1.Secret) ([]*v1alpha1.ClusterIssuer, error) {
++func (c *controller) issuersForSecret(secret *corev1.Secret) ([]*v1alpha1.ClusterIssuer, error) {
+ 	issuers, err := c.clusterIssuerLister.List(labels.NewSelector())
+ 
+ 	if err != nil {
+@@ -34,7 +34,7 @@ func (c *Controller) issuersForSecret(secret *corev1.Secret) ([]*v1alpha1.Cluste
+ 
+ 	var affected []*v1alpha1.ClusterIssuer
+ 	for _, iss := range issuers {
+-		if secret.Namespace != c.IssuerOptions.ClusterResourceNamespace {
++		if secret.Namespace != c.clusterResourceNamespace {
+ 			continue
+ 		}
+ 		if (iss.Spec.ACME != nil && iss.Spec.ACME.PrivateKey.Name == secret.Name) ||
+diff --git a/pkg/controller/clusterissuers/controller.go b/pkg/controller/clusterissuers/controller.go
+index 6725b7a08..eb59afd83 100644
+--- a/pkg/controller/clusterissuers/controller.go
++++ b/pkg/controller/clusterissuers/controller.go
+@@ -19,47 +19,87 @@ package clusterissuers
+ import (
+ 	"context"
+ 
++	"github.com/go-logr/logr"
+ 	corev1 "k8s.io/api/core/v1"
+ 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
+ 	corelisters "k8s.io/client-go/listers/core/v1"
+ 	"k8s.io/client-go/tools/cache"
++	"k8s.io/client-go/tools/record"
++	"k8s.io/client-go/util/workqueue"
+ 
++	cmclient "github.com/jetstack/cert-manager/pkg/client/clientset/versioned"
+ 	cmlisters "github.com/jetstack/cert-manager/pkg/client/listers/certmanager/v1alpha1"
+ 	controllerpkg "github.com/jetstack/cert-manager/pkg/controller"
+ 	"github.com/jetstack/cert-manager/pkg/issuer"
+ 	logf "github.com/jetstack/cert-manager/pkg/logs"
+ )
+ 
+-type Controller struct {
+-	*controllerpkg.BaseController
++type controller struct {
++	clusterIssuerLister cmlisters.ClusterIssuerLister
++	secretLister        corelisters.SecretLister
++
++	// maintain a reference to the workqueue for this controller
++	// so the handleOwnedResource method can enqueue resources
++	queue workqueue.RateLimitingInterface
++
++	// logger to be used by this controller
++	log logr.Logger
+ 
++	// clientset used to update cert-manager API resources
++	cmClient cmclient.Interface
++
++	// used to record Events about resources to the API
++	recorder record.EventRecorder
++
++	// issuerFactory is used to obtain a reference to the Issuer implementation
++	// for each ClusterIssuer resource
+ 	issuerFactory issuer.IssuerFactory
+ 
+-	clusterIssuerLister cmlisters.ClusterIssuerLister
+-	secretLister        corelisters.SecretLister
++	// clusterResourceNamespace is the namespace used to store resources
++	// referenced by ClusterIssuer resources, e.g. acme account secrets
++	clusterResourceNamespace string
+ }
+ 
+-func New(ctx *controllerpkg.Context) *Controller {
+-	ctrl := &Controller{}
+-	bctrl := controllerpkg.New(ctx, ControllerName, ctrl.processNextWorkItem)
++// Register registers and constructs the controller using the provided context.
++// It returns the workqueue to be used to enqueue items, a list of
++// InformerSynced functions that must be synced, or an error.
++func (c *controller) Register(ctx *controllerpkg.Context) (workqueue.RateLimitingInterface, []cache.InformerSynced, error) {
++	// construct a new named logger to be reused throughout the controller
++	c.log = logf.FromContext(ctx.RootContext, ControllerName)
++
++	// create a queue used to queue up items to be processed
++	c.queue = workqueue.NewNamedRateLimitingQueue(controllerpkg.DefaultItemBasedRateLimiter(), ControllerName)
+ 
++	// obtain references to all the informers used by this controller
+ 	clusterIssuerInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().ClusterIssuers()
+-	bctrl.AddQueuing(controllerpkg.DefaultItemBasedRateLimiter(), "clusterissuers", clusterIssuerInformer.Informer())
+-	ctrl.clusterIssuerLister = clusterIssuerInformer.Lister()
++	secretInformer := ctx.KubeSharedInformerFactory.Core().V1().Secrets()
++	// build a list of InformerSynced functions that will be returned by the Register method.
++	// the controller will only begin processing items once all of these informers have synced.
++	mustSync := []cache.InformerSynced{
++		clusterIssuerInformer.Informer().HasSynced,
++		secretInformer.Informer().HasSynced,
++	}
+ 
+-	secretsInformer := ctx.KubeSharedInformerFactory.Core().V1().Secrets()
+-	bctrl.AddHandled(secretsInformer.Informer(), &controllerpkg.BlockingEventHandler{WorkFunc: ctrl.secretDeleted})
+-	ctrl.secretLister = secretsInformer.Lister()
++	// set all the references to the listers for used by the Sync function
++	c.clusterIssuerLister = clusterIssuerInformer.Lister()
++	c.secretLister = secretInformer.Lister()
+ 
+-	ctrl.BaseController = bctrl
+-	ctrl.issuerFactory = issuer.NewIssuerFactory(ctx)
++	// register handler functions
++	clusterIssuerInformer.Informer().AddEventHandler(&controllerpkg.QueuingEventHandler{Queue: c.queue})
++	secretInformer.Informer().AddEventHandler(&controllerpkg.BlockingEventHandler{WorkFunc: c.secretDeleted})
+ 
+-	return ctrl
++	// instantiate additional helpers used by this controller
++	c.issuerFactory = issuer.NewIssuerFactory(ctx)
++	c.cmClient = ctx.CMClient
++	c.recorder = ctx.Recorder
++	c.clusterResourceNamespace = ctx.IssuerOptions.ClusterResourceNamespace
++
++	return c.queue, mustSync, nil
+ }
+ 
+ // TODO: replace with generic handleObjet function (like Navigator)
+-func (c *Controller) secretDeleted(obj interface{}) {
+-	log := logf.FromContext(c.BaseController.Ctx, "secretDeleted")
++func (c *controller) secretDeleted(obj interface{}) {
++	log := c.log.WithName("secretDeleted")
+ 
+ 	var secret *corev1.Secret
+ 	var ok bool
+@@ -82,11 +122,11 @@ func (c *Controller) secretDeleted(obj interface{}) {
+ 			log.Error(err, "error computing key for resource")
+ 			continue
+ 		}
+-		c.BaseController.Queue.AddRateLimited(key)
++		c.queue.AddRateLimited(key)
+ 	}
+ }
+ 
+-func (c *Controller) processNextWorkItem(ctx context.Context, key string) error {
++func (c *controller) ProcessItem(ctx context.Context, key string) error {
+ 	log := logf.FromContext(ctx)
+ 
+ 	_, name, err := cache.SplitMetaNamespaceKey(key)
+@@ -117,6 +157,10 @@ const (
+ 
+ func init() {
+ 	controllerpkg.Register(ControllerName, func(ctx *controllerpkg.Context) (controllerpkg.Interface, error) {
+-		return New(ctx).BaseController.Run, nil
++		c, err := controllerpkg.New(ctx, ControllerName, &controller{})
++		if err != nil {
++			return nil, err
++		}
++		return c.Run, nil
+ 	})
+ }
+diff --git a/pkg/controller/clusterissuers/sync.go b/pkg/controller/clusterissuers/sync.go
+index 99cc4a979..5d99d2ca7 100644
+--- a/pkg/controller/clusterissuers/sync.go
++++ b/pkg/controller/clusterissuers/sync.go
+@@ -38,7 +38,7 @@ const (
+ 	messageErrorInitIssuer = "Error initializing issuer: "
+ )
+ 
+-func (c *Controller) Sync(ctx context.Context, iss *v1alpha1.ClusterIssuer) (err error) {
++func (c *controller) Sync(ctx context.Context, iss *v1alpha1.ClusterIssuer) (err error) {
+ 	metrics.Default.IncrementSyncCallCount(ControllerName)
+ 
+ 	log := logf.FromContext(ctx)
+@@ -77,19 +77,19 @@ func (c *Controller) Sync(ctx context.Context, iss *v1alpha1.ClusterIssuer) (err
+ 	if err != nil {
+ 		s := messageErrorInitIssuer + err.Error()
+ 		log.Error(err, "error setting up issuer")
+-		c.Recorder.Event(issuerCopy, v1.EventTypeWarning, errorInitIssuer, s)
++		c.recorder.Event(issuerCopy, v1.EventTypeWarning, errorInitIssuer, s)
+ 		return err
+ 	}
+ 
+ 	return nil
+ }
+ 
+-func (c *Controller) updateIssuerStatus(old, new *v1alpha1.ClusterIssuer) (*v1alpha1.ClusterIssuer, error) {
++func (c *controller) updateIssuerStatus(old, new *v1alpha1.ClusterIssuer) (*v1alpha1.ClusterIssuer, error) {
+ 	if reflect.DeepEqual(old.Status, new.Status) {
+ 		return nil, nil
+ 	}
+ 	// TODO: replace Update call with UpdateStatus. This requires a custom API
+ 	// server with the /status subresource enabled and/or subresource support
+ 	// for CRDs (https://github.com/kubernetes/kubernetes/issues/38113)
+-	return c.CMClient.CertmanagerV1alpha1().ClusterIssuers().Update(new)
++	return c.cmClient.CertmanagerV1alpha1().ClusterIssuers().Update(new)
+ }
+diff --git a/pkg/controller/clusterissuers/util_test.go b/pkg/controller/clusterissuers/util_test.go
+index 4b4e65813..79c84ced7 100644
+--- a/pkg/controller/clusterissuers/util_test.go
++++ b/pkg/controller/clusterissuers/util_test.go
+@@ -27,7 +27,7 @@ import (
+ 
+ type controllerFixture struct {
+ 	// The Solver under test
+-	Controller *Controller
++	Controller *controller
+ 	Builder    *test.Builder
+ 
+ 	// Issuer to be passed to functions on the Solver (a default will be used if nil)
+@@ -71,7 +71,8 @@ func (s *controllerFixture) Setup(t *testing.T) {
+ 		s.Builder.T = t
+ 	}
+ 	s.Builder.Start()
+-	s.Controller = New(s.Builder.Context)
++	s.Controller = &controller{}
++	s.Controller.Register(s.Builder.Context)
+ 	s.Builder.Sync()
+ 	if s.PreFn != nil {
+ 		s.PreFn(t, s)
+diff --git a/pkg/controller/ingress-shim/BUILD.bazel b/pkg/controller/ingress-shim/BUILD.bazel
+index 8efbdea94..fe7f380f8 100644
+--- a/pkg/controller/ingress-shim/BUILD.bazel
++++ b/pkg/controller/ingress-shim/BUILD.bazel
+@@ -15,8 +15,10 @@ go_library(
+         "//pkg/client/listers/certmanager/v1alpha1:go_default_library",
+         "//pkg/controller:go_default_library",
+         "//pkg/issuer:go_default_library",
++        "//pkg/logs:go_default_library",
+         "//pkg/metrics:go_default_library",
+         "//pkg/util:go_default_library",
++        "//vendor/github.com/go-logr/logr:go_default_library",
+         "//vendor/k8s.io/api/core/v1:go_default_library",
+         "//vendor/k8s.io/api/extensions/v1beta1:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
+@@ -28,6 +30,7 @@ go_library(
+         "//vendor/k8s.io/client-go/listers/extensions/v1beta1:go_default_library",
+         "//vendor/k8s.io/client-go/tools/cache:go_default_library",
+         "//vendor/k8s.io/client-go/tools/record:go_default_library",
++        "//vendor/k8s.io/client-go/util/workqueue:go_default_library",
+         "//vendor/k8s.io/klog:go_default_library",
+     ],
+ )
+diff --git a/pkg/controller/ingress-shim/checks.go b/pkg/controller/ingress-shim/checks.go
+index 8a6ac2447..d3ff5377e 100644
+--- a/pkg/controller/ingress-shim/checks.go
++++ b/pkg/controller/ingress-shim/checks.go
+@@ -26,7 +26,7 @@ import (
+ 	"github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha1"
+ )
+ 
+-func (c *Controller) ingressesForCertificate(crt *v1alpha1.Certificate) ([]*extv1beta1.Ingress, error) {
++func (c *controller) ingressesForCertificate(crt *v1alpha1.Certificate) ([]*extv1beta1.Ingress, error) {
+ 	ings, err := c.ingressLister.List(labels.NewSelector())
+ 
+ 	if err != nil {
+diff --git a/pkg/controller/ingress-shim/controller.go b/pkg/controller/ingress-shim/controller.go
+index 604ca95e5..5d7b8b62c 100644
+--- a/pkg/controller/ingress-shim/controller.go
++++ b/pkg/controller/ingress-shim/controller.go
+@@ -20,18 +20,21 @@ import (
+ 	"context"
+ 	"fmt"
+ 
++	"github.com/go-logr/logr"
+ 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
+ 	"k8s.io/apimachinery/pkg/util/runtime"
+ 	"k8s.io/client-go/kubernetes"
+ 	extlisters "k8s.io/client-go/listers/extensions/v1beta1"
+ 	"k8s.io/client-go/tools/cache"
+ 	"k8s.io/client-go/tools/record"
++	"k8s.io/client-go/util/workqueue"
+ 
+ 	cmv1alpha1 "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha1"
+ 	clientset "github.com/jetstack/cert-manager/pkg/client/clientset/versioned"
+ 	cmlisters "github.com/jetstack/cert-manager/pkg/client/listers/certmanager/v1alpha1"
+ 	controllerpkg "github.com/jetstack/cert-manager/pkg/controller"
+ 	"github.com/jetstack/cert-manager/pkg/issuer"
++	logf "github.com/jetstack/cert-manager/pkg/logs"
+ )
+ 
+ const (
+@@ -45,63 +48,83 @@ type defaults struct {
+ 	acmeIssuerDNS01ProviderName string
+ }
+ 
+-type Controller struct {
+-	*controllerpkg.BaseController
++type controller struct {
++	// maintain a reference to the workqueue for this controller
++	// so the handleOwnedResource method can enqueue resources
++	queue workqueue.RateLimitingInterface
+ 
+-	Client   kubernetes.Interface
+-	CMClient clientset.Interface
+-	Recorder record.EventRecorder
++	// logger to be used by this controller
++	log logr.Logger
+ 
+-	helper issuer.Helper
++	kClient  kubernetes.Interface
++	cmClient clientset.Interface
++	recorder record.EventRecorder
+ 
+ 	ingressLister       extlisters.IngressLister
+ 	certificateLister   cmlisters.CertificateLister
+ 	issuerLister        cmlisters.IssuerLister
+ 	clusterIssuerLister cmlisters.ClusterIssuerLister
+ 
++	helper   issuer.Helper
+ 	defaults defaults
+ }
+ 
+-func New(ctx *controllerpkg.Context) *Controller {
+-	ctrl := &Controller{
+-		Client:   ctx.Client,
+-		CMClient: ctx.CMClient,
+-		Recorder: ctx.Recorder,
+-		defaults: defaults{
+-			ctx.DefaultAutoCertificateAnnotations,
+-			ctx.DefaultIssuerName,
+-			ctx.DefaultIssuerKind,
+-			ctx.DefaultACMEIssuerChallengeType,
+-			ctx.DefaultACMEIssuerDNS01ProviderName,
+-		},
+-	}
+-	bctrl := controllerpkg.New(ctx, ControllerName, ctrl.processNextWorkItem)
++// Register registers and constructs the controller using the provided context.
++// It returns the workqueue to be used to enqueue items, a list of
++// InformerSynced functions that must be synced, or an error.
++func (c *controller) Register(ctx *controllerpkg.Context) (workqueue.RateLimitingInterface, []cache.InformerSynced, error) {
++	// construct a new named logger to be reused throughout the controller
++	c.log = logf.FromContext(ctx.RootContext, ControllerName)
+ 
+-	ingressInformer := ctx.KubeSharedInformerFactory.Extensions().V1beta1().Ingresses()
+-	bctrl.AddQueuing(controllerpkg.DefaultItemBasedRateLimiter(), "ingresses", ingressInformer.Informer())
+-	ctrl.ingressLister = ingressInformer.Lister()
++	// create a queue used to queue up items to be processed
++	c.queue = workqueue.NewNamedRateLimitingQueue(controllerpkg.DefaultItemBasedRateLimiter(), ControllerName)
+ 
++	// obtain references to all the informers used by this controller
++	ingressInformer := ctx.KubeSharedInformerFactory.Extensions().V1beta1().Ingresses()
+ 	certificatesInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().Certificates()
+-	bctrl.AddHandled(certificatesInformer.Informer(), &controllerpkg.BlockingEventHandler{WorkFunc: ctrl.certificateDeleted})
+-	ctrl.certificateLister = certificatesInformer.Lister()
+-
+ 	issuerInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().Issuers()
+-	bctrl.AddWatched(issuerInformer.Informer())
+-	ctrl.issuerLister = issuerInformer.Lister()
++	// build a list of InformerSynced functions that will be returned by the Register method.
++	// the controller will only begin processing items once all of these informers have synced.
++	mustSync := []cache.InformerSynced{
++		ingressInformer.Informer().HasSynced,
++		certificatesInformer.Informer().HasSynced,
++		issuerInformer.Informer().HasSynced,
++	}
+ 
++	// set all the references to the listers for used by the Sync function
++	c.ingressLister = ingressInformer.Lister()
++	c.certificateLister = certificatesInformer.Lister()
++	c.issuerLister = issuerInformer.Lister()
++
++	// if scoped to a single namespace
++	// if we are running in non-namespaced mode (i.e. --namespace=""), we also
++	// register event handlers and obtain a lister for clusterissuers.
+ 	if ctx.Namespace == "" {
+ 		clusterIssuerInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().ClusterIssuers()
+-		bctrl.AddWatched(clusterIssuerInformer.Informer())
+-		ctrl.clusterIssuerLister = clusterIssuerInformer.Lister()
++		mustSync = append(mustSync, clusterIssuerInformer.Informer().HasSynced)
++		c.clusterIssuerLister = clusterIssuerInformer.Lister()
+ 	}
+ 
+-	ctrl.BaseController = bctrl
+-	ctrl.helper = issuer.NewHelper(ctrl.issuerLister, ctrl.clusterIssuerLister)
++	// register handler functions
++	ingressInformer.Informer().AddEventHandler(&controllerpkg.QueuingEventHandler{Queue: c.queue})
++	certificatesInformer.Informer().AddEventHandler(&controllerpkg.BlockingEventHandler{WorkFunc: c.certificateDeleted})
++
++	c.helper = issuer.NewHelper(c.issuerLister, c.clusterIssuerLister)
++	c.kClient = ctx.Client
++	c.cmClient = ctx.CMClient
++	c.recorder = ctx.Recorder
++	c.defaults = defaults{
++		ctx.DefaultAutoCertificateAnnotations,
++		ctx.DefaultIssuerName,
++		ctx.DefaultIssuerKind,
++		ctx.DefaultACMEIssuerChallengeType,
++		ctx.DefaultACMEIssuerDNS01ProviderName,
++	}
+ 
+-	return ctrl
++	return c.queue, mustSync, nil
+ }
+ 
+-func (c *Controller) certificateDeleted(obj interface{}) {
++func (c *controller) certificateDeleted(obj interface{}) {
+ 	crt, ok := obj.(*cmv1alpha1.Certificate)
+ 	if !ok {
+ 		runtime.HandleError(fmt.Errorf("Object is not a certificate object %#v", obj))
+@@ -112,17 +135,17 @@ func (c *Controller) certificateDeleted(obj interface{}) {
+ 		runtime.HandleError(fmt.Errorf("Error looking up ingress observing certificate: %s/%s", crt.Namespace, crt.Name))
+ 		return
+ 	}
+-	for _, crt := range ings {
+-		key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(crt)
++	for _, ing := range ings {
++		key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(ing)
+ 		if err != nil {
+ 			runtime.HandleError(err)
+ 			continue
+ 		}
+-		c.BaseController.Queue.Add(key)
++		c.queue.Add(key)
+ 	}
+ }
+ 
+-func (c *Controller) processNextWorkItem(ctx context.Context, key string) error {
++func (c *controller) ProcessItem(ctx context.Context, key string) error {
+ 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+ 	if err != nil {
+ 		runtime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+@@ -147,6 +170,10 @@ var keyFunc = controllerpkg.KeyFunc
+ 
+ func init() {
+ 	controllerpkg.Register(ControllerName, func(ctx *controllerpkg.Context) (controllerpkg.Interface, error) {
+-		return New(ctx).BaseController.Run, nil
++		c, err := controllerpkg.New(ctx, ControllerName, &controller{})
++		if err != nil {
++			return nil, err
++		}
++		return c.Run, nil
+ 	})
+ }
+diff --git a/pkg/controller/ingress-shim/sync.go b/pkg/controller/ingress-shim/sync.go
+index e531b723b..f54fc2a1d 100644
+--- a/pkg/controller/ingress-shim/sync.go
++++ b/pkg/controller/ingress-shim/sync.go
+@@ -61,7 +61,7 @@ const (
+ 
+ var ingressGVK = extv1beta1.SchemeGroupVersion.WithKind("Ingress")
+ 
+-func (c *Controller) Sync(ctx context.Context, ing *extv1beta1.Ingress) error {
++func (c *controller) Sync(ctx context.Context, ing *extv1beta1.Ingress) error {
+ 	metrics.Default.IncrementSyncCallCount(ControllerName)
+ 
+ 	if !shouldSync(ing, c.defaults.autoCertificateAnnotations) {
+@@ -71,7 +71,7 @@ func (c *Controller) Sync(ctx context.Context, ing *extv1beta1.Ingress) error {
+ 
+ 	issuerName, issuerKind := c.issuerForIngress(ing)
+ 	if issuerName == "" {
+-		c.Recorder.Eventf(ing, corev1.EventTypeWarning, "BadConfig", "Issuer name annotation is not set and a default issuer has not been configured")
++		c.recorder.Eventf(ing, corev1.EventTypeWarning, "BadConfig", "Issuer name annotation is not set and a default issuer has not been configured")
+ 		return nil
+ 	}
+ 
+@@ -80,7 +80,7 @@ func (c *Controller) Sync(ctx context.Context, ing *extv1beta1.Ingress) error {
+ 		Kind: issuerKind,
+ 	}, ing.Namespace)
+ 	if apierrors.IsNotFound(err) {
+-		c.Recorder.Eventf(ing, corev1.EventTypeWarning, "BadConfig", "%s resource %q not found", issuerKind, issuerName)
++		c.recorder.Eventf(ing, corev1.EventTypeWarning, "BadConfig", "%s resource %q not found", issuerKind, issuerName)
+ 		return nil
+ 	}
+ 	if err != nil {
+@@ -93,7 +93,7 @@ func (c *Controller) Sync(ctx context.Context, ing *extv1beta1.Ingress) error {
+ 		if len(errs) > 1 {
+ 			errMsg = utilerrors.NewAggregate(errs).Error()
+ 		}
+-		c.Recorder.Eventf(ing, corev1.EventTypeWarning, "BadConfig", errMsg)
++		c.recorder.Eventf(ing, corev1.EventTypeWarning, "BadConfig", errMsg)
+ 		return nil
+ 	}
+ 
+@@ -103,19 +103,19 @@ func (c *Controller) Sync(ctx context.Context, ing *extv1beta1.Ingress) error {
+ 	}
+ 
+ 	for _, crt := range newCrts {
+-		_, err := c.CMClient.CertmanagerV1alpha1().Certificates(crt.Namespace).Create(crt)
++		_, err := c.cmClient.CertmanagerV1alpha1().Certificates(crt.Namespace).Create(crt)
+ 		if err != nil {
+ 			return err
+ 		}
+-		c.Recorder.Eventf(ing, corev1.EventTypeNormal, "CreateCertificate", "Successfully created Certificate %q", crt.Name)
++		c.recorder.Eventf(ing, corev1.EventTypeNormal, "CreateCertificate", "Successfully created Certificate %q", crt.Name)
+ 	}
+ 
+ 	for _, crt := range updateCrts {
+-		_, err := c.CMClient.CertmanagerV1alpha1().Certificates(crt.Namespace).Update(crt)
++		_, err := c.cmClient.CertmanagerV1alpha1().Certificates(crt.Namespace).Update(crt)
+ 		if err != nil {
+ 			return err
+ 		}
+-		c.Recorder.Eventf(ing, corev1.EventTypeNormal, "UpdateCertificate", "Successfully updated Certificate %q", crt.Name)
++		c.recorder.Eventf(ing, corev1.EventTypeNormal, "UpdateCertificate", "Successfully updated Certificate %q", crt.Name)
+ 	}
+ 
+ 	unrequiredCrts, err := c.findUnrequiredCertificates(ing)
+@@ -124,17 +124,17 @@ func (c *Controller) Sync(ctx context.Context, ing *extv1beta1.Ingress) error {
+ 	}
+ 
+ 	for _, crt := range unrequiredCrts {
+-		err = c.CMClient.CertmanagerV1alpha1().Certificates(crt.Namespace).Delete(crt.Name, nil)
++		err = c.cmClient.CertmanagerV1alpha1().Certificates(crt.Namespace).Delete(crt.Name, nil)
+ 		if err != nil {
+ 			return err
+ 		}
+-		c.Recorder.Eventf(ing, corev1.EventTypeNormal, "DeleteCertificate", "Successfully deleted unrequired Certificate %q", crt.Name)
++		c.recorder.Eventf(ing, corev1.EventTypeNormal, "DeleteCertificate", "Successfully deleted unrequired Certificate %q", crt.Name)
+ 	}
+ 
+ 	return nil
+ }
+ 
+-func (c *Controller) validateIngress(ing *extv1beta1.Ingress) []error {
++func (c *controller) validateIngress(ing *extv1beta1.Ingress) []error {
+ 	var errs []error
+ 	if ing.Annotations != nil {
+ 		challengeType := ing.Annotations[acmeIssuerChallengeTypeAnnotation]
+@@ -161,7 +161,7 @@ func (c *Controller) validateIngress(ing *extv1beta1.Ingress) []error {
+ 	return errs
+ }
+ 
+-func (c *Controller) buildCertificates(ing *extv1beta1.Ingress, issuer v1alpha1.GenericIssuer, issuerKind string) (new, update []*v1alpha1.Certificate, _ error) {
++func (c *controller) buildCertificates(ing *extv1beta1.Ingress, issuer v1alpha1.GenericIssuer, issuerKind string) (new, update []*v1alpha1.Certificate, _ error) {
+ 	var newCrts []*v1alpha1.Certificate
+ 	var updateCrts []*v1alpha1.Certificate
+ 	for _, tls := range ing.Spec.TLS {
+@@ -231,7 +231,7 @@ func (c *Controller) buildCertificates(ing *extv1beta1.Ingress, issuer v1alpha1.
+ 	return newCrts, updateCrts, nil
+ }
+ 
+-func (c *Controller) findUnrequiredCertificates(ing *extv1beta1.Ingress) ([]*v1alpha1.Certificate, error) {
++func (c *controller) findUnrequiredCertificates(ing *extv1beta1.Ingress) ([]*v1alpha1.Certificate, error) {
+ 	var unrequired []*v1alpha1.Certificate
+ 	// TODO: investigate selector which filters for certificates controlled by the ingress
+ 	crts, err := c.certificateLister.Certificates(ing.Namespace).List(labels.Everything())
+@@ -314,7 +314,7 @@ func certNeedsUpdate(a, b *v1alpha1.Certificate) bool {
+ 	return false
+ }
+ 
+-func (c *Controller) setIssuerSpecificConfig(crt *v1alpha1.Certificate, issuer v1alpha1.GenericIssuer, ing *extv1beta1.Ingress, tls extv1beta1.IngressTLS) error {
++func (c *controller) setIssuerSpecificConfig(crt *v1alpha1.Certificate, issuer v1alpha1.GenericIssuer, ing *extv1beta1.Ingress, tls extv1beta1.IngressTLS) error {
+ 	ingAnnotations := ing.Annotations
+ 	if ingAnnotations == nil {
+ 		ingAnnotations = map[string]string{}
+@@ -336,7 +336,7 @@ func (c *Controller) setIssuerSpecificConfig(crt *v1alpha1.Certificate, issuer v
+ 			// on the Certificate resource.
+ 			if issuer.GetSpec().ACME.HTTP01 == nil {
+ 				if editInPlace {
+-					c.Recorder.Eventf(ing, corev1.EventTypeWarning, "Unsupported", "%s annotation cannot be enabled when using new format solver type. "+
++					c.recorder.Eventf(ing, corev1.EventTypeWarning, "Unsupported", "%s annotation cannot be enabled when using new format solver type. "+
+ 						"Re-enable the old format HTTP01 solver, or otherwise create a specific HTTP01 solver for this Ingress.", editInPlaceAnnotation)
+ 				}
+ 				crt.Spec.ACME = nil
+@@ -417,7 +417,7 @@ func shouldSync(ing *extv1beta1.Ingress, autoCertificateAnnotations []string) bo
+ // issuerForIngress will determine the issuer that should be specified on a
+ // Certificate created for the given Ingress resource. If one is not set, the
+ // default issuer given to the controller will be used.
+-func (c *Controller) issuerForIngress(ing *extv1beta1.Ingress) (name string, kind string) {
++func (c *controller) issuerForIngress(ing *extv1beta1.Ingress) (name string, kind string) {
+ 	name = c.defaults.issuerName
+ 	kind = c.defaults.issuerKind
+ 	annotations := ing.Annotations
+diff --git a/pkg/controller/ingress-shim/sync_test.go b/pkg/controller/ingress-shim/sync_test.go
+index cc5dbe3ee..5d116fe7e 100644
+--- a/pkg/controller/ingress-shim/sync_test.go
++++ b/pkg/controller/ingress-shim/sync_test.go
+@@ -1193,10 +1193,10 @@ func TestSync(t *testing.T) {
+ 			}
+ 			b.Start()
+ 			defer b.Stop()
+-			c := &Controller{
+-				Client:              b.Client,
+-				CMClient:            b.CMClient,
+-				Recorder:            b.FakeEventRecorder(),
++			c := &controller{
++				kClient:             b.Client,
++				cmClient:            b.CMClient,
++				recorder:            b.FakeEventRecorder(),
+ 				issuerLister:        b.SharedInformerFactory.Certmanager().V1alpha1().Issuers().Lister(),
+ 				clusterIssuerLister: b.SharedInformerFactory.Certmanager().V1alpha1().ClusterIssuers().Lister(),
+ 				certificateLister:   b.SharedInformerFactory.Certmanager().V1alpha1().Certificates().Lister(),
+@@ -1275,7 +1275,7 @@ func TestIssuerForIngress(t *testing.T) {
+ 		},
+ 	}
+ 	for _, test := range tests {
+-		c := &Controller{
++		c := &controller{
+ 			defaults: defaults{
+ 				issuerKind: test.DefaultKind,
+ 				issuerName: test.DefaultName,
+diff --git a/pkg/controller/issuers/BUILD.bazel b/pkg/controller/issuers/BUILD.bazel
+index db130d8e3..0abba5c0d 100644
+--- a/pkg/controller/issuers/BUILD.bazel
++++ b/pkg/controller/issuers/BUILD.bazel
+@@ -13,17 +13,21 @@ go_library(
+         "//pkg/api/util:go_default_library",
+         "//pkg/apis/certmanager/v1alpha1:go_default_library",
+         "//pkg/apis/certmanager/validation:go_default_library",
++        "//pkg/client/clientset/versioned:go_default_library",
+         "//pkg/client/listers/certmanager/v1alpha1:go_default_library",
+         "//pkg/controller:go_default_library",
+         "//pkg/issuer:go_default_library",
+         "//pkg/logs:go_default_library",
+         "//pkg/metrics:go_default_library",
++        "//vendor/github.com/go-logr/logr:go_default_library",
+         "//vendor/k8s.io/api/core/v1:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/labels:go_default_library",
+         "//vendor/k8s.io/apimachinery/pkg/util/errors:go_default_library",
+         "//vendor/k8s.io/client-go/listers/core/v1:go_default_library",
+         "//vendor/k8s.io/client-go/tools/cache:go_default_library",
++        "//vendor/k8s.io/client-go/tools/record:go_default_library",
++        "//vendor/k8s.io/client-go/util/workqueue:go_default_library",
+     ],
+ )
+ 
+diff --git a/pkg/controller/issuers/checks.go b/pkg/controller/issuers/checks.go
+index 9ae720bb7..539930f2e 100644
+--- a/pkg/controller/issuers/checks.go
++++ b/pkg/controller/issuers/checks.go
+@@ -25,7 +25,7 @@ import (
+ 	"github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha1"
+ )
+ 
+-func (c *Controller) issuersForSecret(secret *corev1.Secret) ([]*v1alpha1.Issuer, error) {
++func (c *controller) issuersForSecret(secret *corev1.Secret) ([]*v1alpha1.Issuer, error) {
+ 	issuers, err := c.issuerLister.List(labels.NewSelector())
+ 
+ 	if err != nil {
+diff --git a/pkg/controller/issuers/controller.go b/pkg/controller/issuers/controller.go
+index 00708d566..3037642dd 100644
+--- a/pkg/controller/issuers/controller.go
++++ b/pkg/controller/issuers/controller.go
+@@ -19,47 +19,82 @@ package issuers
+ import (
+ 	"context"
+ 
++	"github.com/go-logr/logr"
+ 	corev1 "k8s.io/api/core/v1"
+ 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
+ 	corelisters "k8s.io/client-go/listers/core/v1"
+ 	"k8s.io/client-go/tools/cache"
++	"k8s.io/client-go/tools/record"
++	"k8s.io/client-go/util/workqueue"
+ 
++	cmclient "github.com/jetstack/cert-manager/pkg/client/clientset/versioned"
+ 	cmlisters "github.com/jetstack/cert-manager/pkg/client/listers/certmanager/v1alpha1"
+ 	controllerpkg "github.com/jetstack/cert-manager/pkg/controller"
+ 	"github.com/jetstack/cert-manager/pkg/issuer"
+ 	logf "github.com/jetstack/cert-manager/pkg/logs"
+ )
+ 
+-type Controller struct {
+-	*controllerpkg.BaseController
+-
+-	issuerFactory issuer.IssuerFactory
+-
++type controller struct {
+ 	issuerLister cmlisters.IssuerLister
+ 	secretLister corelisters.SecretLister
++
++	// maintain a reference to the workqueue for this controller
++	// so the handleOwnedResource method can enqueue resources
++	queue workqueue.RateLimitingInterface
++
++	// logger to be used by this controller
++	log logr.Logger
++
++	// clientset used to update cert-manager API resources
++	cmClient cmclient.Interface
++
++	// used to record Events about resources to the API
++	recorder record.EventRecorder
++
++	// issuerFactory is used to obtain a reference to the Issuer implementation
++	// for each ClusterIssuer resource
++	issuerFactory issuer.IssuerFactory
+ }
+ 
+-func New(ctx *controllerpkg.Context) *Controller {
+-	ctrl := &Controller{}
+-	bctrl := controllerpkg.New(ctx, ControllerName, ctrl.processNextWorkItem)
++// Register registers and constructs the controller using the provided context.
++// It returns the workqueue to be used to enqueue items, a list of
++// InformerSynced functions that must be synced, or an error.
++func (c *controller) Register(ctx *controllerpkg.Context) (workqueue.RateLimitingInterface, []cache.InformerSynced, error) {
++	// construct a new named logger to be reused throughout the controller
++	c.log = logf.FromContext(ctx.RootContext, ControllerName)
+ 
++	// create a queue used to queue up items to be processed
++	c.queue = workqueue.NewNamedRateLimitingQueue(controllerpkg.DefaultItemBasedRateLimiter(), ControllerName)
++
++	// obtain references to all the informers used by this controller
+ 	issuerInformer := ctx.SharedInformerFactory.Certmanager().V1alpha1().Issuers()
+-	bctrl.AddQueuing(controllerpkg.DefaultItemBasedRateLimiter(), "issuers", issuerInformer.Informer())
+-	ctrl.issuerLister = issuerInformer.Lister()
++	secretInformer := ctx.KubeSharedInformerFactory.Core().V1().Secrets()
++	// build a list of InformerSynced functions that will be returned by the Register method.
++	// the controller will only begin processing items once all of these informers have synced.
++	mustSync := []cache.InformerSynced{
++		issuerInformer.Informer().HasSynced,
++		secretInformer.Informer().HasSynced,
++	}
+ 
+-	secretsInformer := ctx.KubeSharedInformerFactory.Core().V1().Secrets()
+-	bctrl.AddHandled(secretsInformer.Informer(), &controllerpkg.BlockingEventHandler{WorkFunc: ctrl.secretDeleted})
+-	ctrl.secretLister = secretsInformer.Lister()
++	// set all the references to the listers for used by the Sync function
++	c.issuerLister = issuerInformer.Lister()
++	c.secretLister = secretInformer.Lister()
+ 
+-	ctrl.BaseController = bctrl
+-	ctrl.issuerFactory = issuer.NewIssuerFactory(ctx)
++	// register handler functions
++	issuerInformer.Informer().AddEventHandler(&controllerpkg.QueuingEventHandler{Queue: c.queue})
++	secretInformer.Informer().AddEventHandler(&controllerpkg.BlockingEventHandler{WorkFunc: c.secretDeleted})
+ 
+-	return ctrl
++	// instantiate additional helpers used by this controller
++	c.issuerFactory = issuer.NewIssuerFactory(ctx)
++	c.cmClient = ctx.CMClient
++	c.recorder = ctx.Recorder
++
++	return c.queue, mustSync, nil
+ }
+ 
+ // TODO: replace with generic handleObjet function (like Navigator)
+-func (c *Controller) secretDeleted(obj interface{}) {
+-	log := logf.FromContext(c.BaseController.Ctx)
++func (c *controller) secretDeleted(obj interface{}) {
++	log := c.log.WithName("secretDeleted")
+ 
+ 	var secret *corev1.Secret
+ 	var ok bool
+@@ -80,11 +115,11 @@ func (c *Controller) secretDeleted(obj interface{}) {
+ 			log.Error(err, "error computing key for resource")
+ 			continue
+ 		}
+-		c.BaseController.Queue.AddRateLimited(key)
++		c.queue.AddRateLimited(key)
+ 	}
+ }
+ 
+-func (c *Controller) processNextWorkItem(ctx context.Context, key string) error {
++func (c *controller) ProcessItem(ctx context.Context, key string) error {
+ 	log := logf.FromContext(ctx)
+ 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+ 	if err != nil {
+@@ -114,6 +149,10 @@ const (
+ 
+ func init() {
+ 	controllerpkg.Register(ControllerName, func(ctx *controllerpkg.Context) (controllerpkg.Interface, error) {
+-		return New(ctx).BaseController.Run, nil
++		c, err := controllerpkg.New(ctx, ControllerName, &controller{})
++		if err != nil {
++			return nil, err
++		}
++		return c.Run, nil
+ 	})
+ }
+diff --git a/pkg/controller/issuers/sync.go b/pkg/controller/issuers/sync.go
+index 8d19d760f..d813014dc 100644
+--- a/pkg/controller/issuers/sync.go
++++ b/pkg/controller/issuers/sync.go
+@@ -38,7 +38,7 @@ const (
+ 	messageErrorInitIssuer = "Error initializing issuer: "
+ )
+ 
+-func (c *Controller) Sync(ctx context.Context, iss *v1alpha1.Issuer) (err error) {
++func (c *controller) Sync(ctx context.Context, iss *v1alpha1.Issuer) (err error) {
+ 	metrics.Default.IncrementSyncCallCount(ControllerName)
+ 
+ 	log := logf.FromContext(ctx)
+@@ -77,19 +77,19 @@ func (c *Controller) Sync(ctx context.Context, iss *v1alpha1.Issuer) (err error)
+ 	if err != nil {
+ 		s := messageErrorInitIssuer + err.Error()
+ 		log.Info(s)
+-		c.Recorder.Event(issuerCopy, v1.EventTypeWarning, errorInitIssuer, s)
++		c.recorder.Event(issuerCopy, v1.EventTypeWarning, errorInitIssuer, s)
+ 		return err
+ 	}
+ 
+ 	return nil
+ }
+ 
+-func (c *Controller) updateIssuerStatus(old, new *v1alpha1.Issuer) (*v1alpha1.Issuer, error) {
++func (c *controller) updateIssuerStatus(old, new *v1alpha1.Issuer) (*v1alpha1.Issuer, error) {
+ 	if reflect.DeepEqual(old.Status, new.Status) {
+ 		return nil, nil
+ 	}
+ 	// TODO: replace Update call with UpdateStatus. This requires a custom API
+ 	// server with the /status subresource enabled and/or subresource support
+ 	// for CRDs (https://github.com/kubernetes/kubernetes/issues/38113)
+-	return c.CMClient.CertmanagerV1alpha1().Issuers(new.Namespace).Update(new)
++	return c.cmClient.CertmanagerV1alpha1().Issuers(new.Namespace).Update(new)
+ }
+diff --git a/pkg/controller/issuers/util_test.go b/pkg/controller/issuers/util_test.go
+index 0b3cedb10..1c415ff4e 100644
+--- a/pkg/controller/issuers/util_test.go
++++ b/pkg/controller/issuers/util_test.go
+@@ -27,7 +27,7 @@ import (
+ 
+ type controllerFixture struct {
+ 	// The Solver under test
+-	Controller *Controller
++	Controller *controller
+ 	Builder    *test.Builder
+ 
+ 	// Issuer to be passed to functions on the Solver (a default will be used if nil)
+@@ -71,7 +71,8 @@ func (s *controllerFixture) Setup(t *testing.T) {
+ 		s.Builder.T = t
+ 	}
+ 	s.Builder.Start()
+-	s.Controller = New(s.Builder.Context)
++	s.Controller = &controller{}
++	s.Controller.Register(s.Builder.Context)
+ 	s.Builder.Sync()
+ 	if s.PreFn != nil {
+ 		s.PreFn(t, s)
+diff --git a/pkg/controller/test/context_builder.go b/pkg/controller/test/context_builder.go
+index 5612d835e..42bc5dd51 100644
+--- a/pkg/controller/test/context_builder.go
++++ b/pkg/controller/test/context_builder.go
+@@ -17,6 +17,7 @@ limitations under the License.
+ package test
+ 
+ import (
++	"context"
+ 	"flag"
+ 	"fmt"
+ 	"reflect"
+@@ -84,7 +85,9 @@ const informerResyncPeriod = time.Millisecond * 500
+ // Subsequent calls to ToContext will return the same Context instance.
+ func (b *Builder) Start() {
+ 	if b.Context == nil {
+-		b.Context = &controller.Context{}
++		b.Context = &controller.Context{
++			RootContext: context.Background(),
++		}
+ 	}
+ 	if b.StringGenerator == nil {
+ 		b.StringGenerator = RandStringBytes
+
+commit 8852b48068945ee88ed5741af9eea75c110cb63c (from f8a798bd2b87c9aa4f35e9d37375715e5adb8319)
+Merge: b7f3d2c89 f8a798bd2
+Author: jetstack-bot <32282838+jetstack-bot@users.noreply.github.com>
+Date:   Mon Jun 24 16:39:27 2019 +0100
+
+    Merge pull request #1804 from munnerz/refactor-controllers
+    
+    Refactor controllers to not reference BaseController
+
+diff --git a/deploy/charts/cert-manager/README.md b/deploy/charts/cert-manager/README.md
+index 4382c1844..6b69755d6 100644
+--- a/deploy/charts/cert-manager/README.md
++++ b/deploy/charts/cert-manager/README.md
+@@ -125,6 +125,7 @@ definition | `default` |
+ | `webhook.podAnnotations` | Annotations to add to the webhook pods | `{}` |
+ | `webhook.extraArgs` | Optional flags for cert-manager webhook component | `[]` |
+ | `webhook.resources` | CPU/memory resource requests/limits for the webhook pods | |
++| `webhook.nodeSelector` | Node labels for webhook pod assignment | `{}` |
+ | `webhook.image.repository` | Webhook image repository | `quay.io/jetstack/cert-manager-webhook` |
+ | `webhook.image.tag` | Webhook image tag | `v0.8.1` |
+ | `webhook.image.pullPolicy` | Webhook image pull policy | `IfNotPresent` |
+@@ -134,6 +135,7 @@ definition | `default` |
+ | `cainjector.podAnnotations` | Annotations to add to the cainjector pods | `{}` |
+ | `cainjector.extraArgs` | Optional flags for cert-manager cainjector component | `[]` |
+ | `cainjector.resources` | CPU/memory resource requests/limits for the cainjector pods | |
++| `cainjector.nodeSelector` | Node labels for cainjector pod assignment | `{}` |
+ | `cainjector.image.repository` | cainjector image repository | `quay.io/jetstack/cert-manager-cainjector` |
+ | `cainjector.image.tag` | cainjector image tag | `v0.8.1` |
+ | `cainjector.image.pullPolicy` | cainjector image pull policy | `IfNotPresent` |
+diff --git a/deploy/charts/cert-manager/cainjector/values.yaml b/deploy/charts/cert-manager/cainjector/values.yaml
+index 8d19ae12f..29769d16b 100644
+--- a/deploy/charts/cert-manager/cainjector/values.yaml
++++ b/deploy/charts/cert-manager/cainjector/values.yaml
+@@ -32,6 +32,8 @@ resources: {}
+   #   cpu: 10m
+   #   memory: 32Mi
+ 
++nodeSelector: {}
++
+ image:
+   repository: quay.io/jetstack/cert-manager-cainjector
+   # Override the image tag to deploy by setting this variable.
+diff --git a/deploy/charts/cert-manager/webhook/values.yaml b/deploy/charts/cert-manager/webhook/values.yaml
+index 6a2b90cae..d785c4fe8 100644
+--- a/deploy/charts/cert-manager/webhook/values.yaml
++++ b/deploy/charts/cert-manager/webhook/values.yaml
+@@ -28,6 +28,8 @@ resources: {}
+   #   cpu: 10m
+   #   memory: 32Mi
+ 
++nodeSelector: {}
++
+ image:
+   repository: quay.io/jetstack/cert-manager-webhook
+   # Override the image tag to deploy by setting this variable.
+diff --git a/hack/update-crds.sh b/hack/update-crds.sh
+index ede82e3bf..25c3d2ec0 100755
+--- a/hack/update-crds.sh
++++ b/hack/update-crds.sh
+@@ -34,7 +34,7 @@ out="deploy/manifests/00-crds.yaml"
+ rm "$out" > /dev/null 2>&1 || true
+ mkdir -p "$(dirname $out)"
+ touch "$out"
+-for file in ${output}/*; do
++for file in $(find "${output}" -type f | sort); do
+     cat "$file" >> "$out"
+     echo "---" >> "$out"
+ done

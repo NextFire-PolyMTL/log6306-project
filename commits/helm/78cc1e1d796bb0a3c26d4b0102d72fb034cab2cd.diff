@@ -1,0 +1,189 @@
+commit 78cc1e1d796bb0a3c26d4b0102d72fb034cab2cd
+Author: tompizmor <tompizmor@users.noreply.github.com>
+Date:   Fri Dec 8 18:33:04 2017 +0100
+
+    [stable/drupal] allow use of external database (#2817)
+    
+    * Allow Drupal helm chart to use an existing database
+    
+    * Do not deploy mariadb chart if using external database
+    
+    * Add new properties to README
+    
+    * Refactor properties to configure an external database
+    
+    * Update dependencies
+
+diff --git a/stable/drupal/Chart.yaml b/stable/drupal/Chart.yaml
+index f13ae797c..145b63872 100644
+--- a/stable/drupal/Chart.yaml
++++ b/stable/drupal/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: drupal
+-version: 0.10.4
++version: 0.11.0
+ appVersion: 8.4.2
+ description: One of the most versatile open source content management systems.
+ keywords:
+diff --git a/stable/drupal/README.md b/stable/drupal/README.md
+index aa79ed353..0c339e0bf 100644
+--- a/stable/drupal/README.md
++++ b/stable/drupal/README.md
+@@ -53,12 +53,21 @@ The following tables lists the configurable parameters of the Drupal chart and t
+ | `drupalUsername`                  | User of the application               | `user`                                                    |
+ | `drupalPassword`                  | Application password                  | _random 10 character long alphanumeric string_            |
+ | `drupalEmail`                     | Admin email                           | `user@example.com`                                        |
++| `allowEmptyPassword`              | Allow DB blank passwords              | `yes`                                                     |
+ | `extraVars`                       | Extra environment variables           | `nil`                                                     |
+ | `ingress.annotations`             | Specify ingress class                 | `kubernetes.io/ingress.class: nginx`                      |
+ | `ingress.enabled`                 | Enable ingress controller resource    | `false`                                                   |
+ | `ingress.hostname`                | URL for your Drupal installation      | `drupal.local`                                            |
+ | `ingress.tls`                     | Ingress TLS configuration             | `[]`                                                      |
++| `externalDatabase.host`           | Host of the external database         | `nil`                                                     |
++| `externalDatabase.user`           | Existing username in the external db  | `bn_drupal`                                               |
++| `externalDatabase.password`       | Password for the above username       | `nil`                                                     |
++| `externalDatabase.database`       | Name of the existing databse          | `bitnami_drupal`                                          |
++| `mariadb.enabled`                 | Use or not the mariadb chart          | `true`                                                    |
+ | `mariadb.mariadbRootPassword`     | MariaDB admin password                | `nil`                                                     |
++| `mariadb.mariadbDatabase`         | Database name to create               | `bitnami_drupal`                                          |
++| `mariadb.mariadbUser`             | Database user to create               | `bn_drupal`                                               |
++| `mariadb.mariadbPassword`         | Password for the database             | _random 10 character long alphanumeric string_            |
+ | `serviceType`                     | Kubernetes Service type               | `LoadBalancer`                                            |
+ | `persistence.enabled`             | Enable persistence using PVC          | `true`                                                    |
+ | `persistence.apache.storageClass` | PVC Storage Class for Apache volume   | `nil` (uses alpha storage class annotation)               |
+diff --git a/stable/drupal/requirements.lock b/stable/drupal/requirements.lock
+index 4c6ae0809..3a4353347 100644
+--- a/stable/drupal/requirements.lock
++++ b/stable/drupal/requirements.lock
+@@ -2,5 +2,5 @@ dependencies:
+ - name: mariadb
+   repository: https://kubernetes-charts.storage.googleapis.com/
+   version: 1.0.5
+-digest: sha256:08de643d4a3b2886a76b7f5da8ea7db20b7a69b8de1d04594862adfe4735993c
+-generated: 2017-10-03T10:05:16.672603874+08:00
++digest: sha256:784a2dfb3f8c0a334cfb6dd31381ea39bd5a3834f12d95f24aa074be558388e1
++generated: 2017-12-05T17:15:55.281989+01:00
+diff --git a/stable/drupal/requirements.yaml b/stable/drupal/requirements.yaml
+index 0c14b5cd3..7f4538dc6 100644
+--- a/stable/drupal/requirements.yaml
++++ b/stable/drupal/requirements.yaml
+@@ -2,3 +2,4 @@ dependencies:
+ - name: mariadb
+   version: 1.0.5
+   repository: https://kubernetes-charts.storage.googleapis.com/
++  condition: mariadb.enabled
+diff --git a/stable/drupal/templates/deployment.yaml b/stable/drupal/templates/deployment.yaml
+index 8abd615a1..54f3a0a4b 100644
+--- a/stable/drupal/templates/deployment.yaml
++++ b/stable/drupal/templates/deployment.yaml
+@@ -19,15 +19,41 @@ spec:
+         image: "{{ .Values.image }}"
+         imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
+         env:
++        - name: ALLOW_EMPTY_PASSWORD
++        {{- if .Values.allowEmptyPassword }}
++          value: "yes"
++        {{- else }}
++          value: "no"
++        {{- end }}
+         - name: MARIADB_HOST
++        {{- if .Values.mariadb.enabled }}
+           value: {{ template "drupal.mariadb.fullname" . }}
++        {{- else }}
++          value: {{ default "" .Values.externalDatabase.host | quote }}
++        {{- end }}
+         - name: MARIADB_PORT_NUMBER
+           value: "3306"
+-        - name: MARIADB_PASSWORD
++        - name: DRUPAL_DATABASE_NAME
++        {{- if .Values.mariadb.enabled }}
++          value: {{ default "" .Values.mariadb.mariadbDatabase | quote }}
++        {{- else }}
++          value: {{ default "" .Values.externalDatabase.database | quote }}
++        {{- end }}
++        - name: DRUPAL_DATABASE_USER
++        {{- if .Values.mariadb.enabled }}
++          value: {{ default "" .Values.mariadb.mariadbUser | quote }}
++        {{- else }}
++          value: {{ default "" .Values.externalDatabase.user | quote }}
++        {{- end }}
++        - name: DRUPAL_DATABASE_PASSWORD
++        {{- if .Values.mariadb.enabled }}
+           valueFrom:
+             secretKeyRef:
+               name: {{ template "drupal.mariadb.fullname" . }}
+-              key: mariadb-root-password
++              key: mariadb-password
++        {{- else }}
++          value: {{ default "" .Values.externalDatabase.password | quote }}
++        {{- end }}
+         - name: DRUPAL_USERNAME
+           value: {{ default "" .Values.drupalUsername | quote }}
+         - name: DRUPAL_PASSWORD
+diff --git a/stable/drupal/values.yaml b/stable/drupal/values.yaml
+index 027559593..a122f9d7c 100644
+--- a/stable/drupal/values.yaml
++++ b/stable/drupal/values.yaml
+@@ -1,7 +1,7 @@
+ ## Bitnami Drupal image version
+ ## ref: https://hub.docker.com/r/bitnami/drupal/tags/
+ ##
+-image: bitnami/drupal:8.4.2-r0
++image: bitnami/drupal:8.4.2-r1
+ 
+ ## Optionally specify an array of imagePullSecrets.
+ ## Secrets must be manually created in the namespace.
+@@ -31,15 +31,53 @@ drupalUsername: user
+ ##
+ drupalEmail: user@example.com
+ 
++## Set to `yes` to allow the container to be started with blank passwords
++## ref: https://github.com/bitnami/bitnami-docker-wordpress#environment-variables
++allowEmptyPassword: yes
++
++##
++## External database configuration
++##
++externalDatabase:
++  ## Database host
++  # host:
++
++  ## Database user
++  # user: bn_drupal
++
++  ## Database password
++  # password:
++
++  ## Database name
++  # database: bitnami_drupal
++
+ ##
+ ## MariaDB chart configuration
+ ##
+ mariadb:
++  ## Whether to use the database specified as a requirement or not. For example, to configure the chart with an existing database server.
++  enabled: true
++
+   ## MariaDB admin password
+   ## ref: https://github.com/bitnami/bitnami-docker-mariadb/blob/master/README.md#setting-the-root-password-on-first-run
+   ##
+   # mariadbRootPassword:
+ 
++  ## Create a database
++  ## ref: https://github.com/bitnami/bitnami-docker-mariadb/blob/master/README.md#creating-a-database-on-first-run
++  ##
++  mariadbDatabase: bitnami_drupal
++
++  ## Create a database user
++  ## ref: https://github.com/bitnami/bitnami-docker-mariadb/blob/master/README.md#creating-a-database-user-on-first-run
++  ##
++  mariadbUser: bn_drupal
++
++  ## Password for mariadbUser
++  ## ref: https://github.com/bitnami/bitnami-docker-mariadb/blob/master/README.md#creating-a-database-user-on-first-run
++  ##
++  # mariadbPassword:
++
+   ## Enable persistence using Persistent Volume Claims
+   ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+   ##

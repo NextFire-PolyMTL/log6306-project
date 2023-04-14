@@ -1,0 +1,118 @@
+commit 3bc3476d81095ab4c59a037770586bfb773e13ba
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Apr 4 11:38:07 2018 +0200
+
+    [stable/drupal] Refactor image property and start using rolling tag (#4671)
+
+diff --git a/stable/drupal/Chart.yaml b/stable/drupal/Chart.yaml
+index 7fd6e43bd..6b9bf945d 100644
+--- a/stable/drupal/Chart.yaml
++++ b/stable/drupal/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: drupal
+-version: 0.11.13
++version: 0.11.14
+ appVersion: 8.5.1
+ description: One of the most versatile open source content management systems.
+ keywords:
+diff --git a/stable/drupal/README.md b/stable/drupal/README.md
+index a605104de..cbfb7496b 100644
+--- a/stable/drupal/README.md
++++ b/stable/drupal/README.md
+@@ -47,9 +47,11 @@ The following table lists the configurable parameters of the Drupal chart and th
+ 
+ | Parameter                         | Description                           | Default                                                   |
+ | --------------------------------- | ------------------------------------- | --------------------------------------------------------- |
+-| `image`                           | Drupal image                          | `bitnami/drupal:{VERSION}`                                |
+-| `imagePullSecrets`                | Specify image pull secrets            | `nil` (does not add image pull secrets to deployed pods)  |
+-| `imagePullPolicy`                 | Image pull policy                     | `IfNotPresent`                                            |
++| `image.registry`                  | Drupal image registry                 | `docker.io`                                               |
++| `image.repository`                | Drupal Image name                     | `bitnami/drupal`                                          |
++| `image.tag`                       | Drupal Image tag                      | `{VERSION}`                                               |
++| `image.pullPolicy`                | Drupal image pull policy              | `Always` if `imageTag` is `latest`, else `IfNotPresent`   |
++| `image.pullSecrets`               | Specify image pull secrets            | `nil` (does not add image pull secrets to deployed pods)  |
+ | `drupalUsername`                  | User of the application               | `user`                                                    |
+ | `drupalPassword`                  | Application password                  | _random 10 character long alphanumeric string_            |
+ | `drupalEmail`                     | Admin email                           | `user@example.com`                                        |
+diff --git a/stable/drupal/templates/deployment.yaml b/stable/drupal/templates/deployment.yaml
+index 54f3a0a4b..9fdc50a7e 100644
+--- a/stable/drupal/templates/deployment.yaml
++++ b/stable/drupal/templates/deployment.yaml
+@@ -14,10 +14,16 @@ spec:
+       labels:
+         app: {{ template "drupal.fullname" . }}
+     spec:
++      {{- if .Values.image.pullSecrets }}
++      imagePullSecrets:
++      {{- range .Values.image.pullSecrets }}
++        - name: {{ . }}
++      {{- end}}
++      {{- end }}
+       containers:
+       - name: {{ template "drupal.fullname" . }}
+-        image: "{{ .Values.image }}"
+-        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
++        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
++        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+         env:
+         - name: ALLOW_EMPTY_PASSWORD
+         {{- if .Values.allowEmptyPassword }}
+@@ -84,10 +90,6 @@ spec:
+         - name: apache-data
+           mountPath: {{ .Values.volumeMounts.apache.mountPath }}
+         {{- end }}
+-      {{- if .Values.imagePullSecrets }}
+-      imagePullSecrets:
+-{{ toYaml .Values.imagePullSecrets | indent 8 }}
+-      {{- end }}
+       volumes:
+       - name: drupal-data
+       {{- if .Values.persistence.enabled }}
+diff --git a/stable/drupal/values.yaml b/stable/drupal/values.yaml
+index 1954d1bc3..8906fb0c3 100644
+--- a/stable/drupal/values.yaml
++++ b/stable/drupal/values.yaml
+@@ -1,19 +1,21 @@
+ ## Bitnami Drupal image version
+ ## ref: https://hub.docker.com/r/bitnami/drupal/tags/
+ ##
+-image: bitnami/drupal:8.5.1-r0
+-
+-## Optionally specify an array of imagePullSecrets.
+-## Secrets must be manually created in the namespace.
+-## ref: https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
+-##
+-# imagePullSecrets:
+-#   - name: myRegistryKeySecretName
+-
+-## Specify a imagePullPolicy
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+-##
+-imagePullPolicy: IfNotPresent
++image:
++  registry: docker.io
++  repository: bitnami/drupal
++  tag: 8.5.1
++  ## Specify a imagePullPolicy
++  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
++  ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++  ##
++  pullPolicy: IfNotPresent
++  ## Optionally specify an array of imagePullSecrets.
++  ## Secrets must be manually created in the namespace.
++  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
++  ##
++  # pullSecrets:
++  #   - myRegistrKeySecretName
+ 
+ ## User of the application
+ ## ref: https://github.com/bitnami/bitnami-docker-drupal#configuration
+@@ -33,7 +35,7 @@ drupalEmail: user@example.com
+ 
+ ## Set to `yes` to allow the container to be started with blank passwords
+ ## ref: https://github.com/bitnami/bitnami-docker-wordpress#environment-variables
+-allowEmptyPassword: yes
++allowEmptyPassword: "yes"
+ 
+ ##
+ ## External database configuration

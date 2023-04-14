@@ -1,0 +1,727 @@
+commit 4e2511bd0c30bde538231d8896754c9d7fdd878e
+Author: MH <80083951+zanac1986@users.noreply.github.com>
+Date:   Fri Nov 11 22:27:23 2022 +0800
+
+    [prometheus-node-exporter] Refactor (#2650)
+    
+    * [prometheus-node-exporter] Refactor
+    
+    Signed-off-by: zanac1986 <zanhsieh@protonmail.com>
+    
+    * fix template errors
+    
+    Signed-off-by: zanac1986 <zanhsieh@protonmail.com>
+    
+    Signed-off-by: zanac1986 <zanhsieh@protonmail.com>
+
+diff --git a/charts/prometheus-node-exporter/Chart.yaml b/charts/prometheus-node-exporter/Chart.yaml
+index 06f4770f..28c6f127 100644
+--- a/charts/prometheus-node-exporter/Chart.yaml
++++ b/charts/prometheus-node-exporter/Chart.yaml
+@@ -6,7 +6,7 @@ keywords:
+   - prometheus
+   - exporter
+ type: application
+-version: 4.5.0
++version: 4.5.1
+ appVersion: 1.3.1
+ home: https://github.com/prometheus/node_exporter/
+ sources:
+diff --git a/charts/prometheus-node-exporter/templates/_helpers.tpl b/charts/prometheus-node-exporter/templates/_helpers.tpl
+index 924aa006..04463a76 100644
+--- a/charts/prometheus-node-exporter/templates/_helpers.tpl
++++ b/charts/prometheus-node-exporter/templates/_helpers.tpl
+@@ -3,8 +3,8 @@
+ Expand the name of the chart.
+ */}}
+ {{- define "prometheus-node-exporter.name" -}}
+-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
++{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
++{{- end }}
+ 
+ {{/*
+ Create a default fully qualified app name.
+@@ -12,30 +12,39 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this
+ If release name contains chart name it will be used as a full name.
+ */}}
+ {{- define "prometheus-node-exporter.fullname" -}}
+-{{- if .Values.fullnameOverride -}}
+-{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+-{{- else -}}
+-{{- $name := default .Chart.Name .Values.nameOverride -}}
+-{{- if contains $name .Release.Name -}}
+-{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+-{{- else -}}
+-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
+-{{- end -}}
+-{{- end -}}
++{{- if .Values.fullnameOverride }}
++{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
++{{- else }}
++{{- $name := default .Chart.Name .Values.nameOverride }}
++{{- if contains $name .Release.Name }}
++{{- .Release.Name | trunc 63 | trimSuffix "-" }}
++{{- else }}
++{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
++{{- end }}
++{{- end }}
++{{- end }}
+ 
+-{{/* Generate basic labels */}}
+-{{- define "prometheus-node-exporter.labels" }}
+-helm.sh/chart: {{ template "prometheus-node-exporter.chart" . }}
++{{/*
++Create chart name and version as used by the chart label.
++*/}}
++{{- define "prometheus-node-exporter.chart" -}}
++{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
++{{- end }}
++
++{{/*
++Common labels
++*/}}
++{{- define "prometheus-node-exporter.labels" -}}
++helm.sh/chart: {{ include "prometheus-node-exporter.chart" . }}
+ app.kubernetes.io/managed-by: {{ .Release.Service }}
+ app.kubernetes.io/component: metrics
+-app.kubernetes.io/part-of: {{ template "prometheus-node-exporter.name" . }}
+-{{- include "prometheus-node-exporter.selectorLabels" . }}
+-{{- if .Chart.AppVersion }}
+-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
++app.kubernetes.io/part-of: {{ include "prometheus-node-exporter.name" . }}
++{{ include "prometheus-node-exporter.selectorLabels" . }}
++{{- with .Chart.AppVersion }}
++app.kubernetes.io/version: {{ . | quote }}
+ {{- end }}
+-{{- if .Values.podLabels}}
+-{{ toYaml .Values.podLabels }}
++{{- with .Values.podLabels }}
++{{- toYaml . }}
+ {{- end }}
+ {{- if .Values.releaseLabel }}
+ release: {{ .Release.Name }}
+@@ -45,37 +54,30 @@ release: {{ .Release.Name }}
+ {{/*
+ Selector labels
+ */}}
+-{{- define "prometheus-node-exporter.selectorLabels" }}
++{{- define "prometheus-node-exporter.selectorLabels" -}}
++app.kubernetes.io/name: {{ include "prometheus-node-exporter.name" . }}
+ app.kubernetes.io/instance: {{ .Release.Name }}
+-app.kubernetes.io/name: {{ template "prometheus-node-exporter.name" . }}
+ {{- end }}
+ 
+-{{/*
+-Create chart name and version as used by the chart label.
+-*/}}
+-{{- define "prometheus-node-exporter.chart" -}}
+-{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
+-
+ 
+ {{/*
+ Create the name of the service account to use
+ */}}
+ {{- define "prometheus-node-exporter.serviceAccountName" -}}
+-{{- if .Values.serviceAccount.create -}}
+-    {{ default (include "prometheus-node-exporter.fullname" .) .Values.serviceAccount.name }}
+-{{- else -}}
+-    {{ default "default" .Values.serviceAccount.name }}
+-{{- end -}}
+-{{- end -}}
++{{- if .Values.serviceAccount.create }}
++{{- default (include "prometheus-node-exporter.fullname" .) .Values.serviceAccount.name }}
++{{- else }}
++{{- default "default" .Values.serviceAccount.name }}
++{{- end }}
++{{- end }}
+ 
+ {{/*
+ The image to use
+ */}}
+ {{- define "prometheus-node-exporter.image" -}}
+-{{- if .Values.image.sha -}}
++{{- if .Values.image.sha }}
+ {{- printf "%s:%s@%s" .Values.image.repository (default (printf "v%s" .Chart.AppVersion) .Values.image.tag) .Values.image.sha }}
+-{{- else -}}
++{{- else }}
+ {{- printf "%s:%s" .Values.image.repository (default (printf "v%s" .Chart.AppVersion) .Values.image.tag) }}
+ {{- end }}
+ {{- end }}
+@@ -84,27 +86,27 @@ The image to use
+ Allow the release namespace to be overridden for multi-namespace deployments in combined charts
+ */}}
+ {{- define "prometheus-node-exporter.namespace" -}}
+-  {{- if .Values.namespaceOverride -}}
+-    {{- .Values.namespaceOverride -}}
+-  {{- else -}}
+-    {{- .Release.Namespace -}}
+-  {{- end -}}
+-{{- end -}}
++{{- if .Values.namespaceOverride }}
++{{- .Values.namespaceOverride }}
++{{- else }}
++{{- .Release.Namespace }}
++{{- end }}
++{{- end }}
+ 
+ {{/*
+ Create the namespace name of the service monitor
+ */}}
+ {{- define "prometheus-node-exporter.monitor-namespace" -}}
+-  {{- if .Values.namespaceOverride -}}
+-    {{- .Values.namespaceOverride -}}
+-  {{- else -}}
+-    {{- if .Values.prometheus.monitor.namespace -}}
+-      {{- .Values.prometheus.monitor.namespace -}}
+-    {{- else -}}
+-      {{- .Release.Namespace -}}
+-    {{- end -}}
+-  {{- end -}}
+-{{- end -}}
++{{- if .Values.namespaceOverride }}
++{{- .Values.namespaceOverride }}
++{{- else }}
++{{- if .Values.prometheus.monitor.namespace }}
++{{- .Values.prometheus.monitor.namespace }}
++{{- else }}
++{{- .Release.Namespace }}
++{{- end }}
++{{- end }}
++{{- end }}
+ 
+ {{/* Sets default scrape limits for servicemonitor */}}
+ {{- define "servicemonitor.scrapeLimits" -}}
+@@ -123,4 +125,4 @@ labelNameLengthLimit: {{ . }}
+ {{- with .labelValueLengthLimit }}
+ labelValueLengthLimit: {{ . }}
+ {{- end }}
+-{{- end -}}
++{{- end }}
+diff --git a/charts/prometheus-node-exporter/templates/daemonset.yaml b/charts/prometheus-node-exporter/templates/daemonset.yaml
+index a742f24c..3ab937fc 100644
+--- a/charts/prometheus-node-exporter/templates/daemonset.yaml
++++ b/charts/prometheus-node-exporter/templates/daemonset.yaml
+@@ -1,38 +1,40 @@
+ apiVersion: apps/v1
+ kind: DaemonSet
+ metadata:
+-  name: {{ template "prometheus-node-exporter.fullname" . }}
+-  namespace: {{ template "prometheus-node-exporter.namespace" . }}
+-  labels: {{ include "prometheus-node-exporter.labels" . | indent 4 }}
++  name: {{ include "prometheus-node-exporter.fullname" . }}
++  namespace: {{ include "prometheus-node-exporter.namespace" . }}
++  labels:
++    {{- include "prometheus-node-exporter.labels" . | nindent 4 }}
+ spec:
+   selector:
+     matchLabels:
+-      {{- include "prometheus-node-exporter.selectorLabels" . | indent 6 }}
+-  {{- if .Values.updateStrategy }}
++      {{- include "prometheus-node-exporter.selectorLabels" . | nindent 6 }}
++  {{- with .Values.updateStrategy }}
+   updateStrategy:
+-{{ toYaml .Values.updateStrategy | indent 4 }}
++    {{- toYaml . | nindent 4 }}
+   {{- end }}
+   template:
+     metadata:
+-      labels: {{ include "prometheus-node-exporter.labels" . | indent 8 }}
+-      {{- if .Values.podAnnotations }}
++      {{- with .Values.podAnnotations }}
+       annotations:
+-      {{- toYaml .Values.podAnnotations | nindent 8 }}
++        {{- toYaml . | nindent 8 }}
+       {{- end }}
++      labels:
++        {{- include "prometheus-node-exporter.labels" . | nindent 8 }}
+     spec:
+       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+-      serviceAccountName: {{ template "prometheus-node-exporter.serviceAccountName" . }}
+-{{- if .Values.securityContext }}
++      {{- with .Values.securityContext }}
+       securityContext:
+-{{ toYaml .Values.securityContext | indent 8 }}
+-{{- end }}
+-{{- if .Values.priorityClassName }}
+-      priorityClassName: {{ .Values.priorityClassName }}
+-{{- end }}
+-      {{- if .Values.extraInitContainers }}
++        {{- toYaml . | nindent 8 }}
++      {{- end }}
++      {{- with .Values.priorityClassName }}
++      priorityClassName: {{ . }}
++      {{- end }}
++      {{- with .Values.extraInitContainers }}
+       initContainers:
+-      {{ toYaml .Values.extraInitContainers | nindent 6 }}
++        {{- toYaml . | nindent 8 }}
+       {{- end }}
++      serviceAccountName: {{ include "prometheus-node-exporter.serviceAccountName" . }}
+       containers:
+         - name: node-exporter
+           image: {{ include "prometheus-node-exporter.image" . }}
+@@ -44,22 +46,23 @@ spec:
+             - --path.rootfs=/host/root
+             {{- end }}
+             - --web.listen-address=[$(HOST_IP)]:{{ .Values.service.port }}
+-{{- if .Values.extraArgs }}
+-{{ toYaml .Values.extraArgs | indent 12 }}
+-{{- end }}
++            {{- with .Values.extraArgs }}
++            {{- toYaml . | nindent 12 }}
++            {{- end }}
+           {{- with .Values.containerSecurityContext }}
+-          securityContext: {{ toYaml . | nindent 12 }}
++          securityContext:
++            {{- toYaml . | nindent 12 }}
+           {{- end }}
+           env:
+-          - name: HOST_IP
+-            {{- if .Values.service.listenOnAllInterfaces }}
+-            value: 0.0.0.0
+-            {{- else }}
+-            valueFrom:
+-              fieldRef:
+-                apiVersion: v1
+-                fieldPath: status.hostIP
+-            {{- end }}
++            - name: HOST_IP
++              {{- if .Values.service.listenOnAllInterfaces }}
++              value: 0.0.0.0
++              {{- else }}
++              valueFrom:
++                fieldRef:
++                  apiVersion: v1
++                  fieldPath: status.hostIP
++              {{- end }}
+           {{- range $key, $value := .Values.env }}
+           - name: {{ $key }}
+             value: {{ $value | quote }}
+@@ -98,8 +101,10 @@ spec:
+             periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+             successThreshold: {{ .Values.readinessProbe.successThreshold }}
+             timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
++          {{- with .Values.resources }}
+           resources:
+-{{ toYaml .Values.resources | indent 12 }}
++            {{- toYaml . | nindent 12 }}
++          {{- end }}
+           volumeMounts:
+             - name: proc
+               mountPath: /host/proc
+@@ -115,37 +120,29 @@ spec:
+               {{- end }}
+               readOnly: true
+             {{- end }}
+-            {{- if .Values.extraHostVolumeMounts }}
+             {{- range $_, $mount := .Values.extraHostVolumeMounts }}
+             - name: {{ $mount.name }}
+               mountPath: {{ $mount.mountPath }}
+               readOnly: {{ $mount.readOnly }}
+-            {{- if $mount.mountPropagation }}
+-              mountPropagation: {{ $mount.mountPropagation }}
+-            {{- end }}
+-            {{- end }}
++              {{- with $mount.mountPropagation }}
++              mountPropagation: {{ . }}
++              {{- end }}
+             {{- end }}
+-            {{- if .Values.sidecarVolumeMount }}
+             {{- range $_, $mount := .Values.sidecarVolumeMount }}
+             - name: {{ $mount.name }}
+               mountPath: {{ $mount.mountPath }}
+               readOnly: true
+             {{- end }}
+-            {{- end }}
+-            {{- if .Values.configmaps }}
+             {{- range $_, $mount := .Values.configmaps }}
+             - name: {{ $mount.name }}
+               mountPath: {{ $mount.mountPath }}
+             {{- end }}
+-            {{- if .Values.secrets }}
+             {{- range $_, $mount := .Values.secrets }}
+             - name: {{ .name }}
+               mountPath: {{ .mountPath }}
+             {{- end }}
+-            {{- end }}
+-            {{- end }}
+-{{- if .Values.sidecars }}
+-{{ toYaml .Values.sidecars | indent 8 }}
++        {{- with .Values.sidecars }}
++        {{- toYaml . | nindent 8 }}
+           {{- if or .Values.sidecarVolumeMount .Values.sidecarHostVolumeMounts }}
+           volumeMounts:
+             {{- range $_, $mount := .Values.sidecarVolumeMount }}
+@@ -162,29 +159,29 @@ spec:
+             {{- end }}
+             {{- end }}
+           {{- end }}
+-{{- end }}
+-{{- if .Values.imagePullSecrets }}
++        {{- end }}
++      {{- with .Values.imagePullSecrets }}
+       imagePullSecrets:
+-{{ toYaml .Values.imagePullSecrets | indent 8 }}
++        {{ toYaml . | nindent 8 }}
+       {{- end }}
+       hostNetwork: {{ .Values.hostNetwork }}
+       hostPID: {{ .Values.hostPID }}
+-{{- if .Values.affinity }}
++      {{- with .Values.affinity }}
+       affinity:
+-{{ toYaml .Values.affinity | indent 8 }}
+-{{- end }}
+-{{- with .Values.dnsConfig }}
++        {{- toYaml . | nindent 8 }}
++      {{- end }}
++      {{- with .Values.dnsConfig }}
+       dnsConfig:
+-{{ toYaml . | indent 8 }}
+-{{- end }}
+-{{- if .Values.nodeSelector }}
++        {{- toYaml . | nindent 8 }}
++      {{- end }}
++      {{- with .Values.nodeSelector }}
+       nodeSelector:
+-{{ toYaml .Values.nodeSelector | indent 8 }}
+-{{- end }}
+-    {{- with .Values.tolerations }}
++        {{- toYaml . | nindent 8 }}
++      {{- end }}
++      {{- with .Values.tolerations }}
+       tolerations:
+-{{ toYaml . | indent 8 }}
+-    {{- end }}
++        {{- toYaml . | nindent 8 }}
++      {{- end }}
+       volumes:
+         - name: proc
+           hostPath:
+@@ -197,38 +194,28 @@ spec:
+           hostPath:
+             path: /
+         {{- end }}
+-        {{- if .Values.extraHostVolumeMounts }}
+         {{- range $_, $mount := .Values.extraHostVolumeMounts }}
+         - name: {{ $mount.name }}
+           hostPath:
+             path: {{ $mount.hostPath }}
+         {{- end }}
+-        {{- end }}
+-        {{- if .Values.sidecarVolumeMount }}
+         {{- range $_, $mount := .Values.sidecarVolumeMount }}
+         - name: {{ $mount.name }}
+           emptyDir:
+             medium: Memory
+         {{- end }}
+-        {{- end }}
+-        {{- if .Values.sidecarHostVolumeMounts }}
+         {{- range $_, $mount := .Values.sidecarHostVolumeMounts }}
+         - name: {{ $mount.name }}
+           hostPath:
+             path: {{ $mount.hostPath }}
+         {{- end }}
+-        {{- end }}
+-        {{- if .Values.configmaps }}
+         {{- range $_, $mount := .Values.configmaps }}
+         - name: {{ $mount.name }}
+           configMap:
+             name: {{ $mount.name }}
+         {{- end }}
+-        {{- end }}
+-        {{- if .Values.secrets }}
+         {{- range $_, $mount := .Values.secrets }}
+         - name: {{ $mount.name }}
+           secret:
+             secretName: {{ $mount.name }}
+         {{- end }}
+-        {{- end }}
+diff --git a/charts/prometheus-node-exporter/templates/endpoints.yaml b/charts/prometheus-node-exporter/templates/endpoints.yaml
+index ef3e270b..45eeb8d9 100644
+--- a/charts/prometheus-node-exporter/templates/endpoints.yaml
++++ b/charts/prometheus-node-exporter/templates/endpoints.yaml
+@@ -2,9 +2,10 @@
+ apiVersion: v1
+ kind: Endpoints
+ metadata:
+-  name: {{ template "prometheus-node-exporter.fullname" . }}
+-  namespace: {{ template "prometheus-node-exporter.namespace" . }}
+-  labels: {{ include "prometheus-node-exporter.labels" . | indent 4 }}
++  name: {{ include "prometheus-node-exporter.fullname" . }}
++  namespace: {{ include "prometheus-node-exporter.namespace" . }}
++  labels:
++    {{- include "prometheus-node-exporter.labels" . | nindent 4 }}
+ subsets:
+   - addresses:
+       {{- range .Values.endpoints }}
+diff --git a/charts/prometheus-node-exporter/templates/psp-clusterrole.yaml b/charts/prometheus-node-exporter/templates/psp-clusterrole.yaml
+index e2144cfe..89573172 100644
+--- a/charts/prometheus-node-exporter/templates/psp-clusterrole.yaml
++++ b/charts/prometheus-node-exporter/templates/psp-clusterrole.yaml
+@@ -2,12 +2,13 @@
+ kind: ClusterRole
+ apiVersion: rbac.authorization.k8s.io/v1
+ metadata:
+-  name: psp-{{ template "prometheus-node-exporter.fullname" . }}
+-  labels: {{ include "prometheus-node-exporter.labels" . | indent 4 }}
++  name: psp-{{ include "prometheus-node-exporter.fullname" . }}
++  labels: 
++    {{- include "prometheus-node-exporter.labels" . | nindent 4 }}
+ rules:
+ - apiGroups: ['extensions']
+   resources: ['podsecuritypolicies']
+   verbs:     ['use']
+   resourceNames:
+-  - {{ template "prometheus-node-exporter.fullname" . }}
++    - {{ include "prometheus-node-exporter.fullname" . }}
+ {{- end }}
+diff --git a/charts/prometheus-node-exporter/templates/psp-clusterrolebinding.yaml b/charts/prometheus-node-exporter/templates/psp-clusterrolebinding.yaml
+index 49034b03..33337017 100644
+--- a/charts/prometheus-node-exporter/templates/psp-clusterrolebinding.yaml
++++ b/charts/prometheus-node-exporter/templates/psp-clusterrolebinding.yaml
+@@ -2,14 +2,15 @@
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: ClusterRoleBinding
+ metadata:
+-  name: psp-{{ template "prometheus-node-exporter.fullname" . }}
+-  labels: {{ include "prometheus-node-exporter.labels" . | indent 4 }}
++  name: psp-{{ include "prometheus-node-exporter.fullname" . }}
++  labels:
++    {{- include "prometheus-node-exporter.labels" . | nindent 4 }}
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: ClusterRole
+-  name: psp-{{ template "prometheus-node-exporter.fullname" . }}
++  name: psp-{{ include "prometheus-node-exporter.fullname" . }}
+ subjects:
+   - kind: ServiceAccount
+-    name: {{ template "prometheus-node-exporter.fullname" . }}
+-    namespace: {{ template "prometheus-node-exporter.namespace" . }}
++    name: {{ include "prometheus-node-exporter.fullname" . }}
++    namespace: {{ include "prometheus-node-exporter.namespace" . }}
+ {{- end }}
+diff --git a/charts/prometheus-node-exporter/templates/psp.yaml b/charts/prometheus-node-exporter/templates/psp.yaml
+index b47d2581..4896c84d 100644
+--- a/charts/prometheus-node-exporter/templates/psp.yaml
++++ b/charts/prometheus-node-exporter/templates/psp.yaml
+@@ -2,13 +2,14 @@
+ apiVersion: policy/v1beta1
+ kind: PodSecurityPolicy
+ metadata:
+-  name: {{ template "prometheus-node-exporter.fullname" . }}
+-  namespace: {{ template "prometheus-node-exporter.namespace" . }}
+-  labels: {{ include "prometheus-node-exporter.labels" . | indent 4 }}
++  name: {{ include "prometheus-node-exporter.fullname" . }}
++  namespace: {{ include "prometheus-node-exporter.namespace" . }}
++  labels:
++    {{- include "prometheus-node-exporter.labels" . | nindent 4 }}
+   {{- with .Values.rbac.pspAnnotations }}
+   annotations:
+     {{- toYaml . | nindent 4 }}
+-  {{- end}}
++  {{- end }}
+ spec:
+   privileged: false
+   # Allow core volume types.
+diff --git a/charts/prometheus-node-exporter/templates/service.yaml b/charts/prometheus-node-exporter/templates/service.yaml
+index fbed05ca..c0129dbd 100644
+--- a/charts/prometheus-node-exporter/templates/service.yaml
++++ b/charts/prometheus-node-exporter/templates/service.yaml
+@@ -1,22 +1,23 @@
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: {{ template "prometheus-node-exporter.fullname" . }}
+-  namespace: {{ template "prometheus-node-exporter.namespace" . }}
+-  labels: {{ include "prometheus-node-exporter.labels" . | indent 4 }}
+-{{- if .Values.service.annotations }}
++  name: {{ include "prometheus-node-exporter.fullname" . }}
++  namespace: {{ include "prometheus-node-exporter.namespace" . }}
++  labels:
++    {{- include "prometheus-node-exporter.labels" $ | nindent 4 }}
++  {{- with .Values.service.annotations }}
+   annotations:
+-{{ toYaml .Values.service.annotations | indent 4 }}
+-{{- end }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+ spec:
+   type: {{ .Values.service.type }}
+   ports:
+     - port: {{ .Values.service.port }}
+-    {{- if ( and (eq .Values.service.type "NodePort" ) (not (empty .Values.service.nodePort)) ) }}
++      {{- if ( and (eq .Values.service.type "NodePort" ) (not (empty .Values.service.nodePort)) ) }}
+       nodePort: {{ .Values.service.nodePort }}
+-    {{- end }}
++      {{- end }}
+       targetPort: {{ .Values.service.targetPort }}
+       protocol: TCP
+       name: {{ .Values.service.portName }}
+   selector:
+-    {{- include "prometheus-node-exporter.selectorLabels" . | indent 4 }}
++    {{- include "prometheus-node-exporter.selectorLabels" . | nindent 4 }}
+diff --git a/charts/prometheus-node-exporter/templates/serviceaccount.yaml b/charts/prometheus-node-exporter/templates/serviceaccount.yaml
+index dc3fee6a..b82630ca 100644
+--- a/charts/prometheus-node-exporter/templates/serviceaccount.yaml
++++ b/charts/prometheus-node-exporter/templates/serviceaccount.yaml
+@@ -1,14 +1,17 @@
+-{{- if .Values.rbac.create -}}
+-{{- if .Values.serviceAccount.create -}}
++{{- if and .Values.rbac.create .Values.serviceAccount.create -}}
+ apiVersion: v1
+ kind: ServiceAccount
+ metadata:
+-  name: {{ template "prometheus-node-exporter.serviceAccountName" . }}
+-  namespace: {{ template "prometheus-node-exporter.namespace" . }}
+-  labels: {{ include "prometheus-node-exporter.labels" . | indent 4 }}
++  name: {{ include "prometheus-node-exporter.serviceAccountName" . }}
++  namespace: {{ include "prometheus-node-exporter.namespace" . }}
++  labels: 
++    {{- include "prometheus-node-exporter.labels" . | nindent 4 }}
++  {{- with .Values.serviceAccount.annotations }}
+   annotations:
+-{{ toYaml .Values.serviceAccount.annotations | indent 4 }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++{{- with .Values.serviceAccount.imagePullSecrets }}
+ imagePullSecrets:
+-{{ toYaml .Values.serviceAccount.imagePullSecrets | indent 2 }}
+-{{- end -}}
++  {{- toYaml . | nindent 2 }}
++{{- end }}
+ {{- end -}}
+diff --git a/charts/prometheus-node-exporter/templates/servicemonitor.yaml b/charts/prometheus-node-exporter/templates/servicemonitor.yaml
+index a0c0095e..073ce57a 100644
+--- a/charts/prometheus-node-exporter/templates/servicemonitor.yaml
++++ b/charts/prometheus-node-exporter/templates/servicemonitor.yaml
+@@ -2,51 +2,52 @@
+ apiVersion: {{ .Values.prometheus.monitor.apiVersion | default "monitoring.coreos.com/v1" }}
+ kind: ServiceMonitor
+ metadata:
+-  name: {{ template "prometheus-node-exporter.fullname" . }}
+-  namespace: {{ template "prometheus-node-exporter.monitor-namespace" . }}
+-  labels: {{ include "prometheus-node-exporter.labels" . | indent 4 }}
+-  {{- if .Values.prometheus.monitor.additionalLabels }}
+-    {{- toYaml .Values.prometheus.monitor.additionalLabels | nindent 4 }}
+-  {{- end }}
++  name: {{ include "prometheus-node-exporter.fullname" . }}
++  namespace: {{ include "prometheus-node-exporter.monitor-namespace" . }}
++  labels:
++    {{- include "prometheus-node-exporter.labels" . | nindent 4 }}
++    {{- with .Values.prometheus.monitor.additionalLabels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
+ spec:
+   jobLabel: {{ default "app.kubernetes.io/name" .Values.prometheus.monitor.jobLabel }}
+   {{- include "servicemonitor.scrapeLimits" .Values.prometheus.monitor | nindent 2 }}
+   selector:
+     matchLabels:
+     {{- with .Values.prometheus.monitor.selectorOverride }}
+-    {{- toYaml . | nindent 6 }}
++      {{- toYaml . | nindent 6 }}
+     {{- else }}
+-    {{ include "prometheus-node-exporter.selectorLabels" . | indent 6 }}
++      {{- include "prometheus-node-exporter.selectorLabels" . | nindent 6 }}
+     {{- end }}
+   endpoints:
+     - port: {{ .Values.service.portName }}
+       scheme: {{ .Values.prometheus.monitor.scheme }}
+-    {{- with .Values.prometheus.monitor.basicAuth }}
++      {{- with .Values.prometheus.monitor.basicAuth }}
+       basicAuth:
+         {{- toYaml . | nindent 8 }}
+-    {{- end }}
+-    {{- with .Values.prometheus.monitor.bearerTokenFile }}
++      {{- end }}
++      {{- with .Values.prometheus.monitor.bearerTokenFile }}
+       bearerTokenFile: {{ . }}
+-    {{- end }}
+-    {{- with .Values.prometheus.monitor.tlsConfig }}
++      {{- end }}
++      {{- with .Values.prometheus.monitor.tlsConfig }}
+       tlsConfig:
+         {{- toYaml . | nindent 8 }}
+-    {{- end }}
+-    {{- with .Values.prometheus.monitor.proxyUrl }}
++      {{- end }}
++      {{- with .Values.prometheus.monitor.proxyUrl }}
+       proxyUrl: {{ . }}
+-    {{- end }}
+-    {{- with .Values.prometheus.monitor.interval }}
++      {{- end }}
++      {{- with .Values.prometheus.monitor.interval }}
+       interval: {{ . }}
+-    {{- end }}
+-    {{- with .Values.prometheus.monitor.scrapeTimeout }}
++      {{- end }}
++      {{- with .Values.prometheus.monitor.scrapeTimeout }}
+       scrapeTimeout: {{ . }}
+-    {{- end }}
+-    {{- with .Values.prometheus.monitor.relabelings }}
++      {{- end }}
++      {{- with .Values.prometheus.monitor.relabelings }}
+       relabelings:
+         {{- toYaml . | nindent 8 }}
+-    {{- end }}
+-    {{- with .Values.prometheus.monitor.metricRelabelings }}
++      {{- end }}
++      {{- with .Values.prometheus.monitor.metricRelabelings }}
+       metricRelabelings:
+         {{- toYaml . | nindent 8 }}
+-    {{- end }}
++      {{- end }}
+ {{- end }}
+diff --git a/charts/prometheus-node-exporter/templates/verticalpodautoscaler.yaml b/charts/prometheus-node-exporter/templates/verticalpodautoscaler.yaml
+index 918dc0b1..ae8295d9 100644
+--- a/charts/prometheus-node-exporter/templates/verticalpodautoscaler.yaml
++++ b/charts/prometheus-node-exporter/templates/verticalpodautoscaler.yaml
+@@ -2,32 +2,33 @@
+ apiVersion: autoscaling.k8s.io/v1
+ kind: VerticalPodAutoscaler
+ metadata:
+-  name: {{ template "prometheus-node-exporter.fullname" . }}
+-  namespace: {{ template "prometheus-node-exporter.namespace" . }}
+-  labels: {{ include "prometheus-node-exporter.labels" . | indent 4 }}
++  name: {{ include "prometheus-node-exporter.fullname" . }}
++  namespace: {{ include "prometheus-node-exporter.namespace" . }}
++  labels:
++    {{- include "prometheus-node-exporter.labels" . | nindent 4 }}
+ spec:
+   resourcePolicy:
+     containerPolicies:
+-    - containerName: {{ template "prometheus-node-exporter.name" . }}
+-      {{- if .Values.verticalPodAutoscaler.controlledResources }}
+-      controlledResources: {{ .Values.verticalPodAutoscaler.controlledResources }}
++    - containerName: {{ include "prometheus-node-exporter.name" . }}
++      {{- with .Values.verticalPodAutoscaler.controlledResources }}
++      controlledResources: {{ . }}
+       {{- end }}
+-      {{- if .Values.verticalPodAutoscaler.maxAllowed }}
++      {{- with .Values.verticalPodAutoscaler.maxAllowed }}
+       maxAllowed:
+-        {{ toYaml .Values.verticalPodAutoscaler.maxAllowed | nindent 8 }}
++        {{- toYaml . | nindent 8 }}
+       {{- end }}
+-      {{- if .Values.verticalPodAutoscaler.minAllowed }}
++      {{- with .Values.verticalPodAutoscaler.minAllowed }}
+       minAllowed:
+-        {{ toYaml .Values.verticalPodAutoscaler.minAllowed | nindent 8 }}
++        {{- toYaml . | nindent 8 }}
+       {{- end }}
+   targetRef:
+     apiVersion: apps/v1
+     kind: DaemonSet
+-    name:  {{ template "prometheus-node-exporter.fullname" . }}
++    name:  {{ include "prometheus-node-exporter.fullname" . }}
+   {{- if .Values.verticalPodAutoscaler.updatePolicy }}
+   updatePolicy:
+-    {{- if .Values.verticalPodAutoscaler.updatePolicy.updateMode }}
+-    updateMode: {{ .Values.verticalPodAutoscaler.updatePolicy.updateMode  }}
++    {{- with .Values.verticalPodAutoscaler.updatePolicy.updateMode }}
++    updateMode: {{ . }}
+     {{- end }}
+   {{- end }}
+ {{- end }}

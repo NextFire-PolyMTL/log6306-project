@@ -1,0 +1,581 @@
+commit 296bd9909dcdb22ac868f9b8682dbe446f711025
+Author: Andrew Plummer <plummer574@gmail.com>
+Date:   Thu Jan 17 11:52:56 2019 +0000
+
+    [stable/ark] CRD hooks and schedules (#7165)
+    
+    * [stable/ark] Refactor to use crd-install hook
+    
+    Signed-off-by: Andrew Plummer <plummer574@gmail.com>
+    
+    * [stable/ark] Add option to create schedules
+    
+    Signed-off-by: Andrew Plummer <plummer574@gmail.com>
+    
+    * [stable/ark] Bump chart version number
+    
+    Signed-off-by: Andrew Plummer <plummer574@gmail.com>
+    
+    * [stable/ark] Set required tiller version
+    
+    Signed-off-by: Andrew Plummer <plummer574@gmail.com>
+    
+    * [stable/ark] CR: Un-capture root context
+    
+    Signed-off-by: Andrew Plummer <plummer574@gmail.com>
+
+diff --git a/stable/ark/Chart.yaml b/stable/ark/Chart.yaml
+index 3cf2142b8..16bc37731 100644
+--- a/stable/ark/Chart.yaml
++++ b/stable/ark/Chart.yaml
+@@ -2,10 +2,9 @@ apiVersion: v1
+ appVersion: 0.9.1
+ description: A Helm chart for ark
+ name: ark
+-version: 1.2.5
++version: 2.0.0
+ home: https://github.com/heptio/ark
+ icon: https://cdn-images-1.medium.com/max/1600/1*-9mb3AKnKdcL_QD3CMnthQ.png
+-
+ sources:
+ - https://github.com/heptio/ark
+ maintainers:
+@@ -13,3 +12,4 @@ maintainers:
+     email: d-caruso@hotmail.it
+   - name: unguiculus
+     email: unguiculus@gmail.com
++tillerVersion: ">=2.10.0"
+diff --git a/stable/ark/README.md b/stable/ark/README.md
+index ea8a999d0..b63a832be 100644
+--- a/stable/ark/README.md
++++ b/stable/ark/README.md
+@@ -3,21 +3,6 @@
+ This helm chart installs Ark version v0.9.0
+ https://github.com/heptio/ark/tree/v0.9.0
+ 
+-## Premise
+-In general, Helm cannot install CRDs and resources based on these CRDs in the same Helm chart because CRDs need to be installed before CRD
+-resources can be created and Helm cannot guarantee the correct ordering for this to work.
+-
+-As a workaround, the chart creates a Config resource via post-install hook.
+-Since resources created by hooks are not managed by Helm, a pre-delete hook removes the Config CRD when the release is deleted.
+-
+-At the same time the resources created with the hook are completely transparent to Helm, that is, when you delete the
+-chart those resources remain there. Hence we need a second hook for deleting them (see hook-delete.yaml)
+-
+-## ConfigMap customization
+-Since we want to have a customizable chart it's important that the configmap is a template and not a static file.
+-To do this we add the keyword `tpl` when reading the file
+-- {{ (tpl (.Files.Glob "configuration/").AsConfig .) | indent 2 }}
+-
+ 
+ ## Prerequisites
+ 
+@@ -45,22 +30,16 @@ Parameter | Description | Default | Required
+ `gcSyncPeriod` | How frequently Ark queries the object storage to delete backup files that have passed their TTL.  | `60m` | yes
+ `scheduleSyncPeriod` | How frequently Ark checks its Schedule resource objects to see if a backup needs to be initiated  | `1m` | yes
+ `restoreOnlyMode` | When RestoreOnly mode is on, functionality for backups, schedules, and expired backup deletion is turned off. Restores are made from existing backup files in object storage.  | `false` | yes
+-`kubectl.image` | A docker image with kubectl, required by hook-deploy.yaml and hook-delete.yaml  | `docker pull claranet/gcloud-kubectl-docker` | yes
+ 
+ Parameter | Description | Default
+ --- | --- | ---
+ `image.repository` | Image repository | `gcr.io/heptio-images/ark`
+ `image.tag` | Image tag | `v0.9.1`
+ `image.pullPolicy` | Image pull policy | `IfNotPresent`
+-`kubectl.image.repository` | Image repository | `claranet/gcloud-kubectl-docker`
+-`kubectl.image.tag` | Image tag | `1.0.0`
+-`kubectl.image.pullPolicy` | Image pull policy | `IfNotPresent`
+ `podAnnotations` | Annotations for the Ark server pod | `{}`
+ `rbac.create` | If true, create and use RBAC resources | `true`
+ `rbac.server.serviceAccount.create` | Whether a new service account name that the server will use should be created | `true`
+ `rbac.server.serviceAccount.name` | Service account to be used for the server. If not set and `rbac.server.serviceAccount.create` is `true` a name is generated using the fullname template | ``
+-`rbac.hook.serviceAccount.create` | Whether a new service account name that the hook will use should be created | `true`
+-`rbac.hook.serviceAccount.name` | Service account to be used for the server. If not set and `rbac.hook.serviceAccount.create` is `true` a name is generated using the fullname template | ``
+ `resources` | Resource requests and limits | `{}`
+ `tolerations` | List of node taints to tolerate | `[]`
+ `nodeSelector` | Node labels for pod assignment | `{}`
+@@ -82,6 +61,7 @@ Parameter | Description | Default
+ `credentials.existingSecret` | If specified and `useSecret` is `true`, uses an existing secret with this name instead of creating one | ``
+ `credentials.useSecret` | Whether a secret should be used. Set this to `false` when using `kube2iam` | `true`
+ `credentials.secretContents` | Contents for the credentials secret | `{}`
++`schedules` | A dict of schedules | `{}`
+ 
+ 
+ ## How to
+diff --git a/stable/ark/templates/_helpers.tpl b/stable/ark/templates/_helpers.tpl
+index 2790ed86a..a1ca9317c 100644
+--- a/stable/ark/templates/_helpers.tpl
++++ b/stable/ark/templates/_helpers.tpl
+@@ -31,17 +31,6 @@ Create chart name and version as used by the chart label.
+ {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
+ 
+-{{/*
+-Create the name of the service account to use for creating or deleting the ark config
+-*/}}
+-{{- define "ark.hookServiceAccount" -}}
+-{{- if .Values.serviceAccount.hook.create -}}
+-    {{ default (printf "%s-%s" (include "ark.fullname" .) "hook") .Values.serviceAccount.hook.name }}
+-{{- else -}}
+-    {{ default "default" .Values.serviceAccount.hook.name }}
+-{{- end -}}
+-{{- end -}}
+-
+ {{/*
+ Create the name of the service account to use for creating or deleting the ark server
+ */}}
+diff --git a/stable/ark/templates/backups.yaml b/stable/ark/templates/backups.yaml
+index 46a5ef5be..3591c03b7 100644
+--- a/stable/ark/templates/backups.yaml
++++ b/stable/ark/templates/backups.yaml
+@@ -7,6 +7,8 @@ metadata:
+     heritage: {{ .Release.Service }}
+     release: {{ .Release.Name }}
+     app: {{ template "ark.name" . }}
++  annotations:
++    "helm.sh/hook": crd-install
+ spec:
+   group: ark.heptio.com
+   version: v1
+diff --git a/stable/ark/templates/config.yaml b/stable/ark/templates/config.yaml
+new file mode 100644
+index 000000000..1ac5b60db
+--- /dev/null
++++ b/stable/ark/templates/config.yaml
+@@ -0,0 +1,48 @@
++apiVersion: ark.heptio.com/v1
++kind: Config
++metadata:
++  name: default
++  labels:
++    chart: {{ template "ark.chart" . }}
++    heritage: {{ .Release.Service }}
++    release: {{ .Release.Name }}
++    app: {{ template "ark.name" . }}
++{{ with .Values.configuration }}
++{{- with .persistentVolumeProvider }}
++persistentVolumeProvider:
++  name: {{ .name  }}
++{{ with .config }}
++  config:
++  {{- with .region }}
++    region: {{ . }}
++  {{- end }}
++  {{- with .apitimeout }}
++    apiTimeout: {{ . }}
++  {{- end }}
++{{- end }}
++{{- end }}
++{{- with .backupStorageProvider }}
++backupStorageProvider:
++  name: {{ .name }}
++  bucket: {{ .bucket  }}
++{{- with .config }}
++  config:
++  {{- with .region }}
++    region: {{ . }}
++  {{- end }}
++  {{- with .s3ForcePathStyle }}
++    s3ForcePathStyle: {{ . }}
++  {{- end }}
++  {{- with .s3Url }}
++    s3Url: {{ . }}
++  {{- end }}
++  {{- with .kmsKeyId }}
++    kmsKeyId: {{ . }}
++  {{- end }}
++{{- end }}
++{{- end }}
++backupSyncPeriod: {{ .backupSyncPeriod }}
++gcSyncPeriod: {{ .gcSyncPeriod }}
++scheduleSyncPeriod: {{ .scheduleSyncPeriod }}
++restoreOnlyMode: {{ .restoreOnlyMode }}
++{{- end }}
+diff --git a/stable/ark/templates/configmap.yaml b/stable/ark/templates/configmap.yaml
+deleted file mode 100644
+index 074a1b277..000000000
+--- a/stable/ark/templates/configmap.yaml
++++ /dev/null
+@@ -1,54 +0,0 @@
+-apiVersion: v1
+-kind: ConfigMap
+-metadata:
+-  name: {{ template "ark.fullname" . }}
+-  labels:
+-    chart: {{ template "ark.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-    app: {{ template "ark.name" . }}
+-data:
+-  ark-config.yaml: |
+-    apiVersion: ark.heptio.com/v1
+-    kind: Config
+-    metadata:
+-      name: default
+-{{ with .Values.configuration }}
+-  {{- with .persistentVolumeProvider }}
+-    persistentVolumeProvider:
+-      name: {{ .name  }}
+-    {{ with .config }}
+-      config:
+-      {{- with .region }}
+-        region: {{ . }}
+-      {{- end }}
+-      {{- with .apitimeout }}
+-        apiTimeout: {{ . }}
+-      {{- end }}
+-    {{- end }}
+-  {{- end }}
+-  {{- with .backupStorageProvider }}
+-    backupStorageProvider:
+-      name: {{ .name }}
+-      bucket: {{ .bucket  }}
+-    {{- with .config }}
+-      config:
+-      {{- with .region }}
+-        region: {{ . }}
+-      {{- end }}
+-      {{- with .s3ForcePathStyle }}
+-        s3ForcePathStyle: {{ . | quote }}
+-      {{- end }}
+-      {{- with .s3Url }}
+-        s3Url: {{ . }}
+-      {{- end }}
+-      {{- with .kmsKeyId }}
+-        kmsKeyId: {{ . }}
+-      {{- end }}
+-    {{- end }}
+-  {{- end }}
+-    backupSyncPeriod: {{ .backupSyncPeriod }}
+-    gcSyncPeriod: {{ .gcSyncPeriod }}
+-    scheduleSyncPeriod: {{ .scheduleSyncPeriod }}
+-    restoreOnlyMode: {{ .restoreOnlyMode }}
+-{{- end }}
+diff --git a/stable/ark/templates/configs.yaml b/stable/ark/templates/configs.yaml
+index 32925d6c4..957815c14 100644
+--- a/stable/ark/templates/configs.yaml
++++ b/stable/ark/templates/configs.yaml
+@@ -7,6 +7,8 @@ metadata:
+     heritage: {{ .Release.Service }}
+     release: {{ .Release.Name }}
+     app: {{ template "ark.name" . }}
++  annotations:
++    "helm.sh/hook": crd-install
+ spec:
+   group: ark.heptio.com
+   version: v1
+diff --git a/stable/ark/templates/deletebackuprequests.yaml b/stable/ark/templates/deletebackuprequests.yaml
+index eb0e0ac14..4dc9baaae 100644
+--- a/stable/ark/templates/deletebackuprequests.yaml
++++ b/stable/ark/templates/deletebackuprequests.yaml
+@@ -7,6 +7,8 @@ metadata:
+     heritage: {{ .Release.Service }}
+     release: {{ .Release.Name }}
+     app: {{ template "ark.name" . }}
++  annotations:
++    "helm.sh/hook": crd-install
+ spec:
+   group: ark.heptio.com
+   version: v1
+diff --git a/stable/ark/templates/downloadrequests.yaml b/stable/ark/templates/downloadrequests.yaml
+index 740650747..c083fe3e6 100644
+--- a/stable/ark/templates/downloadrequests.yaml
++++ b/stable/ark/templates/downloadrequests.yaml
+@@ -7,6 +7,8 @@ metadata:
+     heritage: {{ .Release.Service }}
+     release: {{ .Release.Name }}
+     app: {{ template "ark.name" . }}
++  annotations:
++    "helm.sh/hook": crd-install
+ spec:
+   group: ark.heptio.com
+   version: v1
+diff --git a/stable/ark/templates/hook-delete.yaml b/stable/ark/templates/hook-delete.yaml
+deleted file mode 100644
+index b71b5f7a0..000000000
+--- a/stable/ark/templates/hook-delete.yaml
++++ /dev/null
+@@ -1,40 +0,0 @@
+-{{- if and .Values.configuration.backupStorageProvider.name .Values.configuration.backupStorageProvider.bucket -}}
+-apiVersion: batch/v1
+-kind: Job
+-metadata:
+-  name: {{ template "ark.fullname" . }}-delete-config
+-  labels:
+-    chart: {{ template "ark.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-    app: {{ template "ark.name" . }}
+-  annotations:
+-    "helm.sh/hook": pre-delete
+-    "helm.sh/hook-delete-policy": hook-succeeded
+-spec:
+-  template:
+-    metadata:
+-      labels:
+-        release: {{ .Release.Name }}
+-        app: {{ template "ark.name" . }}
+-    spec:
+-      restartPolicy: Never
+-      containers:
+-        - name: delete-ark-config
+-          image: "{{ .Values.kubectl.image.repository }}:{{ .Values.kubectl.image.tag }}"
+-          imagePullPolicy: {{ .Values.kubectl.image.pullPolicy }}
+-          command:
+-            - kubectl
+-          args:
+-            - delete
+-            - -f
+-            - /config
+-          volumeMounts:
+-            - name: ark-config
+-              mountPath: /config
+-      volumes:
+-        - name: ark-config
+-          configMap:
+-            name: {{ template "ark.fullname" . }}
+-      serviceAccountName: {{ template "ark.hookServiceAccount" . }}
+-{{- end -}}
+diff --git a/stable/ark/templates/hook-deploy.yaml b/stable/ark/templates/hook-deploy.yaml
+deleted file mode 100644
+index 3916b0ac0..000000000
+--- a/stable/ark/templates/hook-deploy.yaml
++++ /dev/null
+@@ -1,40 +0,0 @@
+-{{- if and .Values.configuration.backupStorageProvider.name .Values.configuration.backupStorageProvider.bucket -}}
+-apiVersion: batch/v1
+-kind: Job
+-metadata:
+-  name: {{ template "ark.fullname" . }}-create-config
+-  labels:
+-    chart: {{ template "ark.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-    app: {{ template "ark.name" . }}
+-  annotations:
+-    "helm.sh/hook": post-install
+-    "helm.sh/hook-delete-policy": hook-succeeded
+-spec:
+-  template:
+-    metadata:
+-      labels:
+-        release: {{ .Release.Name }}
+-        app: {{ template "ark.name" . }}
+-    spec:
+-      restartPolicy: Never
+-      containers:
+-        - name: create-ark-config
+-          image: "{{ .Values.kubectl.image.repository }}:{{ .Values.kubectl.image.tag }}"
+-          imagePullPolicy: {{ .Values.kubectl.image.pullPolicy }}
+-          command:
+-            - kubectl
+-          args:
+-            - create
+-            - -f
+-            - /config
+-          volumeMounts:
+-            - name: ark-config
+-              mountPath: /config
+-      volumes:
+-        - name: ark-config
+-          configMap:
+-            name: {{ template "ark.fullname" . }}
+-      serviceAccountName: {{ template "ark.hookServiceAccount" . }}
+-{{- end -}}
+diff --git a/stable/ark/templates/podvolumebackups.yaml b/stable/ark/templates/podvolumebackups.yaml
+index 2164331ee..b649ccf30 100644
+--- a/stable/ark/templates/podvolumebackups.yaml
++++ b/stable/ark/templates/podvolumebackups.yaml
+@@ -7,6 +7,8 @@ metadata:
+     heritage: {{ .Release.Service }}
+     release: {{ .Release.Name }}
+     app: {{ template "ark.name" . }}
++  annotations:
++    "helm.sh/hook": crd-install
+ spec:
+   group: ark.heptio.com
+   version: v1
+diff --git a/stable/ark/templates/podvolumerestores.yaml b/stable/ark/templates/podvolumerestores.yaml
+index 771b2d516..72edce146 100644
+--- a/stable/ark/templates/podvolumerestores.yaml
++++ b/stable/ark/templates/podvolumerestores.yaml
+@@ -7,6 +7,8 @@ metadata:
+     heritage: {{ .Release.Service }}
+     release: {{ .Release.Name }}
+     app: {{ template "ark.name" . }}
++  annotations:
++    "helm.sh/hook": crd-install
+ spec:
+   group: ark.heptio.com
+   version: v1
+diff --git a/stable/ark/templates/rbac.yaml b/stable/ark/templates/rbac.yaml
+index b0a4a33b1..6584e1e93 100644
+--- a/stable/ark/templates/rbac.yaml
++++ b/stable/ark/templates/rbac.yaml
+@@ -16,39 +16,4 @@ roleRef:
+   kind: ClusterRole
+   name: cluster-admin
+   apiGroup: rbac.authorization.k8s.io
+----
+-apiVersion: rbac.authorization.k8s.io/v1beta1
+-kind: ClusterRole
+-metadata:
+-  name: {{ template "ark.fullname" . }}-hook
+-  labels:
+-    kubernetes.io/bootstrapping: rbac-defaults
+-    chart: {{ template "ark.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-    app: {{ template "ark.name" . }}
+-  annotations:
+-    rbac.authorization.kubernetes.io/autoupdate: "true"
+-rules:
+-  - apiGroups: ['ark.heptio.com']
+-    verbs: ["*"]
+-    resources: ["*"]
+----
+-apiVersion: rbac.authorization.k8s.io/v1beta1
+-kind: ClusterRoleBinding
+-metadata:
+-  name: {{ template "ark.fullname" . }}-hook
+-  labels:
+-    chart: {{ template "ark.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-    app: {{ template "ark.name" . }}
+-roleRef:
+-  apiGroup: rbac.authorization.k8s.io
+-  kind: ClusterRole
+-  name: {{ template "ark.fullname" . }}-hook
+-subjects:
+-  - kind: ServiceAccount
+-    name: {{ template "ark.hookServiceAccount" . }}
+-    namespace: {{ .Release.Namespace }}
+ {{- end }}
+diff --git a/stable/ark/templates/resticrepositories.yaml b/stable/ark/templates/resticrepositories.yaml
+index d56ec01d8..8ba66943b 100644
+--- a/stable/ark/templates/resticrepositories.yaml
++++ b/stable/ark/templates/resticrepositories.yaml
+@@ -7,6 +7,8 @@ metadata:
+     heritage: {{ .Release.Service }}
+     release: {{ .Release.Name }}
+     app: {{ template "ark.name" . }}
++  annotations:
++    "helm.sh/hook": crd-install
+ spec:
+   group: ark.heptio.com
+   version: v1
+diff --git a/stable/ark/templates/restores.yaml b/stable/ark/templates/restores.yaml
+index e2a20d4d4..21dbce9bd 100644
+--- a/stable/ark/templates/restores.yaml
++++ b/stable/ark/templates/restores.yaml
+@@ -7,6 +7,8 @@ metadata:
+     heritage: {{ .Release.Service }}
+     release: {{ .Release.Name }}
+     app: {{ template "ark.name" . }}
++  annotations:
++    "helm.sh/hook": crd-install
+ spec:
+   group: ark.heptio.com
+   version: v1
+diff --git a/stable/ark/templates/schedule.yaml b/stable/ark/templates/schedule.yaml
+new file mode 100644
+index 000000000..ceef56c05
+--- /dev/null
++++ b/stable/ark/templates/schedule.yaml
+@@ -0,0 +1,19 @@
++{{- $root := . }}
++{{- range $scheduleName, $schedule := .Values.schedules }}
++apiVersion: ark.heptio.com/v1
++kind: Schedule
++metadata:
++  name: {{ template "ark.fullname" $root }}-{{ $scheduleName }}
++  labels:
++    chart: {{ template "ark.chart" $root }}
++    heritage: {{ $root.Release.Service }}
++    release: {{ $root.Release.Name }}
++    app: {{ template "ark.name" $root }}
++spec:
++  schedule: {{ $schedule.schedule | quote }}
++{{- with $schedule.template }}
++  template:
++{{ toYaml . | indent 8 }}
++{{- end }}
++---
++{{- end }}
+diff --git a/stable/ark/templates/schedules.yaml b/stable/ark/templates/schedules.yaml
+index 52d7bcf53..f7f1850a5 100644
+--- a/stable/ark/templates/schedules.yaml
++++ b/stable/ark/templates/schedules.yaml
+@@ -7,6 +7,8 @@ metadata:
+     heritage: {{ .Release.Service }}
+     release: {{ .Release.Name }}
+     app: {{ template "ark.name" . }}
++  annotations:
++    "helm.sh/hook": crd-install
+ spec:
+   group: ark.heptio.com
+   version: v1
+diff --git a/stable/ark/templates/serviceaccount-hook.yaml b/stable/ark/templates/serviceaccount-hook.yaml
+deleted file mode 100644
+index b47d60d58..000000000
+--- a/stable/ark/templates/serviceaccount-hook.yaml
++++ /dev/null
+@@ -1,12 +0,0 @@
+-{{- if .Values.serviceAccount.hook.create }}
+-apiVersion: v1
+-kind: ServiceAccount
+-metadata:
+-  name: {{ template "ark.hookServiceAccount" . }}
+-  labels:
+-    chart: {{ template "ark.chart" . }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
+-    app: {{ template "ark.name" . }}
+-{{- end }}
+-
+diff --git a/stable/ark/values.yaml b/stable/ark/values.yaml
+index fa286a39d..27915d041 100644
+--- a/stable/ark/values.yaml
++++ b/stable/ark/values.yaml
+@@ -3,13 +3,6 @@ image:
+   tag: v0.9.1
+   pullPolicy: IfNotPresent
+ 
+-# A docker image with kubectl installed
+-kubectl:
+-  image:
+-    repository: claranet/gcloud-kubectl-docker
+-    tag: 1.0.0
+-    pullPolicy: IfNotPresent
+-
+ # Only kube2iam: change the AWS_ACCOUNT_ID and HEPTIO_ARK_ROLE_NAME
+ podAnnotations: {}
+ #  iam.amazonaws.com/role: arn:aws:iam::<AWS_ACCOUNT_ID>:role/<HEPTIO_ARK_ROLE_NAME>
+@@ -20,9 +13,6 @@ rbac:
+ resources: {}
+ 
+ serviceAccount:
+-  hook:
+-    create: true
+-    name:
+   server:
+     create: true
+     name:
+@@ -57,6 +47,16 @@ configuration:
+   # additional key/value pairs to be used as environment variables such as "AWS_CLUSTER_NAME: 'yourcluster.domain.tld'"
+   extraEnvVars: {}
+ 
++# Eg:
++# schedules:
++#   mybackup:
++#     schedule: "0 0 * * *"
++#     template:
++#       ttl: "240h"
++#       includedNamespaces:
++#        - foo
++schedules: {}
++
+ credentials:
+   existingSecret:
+   useSecret: true

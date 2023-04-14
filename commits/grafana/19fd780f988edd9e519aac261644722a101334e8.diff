@@ -1,0 +1,34 @@
+commit 19fd780f988edd9e519aac261644722a101334e8 (from 5b2dacdfe93fa306d83302455890b9deb7f814a0)
+Merge: 5b2dacdf e7283d57
+Author: MH <zanhsieh@gmail.com>
+Date:   Tue Nov 15 15:29:04 2022 +0800
+
+    Merge pull request #1976 from zanac1986/fix/grafana-hotfix-issue-1975
+    
+    [grafana] refactor hotfix issue 1975
+
+diff --git a/charts/grafana/Chart.yaml b/charts/grafana/Chart.yaml
+index b3a9e2a9..f266a5ef 100644
+--- a/charts/grafana/Chart.yaml
++++ b/charts/grafana/Chart.yaml
+@@ -1,6 +1,6 @@
+ apiVersion: v2
+ name: grafana
+-version: 6.44.0
++version: 6.44.1
+ appVersion: 9.2.4
+ kubeVersion: "^1.8.0-0"
+ description: The leading tool for querying and visualizing time series and metrics.
+diff --git a/charts/grafana/templates/serviceaccount.yaml b/charts/grafana/templates/serviceaccount.yaml
+index 6c5cb758..784e71ba 100644
+--- a/charts/grafana/templates/serviceaccount.yaml
++++ b/charts/grafana/templates/serviceaccount.yaml
+@@ -10,7 +10,7 @@ metadata:
+     {{- end }}
+   {{- with .Values.serviceAccount.annotations }}
+   annotations:
+-    {{- tpl (toYaml . | indent 4) $root }}
++    {{- tpl (toYaml . | nindent 4) $root }}
+   {{- end }}
+   name: {{ include "grafana.serviceAccountName" . }}
+   namespace: {{ include "grafana.namespace" . }}

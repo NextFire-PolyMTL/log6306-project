@@ -1,0 +1,117 @@
+commit 48c58a43053211481171fad776d65aab1ab34026
+Author: hamza3202 <hamza@aurorasolutions.io>
+Date:   Mon Apr 22 23:27:45 2019 +0500
+
+    [stable/jenkins] Add support for openshift route in jenkins (#12973)
+    
+    * Fix configmap of keycloak
+    
+    Signed-off-by: kahootali <kahoot.ali@gmail.com>
+    
+    * Add support for serviceAccountAnnotations
+    
+    Signed-off-by: Muhammad Hamza Zaib <hamza@aurorasolutions.io>
+    
+    * Add open shift route
+    
+    Signed-off-by: Muhammad Hamza Zaib <hamza@aurorasolutions.io>
+    
+    * Remove option to specify jenkins route api version
+    
+    Signed-off-by: Muhammad Hamza Zaib <hamza@aurorasolutions.io>
+    
+    * Update chart version
+    
+    Signed-off-by: Muhammad Hamza Zaib <hamza@aurorasolutions.io>
+    
+    * Refactor code according to revised repository code.
+    
+    Signed-off-by: Muhammad Hamza Zaib <hamza@aurorasolutions.io>
+    
+    * Add default labels.
+    
+    Signed-off-by: Muhammad Hamza Zaib <hamza@aurorasolutions.io>
+
+diff --git a/stable/jenkins/Chart.yaml b/stable/jenkins/Chart.yaml
+index 5cb8028dc..79ceb04d2 100755
+--- a/stable/jenkins/Chart.yaml
++++ b/stable/jenkins/Chart.yaml
+@@ -1,6 +1,6 @@
+ name: jenkins
+ home: https://jenkins.io/
+-version: 1.0.0
++version: 1.1.0
+ appVersion: lts
+ description: Open source continuous integration server. It supports multiple SCM tools
+   including CVS, Subversion and Git. It can execute Apache Ant and Apache Maven-based
+diff --git a/stable/jenkins/README.md b/stable/jenkins/README.md
+index 4ed8f00d8..ad8b3753c 100644
+--- a/stable/jenkins/README.md
++++ b/stable/jenkins/README.md
+@@ -82,6 +82,10 @@ The following tables list the configurable parameters of the Jenkins chart and t
+ | `master.ingress.labels`           | Ingress labels                       | `{}`                                      |
+ | `master.ingress.path`             | Ingress path                         | Not set                                   |
+ | `master.ingress.tls`              | Ingress TLS configuration            | `[]`                                      |
++| `master.route.enabled`            | Enables openshift route              | `false`                                   |
++| `master.route.annotations`        | Route annotations                    | `{}`                                      |
++| `master.route.labels`             | Route labels                         | `{}`                                      |
++| `master.route.path`               | Route path                           | Not set                                   |
+ | `master.jenkinsUrlProtocol`       | Set protocol for JenkinsLocationConfiguration.xml | Set to `https` if `Master.ingress.tls`, `http` otherwise |
+ | `master.JCasC.enabled`            | Wheter Jenkins Configuration as Code is enabled or not | `false`                 |
+ | `master.JCasC.configScripts`      | List of Jenkins Config as Code scripts | False                                   |
+diff --git a/stable/jenkins/templates/jenkins-master-route.yaml b/stable/jenkins/templates/jenkins-master-route.yaml
+new file mode 100644
+index 000000000..70fea48e8
+--- /dev/null
++++ b/stable/jenkins/templates/jenkins-master-route.yaml
+@@ -0,0 +1,31 @@
++{{- if .Values.master.route.enabled }}
++apiVersion: route.openshift.io/v1
++kind: Route
++metadata:
++  labels:
++    app: {{ template "jenkins.fullname" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++    component: "{{ .Release.Name }}-{{ .Values.master.componentName }}"
++{{- if .Values.master.route.labels }}
++{{ toYaml .Values.master.route.labels | indent 4 }}
++{{- end }}
++{{- if .Values.master.route.annotations }}
++  annotations:
++{{ toYaml .Values.master.route.annotations | indent 4 }}
++{{- end }}
++  name: {{ template "jenkins.fullname" . }}
++spec:
++  host: {{ .Values.master.route.path }}
++  port:
++    targetPort: http
++  tls:
++    insecureEdgeTerminationPolicy: Redirect
++    termination: edge
++  to:
++    kind: Service
++    name: {{ template "jenkins.fullname" . }}
++    weight: 100
++  wildcardPolicy: None
++{{- end }}
+diff --git a/stable/jenkins/values.yaml b/stable/jenkins/values.yaml
+index dee0783b4..e43bd3962 100644
+--- a/stable/jenkins/values.yaml
++++ b/stable/jenkins/values.yaml
+@@ -285,6 +285,14 @@ master:
+     # - secretName: jenkins.cluster.local
+     #   hosts:
+     #     - jenkins.cluster.local
++
++  # Openshift route
++  route:
++    enabled: false
++    labels: {}
++    annotations: {}
++    # path: "/jenkins"
++
+   additionalConfig: {}
+ 
+   # master.hostAliases allows for adding entries to Pod /etc/hosts:

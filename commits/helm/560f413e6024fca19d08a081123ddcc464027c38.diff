@@ -1,0 +1,377 @@
+commit 560f413e6024fca19d08a081123ddcc464027c38
+Author: Douglas Camata <dcamata@newrelic.com>
+Date:   Wed Dec 4 18:04:57 2019 +0100
+
+    [stable/newrelic-infrastructure] Add some globals (#19328)
+    
+    * Add some globals
+    
+    Signed-off-by: Douglas Camata <dcamata@newrelic.com>
+    
+    * Add back the tolerations section to the README
+    
+    Signed-off-by: Douglas Camata <dcamata@newrelic.com>
+    
+    * Wrap resources example with triple backticks
+    
+    Signed-off-by: Douglas Camata <dcamata@newrelic.com>
+    
+    * Readd the tolerations values
+    
+    Signed-off-by: Douglas Camata <dcamata@newrelic.com>
+    
+    * Fix typo
+    
+    Signed-off-by: Douglas Camata <dcamata@newrelic.com>
+    
+    * Fix indentation
+    
+    Signed-off-by: Douglas Camata <dcamata@newrelic.com>
+    
+    * Put back the tmpfs mount for cache
+    
+    Signed-off-by: Douglas Camata <dcamata@newrelic.com>
+    
+    * Fix the default value for privileged in the README
+    
+    Signed-off-by: Douglas Camata <dcamata@newrelic.com>
+    
+    * Fix the description of the tolerations
+    
+    Signed-off-by: Douglas Camata <dcamata@newrelic.com>
+    
+    * More information about globals
+    
+    Signed-off-by: Douglas Camata <dcamata@newrelic.com>
+    
+    * Refactor around the globals section
+    
+    Signed-off-by: Douglas Camata <dcamata@newrelic.com>
+    
+    * Add some inline-code formatting
+    
+    Signed-off-by: Douglas Camata <dcamata@newrelic.com>
+
+diff --git a/stable/newrelic-infrastructure/Chart.yaml b/stable/newrelic-infrastructure/Chart.yaml
+index 074254a82..47cc87726 100644
+--- a/stable/newrelic-infrastructure/Chart.yaml
++++ b/stable/newrelic-infrastructure/Chart.yaml
+@@ -1,7 +1,7 @@
+ apiVersion: v1
+ description: A Helm chart to deploy the New Relic Infrastructure Agent as a DaemonSet
+ name: newrelic-infrastructure
+-version: 0.13.13
++version: 0.13.14
+ appVersion: 1.10.2
+ home: https://hub.docker.com/r/newrelic/infrastructure-k8s/
+ source:
+diff --git a/stable/newrelic-infrastructure/README.md b/stable/newrelic-infrastructure/README.md
+index aefce4068..9034e0ac6 100644
+--- a/stable/newrelic-infrastructure/README.md
++++ b/stable/newrelic-infrastructure/README.md
+@@ -6,29 +6,29 @@ This chart will deploy the New Relic Infrastructure agent as a Daemonset.
+ 
+ ## Configuration
+ 
+-| Parameter                 | Description                                                  | Default                    |
+-| ------------------------- | ------------------------------------------------------------ | -------------------------- |
+-| `cluster`                 | The cluster name for the Kubernetes cluster.                 |                            |
+-| `licenseKey`              | The [license key](https://docs.newrelic.com/docs/accounts/install-new-relic/account-setup/license-key)  for your New Relic Account. This will be preferred configuration option if both `licenseKey` and `customSecret` are specified. | |
+-| `customSecretName`        | Name of the Secret object where the license key is stored    |                            |
+-| `customSecretKey`         | Key in the Secret object where the license key is stored.    |                            |
+-| `config`                  | A `newrelic.yml` file if you wish to provide.                |                            |
+-| `kubeStateMetricsUrl`     | If provided, the discovery process for kube-state-metrics endpoint won't be triggered. Example: http://172.17.0.3:8080 |
+-| `kubeStateMetricsTimeout` | Timeout for accessing kube-state-metrics in milliseconds. If not set the newrelic default is 5000 | |
+-| `rbac.create`             | Enable Role-based authentication                             | `true`                     |
+-| `rbac.pspEnabled`         | Enable pod security policy support                           | `false`                    |
+-| `privileged`              | Enable privileged mode.                                      | `true`                    |
+-| `image.repository`        | The container to pull.                                       | `newrelic/infrastructure`  |
+-| `image.pullPolicy`        | The pull policy.                                             | `IfNotPresent`             |
+-| `image.tag`               | The version of the container to pull.                        | `1.10.2`                   |
+-| `resources`               | Any resources you wish to assign to the pod.                 | See Resources below        |
+-| `verboseLog`              | Should the agent log verbosely. (Boolean)                    | `false`                    |
+-| `priorityClassName`       | Scheduling priority of the pod                               | `nil`                      |
+-| `nodeSelector`            | Node label to use for scheduling                             | `nil`                      |
+-| `tolerations`             | List of node taints to tolerate (requires Kubernetes >= 1.6) | See Tolerarions below      |
+-| `updateStrategy`          | Strategy for DaemonSet updates (requires Kubernetes >= 1.6)  | `RollingUpdate`            |
+-| `serviveAccount.create`   | If true, a service account would be created and assigned to the deployment | true |
+-| `serviveAccount.name`     | The service account to assign to the deployment. If `serviveAccount.create` is true then this name will be used when creating the service account | |
++| Parameter                       | Description                                                  | Default                    |
++| ------------------------------- | ------------------------------------------------------------ | -------------------------- |
++| `cluster`                       | The cluster name for the Kubernetes cluster.                 |                            |
++| `licenseKey`                    | The [license key](https://docs.newrelic.com/docs/accounts/install-new-relic/account-setup/license-key) for your New Relic Account. This will be preferred configuration option if both `licenseKey` and `customSecret` are specified. | |
++| `customSecretName`              | Name of the Secret object where the license key is stored    |                            |
++| `customSecretLicenseKey`        | Key in the Secret object where the license key is stored.    |                            |
++| `config`                        | A `newrelic.yml` file if you wish to provide.                |                            |
++| `kubeStateMetricsUrl`           | If provided, the discovery process for kube-state-metrics endpoint won't be triggered. Example: http://172.17.0.3:8080 |
++| `kubeStateMetricsTimeout`       | Timeout for accessing kube-state-metrics in milliseconds. If not set the newrelic default is 5000 | |
++| `rbac.create`                   | Enable Role-based authentication                             | `true`                     |
++| `rbac.pspEnabled`               | Enable pod security policy support                           | `false`                    |
++| `privileged`                    | Enable privileged mode.                                      | `true`                     |
++| `image.repository`              | The container to pull.                                       | `newrelic/infrastructure`  |
++| `image.pullPolicy`              | The pull policy.                                             | `IfNotPresent`             |
++| `image.tag`                     | The version of the container to pull.                        | `1.10.2`                   |
++| `resources`                     | Any resources you wish to assign to the pod.                 | See Resources below        |
++| `verboseLog`                    | Should the agent log verbosely. (Boolean)                    | `false`                    |
++| `priorityClassName`             | Scheduling priority of the pod                               | `nil`                      |
++| `nodeSelector`                  | Node label to use for scheduling                             | `nil`                      |
++| `tolerations`                   | List of node taints to tolerate (requires Kubernetes >= 1.6) | See Tolerarions below      |
++| `updateStrategy`                | Strategy for DaemonSet updates (requires Kubernetes >= 1.6)  | `RollingUpdate`            |
++| `serviveAccount.create`         | If true, a service account would be created and assigned to the deployment | true |
++| `serviveAccount.name`           | The service account to assign to the deployment. If `serviveAccount.create` is true then this name will be used when creating the service account | |
+ 
+ ## Example
+ 
+@@ -38,6 +38,22 @@ helm install stable/newrelic-infrastructure \
+ --set cluster=my-k8s-cluster
+ ```
+ 
++## Globals
++
++**Important:** global parameters have higher precedence than locals with the same name.
++
++These are meant to be used when you are writing a chart with subcharts. It helps to avoid
++setting values multiple times on different subcharts.
++
++More information on globals and subcharts can be found at [Helm's official documentation](https://helm.sh/docs/topics/chart_template_guide/subcharts_and_globals/).
++
++| Parameter                       |
++| ------------------------------- |
++| `global.cluster`                |
++| `global.licenseKey`             |
++| `global.customSecretName`       |
++| `global.customSecretLicenseKey` |
++
+ ## Resources
+ 
+ The default set of resources assigned to the pods is shown below:
+@@ -64,4 +80,4 @@ The default set of relations assigned to our daemonset is shown below:
+ 
+ # Config file
+ 
+-If you wish to provide your own `newrelic.yml` you may do so under `config`. There are a few notable exceptions you should be aware of. Some options have been omitted because they are handled either by variables, or a secret. They are display_name, license_key, log_file and verbose.
++If you wish to provide your own `newrelic.yml` you may do so under `config`. There are a few notable exceptions you should be aware of. Some options have been omitted because they are handled either by variables, or a secret. They are `display_name`, `license_key`, `log_file` and `verbose`.
+diff --git a/stable/newrelic-infrastructure/templates/NOTES.txt b/stable/newrelic-infrastructure/templates/NOTES.txt
+index 8fd1bcea8..036bdd174 100644
+--- a/stable/newrelic-infrastructure/templates/NOTES.txt
++++ b/stable/newrelic-infrastructure/templates/NOTES.txt
+@@ -1,10 +1,10 @@
+-{{ if and (or .Values.licenseKey (and .Values.customSecretName .Values.customSecretKey)) .Values.cluster }}
++{{- if (include "newrelic.areValuesValid" .) }}
+ Your deployment of the New Relic Infrastructure agent is complete. You can check on the progress of this by running the following command:
+ 
+     kubectl get daemonset -o wide -w --namespace {{ .Release.Namespace }} {{ template "newrelic.fullname" . }}
+ {{- else -}}
+ ##############################################################################
+-####     ERROR: You did not set a licenseKey and/or cluster name.         ####
++####       ERROR: You did not set a licenseKey and/or cluster name.       ####
+ ##############################################################################
+ 
+ This deployment will be incomplete until you get your API key from New Relic.
+diff --git a/stable/newrelic-infrastructure/templates/_helpers.tpl b/stable/newrelic-infrastructure/templates/_helpers.tpl
+index ad428443d..8e8f2bc6c 100644
+--- a/stable/newrelic-infrastructure/templates/_helpers.tpl
++++ b/stable/newrelic-infrastructure/templates/_helpers.tpl
+@@ -64,4 +64,76 @@ Create the image name depending on the "privileged" flag
+ {{- else -}}
+ "{{ .Values.image.repository }}:{{ .Values.image.tag }}-unprivileged"
+ {{- end -}}
+-{{- end -}}
+\ No newline at end of file
++{{- end -}}
++
++{{/*
++Return the licenseKey
++*/}}
++{{- define "newrelic.licenseKey" -}}
++{{- if .Values.global}}
++  {{- if .Values.global.licenseKey }}
++      {{- .Values.global.licenseKey -}}
++  {{- else -}}
++      {{- .Values.licenseKey | default "" -}}
++  {{- end -}}
++{{- else -}}
++    {{- .Values.licenseKey | default "" -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Return the cluster
++*/}}
++{{- define "newrelic.cluster" -}}
++{{- if .Values.global -}}
++  {{- if .Values.global.cluster -}}
++      {{- .Values.global.cluster -}}
++  {{- else -}}
++      {{- .Values.cluster | default "" -}}
++  {{- end -}}
++{{- else -}}
++  {{- .Values.cluster | default "" -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Return the customSecretName
++*/}}
++{{- define "newrelic.customSecretName" -}}
++{{- if .Values.global }}
++  {{- if .Values.global.customSecretName }}
++      {{- .Values.global.customSecretName -}}
++  {{- else -}}
++      {{- .Values.customSecretName | default "" -}}
++  {{- end -}}
++{{- else -}}
++    {{- .Values.customSecretName | default "" -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Return the customSecretLicenseKey
++*/}}
++{{- define "newrelic.customSecretLicenseKey" -}}
++{{- if .Values.global }}
++  {{- if .Values.global.customSecretLicenseKey }}
++      {{- .Values.global.customSecretLicenseKey -}}
++  {{- else -}}
++      {{- .Values.customSecretLicenseKey | default "" -}}
++  {{- end -}}
++{{- else -}}
++    {{- .Values.customSecretLicenseKey | default "" -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Returns if the template should render, it checks if the required values
++licenseKey and cluster are set.
++*/}}
++{{- define "newrelic.areValuesValid" -}}
++{{- $cluster := include "newrelic.cluster" . -}}
++{{- $licenseKey := include "newrelic.licenseKey" . -}}
++{{- $customSecretName := include "newrelic.customSecretName" . -}}
++{{- $customSecretLicenseKey := include "newrelic.customSecretLicenseKey" . -}}
++{{- and (or $licenseKey (and $customSecretName $customSecretLicenseKey)) $cluster}}
++{{- end -}}
+diff --git a/stable/newrelic-infrastructure/templates/daemonset.yaml b/stable/newrelic-infrastructure/templates/daemonset.yaml
+index 73326bd31..2b4de08e7 100644
+--- a/stable/newrelic-infrastructure/templates/daemonset.yaml
++++ b/stable/newrelic-infrastructure/templates/daemonset.yaml
+@@ -1,4 +1,4 @@
+-{{ if and (or .Values.licenseKey (and .Values.customSecretName .Values.customSecretKey)) .Values.cluster }}
++{{- if (include "newrelic.areValuesValid" .) }}
+ apiVersion: apps/v1beta2
+ kind: DaemonSet
+ metadata:
+@@ -26,10 +26,6 @@ spec:
+         mode: {{ template "newrelic.mode" . }}
+     spec:
+       serviceAccountName: {{ template "newrelic.serviceAccountName" . }}
+-      {{- if .Values.privileged }}
+-      hostNetwork: true # This option is a requirement for the Infrastructure Agent to report the proper hostname in New Relic.
+-      dnsPolicy: ClusterFirstWithHostNet
+-      {{- end }}
+       containers:
+         - name: {{ template "newrelic.name" . }}
+           image: {{ template "newrelic.image" . }}
+@@ -46,15 +42,15 @@ spec:
+             - name: NRIA_LICENSE_KEY
+               valueFrom:
+                 secretKeyRef:
+-                  {{- if .Values.licenseKey }}
++                  {{- if (include "newrelic.licenseKey" .) }}
+                   name: {{ template "newrelic.fullname" . }}-config
+                   key: license
+                   {{- else }}
+-                  name: {{ .Values.customSecretName }}
+-                  key: {{ .Values.customSecretKey }}
++                  name: {{ include "newrelic.customSecretName" . }}
++                  key: {{ include "newrelic.customSecretLicenseKey" . }}
+                   {{- end }}
+             - name: "CLUSTER_NAME"
+-              value: "{{ .Values.cluster }}"
++              value: {{ include "newrelic.cluster" . }}
+             {{- if .Values.kubeStateMetricsUrl }}
+             - name: "KUBE_STATE_METRICS_URL"
+               value: "{{ .Values.kubeStateMetricsUrl }}"
+@@ -92,6 +88,8 @@ spec:
+               subPath: newrelic-infra.yml
+             {{- end }}
+             {{- if .Values.privileged }}
++            - name: dev
++              mountPath: /dev
+             - name: host-docker-socket
+               mountPath: /var/run/docker.sock
+             - name: log
+@@ -107,7 +105,7 @@ spec:
+             - mountPath: /tmp
+               name: tmpfs-tmp
+             - mountPath: /var/cache/nr-kubernetes
+-              name: tmpfs-tmp
++              name: tmpfs-cache
+             {{- end }}
+           {{- if .Values.resources }}
+           resources:
+@@ -115,6 +113,9 @@ spec:
+           {{- end }}
+       volumes:
+         {{- if .Values.privileged }}
++        - name: dev
++          hostPath:
++            path: /dev
+         - name: host-docker-socket
+           hostPath:
+             path: /var/run/docker.sock
+diff --git a/stable/newrelic-infrastructure/templates/secret.yaml b/stable/newrelic-infrastructure/templates/secret.yaml
+index 10f2a5898..ae57407df 100644
+--- a/stable/newrelic-infrastructure/templates/secret.yaml
++++ b/stable/newrelic-infrastructure/templates/secret.yaml
+@@ -1,4 +1,5 @@
+-{{- if .Values.licenseKey }}
++{{- $licenseKey := include "newrelic.licenseKey" . -}}
++{{- if $licenseKey }}
+ apiVersion: v1
+ kind: Secret
+ metadata:
+@@ -6,5 +7,5 @@ metadata:
+   name: {{ template "newrelic.fullname" . }}-config
+ type: Opaque
+ data:
+-  license: {{ .Values.licenseKey | b64enc }}
++  license: {{ $licenseKey | b64enc }}
+ {{- end }}
+diff --git a/stable/newrelic-infrastructure/values.yaml b/stable/newrelic-infrastructure/values.yaml
+index c859b4063..2395d05a0 100644
+--- a/stable/newrelic-infrastructure/values.yaml
++++ b/stable/newrelic-infrastructure/values.yaml
+@@ -1,14 +1,23 @@
+-# IMPORTANT: Specify your New Relic API key here.
++# - Specify either the New Relic license key or the secret which
++#   contains it.
++#
++# - Specify the Kubernetes cluster name.
++#   https://docs.newrelic.com/docs/kubernetes-monitoring-integration
++#
+ # licenseKey:
++# customSecretName:
++# customSecretLicenseKey:
++# cluster:
++#
++# IMPORTANT: the previous values can also be set as global so that they
++# can be shared by other newrelic product's charts
++#
++# global:
++#   licenseKey:
++#   customSecretName:
++#   customSecretLicenseKey:
++#   cluster:
+ #
+-# or Specify secret which contains New Relic API key
+-# customSecretName: secret_name
+-# customSecretKey: secret_key
+-
+-# IMPORTANT: The Kubernetes cluster name
+-# https://docs.newrelic.com/docs/kubernetes-monitoring-integration
+-# cluster: ""
+-
+ # kubeStateMetricsUrl - if provided, the discovery process for kube-state-metrics endpoint won't be triggered
+ # Only HTTP is accepted. This is an example value: http://172.17.0.3:8080
+ # kubeStateMetricsUrl:

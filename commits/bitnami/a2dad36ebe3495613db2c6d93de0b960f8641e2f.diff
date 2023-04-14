@@ -1,0 +1,387 @@
+commit a2dad36ebe3495613db2c6d93de0b960f8641e2f
+Author: tompizmor <tompizmor@gmail.com>
+Date:   Wed Mar 21 18:50:42 2018 +0100
+
+    Refactor node helm chart with service catalog approach
+
+diff --git a/incubator/externaldb-helper/Chart.yaml b/incubator/externaldb-helper/Chart.yaml
+new file mode 100644
+index 0000000000..85bf48bcbe
+--- /dev/null
++++ b/incubator/externaldb-helper/Chart.yaml
+@@ -0,0 +1,13 @@
++name: externaldb-helper
++version: 0.0.1
++appVersion: 0.0.1
++description: Helper to define templates for external databases
++keywords:
++- helper
++- broker
++- service
++- catalog
++maintainers:
++- name: Bitnami
++  email: containers@bitnami.com
++engine: gotpl
+diff --git a/incubator/externaldb-helper/README.md b/incubator/externaldb-helper/README.md
+new file mode 100644
+index 0000000000..58fa267ad7
+--- /dev/null
++++ b/incubator/externaldb-helper/README.md
+@@ -0,0 +1,4 @@
++# External DB Helper
++
++This chart is just a helper that defines a set of templates to help mapping secrets keys from different broker implementation for the Kubernetes Service Catalog.
++
+diff --git a/incubator/externaldb-helper/templates/_helpers.tpl b/incubator/externaldb-helper/templates/_helpers.tpl
+new file mode 100644
+index 0000000000..5157b97785
+--- /dev/null
++++ b/incubator/externaldb-helper/templates/_helpers.tpl
+@@ -0,0 +1,56 @@
++{{/* vim: set filetype=mustache: */}}
++{{/*
++CUSTOM TEMPLATES FOR SECRET MAPPING
++    - host
++    - port
++    - username
++    - password
++*/}}
++
++{{- define "externaldb.host" -}}
++  {{- if eq .type "osba"}}
++    {{- printf "%s" "host" -}}
++  {{- else if eq .type "gce"}}
++    {{- printf "%s" "host" -}}
++  {{- else if eq .type "aws"}}
++    {{- printf "%s" "host" -}}
++  {{- else }}
++    {{- printf "%s" "host" -}}
++  {{- end }}
++{{- end -}}
++
++{{- define "externaldb.port" -}}
++  {{- if eq .type "osba"}}
++    {{- printf "%s" "port" -}}
++  {{- else if eq .type "gce"}}
++    {{- printf "%s" "port" -}}
++  {{- else if eq .type "aws"}}
++    {{- printf "%s" "port" -}}
++  {{- else }}
++    {{- printf "%s" "port" -}}
++  {{- end }}
++{{- end -}}
++
++{{- define "externaldb.username" -}}
++  {{- if eq .type "osba"}}
++    {{- printf "%s" "username" -}}
++  {{- else if eq .type "gce"}}
++    {{- printf "%s" "username" -}}
++  {{- else if eq .type "aws"}}
++    {{- printf "%s" "username" -}}
++  {{- else }}
++    {{- printf "%s" "username" -}}
++  {{- end }}
++{{- end -}}
++
++{{- define "externaldb.password" -}}
++  {{- if eq .type "osba"}}
++    {{- printf "%s" "password" -}}
++  {{- else if eq .type "gce"}}
++    {{- printf "%s" "password" -}}
++  {{- else if eq .type "aws"}}
++    {{- printf "%s" "password" -}}
++  {{- else }}
++    {{- printf "%s" "password" -}}
++  {{- end }}
++{{- end -}}
+diff --git a/incubator/node/README.md b/incubator/node/README.md
+index 6b82a29de6..2b794824d5 100644
+--- a/incubator/node/README.md
++++ b/incubator/node/README.md
+@@ -47,27 +47,28 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following tables lists the configurable parameters of the Node chart and their default values.
+ 
+-|              Parameter               |            Description                                    |                        Default                            |
+-|--------------------------------------|-----------------------------------------------------------|-----------------------------------------------------------|
+-| `image`                              | Node image                                                | `bitnami/node:{VERSION}`                                  |
+-| `devImage`                           | Image used for initContainers                             | `bitnami/node:{VERSION}`                                  |
+-| `imagePullPolicy`                    | Image pull policy                                         | `IfNotPresent`                                            |
+-| `repository`                         | Repo of the application                                   | `https://github.com/jbianquetti-nami/simple-node-app.git` |
+-| `revision`                           | Revision  to checkout                                     | `master`                                                  |
+-| `replicas`                           | Number of replicas for the application                    | `3`                                                       |
+-| `applicationPort`                    | Port where the application will be running                | `3000`                                                    |
+-| `serviceType`                        | Kubernetes Service type                                   | `LoadBalancer`                                            |
+-| `persistence.enabled`                | Enable persistence using PVC                              | `false`                                                   |
+-| `persistence.path`                   | Path to persisted directory                               | `/app/data`                                               |
+-| `persistence.accessMode`             | PVC Access Mode                                           | `ReadWriteOnce`                                           |
+-| `persistence.size`                   | PVC Storage Request                                       | `1Gi`                                                     |
+-| `externalDatabase.azure.enabled`     | Create a database on Azure cloud with k8s service catalog | `false`                                                   |
+-| `externalDatabase.azure.location`    | The Azure region in which to deploy the database          | `eastus`                                                  |
+-| `externalDatabase.azure.servicePlan` | The plan to request for the Azure database                | `mongo-db`                                                |
+-| `ingress.enabled`                    | Enable ingress creation                                   | `false`                                                   |
+-| `ingress.path`                       | Ingress path                                              | `/`                                                       |
+-| `ingress.host`                       | Ingress host                                              | `example.local`                                           |
+-| `ingress.tls`                        | TLS configuration for the ingress                         | `{}`                                                      |
++|              Parameter                  |            Description                                    |                        Default                            |
++|-----------------------------------------|-----------------------------------------------------------|-----------------------------------------------------------|
++| `image`                                 | Node image                                                | `bitnami/node:{VERSION}`                                  |
++| `devImage`                              | Image used for initContainers                             | `bitnami/node:{VERSION}`                                  |
++| `imagePullPolicy`                       | Image pull policy                                         | `IfNotPresent`                                            |
++| `repository`                            | Repo of the application                                   | `https://github.com/jbianquetti-nami/simple-node-app.git` |
++| `revision`                              | Revision  to checkout                                     | `master`                                                  |
++| `replicas`                              | Number of replicas for the application                    | `3`                                                       |
++| `applicationPort`                       | Port where the application will be running                | `3000`                                                    |
++| `serviceType`                           | Kubernetes Service type                                   | `LoadBalancer`                                            |
++| `persistence.enabled`                   | Enable persistence using PVC                              | `false`                                                   |
++| `persistence.path`                      | Path to persisted directory                               | `/app/data`                                               |
++| `persistence.accessMode`                | PVC Access Mode                                           | `ReadWriteOnce`                                           |
++| `persistence.size`                      | PVC Storage Request                                       | `1Gi`                                                     |
++| `mongodb.install`                       | Wheter to install or not the MongoDB chart                | `true`                                                    |
++| `externaldb.secretName`                 | Secret containing existing database credentials           | `nil`                                                     |
++| `externaldb.type`                       | Type of database that defines the database secret mapping | `osba`                                                    |
++| `externaldb.broker.serviceInstanceName` | The existing ServiceInstance to be used                   | `nil`                                                     |
++| `ingress.enabled`                       | Enable ingress creation                                   | `false`                                                   |
++| `ingress.path`                          | Ingress path                                              | `/`                                                       |
++| `ingress.host`                          | Ingress host                                              | `example.local`                                           |
++| `ingress.tls`                           | TLS configuration for the ingress                         | `{}`                                                      |
+ 
+ The above parameters map to the env variables defined in [bitnami/node](http://github.com/bitnami/bitnami-docker-node). For more information please refer to the [bitnami/node](http://github.com/bitnami/bitnami-docker-node) image documentation.
+ 
+@@ -132,17 +133,57 @@ ingress:
+         - example.com
+ ```
+ 
++## Connect your application to an already existing database
++
++1. Create a secret containing your database credentials:
++
++  ```
++  $ kubectl create secret generic my-database-secret --from-literal=host=YOUR_DATABASE_HOST --from-literal=port=YOUR_DATABASE_PORT --from-literal=user=YOUR_DATABASE_USER --from-literal=password=YOUR_DATABASE_PASSWORD
++  ```
++  
++  `YOUR_DATABASE_HOST`, `YOUR_DATABASE_PORT`, `YOUR_DATABASE_USER` and `YOUR_DATABASE_PASSWORD` are placeholders that must be replaced with correct values.
++
++2. Deploy the node chart specifying the secret name
++
++  ```
++  $ helm install --name node-app --set mongodb.install=false,externaldb.secretName=my-database-secret bitnami-incubator/node
++  ```
++
+ ## Provision a database using the Open Service Broker for Azure
+ 
+ 1. Install Service Catalog in your Kubernetes cluster following [this instructions](https://kubernetes.io/docs/tasks/service-catalog/install-service-catalog-using-helm/)
+ 2. Install the Open Service Broker for Azure in your Kubernetes cluster following [this instructions](https://github.com/Azure/helm-charts/tree/master/open-service-broker-azure)
+-3. Deploy the helm chart:
++3. Create and deploy a ServiceBinding to provision a database server in Azure cloud.
++
++  ```
++  apiVersion: servicecatalog.k8s.io/v1beta1
++  kind: ServiceInstance
++  metadata:
++    name: azure-mongodb-instance
++    labels:
++      app: mongodb
++  spec:
++    clusterServiceClassExternalName: azure-cosmos-mongo-db
++    clusterServicePlanExternalName: mongo-db
++    parameters:
++      location: YOUR_AZURE_LOCATION
++      resourceGroup: mongodb-k8s-service-catalog
++      sslEnforcement: disabled
++      firewallStartIPAddress: 0.0.0.0
++      firewallEndIPAddress: 255.255.255.255
++  ```
++  Please update the `YOUR_AZURE_LOCATION` placeholder in the above example. 
++
++  ```
++  $ kubectl create -f mongodb-service-instance.yml
++  ```
++
++4. Deploy the helm chart:
+ 
+     ```
+-    $ helm install --name node-app --set externalDatabase.azure.enabled=true bitnami-incubator/node
++    $ helm install --name node-app --set mongodb.install=false,externaldb.serviceInstanceName=azure-mongodb-instance bitnami-incubator/node
+     ```
+ 
+-Setting `externalDatabase.azure.enabled` to `true` makes the chart to create a `ServiceInstance` and a `ServiceBinding` kubernetes resources.
+ Once the instance has been provisioned in Azure, a new secret should have been automatically created with the connection parameters for your application.
+ 
+ Deploy the helm chart enabling the Azure external database makes the following assumptions:
+diff --git a/incubator/node/requirements.yaml b/incubator/node/requirements.yaml
+new file mode 100644
+index 0000000000..eabebd75f9
+--- /dev/null
++++ b/incubator/node/requirements.yaml
+@@ -0,0 +1,7 @@
++dependencies:
++- name: mongodb
++  repository: https://kubernetes-charts.storage.googleapis.com/
++  version: 0.4.x
++- name: externaldb-helper
++  repository: https://charts.bitnami.com/stable
++  version: 0.0.x
+diff --git a/incubator/node/templates/_helpers.tpl b/incubator/node/templates/_helpers.tpl
+index 2cb82ad2ce..f07d6b0e68 100644
+--- a/incubator/node/templates/_helpers.tpl
++++ b/incubator/node/templates/_helpers.tpl
+@@ -19,6 +19,6 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this
+ Create a default fully qualified app name.
+ We truncate at 24 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+ */}}
+-{{- define "mariadb.fullname" -}}
+-{{- printf "%s-%s" .Release.Name "mariadb" | trunc 63 | trimSuffix "-" -}}
++{{- define "mongodb.fullname" -}}
++{{- printf "%s-%s" .Release.Name "mongodb" | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
+diff --git a/incubator/node/templates/deployment.yaml b/incubator/node/templates/deployment.yaml
+index be56f746b2..55d2d18063 100644
+--- a/incubator/node/templates/deployment.yaml
++++ b/incubator/node/templates/deployment.yaml
+@@ -36,27 +36,37 @@ spec:
+         image: "{{ .Values.image }}"
+         imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
+         env:
+-        {{- if .Values.externalDatabase.azure.enabled }}
++        {{- if .Values.mongodb.install }}
++        - name: DATABASE_HOST
++          value: {{ template "mongodb.fullname" . }}
++        - name: DATABASE_PORT
++          value: "27017"
++        - name: DATABASE_USER
++          value: {{ .Values.mongodb.mongodbUsername | quote }}
++        - name: DATABASE_PASSWORD
++          value: {{ .Values.mongodb.mongodbDatabase | quote }}
++        {{ else }}
++        {{- $type := dict "type" .Values.externaldb.type }}
+         - name: DATABASE_HOST
+           valueFrom:
+             secretKeyRef:
+-              name: {{ template "node.fullname" . }}-mongodb-secret
+-              key: host
++              name: {{ .Values.externaldb.secretName }}
++              key: {{ template "externaldb.host" $type }} 
+         - name: DATABASE_PORT
+           valueFrom:
+             secretKeyRef:
+-              name: {{ template "node.fullname" . }}-mongodb-secret
+-              key: port
++              name: {{ .Values.externaldb.secretName }}
++              key: {{ template "externaldb.port" $type }} 
+         - name: DATABASE_USER
+           valueFrom:
+             secretKeyRef:
+-              name: {{ template "node.fullname" . }}-mongodb-secret
+-              key: username
++              name: {{ .Values.externaldb.secretName }}
++              key: {{ template "externaldb.host" $type }} 
+         - name: DATABASE_PASSWORD
+           valueFrom:
+             secretKeyRef:
+-              name: {{ template "node.fullname" . }}-mongodb-secret
+-              key: password
++              name: {{ .Values.externaldb.secretName }}
++              key: {{ template "externaldb.host" $type }} 
+         - name: DATABASE_CONNECTION_OPTIONS
+           value: "ssl=true&replicaSet=globaldb"
+         {{- end }}
+diff --git a/incubator/node/templates/mongodb-binding.yaml b/incubator/node/templates/mongodb-binding.yaml
+index 8eb49d4a83..4733321de3 100644
+--- a/incubator/node/templates/mongodb-binding.yaml
++++ b/incubator/node/templates/mongodb-binding.yaml
+@@ -1,4 +1,4 @@
+-{{- if .Values.externalDatabase.azure.enabled }}
++{{- if .Values.externaldb.broker.serviceInstanceName }}
+ apiVersion: servicecatalog.k8s.io/v1beta1
+ kind: ServiceBinding
+ metadata:
+@@ -10,6 +10,10 @@ metadata:
+     heritage: "{{ .Release.Service }}"
+ spec:
+   instanceRef:
+-    name: {{ template "node.fullname" . }}-mongodb-instance
++    name: {{ .Values.externaldb.broker.serviceInstanceName }}
++{{- if .Values.externaldb.broker.serviceInstanceName }}
++  secretName: {{ .Values.externaldb.secretName }}
++{{ else }}
+   secretName: {{ template "node.fullname" . }}-mongodb-secret
+ {{- end }}
++{{- end }}
+diff --git a/incubator/node/templates/mongodb-instance.yaml b/incubator/node/templates/mongodb-instance.yaml
+deleted file mode 100644
+index 4a9e812814..0000000000
+--- a/incubator/node/templates/mongodb-instance.yaml
++++ /dev/null
+@@ -1,20 +0,0 @@
+-{{- if .Values.externalDatabase.azure.enabled }}
+-apiVersion: servicecatalog.k8s.io/v1beta1
+-kind: ServiceInstance
+-metadata:
+-  name: {{ template "node.fullname" . }}-mongodb-instance
+-  labels:
+-    app: {{ template "node.name" . }}
+-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+-    release: "{{ .Release.Name }}"
+-    heritage: "{{ .Release.Service }}"
+-spec:
+-  clusterServiceClassExternalName: azure-cosmos-mongo-db
+-  clusterServicePlanExternalName: {{ .Values.externalDatabase.azure.servicePlan }}
+-  parameters:
+-    location: {{ .Values.externalDatabase.azure.location }}
+-    resourceGroup: {{ .Release.Namespace }}
+-    sslEnforcement: disabled
+-    firewallStartIPAddress: 0.0.0.0
+-    firewallEndIPAddress: 255.255.255.255
+-{{- end }}
+diff --git a/incubator/node/values.yaml b/incubator/node/values.yaml
+index 1ce30a061f..14bba0246d 100644
+--- a/incubator/node/values.yaml
++++ b/incubator/node/values.yaml
+@@ -11,7 +11,7 @@ imagePullPolicy: IfNotPresent
+ 
+ ## Git repository http/https
+ ##
+-repository:  https://github.com/bitnami/sample-node-app.git
++repository:  https://github.com/bitnami/sample-mean.git
+ 
+ ## Git repository revision to checkout
+ ##
+@@ -54,16 +54,27 @@ resources: {}
+   #   cpu: 500m
+   #   memory: 512Mi
+ 
+-## Provision an external database using kubernetes service catalog and the Open Service Broker for Azure 
+ ##
+-externalDatabase:
+-## All of these values are only used when mariadb.enabled is set to false
+-  azure:
+-    enabled: false
+-    ## The Azure region in which to deploy Azure CosmosDB MongoDB
+-    location: eastus
+-    ## The plan to request for Azure CosmosDB MongoDB
+-    servicePlan: mongo-db
++## MongoDB chart configuration
++##
++mongodb:
++  ## Whether to deploy a mongodb server to satisfy the applications database requirements.
++  ## To use an external database set this to false and configure the externaldb parameters
++  install: true # Check mongodb chart for configuration values
++
++## Provision an external database (Only if mongodb.install is false)
++## You can:
++##    1) Pass an already existing Secret with your database credentials
++##    2) Pass an already existing ServiceInstance name and specify the service catalog broker to automatically create a ServiceBinding for your application.
++externaldb:
++  # You can use an existing secret containing your database credentials
++  # Please refer to the respective section in the README to know the details about this secret.
++  secretName:
++  # Only if using Kubernetes Service Catalog you can specify the kind of broker used. Available options are osba|gce|aws
++  type: osba
++  # If you provide the serviceInstanceName, the chart will create a ServiceBinding for that ServiceInstance
++  broker:
++    serviceInstanceName:
+ 
+ ## Configure ingress resource that allow you to access the application. 
+ ## ref: http://kubernetes.io/docs/user-guide/ingress/

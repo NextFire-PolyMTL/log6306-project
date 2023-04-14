@@ -1,0 +1,502 @@
+commit 6926372f9ad10195ce6e2e45e25c39a674ab7b32
+Author: Erik Sundell <erik.i.sundell@gmail.com>
+Date:   Thu Dec 13 11:08:10 2018 +0100
+
+    [stable/superset] WIP: Refactoring, additional configs, secure secrets, versionbump (#9836)
+    
+    * Refactor template to include function
+    
+    Signed-off-by: Erik Sundell <erik.i.sundell@gmail.com>
+    
+    * Refactor to utilize default function
+    
+    Signed-off-by: Erik Sundell <erik.i.sundell@gmail.com>
+    
+    * Refactor away blank container.env
+    
+    Signed-off-by: Erik Sundell <erik.i.sundell@gmail.com>
+    
+    * Refactor systematic left whitechomping
+    
+    Signed-off-by: Erik Sundell <erik.i.sundell@gmail.com>
+    
+    * Refactor indentation for readability
+    
+    Signed-off-by: Erik Sundell <erik.i.sundell@gmail.com>
+    
+    * Allow for additional config files
+    
+    Signed-off-by: Erik Sundell <erik.i.sundell@gmail.com>
+    
+    * Restart pods on changed config
+    
+    Signed-off-by: Erik Sundell <erik.i.sundell@gmail.com>
+    
+    * Secure secrets in config
+    
+    Signed-off-by: Erik Sundell <erik.i.sundell@gmail.com>
+    
+    * Refactor away unused code
+    
+    Signed-off-by: Erik Sundell <erik.i.sundell@gmail.com>
+    
+    * Bump superset version
+    
+    Signed-off-by: Erik Sundell <erik.i.sundell@gmail.com>
+    
+    * Bump chart version
+    
+    Signed-off-by: Erik Sundell <erik.i.sundell@gmail.com>
+    
+    * Update README.md to reflect changes
+    
+    Signed-off-by: Erik Sundell <erik.i.sundell@gmail.com>
+    
+    * Bump chart to 1.1.0
+    
+    Signed-off-by: Erik Sundell <erik.i.sundell@gmail.com>
+
+diff --git a/stable/superset/Chart.yaml b/stable/superset/Chart.yaml
+index 72cf9abb5..c03757b56 100644
+--- a/stable/superset/Chart.yaml
++++ b/stable/superset/Chart.yaml
+@@ -1,7 +1,7 @@
+ description: Apache Superset (incubating) is a modern, enterprise-ready business intelligence web application
+ name: superset
+-version: 1.0.0
+-appVersion: "0.24.0"
++version: 1.1.0
++appVersion: "0.28.1"
+ keywords:
+ - bi
+ home: https://github.com/apache/incubator-superset
+diff --git a/stable/superset/README.md b/stable/superset/README.md
+index b040e2a51..eb4148400 100644
+--- a/stable/superset/README.md
++++ b/stable/superset/README.md
+@@ -42,13 +42,14 @@ The command removes all the Kubernetes components associated with the chart and
+ | Parameter                  | Description                                     | Default                                                      |
+ | -------------------------- | ----------------------------------------------- | ------------------------------------------------------------ |
+ | `image.repository`         | `superset` image repository                     | `amancevice/superset`                                        |
+-| `image.tag`                | `superset` image tag                            | `0.24.0`                                                     |
++| `image.tag`                | `superset` image tag                            | `0.28.1`                                                     |
+ | `image.pullPolicy`         | Image pull policy                               | `IfNotPresent`                                               |
+-| `configFile`               | Content of [`superset_config.py`](https://superset.incubator.apache.org/installation.html)                     | See values.yaml](./values.yaml)              |
++| `configFile`               | Content of [`superset_config.py`](https://superset.incubator.apache.org/installation.html) | See values.yaml](./values.yaml) |
++| `extraConfigFiles`         | Content of additional configuration files. Let the dictionary key name represent the name of the file and its value the files content. | `{}` |
+ | `initFile`                 | Content of init shell script                    | See [values.yaml](./values.yaml)                             |
+ | `replicas`                 | Number of replicas of superset                  | `1`                                                          |
+-| `extraEnv`                      | Extra environment variables passed to pods      | `{}`                                                          |
+-| `extraEnvFromSecret`            | The name of a Kubernetes secret (must be manually created in the same namespace) containing values to be added to the environment | `""`                                                          |
++| `extraEnv`                 | Extra environment variables passed to pods      | `{}`                                                         |
++| `extraEnvFromSecret`       | The name of a Kubernetes secret (must be manually created in the same namespace) containing values to be added to the environment | `""` |
+ | `persistence.enabled`      | Enable persistence                              | `false`                                                      |
+ | `persistence.existingClaim`| Provide an existing PersistentVolumeClaim       | `""`                                                         |
+ | `persistence.storageClass` | Storage class of backing PVC                    | `nil` (uses alpha storage class annotation)                  |
+@@ -57,12 +58,12 @@ The command removes all the Kubernetes components associated with the chart and
+ | `resources`                | CPU/Memory resource requests/limits             | Memory: `256Mi`, CPU: `50m`   / Memory: `500Mi`, CPU: `500m` |
+ | `service.port`             | TCP port                                        | `9000`                                                       |
+ | `service.type`             | k8s service type exposing ports, e.g. `NodePort`| `ClusterIP`                                                  |
+-| `nodeSelector`             | Node labels for pod assignment                  | {}                                                           |
+-| `tolerations`              | Toleration labels for pod assignment            | []                                                           |
++| `nodeSelector`             | Node labels for pod assignment                  | `{}`                                                         |
++| `tolerations`              | Toleration labels for pod assignment            | `[]`                                                         |
+ | `livenessProbe`            | Parameter for liveness probe                    | See [values.yaml](./values.yaml)                             |
+ | `readinessProbe`           | Parameter for readiness probe                   | See [values.yaml](./values.yaml)                             |
+ | `ingress.enabled`          | Create an ingress resource when true            | `false`                                                      |
+-| `ingress.annotations`      | ingress annotations                             | {}                                                           |
++| `ingress.annotations`      | ingress annotations                             | `{}`                                                         |
+ | `ingress.hosts`            | ingress hosts                                   | `[superset.domain.com]`                                      |
+ | `ingress.path`             | ingress path                                    | `\`                                                          |
+ | `ingress.tls`              | ingress tls                                     | `[]`                                                         |
+diff --git a/stable/superset/templates/NOTES.txt b/stable/superset/templates/NOTES.txt
+index e3664351d..6dabfeb4e 100644
+--- a/stable/superset/templates/NOTES.txt
++++ b/stable/superset/templates/NOTES.txt
+@@ -1,5 +1,5 @@
+ Superset can be accessed via port {{ .Values.service.port }} on the following DNS name from within your cluster:
+-{{ template "superset.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
++{{ include "superset.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
+ 
+ Initially you can login with username/password: admin/admin.
+ 
+diff --git a/stable/superset/templates/_helpers.tpl b/stable/superset/templates/_helpers.tpl
+index 8e1823c38..d92099bf1 100644
+--- a/stable/superset/templates/_helpers.tpl
++++ b/stable/superset/templates/_helpers.tpl
+@@ -29,4 +29,4 @@ Create chart name and version as used by the chart label.
+ */}}
+ {{- define "superset.chart" -}}
+ {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
+\ No newline at end of file
++{{- end -}}
+diff --git a/stable/superset/templates/configmap.yaml b/stable/superset/templates/configmap.yaml
+deleted file mode 100644
+index 541ae915f..000000000
+--- a/stable/superset/templates/configmap.yaml
++++ /dev/null
+@@ -1,11 +0,0 @@
+-apiVersion: v1
+-kind: ConfigMap
+-metadata:
+-  name: {{ template "superset.fullname" . }}
+-  labels:
+-    app: {{ template "superset.name" . }}
+-    chart: {{ template "superset.chart" . }}
+-    release: {{ .Release.Name }}
+-    heritage: {{ .Release.Service }}
+-data:
+-  superset_config.py: {{ .Values.configFile | quote }}
+diff --git a/stable/superset/templates/deployment.yaml b/stable/superset/templates/deployment.yaml
+index cf1c72ee0..92f7dbf1c 100644
+--- a/stable/superset/templates/deployment.yaml
++++ b/stable/superset/templates/deployment.yaml
+@@ -1,44 +1,43 @@
+ apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+-  name: {{ template "superset.fullname" . }}
++  name: {{ include "superset.fullname" . }}
+   labels:
+-    app: {{ template "superset.name" . }}
+-    chart: {{ template "superset.chart" . }}
++    app: {{ include "superset.name" . }}
++    chart: {{ include "superset.chart" . }}
+     release: {{ .Release.Name }}
+     heritage: {{ .Release.Service }}
+ spec:
+   replicas: {{ .Values.replicaCount }}
+   selector:
+     matchLabels:
+-      app: {{ template "superset.name" . }}
++      app: {{ include "superset.name" . }}
+       release: {{ .Release.Name }}
+   template:
+     metadata:
+-      name: {{ template "superset.fullname" . }}
++      name: {{ include "superset.fullname" . }}
+       labels:
+-        app: {{ template "superset.name" . }}
+-        chart: {{ template "superset.chart" . }}
++        app: {{ include "superset.name" . }}
++        chart: {{ include "superset.chart" . }}
+         release: {{ .Release.Name }}
+         heritage: {{ .Release.Service }}
++      annotations:
++        checksum/secrets: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+     spec:
+       securityContext:
+         runAsUser: 0
+         fsGroup: 0
+       volumes:
+-        - name: superset-init
++        - name: superset-configs
+           secret:
+-            secretName: {{ template "superset.fullname" . }}
+-        - name: superset-server-config
+-          configMap:
+-            name: {{ template "superset.fullname" . }}
++            secretName: {{ include "superset.fullname" . }}
+         - name: storage-volume
+-        {{- if .Values.persistence.enabled }}
++          {{- if .Values.persistence.enabled }}
+           persistentVolumeClaim:
+-            claimName: {{ if .Values.persistence.existingClaim }}{{ .Values.persistence.existingClaim }}{{- else }}{{ template "superset.fullname" . }}{{- end }}
+-        {{- else }}
++            claimName: {{ .Values.persistence.existingClaim | default (include "superset.fullname" .) }}
++          {{- else }}
+           emptyDir: {}
+-        {{- end }}
++          {{- end }}
+       containers:
+         - name: {{ .Chart.Name }}
+           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+@@ -46,47 +45,47 @@ spec:
+           command: ["/bin/bash"]
+           args: ["/home/superset/init_superset.sh" ]
+           volumeMounts:
+-            - name: superset-init
++            - name: superset-configs
+               mountPath: /home/superset
+-            - name: superset-server-config
+-              mountPath: /etc/superset
+             - name: storage-volume
+               mountPath: /var/lib/superset
+           ports:
+             - name: http
+               containerPort: 8088
+               protocol: TCP
++          {{- with .Values.extraEnv }}
+           env:
+-          {{- range $key, $value := .Values.extraEnv }}
++            {{- range $key, $value := .Values.extraEnv }}
+             - name: "{{ $key }}"
+               value: "{{ $value }}"
++            {{- end }}
+           {{- end }}
+-        {{- if .Values.extraEnvFromSecret }}
++          {{- if .Values.extraEnvFromSecret }}
+           envFrom:
+             - secretRef:
+                 name: {{ .Values.extraEnvFromSecret }}
+-        {{- end }}
+-    {{- with .Values.resources }}
++          {{- end }}
++          {{- with .Values.resources }}
+           resources:
+-{{ toYaml . | indent 12 }}
+-    {{- end }}
+-    {{- with .Values.livenessProbe }}
++            {{- . | toYaml | nindent 12 }}
++          {{- end }}
++          {{- with .Values.livenessProbe }}
+           livenessProbe:
+-{{ toYaml . | indent 12 }}
+-    {{- end }}
+-    {{- with .Values.readinessProbe }}
++            {{- . | toYaml | nindent 12 }}
++          {{- end }}
++          {{- with .Values.readinessProbe }}
+           readinessProbe:
+-{{ toYaml . | indent 12 }}
+-    {{- end }}
+-    {{- with .Values.nodeSelector }}
++            {{- . | toYaml | nindent 12 }}
++          {{- end }}
++      {{- with .Values.nodeSelector }}
+       nodeSelector:
+-{{ toYaml . | indent 8 }}
+-    {{- end }}
+-    {{- with .Values.affinity }}
++        {{- . | toYaml | nindent 8 }}
++      {{- end }}
++      {{- with .Values.affinity }}
+       affinity:
+-{{ toYaml . | indent 8 }}
+-    {{- end }}
+-    {{- with .Values.tolerations }}
++        {{- . | toYaml | nindent 8 }}
++      {{- end }}
++      {{- with .Values.tolerations }}
+       tolerations:
+-{{ toYaml . | indent 8 }}
+-    {{- end }}
++        {{- . | toYaml | nindent 8 }}
++      {{- end }}
+diff --git a/stable/superset/templates/ingress.yaml b/stable/superset/templates/ingress.yaml
+index 30f0c36ae..7a4d36c18 100644
+--- a/stable/superset/templates/ingress.yaml
++++ b/stable/superset/templates/ingress.yaml
+@@ -1,33 +1,32 @@
+ {{- if .Values.ingress.enabled -}}
+ {{- $fullName := include "superset.fullname" . -}}
+-{{- $servicePort := .Values.service.port -}}
+ {{- $ingressPath := .Values.ingress.path -}}
+ apiVersion: extensions/v1beta1
+ kind: Ingress
+ metadata:
+   name: {{ $fullName }}
+   labels:
+-    app: {{ template "superset.name" . }}
+-    chart: {{ template "superset.chart" . }}
++    app: {{ include "superset.name" . }}
++    chart: {{ include "superset.chart" . }}
+     release: {{ .Release.Name }}
+     heritage: {{ .Release.Service }}
+-{{- with .Values.ingress.annotations }}
++  {{- with .Values.ingress.annotations }}
+   annotations:
+-{{ toYaml . | indent 4 }}
+-{{- end }}
++    {{- . | toYaml | nindent 4 }}
++  {{- end }}
+ spec:
+-{{- if .Values.ingress.tls }}
++  {{- if .Values.ingress.tls }}
+   tls:
+-  {{- range .Values.ingress.tls }}
++    {{- range .Values.ingress.tls }}
+     - hosts:
+-      {{- range .hosts }}
++        {{- range .hosts }}
+         - {{ . }}
+-      {{- end }}
++        {{- end }}
+       secretName: {{ .secretName }}
++    {{- end }}
+   {{- end }}
+-{{- end }}
+   rules:
+-  {{- range .Values.ingress.hosts }}
++    {{- range .Values.ingress.hosts }}
+     - host: {{ . }}
+       http:
+         paths:
+@@ -35,5 +34,5 @@ spec:
+             backend:
+               serviceName: {{ $fullName }}
+               servicePort: http
+-  {{- end }}
++    {{- end }}
+ {{- end }}
+diff --git a/stable/superset/templates/pvc.yaml b/stable/superset/templates/pvc.yaml
+index 651f123d2..d9622a381 100644
+--- a/stable/superset/templates/pvc.yaml
++++ b/stable/superset/templates/pvc.yaml
+@@ -3,23 +3,23 @@
+ apiVersion: v1
+ kind: PersistentVolumeClaim
+ metadata:
+-  name: {{ template "superset.fullname" . }}
++  name: {{ include "superset.fullname" . }}
+   labels:
+-    app: {{ template "superset.name" . }}
+-    chart: {{ template "superset.chart" . }}
++    app: {{ include "superset.name" . }}
++    chart: {{ include "superset.chart" . }}
+     release: {{ .Release.Name }}
+ spec:
+   accessModes:
+-{{ toYaml .Values.persistence.accessModes | indent 4 }}
+-{{- if .Values.persistence.storageClass }}
+-{{- if (eq "-" .Values.persistence.storageClass) }}
++    {{- .Values.persistence.accessModes | toYaml | nindent 4 }}
++  {{- if .Values.persistence.storageClass }}
++  {{- if (eq "-" .Values.persistence.storageClass) }}
+   storageClassName: ""
+-{{- else }}
++  {{- else }}
+   storageClassName: "{{ .Values.persistence.storageClass }}"
+-{{- end }}
+-{{- end }}
++  {{- end }}
++  {{- end }}
+   resources:
+     requests:
+       storage: "{{ .Values.persistence.size }}"
+-{{- end -}}
+-{{- end -}}
+\ No newline at end of file
++{{- end }}
++{{- end }}
+diff --git a/stable/superset/templates/secret.yaml b/stable/superset/templates/secret.yaml
+index 5c784c5f2..1bd27f0b9 100644
+--- a/stable/superset/templates/secret.yaml
++++ b/stable/superset/templates/secret.yaml
+@@ -1,12 +1,16 @@
+ apiVersion: v1
+ kind: Secret
+ metadata:
+-  name: {{ template "superset.fullname" . }}
++  name: {{ include "superset.fullname" . }}
+   labels:
+-    app: {{ template "superset.name" . }}
+-    chart: {{ template "superset.chart" . }}
++    app: {{ include "superset.name" . }}
++    chart: {{ include "superset.chart" . }}
+     release: {{ .Release.Name }}
+     heritage: {{ .Release.Service }}
+ type: Opaque
+ data:
+   init_superset.sh: {{ .Values.initFile | b64enc | quote }}
++  superset_config.py: {{ .Values.configFile | b64enc | quote }}
++  {{- range $key, $value := .Values.extraConfigFiles }}
++  {{ $key }}: {{ $value | b64enc | quote }}
++  {{- end }}
+diff --git a/stable/superset/templates/svc.yaml b/stable/superset/templates/svc.yaml
+index 23d6cf43d..1fdd3dc0a 100644
+--- a/stable/superset/templates/svc.yaml
++++ b/stable/superset/templates/svc.yaml
+@@ -1,46 +1,46 @@
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: {{ template "superset.fullname" . }}
++  name: {{ include "superset.fullname" . }}
+   labels:
+-    app: {{ template "superset.name" . }}
+-    chart: {{ template "superset.chart" . }}
++    app: {{ include "superset.name" . }}
++    chart: {{ include "superset.chart" . }}
+     release: {{ .Release.Name }}
+     heritage: {{ .Release.Service }}
+-{{- if .Values.service.annotations }}
++  {{- if .Values.service.annotations }}
+   annotations:
+-{{ toYaml .Values.service.annotations | indent 4 }}
+-{{- end }}
++    {{- .Values.service.annotations | toYaml | nindent 4 }}
++  {{- end }}
+ spec:
+-{{- if (or (eq .Values.service.type "ClusterIP") (empty .Values.service.type)) }}
++  {{- if (or (eq .Values.service.type "ClusterIP") (empty .Values.service.type)) }}
+   type: ClusterIP
+   {{- if .Values.service.clusterIP }}
+   clusterIP: {{ .Values.service.clusterIP }}
+-  {{end}}
+-{{- else if eq .Values.service.type "LoadBalancer" }}
++  {{- end }}
++  {{- else if eq .Values.service.type "LoadBalancer" }}
+   type: {{ .Values.service.type }}
+   {{- if .Values.service.loadBalancerIP }}
+   loadBalancerIP: {{ .Values.service.loadBalancerIP }}
+   {{- end }}
+   {{- if .Values.service.loadBalancerSourceRanges }}
+   loadBalancerSourceRanges:
+-{{ toYaml .Values.service.loadBalancerSourceRanges | indent 4 }}
+-  {{- end -}}
+-{{- else }}
++  {{- .Values.service.loadBalancerSourceRanges | toYaml | nindent 4 }}
++  {{- end }}
++  {{- else }}
+   type: {{ .Values.service.type }}
+-{{- end }}
+-{{- if .Values.service.externalIPs }}
++  {{- end }}
++  {{- if .Values.service.externalIPs }}
+   externalIPs:
+-{{ toYaml .Values.service.externalIPs | indent 4 }}
+-{{- end }}
++    {{- .Values.service.externalIPs | toYaml | nindent 4 }}
++  {{- end }}
+   ports:
+     - name: http
+       port: {{ .Values.service.port }}
+       targetPort: http
+       protocol: TCP
+-{{ if (and (eq .Values.service.type "NodePort") (not (empty .Values.service.nodePort))) }}
++      {{- if (and (eq .Values.service.type "NodePort") (not (empty .Values.service.nodePort))) }}
+       nodePort: {{.Values.service.nodePort}}
+-{{ end }}
++      {{- end }}
+   selector:
+-    app: {{ template "superset.name" . }}
++    app: {{ include "superset.name" . }}
+     release: {{ .Release.Name }}
+diff --git a/stable/superset/values.yaml b/stable/superset/values.yaml
+index e61945ce5..f62e24b3a 100644
+--- a/stable/superset/values.yaml
++++ b/stable/superset/values.yaml
+@@ -8,7 +8,7 @@ replicaCount: 1
+ ## Set default image, imageTag, and imagePullPolicy.
+ image:
+   repository: "amancevice/superset"
+-  tag: "0.24.0"
++  tag: "0.28.1"
+   pullPolicy: "IfNotPresent"
+ 
+ initFile: |-
+@@ -47,6 +47,12 @@ configFile: |-
+   # Set this API key to enable Mapbox visualizations
+   MAPBOX_API_KEY = ''
+ 
++## Extra confiuguration files and their content to be made available next to the config file
++extraConfigFiles: {}
++  ## custom_sso_security_manager.py: |-
++  ##   from superset.security import SupersetSecurityManager
++  ##   ...
++
+ ## Extra environment variables that will be passed onto deployment pod
+ ##
+ extraEnv: {}

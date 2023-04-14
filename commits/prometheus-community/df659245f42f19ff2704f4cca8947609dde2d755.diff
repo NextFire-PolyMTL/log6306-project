@@ -1,0 +1,98 @@
+commit df659245f42f19ff2704f4cca8947609dde2d755
+Author: Aidan <aidan@artificial.com>
+Date:   Thu Dec 22 21:15:19 2022 +0000
+
+    Refactor extra envs (#2844)
+    
+    * Use list instead of map. Allow for valueFrom, other flexibility
+    * Check type for backwards compatibility
+    * Fix configmap multi-line
+    
+    Signed-off-by: Aidan Jensen <aidan@artificial.com>
+    
+    Signed-off-by: Aidan Jensen <aidan@artificial.com>
+
+diff --git a/charts/prometheus-postgres-exporter/Chart.yaml b/charts/prometheus-postgres-exporter/Chart.yaml
+index b009e135..58b3bd28 100644
+--- a/charts/prometheus-postgres-exporter/Chart.yaml
++++ b/charts/prometheus-postgres-exporter/Chart.yaml
+@@ -2,7 +2,7 @@ apiVersion: v2
+ appVersion: "0.11.1"
+ description: A Helm chart for prometheus postgres-exporter
+ name: prometheus-postgres-exporter
+-version: 4.0.0
++version: 4.1.0
+ home: https://github.com/prometheus-community/postgres_exporter
+ sources:
+ - https://github.com/prometheus-community/postgres_exporter
+diff --git a/charts/prometheus-postgres-exporter/templates/configmap.yaml b/charts/prometheus-postgres-exporter/templates/configmap.yaml
+index fa0142a3..acc588ea 100644
+--- a/charts/prometheus-postgres-exporter/templates/configmap.yaml
++++ b/charts/prometheus-postgres-exporter/templates/configmap.yaml
+@@ -11,6 +11,5 @@ metadata:
+ data:
+   allow-snippet-annotations: "false"
+   config.yaml: |
+-    {{- tpl (mergeOverwrite (tpl .Values.config.queries . | fromYaml)
+-    (tpl .Values.config.userQueries . | fromYaml) | toYaml) . | nindent 4 }}
++    {{- tpl (mergeOverwrite (tpl .Values.config.queries . | fromYaml) (tpl .Values.config.userQueries . | fromYaml) | toYaml) . | nindent 4 }}
+ {{- end }}
+diff --git a/charts/prometheus-postgres-exporter/templates/deployment.yaml b/charts/prometheus-postgres-exporter/templates/deployment.yaml
+index 4f36f8a9..fa70af5d 100644
+--- a/charts/prometheus-postgres-exporter/templates/deployment.yaml
++++ b/charts/prometheus-postgres-exporter/templates/deployment.yaml
+@@ -31,7 +31,7 @@ spec:
+ {{- end }}
+     spec:
+       serviceAccountName: {{ template "prometheus-postgres-exporter.serviceAccountName" . }}
+-      {{- with .Values.podSecurityContext }}     
++      {{- with .Values.podSecurityContext }}
+       securityContext:
+         {{- toYaml . | nindent 8 }}
+       {{- end }}
+@@ -44,7 +44,7 @@ spec:
+       {{- range .Values.image.pullSecrets }}
+         - name: {{ . }}
+       {{- end }}
+-      {{- end }} 
++      {{- end }}
+       containers:
+         - name: {{ .Chart.Name }}
+           args:
+@@ -112,11 +112,16 @@ spec:
+           {{- end }}
+           {{- end }}
+           {{- with .Values.extraEnvs }}
++          {{- if kindIs "map" . }}
+           {{- range $name, $value := . }}
+           - name: {{ $name }}
+             value: {{ tpl $value $ | quote }}
+           {{- end }}
+           {{- end }}
++          {{- if kindIs "slice" . -}}
++          {{ toYaml . | nindent 10 }}
++          {{- end }}
++          {{- end }}
+           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+           imagePullPolicy: {{ .Values.image.pullPolicy }}
+           ports:
+diff --git a/charts/prometheus-postgres-exporter/values.yaml b/charts/prometheus-postgres-exporter/values.yaml
+index e571d53d..97b54f86 100644
+--- a/charts/prometheus-postgres-exporter/values.yaml
++++ b/charts/prometheus-postgres-exporter/values.yaml
+@@ -453,8 +453,13 @@ readinessProbe:
+   timeoutSeconds: 1
+ 
+ # ExtraEnvs
+-extraEnvs: {}
+-  # EXTRA_ENV: value
++extraEnvs: []
++  # - name: EXTRA_ENV
++  #   value: value
++  # - name: POD_NAMESPACE
++  #   valueFrom:
++  #     fieldRef:
++  #       fieldPath: metadata.namespace
+ 
+ # Init containers, e. g. for secrets creation before the exporter
+ initContainers: []

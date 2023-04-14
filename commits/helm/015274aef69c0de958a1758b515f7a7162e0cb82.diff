@@ -1,0 +1,64 @@
+commit 015274aef69c0de958a1758b515f7a7162e0cb82
+Author: Etash Singh <etashsingh29@gmail.com>
+Date:   Tue May 26 09:21:12 2020 +0530
+
+    [stable/graylog]: Update Graylog Ingress Api version. (#22493)
+    
+    * Update ingress version
+    
+    Signed-off-by: etash-singh <etash.singh@hpe.com>
+    
+    * Bumped chart version
+    
+    Signed-off-by: etash-singh <etash.singh@hpe.com>
+    
+    * Added version support for older K8s clusters
+    
+    Signed-off-by: etash-singh <etash.singh@hpe.com>
+    
+    * Fixed version support for older K8s clusters
+    
+    Signed-off-by: etash-singh <etash.singh@hpe.com>
+    
+    * Refactored capabilities function to check specifically for Ingress resource
+    
+    Signed-off-by: etash-singh <etash.singh@hpe.com>
+    
+    * Added logic for auto api version detection for ingress
+    
+    Signed-off-by: etash-singh <etash.singh@hpe.com>
+    
+    * Added logic for auto detection of api version for ingress
+    
+    Signed-off-by: etash-singh <etash.singh@hpe.com>
+    
+    Co-authored-by: etash-singh <etash.singh@hpe.com>
+
+diff --git a/stable/graylog/Chart.yaml b/stable/graylog/Chart.yaml
+index 303efa617..0f1fb0d04 100755
+--- a/stable/graylog/Chart.yaml
++++ b/stable/graylog/Chart.yaml
+@@ -1,7 +1,7 @@
+ apiVersion: v1
+ name: graylog
+ home: https://www.graylog.org
+-version: 1.6.4
++version: 1.6.5
+ appVersion: 3.1
+ description: Graylog is the centralized log management solution built to open standards for capturing, storing, and enabling real-time analysis of terabytes of machine data.
+ keywords:
+diff --git a/stable/graylog/templates/ingress.yaml b/stable/graylog/templates/ingress.yaml
+index 44539cac4..56b85aa3e 100644
+--- a/stable/graylog/templates/ingress.yaml
++++ b/stable/graylog/templates/ingress.yaml
+@@ -1,6 +1,10 @@
+ {{- if .Values.graylog.ingress.enabled -}}
+ {{- $extraPaths := .Values.graylog.ingress.extraPaths -}}
++{{- if semverCompare ">=1.14-0" .Capabilities.KubeVersion.GitVersion -}}
++apiVersion: networking.k8s.io/v1beta1
++{{- else -}}
+ apiVersion: extensions/v1beta1
++{{- end }}
+ kind: Ingress
+ metadata:
+   annotations:

@@ -1,0 +1,593 @@
+commit d76445dba1d374dbea276f5416d69466ab1f1f00
+Author: Jason Poon <jpoon@users.noreply.github.com>
+Date:   Wed Oct 4 07:57:35 2017 +0800
+
+    MySQL single master, multi-slave (#766)
+    
+    * add mysql master-slave
+    
+    * update mysqlha readme
+    
+    * Refactored initContainers
+    
+    * Changed storageClass to default
+    
+    * Made mysqlImage and xtraBackupImage configurable
+    
+    * Refactored initContainers to use Files.Get
+    
+    * Removed default storageClass as not required
+    
+    Not specifying a storageClass will cause k8s to use the default
+    storageClass anyway.
+    
+    * update readme. add jon as maintainer :D
+    
+    * Remove Files.Get. Couldn't get that to work
+    
+    * namespace config values into mysqlha so they can be pulled out via requirements.yaml
+    
+    * Expose create database on deployment
+    
+    * Oops, renamed one too many variables
+    
+    * Update README.md
+
+diff --git a/incubator/mysqlha/Chart.yaml b/incubator/mysqlha/Chart.yaml
+new file mode 100644
+index 000000000..ded1c3a48
+--- /dev/null
++++ b/incubator/mysqlha/Chart.yaml
+@@ -0,0 +1,14 @@
++name: mysqlha
++version: 0.1.0
++description: MySQL cluster with a single master and zero or more slave replicas
++keywords:
++  - mysql
++  - database
++  - sql
++home: https://www.mysql.com/
++icon: https://www.mysql.com/common/logos/logo-mysql-170x115.png
++maintainers:
++  - name: Jason Poon
++    email: jason.poon@microsoft.com
++  - name: Jon Hoare
++    email: jon.bitbucket@livewire-uk.co.uk
+diff --git a/incubator/mysqlha/README.md b/incubator/mysqlha/README.md
+new file mode 100644
+index 000000000..e7ac5ecf3
+--- /dev/null
++++ b/incubator/mysqlha/README.md
+@@ -0,0 +1,73 @@
++# MySQL - Single Master, Multiple Slaves
++
++[MySQL](https://MySQL.org) is one of the most popular database servers in the world. Notable users include Wikipedia, Facebook and Google.
++
++## Introduction
++
++This chart bootstraps a single master and multiple slave MySQL deployment on a [Kubernetes](http://kubernetes.io) cluster using the [Helm](https://helm.sh) package manager. Largely inspired by this [tutorial](https://kubernetes.io/docs/tutorials/stateful-application/run-replicated-stateful-application/), further work was made to 'production-ize' the example.
++
++## Prerequisites
++
++- Kubernetes 1.4+ with Beta APIs enabled
++- PV provisioner support in the underlying infrastructure
++
++## Installing the Chart
++
++To install the chart with the release name `my-release`:
++
++```bash
++$ helm install --name my-release incubator/mysqlha
++```
++
++The command deploys MySQL cluster on the Kubernetes cluster in the default configuration. The [configuration](#configuration) section lists the parameters that can be configured during installation.
++
++### Uninstall
++
++To uninstall/delete the `my-release` deployment:
++
++```bash
++$ helm delete my-release
++```
++
++## Configuration
++
++The following tables lists the configurable parameters of the MySQL chart and their default values.
++
++| Parameter                  | Description                         | Default                                |
++| -----------------------    | ----------------------------------- | -------------------------------------- |
++| `mysqlImage`               | `mysql` image and tag.              | `mysql:5.7.13`                         |
++| `xtraBackupImage`          | `xtrabackup` image and tag.         | `gcr.io/google-samples/xtrabackup:1.0` |
++| `replicaCount`             | Number of MySQL replicas            | 3                                      |
++| `mysqlRootPassword`        | Password for the `root` user.       | Randomly generated                     |
++| `mysqlUser`                | Username of new user to create.     | `nil`                                  |
++| `mysqlPassword`            | Password for the new user.          | Randomly generated                     |
++| `mysqlReplicationUser`     | Username for replication user       | `repl`                                 |
++| `mysqlReplicationPassword` | Password for replication user.      | Randomly generated                     |
++| `mysqlDatabase`            | Name of the new Database to create  | `nil`                                  | 
++| `persistence.enabled`      | Create a volume to store data       | true                                   | 
++| `persistence.size`         | Size of persistent volume claim     | 10Gi                                   |
++| `persistence.storageClass` | Type of persistent volume claim     | `nil`                                  |
++| `persistence.accessMode`   | ReadWriteOnce or ReadOnly           | ReadWriteOnce                          |
++| `resources`                | CPU/Memory resource requests/limits | Memory: `128Mi`, CPU: `100m`           |
++
++Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
++
++## Persistence
++
++The [MySQL](https://hub.docker.com/_/mysql/) image stores the MySQL data and configurations at the `/var/lib/mysql` path of the container.
++
++By default persistence is enabled, and a PersistentVolumeClaim is created and mounted in that directory. As a result, a persistent volume will need to be defined:
++
++```
++# https://kubernetes.io/docs/user-guide/persistent-volumes/#azure-disk
++kind: StorageClass
++apiVersion: storage.k8s.io/v1
++metadata:
++  name: fast
++provisioner: kubernetes.io/azure-disk
++parameters:
++  skuName: Premium_LRS
++  location: westus
++```
++
++In order to disable this functionality you can change the values.yaml to disable persistence and use an emptyDir instead.
+diff --git a/incubator/mysqlha/templates/NOTES.txt b/incubator/mysqlha/templates/NOTES.txt
+new file mode 100644
+index 000000000..dec0da633
+--- /dev/null
++++ b/incubator/mysqlha/templates/NOTES.txt
+@@ -0,0 +1,19 @@
++The MySQL cluster is comprised of {{ .Values.mysqlha.replicaCount }} MySQL pods: 1 master and {{ sub .Values.mysqlha.replicaCount 1 }} slaves. Each instance is accessible within the cluster through:
++
++    <pod-name>.{{ template "fullname" . }}
++
++`{{ template "fullname" . }}-0.{{ template "fullname" . }}` is designated as the master and where all writes should be executed against. Read queries can be executed against the `{{ template "fullname" . }}-readonly` service which distributes connections across all MySQL pods.
++
++To connect to your database:
++
++1. Obtain the root password: 
++
++    kubectl get secret --namespace {{ .Release.Namespace }} {{ template "fullname" . }} -o jsonpath="{.data.mysql-root-password}" | base64 --decode; echo
++
++2. Run a pod to use as a client:
++
++    kubectl run mysql-client --image={{ .Values.mysqlImage }} -it --rm --restart=Never -- /bin/sh
++
++2. Open a connection to one of the MySQL pods
++
++    mysql -h {{ template "fullname" . }}-0.{{ template "fullname" . }} -p
+diff --git a/incubator/mysqlha/templates/_helpers.tpl b/incubator/mysqlha/templates/_helpers.tpl
+new file mode 100644
+index 000000000..f7877c321
+--- /dev/null
++++ b/incubator/mysqlha/templates/_helpers.tpl
+@@ -0,0 +1,16 @@
++{{/* vim: set filetype=mustache: */}}
++{{/*
++Expand the name of the chart.
++*/}}
++{{- define "name" -}}
++{{- default .Chart.Name .Values.nameOverride | trunc 24 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*
++Create a default fully qualified app name.
++We truncate at 24 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
++*/}}
++{{- define "fullname" -}}
++{{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- printf "%s-%s" .Release.Name $name | trunc 24 | trimSuffix "-" -}}
++{{- end -}}
+diff --git a/incubator/mysqlha/templates/configmap.yaml b/incubator/mysqlha/templates/configmap.yaml
+new file mode 100644
+index 000000000..8d89d5687
+--- /dev/null
++++ b/incubator/mysqlha/templates/configmap.yaml
+@@ -0,0 +1,27 @@
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  name: {{ template "fullname" . }}
++  labels:
++    app: {{ template "fullname" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++data:
++  master.cnf: |
++    # Apply this config only on the master.
++    [mysqld]
++    log-bin
++    skip_name_resolve
++  slave.cnf: |
++    # Apply this config only on slaves.
++    [mysqld]
++    super-read-only
++    skip_name_resolve
++  server-id.cnf: |
++    [mysqld]
++    server-id=@@SERVER_ID@@
++  create-replication-user.sql: |
++    CREATE USER IF NOT EXISTS '@@REPLICATION_USER@@' IDENTIFIED BY '@@REPLICATION_PASSWORD@@';
++    GRANT PROCESS, RELOAD, REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO '@@REPLICATION_USER@@';
++    FLUSH PRIVILEGES;
+\ No newline at end of file
+diff --git a/incubator/mysqlha/templates/secret.yaml b/incubator/mysqlha/templates/secret.yaml
+new file mode 100644
+index 000000000..b55a96245
+--- /dev/null
++++ b/incubator/mysqlha/templates/secret.yaml
+@@ -0,0 +1,28 @@
++apiVersion: v1
++kind: Secret
++metadata:
++  name: {{ template "fullname" . }}
++  labels:
++    app: {{ template "fullname" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++type: Opaque
++data:
++  {{ if .Values.mysqlha.mysqlRootPassword }}
++  mysql-root-password:  {{ .Values.mysqlha.mysqlRootPassword | b64enc | quote }}
++  {{ else }}
++  mysql-root-password: {{ randAlphaNum 12 | b64enc | quote }}
++  {{ end }}
++  {{ if .Values.mysqlha.mysqlUser }}
++  {{ if .Values.mysqlha.mysqlPassword }}
++  mysql-password: {{ .Values.mysqlha.mysqlPassword | b64enc | quote }}
++  {{ else }}
++  mysql-password: {{ randAlphaNum 12 | b64enc | quote }}
++  {{ end }}
++  {{ end }}
++  {{ if .Values.mysqlha.mysqlReplicationPassword }}
++  mysql-replication-password: {{ .Values.mysqlha.mysqlReplicationPassword | b64enc | quote }}
++  {{ else }}
++  mysql-replication-password: {{ randAlphaNum 12 | b64enc | quote }}
++  {{ end }}
+\ No newline at end of file
+diff --git a/incubator/mysqlha/templates/statefulset.yaml b/incubator/mysqlha/templates/statefulset.yaml
+new file mode 100644
+index 000000000..568643080
+--- /dev/null
++++ b/incubator/mysqlha/templates/statefulset.yaml
+@@ -0,0 +1,244 @@
++apiVersion: apps/v1beta1
++kind: StatefulSet
++metadata:
++  name: {{ template "fullname" . }}
++  labels:
++    app: {{ template "fullname" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++spec:
++  serviceName: {{ template "fullname" . }}
++  replicas: {{ .Values.mysqlha.replicaCount }}
++  template:
++    metadata:
++      labels:
++        app: {{ template "fullname" . }}
++    spec:
++      initContainers: 
++      - name: clone-mysql
++        image: {{ .Values.xtraBackupImage }}
++        command:
++          - bash
++          - "-c"
++          - |
++            set -ex
++            # Skip the clone if data already exists.
++            [[ -d /var/lib/mysql/mysql ]] && exit 0
++            # Skip the clone on master (ordinal index 0).
++            [[ `hostname` =~ -([0-9]+)$ ]] || exit 1
++            ordinal=${BASH_REMATCH[1]}
++            [[ $ordinal -eq 0 ]] && exit 0
++            # Clone data from previous peer.
++            ncat --recv-only {{ template "fullname" . }}-$(($ordinal-1)).{{ template "fullname" . }} 3307 | xbstream -x -C /var/lib/mysql
++            # Prepare the backup.
++            xtrabackup --prepare --user=${MYSQL_REPLICATION_USER} --password=${MYSQL_REPLICATION_PASSWORD} --target-dir=/var/lib/mysql\n
++        env:
++        - name: MYSQL_REPLICATION_USER
++          value: {{ .Values.mysqlha.mysqlReplicationUser }}
++        - name: MYSQL_REPLICATION_PASSWORD
++          valueFrom:
++            secretKeyRef:
++              name: {{ template "fullname" . }}
++              key: mysql-replication-password
++        volumeMounts:
++        - name: data
++          mountPath: /var/lib/mysql
++          subPath: mysql
++        - name: conf
++          mountPath: /etc/mysql/conf.d
++      - name: init-mysql
++        image: {{ .Values.mysqlImage }}
++        command:
++          - bash
++          - "-c"
++          - |
++            set -ex
++            # Generate mysql server-id from pod ordinal index.
++            [[ `hostname` =~ -([0-9]+)$ ]] || exit 1
++            ordinal=${BASH_REMATCH[1]}
++            # Copy server-id.conf adding offset to avoid reserved server-id=0 value.
++            cat /mnt/config-map/server-id.cnf | sed s/@@SERVER_ID@@/$((100 + $ordinal))/g > /mnt/conf.d/server-id.cnf
++            # Copy appropriate conf.d files from config-map to config mount.
++            if [[ $ordinal -eq 0 ]]; then
++              cp /mnt/config-map/master.cnf /mnt/conf.d/
++            else
++              cp /mnt/config-map/slave.cnf /mnt/conf.d/
++            fi
++            # Copy replication user script
++            if [[ $ordinal -eq 0 ]]; then
++              cp /mnt/config-map/create-replication-user.sql /mnt/scripts/create-replication-user.sql
++            fi
++        volumeMounts:
++          - name: conf
++            mountPath: /mnt/conf.d
++          - name: config-map
++            mountPath: /mnt/config-map
++          - name: scripts
++            mountPath: /mnt/scripts
++      containers:
++      - name: mysql
++        image: {{ .Values.mysqlImage }}
++        env:
++        - name: MYSQL_DATABASE
++          value: {{ default "" .Values.mysqlha.mysqlDatabase | quote }}
++        - name: MYSQL_ROOT_PASSWORD
++          valueFrom:
++            secretKeyRef:
++              name: {{ template "fullname" . }}
++              key: mysql-root-password
++        - name: MYSQL_REPLICATION_USER
++          value: {{ .Values.mysqlha.mysqlReplicationUser }}
++        - name: MYSQL_REPLICATION_PASSWORD
++          valueFrom:
++            secretKeyRef:
++              name: {{ template "fullname" . }}
++              key: mysql-replication-password
++        {{ if .Values.mysqlha.mysqlUser }}
++        - name: MYSQL_USER
++          value: {{ .Values.mysqlha.mysqlUser | quote }}
++        - name: MYSQL_PASSWORD
++          valueFrom:
++            secretKeyRef:
++              name: {{ template "fullname" . }}
++              key: mysql-password
++        {{ end }}
++        ports:
++        - name: mysql
++          containerPort: 3306
++        volumeMounts:
++        - name: data
++          mountPath: /var/lib/mysql
++          subPath: mysql
++        - name: conf
++          mountPath: /etc/mysql/conf.d
++        resources:
++          requests:
++            cpu: {{ .Values.resources.requests.cpu }}
++            memory: {{ .Values.resources.requests.memory }}
++        livenessProbe:
++          exec:
++            command:
++            - /bin/sh
++            - "-c"
++            - mysqladmin ping -h 127.0.0.1 -u root -p${MYSQL_ROOT_PASSWORD}
++          initialDelaySeconds: 30
++          timeoutSeconds: 5
++        readinessProbe:
++          exec:
++            # Check we can execute queries over TCP (skip-networking is off).
++            command:
++            - /bin/sh
++            - "-c"
++            - MYSQL_PWD="${MYSQL_ROOT_PASSWORD}"
++            - mysql -h 127.0.0.1 -u root -e "SELECT 1"
++          initialDelaySeconds: 10
++          timeoutSeconds: 1
++      - name: xtrabackup
++        image: {{ .Values.xtraBackupImage }}
++        env:
++        - name: MYSQL_PWD
++          valueFrom:
++            secretKeyRef:
++              name: {{ template "fullname" . }}
++              key: mysql-root-password
++        - name: MYSQL_REPLICATION_USER
++          value: {{ .Values.mysqlha.mysqlReplicationUser }}
++        - name: MYSQL_REPLICATION_PASSWORD
++          valueFrom:
++            secretKeyRef:
++              name: {{ template "fullname" . }}
++              key: mysql-replication-password
++        ports:
++        - name: xtrabackup
++          containerPort: 3307
++        command:
++        - bash
++        - "-c"
++        - |
++          set -ex
++
++          echo "Waiting for mysqld to be ready (accepting connections)"
++          until mysql -h 127.0.0.1 -e "SELECT 1"; do sleep 1; done
++
++          # Create replication user
++          cd /mnt/scripts
++          if [[ -f create-replication-user.sql  ]]; then
++            cp create-replication-user.sql create-replication-user.orig.sql
++            cat create-replication-user.sql \
++              | sed s/@@REPLICATION_USER@@/"${MYSQL_REPLICATION_USER}"/g \
++              | sed s/@@REPLICATION_PASSWORD@@/"${MYSQL_REPLICATION_PASSWORD}"/g \
++              | tee create-replication-user.sql
++            mysql -h 127.0.0.1 --verbose < create-replication-user.sql
++          fi
++
++          cd /var/lib/mysql
++          # Determine binlog position of cloned data, if any.
++          if [[ -f xtrabackup_slave_info ]]; then
++            # XtraBackup already generated a partial "CHANGE MASTER TO" query
++            # because we're cloning from an existing slave.
++            cp xtrabackup_slave_info change_master_to.sql.in
++          elif [[ -f xtrabackup_binlog_info ]]; then
++            # We're cloning directly from master. Parse binlog position.
++            [[ $(cat xtrabackup_binlog_info) =~ ^(.*?)[[:space:]]+(.*?)$ ]] || exit 1
++            echo "CHANGE MASTER TO MASTER_LOG_FILE='${BASH_REMATCH[1]}',\
++                  MASTER_LOG_POS=${BASH_REMATCH[2]}" > change_master_to.sql.in
++          fi
++
++          # Check if we need to complete a clone by starting replication.
++          if [[ -f change_master_to.sql.in ]]; then
++
++            # In case of container restart, attempt this at-most-once.
++            cp change_master_to.sql.in change_master_to.sql.orig
++            mysql -h 127.0.0.1 --verbose<<EOF
++            $(<change_master_to.sql.orig),
++            MASTER_HOST='{{ template "fullname" . }}-0.{{ template "fullname" . }}',
++            MASTER_USER='${MYSQL_REPLICATION_USER}',
++            MASTER_PASSWORD='${MYSQL_REPLICATION_PASSWORD}',
++            MASTER_CONNECT_RETRY=10;
++            START SLAVE;
++          EOF
++          fi
++
++          # Start a server to send backups when requested by peers.
++          exec ncat --listen --keep-open --send-only --max-conns=1 3307 -c \
++            "xtrabackup --backup --slave-info --stream=xbstream --host=127.0.0.1 --user=${MYSQL_REPLICATION_USER} --password=${MYSQL_REPLICATION_PASSWORD}"
++        volumeMounts:
++        - name: data
++          mountPath: /var/lib/mysql
++          subPath: mysql
++        - name: conf
++          mountPath: /etc/mysql/conf.d
++        - name: scripts
++          mountPath: /mnt/scripts
++        resources:
++          requests:
++            cpu: 100m
++            memory: 100Mi
++      volumes:
++      - name: conf
++        emptyDir: {}
++      - name: config-map
++        configMap:
++          name: {{ template "fullname" . }}
++      - name: scripts
++        emptyDir: {}
++      {{- if eq .Values.persistence.enabled false }}
++      - name: data
++        emptyDir: {}
++      {{- end}}
++  volumeClaimTemplates:
++  {{- if .Values.persistence.enabled }}
++  - metadata:
++      name: data
++      annotations:
++        {{- if .Values.persistence.storageClass }}
++        volume.alpha.kubernetes.io/storage-class: {{ .Values.persistence.storageClass }}
++        {{- end }}
++    spec:
++      accessModes: 
++      - {{ .Values.persistence.accessMode | quote }}
++      resources:
++        requests:
++          storage: {{ .Values.persistence.size | quote }}
++  {{- end }}
+\ No newline at end of file
+diff --git a/incubator/mysqlha/templates/svc.yaml b/incubator/mysqlha/templates/svc.yaml
+new file mode 100644
+index 000000000..00532f257
+--- /dev/null
++++ b/incubator/mysqlha/templates/svc.yaml
+@@ -0,0 +1,35 @@
++# Headless service for stable DNS entries of StatefulSet members.
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ template "fullname" . }}
++  labels:
++    app: {{ template "fullname" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++spec:
++  ports:
++  - name: {{ template "fullname" . }}
++    port: 3306
++  clusterIP: None
++  selector:
++    app: {{ template "fullname" . }}
++---
++# Client service for connecting to any MySQL instance for reads.
++# For writes, you must instead connect to the master: mysql-0.mysql.
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ template "fullname" . }}-readonly
++  labels:
++    app: {{ template "fullname" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++spec:
++  ports:
++  - name: {{ template "fullname" . }}
++    port: 3306
++  selector:
++    app: {{ template "fullname" . }}
+diff --git a/incubator/mysqlha/values.yaml b/incubator/mysqlha/values.yaml
+new file mode 100644
+index 000000000..6b5b9eee3
+--- /dev/null
++++ b/incubator/mysqlha/values.yaml
+@@ -0,0 +1,45 @@
++## mysql image version
++## ref: https://hub.docker.com/r/library/mysql/tags/
++##
++mysqlImage: mysql:5.7.13
++xtraBackupImage: gcr.io/google-samples/xtrabackup:1.0
++
++mysqlha:
++  replicaCount: 3
++
++  ## Password for MySQL root user
++  ##
++  # mysqlRootPassword: ## Default: random 10 character string
++
++  ## Username/password for MySQL replication user
++  ##
++  mysqlReplicationUser: repl
++  # mysqlReplicationPassword:
++
++  ## Create a database user
++  ##
++  # mysqlUser:
++  # mysqlPassword: ## Default: random 10 character string
++
++
++  ## Allow unauthenticated access, uncomment to enable
++  ##
++  # mysqlAllowEmptyPassword: true
++
++  ## Create database with name and grant all permissions to user on startup, if needed
++  # mysqlDatabase:
++
++## Enable persistence using Persistent Volume Claims
++## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
++##
++persistence:
++  enabled: true
++  ## If defined, volume.beta.kubernetes.io/storage-class: <storageClass>
++  ##
++  accessMode: ReadWriteOnce
++  size: 10Gi
++
++resources:
++  requests:
++    cpu: 100m
++    memory: 128Mi

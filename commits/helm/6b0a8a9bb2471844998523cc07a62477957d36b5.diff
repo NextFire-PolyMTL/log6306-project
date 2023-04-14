@@ -1,0 +1,168 @@
+commit 6b0a8a9bb2471844998523cc07a62477957d36b5
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Wed Jan 16 10:59:21 2019 +0100
+
+    [stable/rabbitmq] Refactor way to add custom configuration (#10070)
+    
+    * [stable/rabbitmq] Remove bad config option from values.yaml
+    
+    Signed-off-by: tompizmor <tompizmor@gmail.com>
+    
+    * Delete from both values files
+    
+    Signed-off-by: tompizmor <tompizmor@gmail.com>
+    
+    * Split config map content in two configuration values
+    
+    Signed-off-by: tompizmor <tompizmor@gmail.com>
+    
+    * Apply feedback
+    
+    Signed-off-by: tompizmor <tompizmor@gmail.com>
+
+diff --git a/stable/rabbitmq/Chart.yaml b/stable/rabbitmq/Chart.yaml
+index 5518970f5..096132f21 100644
+--- a/stable/rabbitmq/Chart.yaml
++++ b/stable/rabbitmq/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: rabbitmq
+-version: 4.0.5
++version: 4.1.0
+ appVersion: 3.7.10
+ description: Open source message broker software that implements the Advanced Message Queuing Protocol (AMQP)
+ keywords:
+diff --git a/stable/rabbitmq/README.md b/stable/rabbitmq/README.md
+index 01a35091c..9b0732c9c 100644
+--- a/stable/rabbitmq/README.md
++++ b/stable/rabbitmq/README.md
+@@ -58,12 +58,12 @@ The following table lists the configurable parameters of the RabbitMQ chart and
+ | `rabbitmq.username`                  | RabbitMQ application username                    | `user`                                                  |
+ | `rabbitmq.password`                  | RabbitMQ application password                    | _random 10 character long alphanumeric string_          |
+ | `rabbitmq.erlangCookie`              | Erlang cookie                                    | _random 32 character long alphanumeric string_          |
+-| `rabbitmq.diskFreeLimit`             | Disk free limit                                  | `"6GiB"`                                                |
+ | `rabbitmq.plugins`                   | configuration file for plugins to enable         | `[rabbitmq_management,rabbitmq_peer_discovery_k8s].`    |
+ | `rabbitmq.clustering.address_type`   | Switch clustering mode                           | `ip` or `hostname`                                      |
+ | `rabbitmq.clustering.k8s_domain`     | Customize internal k8s cluster domain            | `cluster.local`                                         |
+ | `rabbitmq.ulimitNofiles`             | Max File Descriptor limit                        | `65536`                                                 |
+-| `rabbitmq.configuration`             | rabbitmq.conf content                            | see values.yaml                                         |
++| `rabbitmq.configuration`             | Required cluster configuration                   | See values.yaml                                         |
++| `rabbitmq.extraConfiguration`        | Extra configuration to add to rabbitmq.conf      | See values.yaml                                         |
+ | `service.type`                       | Kubernetes Service type                          | `ClusterIP`                                             |
+ | `service.amqpPort`                   | Amqp port                                        | `5672`                                                  |
+ | `service.distPort`                   | Erlang distribution server port                  | `25672`                                                 |
+diff --git a/stable/rabbitmq/templates/configuration.yaml b/stable/rabbitmq/templates/configuration.yaml
+index 37db37273..24ded9399 100644
+--- a/stable/rabbitmq/templates/configuration.yaml
++++ b/stable/rabbitmq/templates/configuration.yaml
+@@ -15,4 +15,5 @@ data:
+     default_user={{.Values.rabbitmq.username}}
+     default_pass=CHANGEME
+ {{ .Values.rabbitmq.configuration | indent 4 }}
++{{ .Values.rabbitmq.extraConfiguration | indent 4 }}
+ 
+diff --git a/stable/rabbitmq/values-production.yaml b/stable/rabbitmq/values-production.yaml
+index f3a8f17fa..7b0878ccc 100644
+--- a/stable/rabbitmq/values-production.yaml
++++ b/stable/rabbitmq/values-production.yaml
+@@ -54,12 +54,6 @@ rabbitmq:
+   ##
+   # rabbitmqClusterNodeName:
+ 
+-  ## RabbitMQ Disk free limit
+-  ## ref: https://github.com/bitnami/bitnami-docker-rabbitmq#environment-variables
+-  ## ref: https://www.rabbitmq.com/disk-alarms.html
+-  ##
+-  diskFreeLimit: '"6GiB"'
+-
+   ## RabbitMQ Max File Descriptors
+   ## ref: https://github.com/bitnami/bitnami-docker-rabbitmq#environment-variables
+   ## ref: https://www.rabbitmq.com/install-debian.html#kernel-resource-limits
+@@ -75,18 +69,24 @@ rabbitmq:
+     address_type: ip
+     k8s_domain: cluster.local
+ 
+-  ## Configution file content
++  ## Configuration file content: required cluster configuration
++  ## Do not override unless you know what you are doing. To add more configuration, use `extraConfiguration` instead
+   configuration: |-
+-      ## Clustering
+-      cluster_formation.peer_discovery_backend  = rabbit_peer_discovery_k8s
+-      cluster_formation.k8s.host = kubernetes.default.svc.cluster.local
+-      cluster_formation.node_cleanup.interval = 10
+-      cluster_formation.node_cleanup.only_log_warning = false
+-      cluster_partition_handling = autoheal
+-      ## queue master locator
+-      queue_master_locator=min-masters
+-      ## enable guest user
+-      loopback_users.guest = false
++    ## Clustering
++    cluster_formation.peer_discovery_backend  = rabbit_peer_discovery_k8s
++    cluster_formation.k8s.host = kubernetes.default.svc.cluster.local
++    cluster_formation.node_cleanup.interval = 10
++    cluster_formation.node_cleanup.only_log_warning = true
++    cluster_partition_handling = autoheal
++    # queue master locator
++    queue_master_locator=min-masters
++    # enable guest user
++    loopback_users.guest = false
++
++  ## Configuration file content: extra configuration
++  ## Use this instead of `configuration` to add more configuration
++  extraConfiguration: |-
++    #disk_free_limit.absolute = 50MB
+ 
+ ## Kubernetes service type
+ service:
+diff --git a/stable/rabbitmq/values.yaml b/stable/rabbitmq/values.yaml
+index 838686272..8ed645188 100644
+--- a/stable/rabbitmq/values.yaml
++++ b/stable/rabbitmq/values.yaml
+@@ -54,12 +54,6 @@ rabbitmq:
+   ##
+   # rabbitmqClusterNodeName:
+ 
+-  ## RabbitMQ Disk free limit
+-  ## ref: https://github.com/bitnami/bitnami-docker-rabbitmq#environment-variables
+-  ## ref: https://www.rabbitmq.com/disk-alarms.html
+-  ##
+-  diskFreeLimit: '"6GiB"'
+-
+   ## RabbitMQ Max File Descriptors
+   ## ref: https://github.com/bitnami/bitnami-docker-rabbitmq#environment-variables
+   ## ref: https://www.rabbitmq.com/install-debian.html#kernel-resource-limits
+@@ -75,18 +69,24 @@ rabbitmq:
+     address_type: ip
+     k8s_domain: cluster.local
+ 
+-  ## Configution file content
++  ## Configuration file content: required cluster configuration
++  ## Do not override unless you know what you are doing. To add more configuration, use `extraConfiguration` instead
+   configuration: |-
+-      ## Clustering
+-      cluster_formation.peer_discovery_backend  = rabbit_peer_discovery_k8s
+-      cluster_formation.k8s.host = kubernetes.default.svc.cluster.local
+-      cluster_formation.node_cleanup.interval = 10
+-      cluster_formation.node_cleanup.only_log_warning = true
+-      cluster_partition_handling = autoheal
+-      ## queue master locator
+-      queue_master_locator=min-masters
+-      ## enable guest user
+-      loopback_users.guest = false
++    ## Clustering
++    cluster_formation.peer_discovery_backend  = rabbit_peer_discovery_k8s
++    cluster_formation.k8s.host = kubernetes.default.svc.cluster.local
++    cluster_formation.node_cleanup.interval = 10
++    cluster_formation.node_cleanup.only_log_warning = true
++    cluster_partition_handling = autoheal
++    # queue master locator
++    queue_master_locator=min-masters
++    # enable guest user
++    loopback_users.guest = false
++
++  ## Configuration file content: extra configuration
++  ## Use this instead of  `configuration` to add more configuration
++  extraConfiguration: |-
++    #disk_free_limit.absolute = 50MB
+ 
+ ## Kubernetes service type
+ service:

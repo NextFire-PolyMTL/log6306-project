@@ -1,0 +1,465 @@
+commit 44981ee444e9c4db2724f70bf9142f87a1532813
+Author: Torin Sandall <torinsandall@gmail.com>
+Date:   Tue Dec 18 12:48:16 2018 -0800
+
+    Add Open Policy Agent chart (#8915)
+    
+    * Add Open Policy Agent chart
+    
+    Signed-off-by: Torin Sandall <torinsandall@gmail.com>
+    
+    * Update chart with example to kick the tires
+    
+    Signed-off-by: Torin Sandall <torinsandall@gmail.com>
+    
+    * Update chart per review feedback
+    
+    - Set app version to OPA vresion per convention
+    - Prefer user facing chart name to local in install guide
+    - Refactor standard labels into helper template
+    
+    Signed-off-by: Torin Sandall <torinsandall@gmail.com>
+    
+    * Add configuration table to README
+    
+    Signed-off-by: Torin Sandall <torinsandall@gmail.com>
+
+diff --git a/stable/opa/Chart.yaml b/stable/opa/Chart.yaml
+new file mode 100644
+index 000000000..7880c60fa
+--- /dev/null
++++ b/stable/opa/Chart.yaml
+@@ -0,0 +1,16 @@
++apiVersion: v1
++appVersion: 0.10.1
++description: Open source, general-purpose policy engine. Enforce fine-grained invariants over arbitrary Kubernetes resources.
++name: opa
++keywords:
++- opa
++- admission control
++- policy
++version: 0.1.0
++home: https://www.openpolicyagent.org
++icon: https://raw.githubusercontent.com/open-policy-agent/opa/master/logo/logo.png
++sources:
++- https://github.com/open-policy-agent/opa
++maintainers:
++- name: tsandall
++  email: torinsandall@gmail.com
+diff --git a/stable/opa/README.md b/stable/opa/README.md
+new file mode 100644
+index 000000000..17d69535c
+--- /dev/null
++++ b/stable/opa/README.md
+@@ -0,0 +1,74 @@
++# OPA
++
++[OPA](https://www.openpolicyagent.org) is an open source general-purpose policy
++engine designed for cloud-native environments.
++
++## Prerequisites
++
++- Kubernetes 1.9 (or newer) for validating and mutating webhook admission
++  controller support.
++
++## Overview
++
++This helm chart installs OPA as a [Kubernetes admission
++controller](https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/).
++Using OPA, you can enforce fine-grained invariants over arbitrary resources in
++your Kubernetes cluster.
++
++## Kick the tires
++
++If you just want to see something run, install the chart without any
++configuration.
++
++```bash
++helm install stable/opa
++```
++
++Once installed, the OPA will download a sample bundle from
++https://www.openpolicyagent.org. The sample bundle contains a simple policy that
++restricts the hostnames that can be specified on Ingress objects created in the
++`opa-example` namespace. You can download the bundle and inspect it yourself:
++
++```bash
++mkdir example && cd example
++curl -s -L https://www.openpolicyagent.org/bundles/kubernetes/admission | tar xzv
++```
++
++See the [NOTES.txt](./templates/NOTES.txt) file for examples of how to exercise
++the admission controller.
++
++## Configuration
++
++All configuration settings are contained and described in
++[values.yaml](values.yaml).
++
++You should set the URL and credentials for the OPA to use to download policies.
++The URL should identify an HTTP endpoint that implements the [OPA Bundle
++API](https://www.openpolicyagent.org/docs/bundles.html).
++
++- `opa.services.controller.url` specifies the base URL of the OPA control plane.
++
++- `opa.services.controller.credentials.bearer.token` specifies a bearer token
++  for the OPA to use to authenticate with the control plane.
++
++For more information on OPA-specific configuration see the [OPA Configuration
++Reference](https://www.openpolicyagent.org/docs/configuration.html).
++
++| Parameter | Description | Default |
++| --- | --- | --- |
++| `admissionControllerKind` | Type of admission controller to install. | `ValidatingWebhookConfiguration` |
++| `admissionControllerFailurePolicy` | Fail-open (`Ignore`) or fail-closed (`Fail`)? | `Ignore` |
++| `admissionControllerRules` | Types of operations resources to check. | `*` |
++| `generateAdmissionControllerCerts` | Auto-generate TLS certificates for admission controller. | `true` |
++| `admissionControllerCA` | Manually set admission controller certificate CA. | Unset |
++| `admissionControllerCert` | Manually set admission controller certificate. | Unset |
++| `admissionControllerKey` | Manually set admission controller key. | Unset |
++| `image` | OPA image to deploy. | `openpolicyagent/opa` |
++| `imageTag` | OPA image tag to deploy. | See [values.yaml](values.yaml) |
++| `replicas` | Number of admission controller replicas to deploy. | `1` |
++| `tolerations` | List of node taint tolerations. | `[]` |
++| `nodeSelector` | Node labels for pod assignment. | `{}` |
++| `resources` | CPU and memory limits for OPA Pod. | `{}` |
++| `readinessProbe` | HTTP readiness probe for OPA container. | See [values.yaml](values.yaml) |
++| `livenessProbe` | HTTP liveness probe for OPA container. | See [values.yaml](values.yaml) |
++| `opa` | OPA configuration. | See [values.yaml](values.yaml) |
+diff --git a/stable/opa/templates/NOTES.txt b/stable/opa/templates/NOTES.txt
+new file mode 100644
+index 000000000..1264bb6da
+--- /dev/null
++++ b/stable/opa/templates/NOTES.txt
+@@ -0,0 +1,55 @@
++Please wait while the OPA is deployed on your cluster.
++
++For example policies that you can enforce with OPA see https://www.openpolicyagent.org.
++
++You can query OPA to see the policies it has loaded:
++
++export OPA_POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app={{ template "opa.fullname" . }}" -o jsonpath="{.items[0].metadata.name}")
++
++kubectl port-forward $OPA_POD_NAME 8080:443
++
++curl -k -s https://localhost:8080/v1/policies | jq -r '.result[].raw'
++
++If you installed this chart with the default values, you can exercise the sample policy.
++
++# 1. Create a namespace called "opa-example"
++
++kubectl create namespace opa-example
++
++# 2. Create an Ingress in the "opa-example" namespace that complies with the policy.
++
++cat > ingress-ok.yaml <<EOF
++apiVersion: extensions/v1beta1
++kind: Ingress
++metadata:
++  name: ingress-ok
++spec:
++  rules:
++  - host: signin.dev.acmecorp.com
++    http:
++      paths:
++      - backend:
++          serviceName: nginx
++          servicePort: 80
++EOF
++
++kubectl -n opa-example create -f ingress-ok.yaml
++
++# 3. Try to create an Ingress in the "opa-example" namespace that violates the policy.
++
++cat > ingress-bad.yaml <<EOF
++apiVersion: extensions/v1beta1
++kind: Ingress
++metadata:
++  name: ingress-ok
++spec:
++  rules:
++  - host: signin.acmecorp.com
++    http:
++      paths:
++      - backend:
++          serviceName: nginx
++          servicePort: 80
++EOF
++
++kubectl -n opa-example create -f ingress-bad.yaml
+diff --git a/stable/opa/templates/_helpers.tpl b/stable/opa/templates/_helpers.tpl
+new file mode 100644
+index 000000000..08ea9ec71
+--- /dev/null
++++ b/stable/opa/templates/_helpers.tpl
+@@ -0,0 +1,42 @@
++{{/* vim: set filetype=mustache: */}}
++{{/*
++Expand the name of the chart.
++*/}}
++{{- define "opa.name" -}}
++{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*
++Create a default fully qualified app name.
++We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
++If release name contains chart name it will be used as a full name.
++*/}}
++{{- define "opa.fullname" -}}
++{{- if .Values.fullnameOverride -}}
++{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Create chart name and version as used by the chart label.
++*/}}
++{{- define "opa.chart" -}}
++{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*
++Define standard labels for frequently used metadata.
++*/}}
++{{- define "opa.labels.standard" -}}
++app: {{ template "opa.fullname" . }}
++chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++release: "{{ .Release.Name }}"
++heritage: "{{ .Release.Service }}"
++{{- end -}}
+diff --git a/stable/opa/templates/deployment.yaml b/stable/opa/templates/deployment.yaml
+new file mode 100644
+index 000000000..ca597a96e
+--- /dev/null
++++ b/stable/opa/templates/deployment.yaml
+@@ -0,0 +1,51 @@
++apiVersion: apps/v1
++kind: Deployment
++metadata:
++  name: {{ template "opa.fullname" . }}
++  labels:
++{{ include "opa.labels.standard" . | indent 4 }}
++spec:
++  replicas: {{ .Values.replicas }}
++  selector:
++    matchLabels:
++      app: {{ template "opa.fullname" . }}
++  template:
++    metadata:
++      labels:
++        app: {{ template "opa.fullname" . }}
++      name: {{ template "opa.fullname" . }}
++    spec:
++      containers:
++        - name: opa
++          image: {{ .Values.image }}:{{ .Values.imageTag }}
++          args:
++            - "run"
++            - "--server"
++            - "--config-file=/config/config.yaml"
++            - "--tls-cert-file=/certs/tls.crt"
++            - "--tls-private-key-file=/certs/tls.key"
++            - "--addr=0.0.0.0:443"
++          volumeMounts:
++            - name: certs
++              readOnly: true
++              mountPath: /certs
++            - name: config
++              readOnly: true
++              mountPath: /config
++          readinessProbe:
++{{ toYaml .Values.readinessProbe | indent 12 }}
++          livenessProbe:
++{{ toYaml .Values.livenessProbe | indent 12 }}
++      volumes:
++        - name: certs
++          secret:
++            secretName: {{ template "opa.fullname" . }}-cert
++        - name: config
++          secret:
++            secretName: {{ template "opa.fullname" . }}-config
++      nodeSelector:
++{{ toYaml .Values.nodeSelector | indent 8 }}
++      tolerations:
++{{ toYaml .Values.tolerations | indent 8 }}
++      resources:
++{{ toYaml .Values.resources | indent 8 }}
+diff --git a/stable/opa/templates/secrets.yaml b/stable/opa/templates/secrets.yaml
+new file mode 100644
+index 000000000..7b4f1d347
+--- /dev/null
++++ b/stable/opa/templates/secrets.yaml
+@@ -0,0 +1,9 @@
++apiVersion: v1
++kind: Secret
++metadata:
++  name: {{ template "opa.fullname" . }}-config
++  labels:
++{{ include "opa.labels.standard" . | indent 4 }}
++type: Opaque
++data:
++  config.yaml: {{ toYaml .Values.opa | b64enc }}
+diff --git a/stable/opa/templates/service.yaml b/stable/opa/templates/service.yaml
+new file mode 100644
+index 000000000..ed4206853
+--- /dev/null
++++ b/stable/opa/templates/service.yaml
+@@ -0,0 +1,14 @@
++kind: Service
++apiVersion: v1
++metadata:
++  name: {{ template "opa.fullname" . }}
++  labels:
++{{ include "opa.labels.standard" . | indent 4 }}
++spec:
++  selector:
++    app: {{ template "opa.fullname" . }}
++  ports:
++  - name: https
++    protocol: TCP
++    port: 443
++    targetPort: 443
+diff --git a/stable/opa/templates/webhookconfiguration.yaml b/stable/opa/templates/webhookconfiguration.yaml
+new file mode 100644
+index 000000000..73fa42713
+--- /dev/null
++++ b/stable/opa/templates/webhookconfiguration.yaml
+@@ -0,0 +1,43 @@
++{{- $cn := printf "%s.%s.svc" ( include "opa.fullname" . ) .Release.Namespace }}
++{{- $ca := genCA "opa-admission-ca" 3650 -}}
++{{- $cert := genSignedCert $cn nil nil 3650 $ca -}}
++kind: {{ .Values.admissionControllerKind }}
++apiVersion: admissionregistration.k8s.io/v1beta1
++metadata:
++  name: {{ template "opa.fullname" . }}
++  labels:
++{{ include "opa.labels.standard" . | indent 4 }}
++webhooks:
++  - name: webhook.openpolicyagent.org
++    failurePolicy: {{ .Values.admissionControllerFailurePolicy }}
++    rules:
++{{ toYaml .Values.admissionControllerRules | indent 6 }}
++    clientConfig:
++{{ if .Values.generateAdmissionControllerCerts }}
++      caBundle: {{ b64enc $ca.Cert }}
++{{ else }}
++      caBundle: {{ b64enc .Values.admissionControllerCA }}
++{{ end }}
++      service:
++        name: {{ template "opa.fullname" . }}
++        namespace: {{ .Release.Namespace }}
++---
++apiVersion: v1
++kind: Secret
++metadata:
++  name: {{ template "opa.fullname" . }}-cert
++  labels:
++    app: {{ template "opa.fullname" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++type: Opaque
++data:
++{{ if .Values.generateAdmissionControllerCerts }}
++  tls.crt: {{ b64enc $cert.Cert }}
++  tls.key: {{ b64enc $cert.Key }}
++{{ else }}
++  tls.crt: {{ b64enc .Values.admissionControllerCert }}
++  tls.key: {{ b64enc .Values.admissionControllerKey }}
++{{ end }}
++
+diff --git a/stable/opa/values.yaml b/stable/opa/values.yaml
+new file mode 100644
+index 000000000..31fbe2517
+--- /dev/null
++++ b/stable/opa/values.yaml
+@@ -0,0 +1,81 @@
++# Default values for opa.
++# -----------------------
++#
++# The 'opa' key embeds an OPA configuration file. See
++# https://www.openpolicyagent.org/docs/configuration.html for more details.
++opa:
++  services:
++    controller:
++      url: "https://www.openpolicyagent.org"
++  bundle:
++    service: controller
++    name: "kubernetes/admission"
++
++# To enforce mutating policies, change to MutatingWebhookConfiguration.
++admissionControllerKind: ValidatingWebhookConfiguration
++
++# To _fail closed_ on failures, change to Fail. During initial testing, we
++# recommend leaving the failure policy as Ignore.
++admissionControllerFailurePolicy: Ignore
++
++# To restrict the kinds of operations and resources that are subject to OPA
++# policy checks, see the settings below. By default, all resources and
++# operations are subject to OPA policy checks.
++admissionControllerRules:
++  - operations: ["*"]
++    apiGroups: ["*"]
++    apiVersions: ["*"]
++    resources: ["*"]
++
++# The helm Chart will automatically generate a CA and server certificate for
++# the OPA. If you want to supply your own certificates, set the field below to
++# false and add the PEM encoded CA certificate and server key pair below.
++#
++# WARNING: The common name name in the server certificate MUST match the
++# hostname of the service that exposes the OPA to the apiserver. For example.
++# if the service name is created in the "default" nanamespace with name "opa"
++# the common name MUST be set to "opa.default.svc".
++#
++# If the common name is not set correctly, the apiserver will refuse to
++# communicate with the OPA.
++generateAdmissionControllerCerts: true
++admissionControllerCA: ""
++admissionControllerCert: ""
++admissionControllerKey: ""
++
++# Docker image and tag to deploy.
++image: openpolicyagent/opa
++imageTag: 0.10.1
++
++# Number of OPA replicas to deploy. OPA maintains an eventually consistent
++# cache of policies and data. If you want high availability you can deploy two
++# or more replicas.
++replicas: 1
++
++# To control how the OPA is scheduled on the cluster, set the tolerations and
++# nodeSelector values below. For example, to deploy OPA onto the master nodes:
++#
++# tolerations: [{key: "node-role.kubernetes.io/master", effect: NoSchedule, operator: Exists}]
++# nodeSelector: {"kubernetes.io/role": "master"}
++tolerations: []
++nodeSelector: {}
++
++# To control the CPU and memory resource limits and requests for OPA, set the
++# field below.
++resources: {}
++
++# To control the liveness and readiness probes change the fields below.
++readinessProbe:
++  httpGet:
++    path: /
++    scheme: HTTPS
++    port: 443
++    initialDelaySeconds: 3
++    periodSeconds: 5
++livenessProbe:
++  httpGet:
++    path: /
++    scheme: HTTPS
++    port: 443
++    initialDelaySeconds: 3
++    periodSeconds: 5

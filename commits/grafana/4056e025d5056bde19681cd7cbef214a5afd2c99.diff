@@ -1,0 +1,2769 @@
+commit 4056e025d5056bde19681cd7cbef214a5afd2c99 (from 1c63a49875126a2937360762bc1148fe6bc33609)
+Merge: 1c63a498 039fe3d8
+Author: MH <zanhsieh@gmail.com>
+Date:   Tue Nov 15 06:36:56 2022 +0800
+
+    Merge pull request #1971 from zanac1986/fix/grafana-refactor
+    
+    [grafana] refactor
+
+diff --git a/charts/grafana/Chart.yaml b/charts/grafana/Chart.yaml
+index c0678bab..b3a9e2a9 100644
+--- a/charts/grafana/Chart.yaml
++++ b/charts/grafana/Chart.yaml
+@@ -1,6 +1,6 @@
+ apiVersion: v2
+ name: grafana
+-version: 6.43.5
++version: 6.44.0
+ appVersion: 9.2.4
+ kubeVersion: "^1.8.0-0"
+ description: The leading tool for querying and visualizing time series and metrics.
+diff --git a/charts/grafana/ci/with-extraconfigmapmounts-values.yaml b/charts/grafana/ci/with-extraconfigmapmounts-values.yaml
+index f2d55a83..5cc44a05 100644
+--- a/charts/grafana/ci/with-extraconfigmapmounts-values.yaml
++++ b/charts/grafana/ci/with-extraconfigmapmounts-values.yaml
+@@ -1,6 +1,6 @@
+ extraConfigmapMounts:
+-  - name: '{{ template "grafana.fullname" . }}'
+-    configMap: '{{ template "grafana.fullname" . }}'
++  - name: '{{ include "grafana.fullname" . }}'
++    configMap: '{{ include "grafana.fullname" . }}'
+     mountPath: /var/lib/grafana/dashboards/test-dashboard.json
+     # This is not a realistic test, but for this we only care about extraConfigmapMounts not being empty and pointing to an existing ConfigMap
+     subPath: grafana.ini
+diff --git a/charts/grafana/templates/NOTES.txt b/charts/grafana/templates/NOTES.txt
+index 1fc8436d..f399f43f 100644
+--- a/charts/grafana/templates/NOTES.txt
++++ b/charts/grafana/templates/NOTES.txt
+@@ -1,10 +1,10 @@
+ 1. Get your '{{ .Values.adminUser }}' user password by running:
+ 
+-   kubectl get secret --namespace {{ template "grafana.namespace" . }} {{ template "grafana.fullname" . }} -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
++   kubectl get secret --namespace {{ include "grafana.namespace" . }} {{ include "grafana.fullname" . }} -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
+ 
+ 2. The Grafana server can be accessed via port {{ .Values.service.port }} on the following DNS name from within your cluster:
+ 
+-   {{ template "grafana.fullname" . }}.{{ template "grafana.namespace" . }}.svc.cluster.local
++   {{ include "grafana.fullname" . }}.{{ include "grafana.namespace" . }}.svc.cluster.local
+ {{ if .Values.ingress.enabled }}
+    If you bind grafana to 80, please update values in values.yaml and reinstall:
+    ```
+@@ -24,24 +24,24 @@
+    Or grafana would always crash.
+ 
+    From outside the cluster, the server URL(s) are:
+-{{- range .Values.ingress.hosts }}
++     {{- range .Values.ingress.hosts }}
+      http://{{ . }}
+-{{- end }}
+-{{ else }}
++     {{- end }}
++{{- else }}
+    Get the Grafana URL to visit by running these commands in the same shell:
+-{{ if contains "NodePort" .Values.service.type -}}
+-     export NODE_PORT=$(kubectl get --namespace {{ template "grafana.namespace" . }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ template "grafana.fullname" . }})
+-     export NODE_IP=$(kubectl get nodes --namespace {{ template "grafana.namespace" . }} -o jsonpath="{.items[0].status.addresses[0].address}")
++   {{- if contains "NodePort" .Values.service.type }}
++     export NODE_PORT=$(kubectl get --namespace {{ include "grafana.namespace" . }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "grafana.fullname" . }})
++     export NODE_IP=$(kubectl get nodes --namespace {{ include "grafana.namespace" . }} -o jsonpath="{.items[0].status.addresses[0].address}")
+      echo http://$NODE_IP:$NODE_PORT
+-{{ else if contains "LoadBalancer" .Values.service.type -}}
++   {{- else if contains "LoadBalancer" .Values.service.type }}
+    NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+-        You can watch the status of by running 'kubectl get svc --namespace {{ template "grafana.namespace" . }} -w {{ template "grafana.fullname" . }}'
+-     export SERVICE_IP=$(kubectl get svc --namespace {{ template "grafana.namespace" . }} {{ template "grafana.fullname" . }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
++        You can watch the status of by running 'kubectl get svc --namespace {{ include "grafana.namespace" . }} -w {{ include "grafana.fullname" . }}'
++     export SERVICE_IP=$(kubectl get svc --namespace {{ include "grafana.namespace" . }} {{ include "grafana.fullname" . }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+      http://$SERVICE_IP:{{ .Values.service.port -}}
+-{{ else if contains "ClusterIP"  .Values.service.type }}
+-     export POD_NAME=$(kubectl get pods --namespace {{ template "grafana.namespace" . }} -l "app.kubernetes.io/name={{ template "grafana.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+-     kubectl --namespace {{ template "grafana.namespace" . }} port-forward $POD_NAME 3000
+-{{- end }}
++   {{- else if contains "ClusterIP"  .Values.service.type }}
++     export POD_NAME=$(kubectl get pods --namespace {{ include "grafana.namespace" . }} -l "app.kubernetes.io/name={{ include "grafana.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
++     kubectl --namespace {{ include "grafana.namespace" . }} port-forward $POD_NAME 3000
++   {{- end }}
+ {{- end }}
+ 
+ 3. Login with the password from step 1 and the username: {{ .Values.adminUser }}
+diff --git a/charts/grafana/templates/_helpers.tpl b/charts/grafana/templates/_helpers.tpl
+index 369e69fa..950dca2b 100644
+--- a/charts/grafana/templates/_helpers.tpl
++++ b/charts/grafana/templates/_helpers.tpl
+@@ -3,8 +3,8 @@
+ Expand the name of the chart.
+ */}}
+ {{- define "grafana.name" -}}
+-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
++{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
++{{- end }}
+ 
+ {{/*
+ Create a default fully qualified app name.
+@@ -12,54 +12,54 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this
+ If release name contains chart name it will be used as a full name.
+ */}}
+ {{- define "grafana.fullname" -}}
+-{{- if .Values.fullnameOverride -}}
+-{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+-{{- else -}}
+-{{- $name := default .Chart.Name .Values.nameOverride -}}
+-{{- if contains $name .Release.Name -}}
+-{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+-{{- else -}}
+-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
+-{{- end -}}
+-{{- end -}}
++{{- if .Values.fullnameOverride }}
++{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
++{{- else }}
++{{- $name := default .Chart.Name .Values.nameOverride }}
++{{- if contains $name .Release.Name }}
++{{- .Release.Name | trunc 63 | trimSuffix "-" }}
++{{- else }}
++{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
++{{- end }}
++{{- end }}
++{{- end }}
+ 
+ {{/*
+ Create chart name and version as used by the chart label.
+ */}}
+ {{- define "grafana.chart" -}}
+-{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
+-{{- end -}}
++{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
++{{- end }}
+ 
+ {{/*
+ Create the name of the service account
+ */}}
+ {{- define "grafana.serviceAccountName" -}}
+-{{- if .Values.serviceAccount.create -}}
+-    {{ default (include "grafana.fullname" .) .Values.serviceAccount.name }}
+-{{- else -}}
+-    {{ default "default" .Values.serviceAccount.name }}
+-{{- end -}}
+-{{- end -}}
++{{- if .Values.serviceAccount.create }}
++{{- default (include "grafana.fullname" .) .Values.serviceAccount.name }}
++{{- else }}
++{{- default "default" .Values.serviceAccount.name }}
++{{- end }}
++{{- end }}
+ 
+ {{- define "grafana.serviceAccountNameTest" -}}
+-{{- if .Values.serviceAccount.create -}}
+-    {{ default (print (include "grafana.fullname" .) "-test") .Values.serviceAccount.nameTest }}
+-{{- else -}}
+-    {{ default "default" .Values.serviceAccount.nameTest }}
+-{{- end -}}
+-{{- end -}}
++{{- if .Values.serviceAccount.create }}
++{{- default (print (include "grafana.fullname" .) "-test") .Values.serviceAccount.nameTest }}
++{{- else }}
++{{- default "default" .Values.serviceAccount.nameTest }}
++{{- end }}
++{{- end }}
+ 
+ {{/*
+ Allow the release namespace to be overridden for multi-namespace deployments in combined charts
+ */}}
+ {{- define "grafana.namespace" -}}
+-  {{- if .Values.namespaceOverride -}}
+-    {{- .Values.namespaceOverride -}}
+-  {{- else -}}
+-    {{- .Release.Namespace -}}
+-  {{- end -}}
+-{{- end -}}
++{{- if .Values.namespaceOverride }}
++{{- .Values.namespaceOverride }}
++{{- else }}
++{{- .Release.Namespace }}
++{{- end }}
++{{- end }}
+ 
+ {{/*
+ Common labels
+@@ -71,10 +71,10 @@ helm.sh/chart: {{ include "grafana.chart" . }}
+ app.kubernetes.io/version: {{ .Values.image.tag | default .Chart.AppVersion | quote }}
+ {{- end }}
+ app.kubernetes.io/managed-by: {{ .Release.Service }}
+-{{- if .Values.extraLabels }}
+-{{ toYaml .Values.extraLabels }}
++{{- with .Values.extraLabels }}
++{{- toYaml . }}
++{{- end }}
+ {{- end }}
+-{{- end -}}
+ 
+ {{/*
+ Selector labels
+@@ -82,7 +82,7 @@ Selector labels
+ {{- define "grafana.selectorLabels" -}}
+ app.kubernetes.io/name: {{ include "grafana.name" . }}
+ app.kubernetes.io/instance: {{ .Release.Name }}
+-{{- end -}}
++{{- end }}
+ 
+ {{/*
+ Common labels
+@@ -94,7 +94,7 @@ helm.sh/chart: {{ include "grafana.chart" . }}
+ app.kubernetes.io/version: {{ .Values.image.tag | default .Chart.AppVersion | quote }}
+ {{- end }}
+ app.kubernetes.io/managed-by: {{ .Release.Service }}
+-{{- end -}}
++{{- end }}
+ 
+ {{/*
+ Selector labels ImageRenderer
+@@ -102,73 +102,73 @@ Selector labels ImageRenderer
+ {{- define "grafana.imageRenderer.selectorLabels" -}}
+ app.kubernetes.io/name: {{ include "grafana.name" . }}-image-renderer
+ app.kubernetes.io/instance: {{ .Release.Name }}
+-{{- end -}}
++{{- end }}
+ 
+ {{/*
+ Looks if there's an existing secret and reuse its password. If not it generates
+ new password and use it.
+ */}}
+ {{- define "grafana.password" -}}
+-{{- $secret := (lookup "v1" "Secret" (include "grafana.namespace" .) (include "grafana.fullname" .) ) -}}
+-  {{- if $secret -}}
+-    {{-  index $secret "data" "admin-password" -}}
+-  {{- else -}}
+-    {{- (randAlphaNum 40) | b64enc | quote -}}
+-  {{- end -}}
+-{{- end -}}
++{{- $secret := (lookup "v1" "Secret" (include "grafana.namespace" .) (include "grafana.fullname" .) ) }}
++{{- if $secret }}
++{{- index $secret "data" "admin-password" }}
++{{- else }}
++{{- (randAlphaNum 40) | b64enc | quote }}
++{{- end }}
++{{- end }}
+ 
+ {{/*
+ Return the appropriate apiVersion for rbac.
+ */}}
+ {{- define "grafana.rbac.apiVersion" -}}
+-  {{- if .Capabilities.APIVersions.Has "rbac.authorization.k8s.io/v1" }}
+-    {{- print "rbac.authorization.k8s.io/v1" -}}
+-  {{- else -}}
+-    {{- print "rbac.authorization.k8s.io/v1beta1" -}}
+-  {{- end -}}
+-{{- end -}}
++{{- if $.Capabilities.APIVersions.Has "rbac.authorization.k8s.io/v1" }}
++{{- print "rbac.authorization.k8s.io/v1" }}
++{{- else }}
++{{- print "rbac.authorization.k8s.io/v1beta1" }}
++{{- end }}
++{{- end }}
+ 
+ {{/*
+ Return the appropriate apiVersion for ingress.
+ */}}
+ {{- define "grafana.ingress.apiVersion" -}}
+-  {{- if and (.Capabilities.APIVersions.Has "networking.k8s.io/v1") (semverCompare ">= 1.19-0" .Capabilities.KubeVersion.Version) -}}
+-      {{- print "networking.k8s.io/v1" -}}
+-  {{- else if .Capabilities.APIVersions.Has "networking.k8s.io/v1beta1" -}}
+-    {{- print "networking.k8s.io/v1beta1" -}}
+-  {{- else -}}
+-    {{- print "extensions/v1beta1" -}}
+-  {{- end -}}
+-{{- end -}}
++{{- if and ($.Capabilities.APIVersions.Has "networking.k8s.io/v1") (semverCompare ">= 1.19-0" .Capabilities.KubeVersion.Version) }}
++{{- print "networking.k8s.io/v1" }}
++{{- else if $.Capabilities.APIVersions.Has "networking.k8s.io/v1beta1" }}
++{{- print "networking.k8s.io/v1beta1" }}
++{{- else }}
++{{- print "extensions/v1beta1" }}
++{{- end }}
++{{- end }}
+ 
+ {{/*
+ Return the appropriate apiVersion for podDisruptionBudget.
+ */}}
+ {{- define "grafana.podDisruptionBudget.apiVersion" -}}
+-  {{- if $.Capabilities.APIVersions.Has "policy/v1/PodDisruptionBudget" -}}
+-    {{- print "policy/v1" -}}
+-  {{- else -}}
+-    {{- print "policy/v1beta1" -}}
+-  {{- end -}}
+-{{- end -}}
++{{- if $.Capabilities.APIVersions.Has "policy/v1/PodDisruptionBudget" }}
++{{- print "policy/v1" }}
++{{- else }}
++{{- print "policy/v1beta1" }}
++{{- end }}
++{{- end }}
+ 
+ {{/*
+ Return if ingress is stable.
+ */}}
+ {{- define "grafana.ingress.isStable" -}}
+-  {{- eq (include "grafana.ingress.apiVersion" .) "networking.k8s.io/v1" -}}
+-{{- end -}}
++{{- eq (include "grafana.ingress.apiVersion" .) "networking.k8s.io/v1" }}
++{{- end }}
+ 
+ {{/*
+ Return if ingress supports ingressClassName.
+ */}}
+ {{- define "grafana.ingress.supportsIngressClassName" -}}
+-  {{- or (eq (include "grafana.ingress.isStable" .) "true") (and (eq (include "grafana.ingress.apiVersion" .) "networking.k8s.io/v1beta1") (semverCompare ">= 1.18-0" .Capabilities.KubeVersion.Version)) -}}
+-{{- end -}}
++{{- or (eq (include "grafana.ingress.isStable" .) "true") (and (eq (include "grafana.ingress.apiVersion" .) "networking.k8s.io/v1beta1") (semverCompare ">= 1.18-0" .Capabilities.KubeVersion.Version)) }}
++{{- end }}
+ 
+ {{/*
+ Return if ingress supports pathType.
+ */}}
+ {{- define "grafana.ingress.supportsPathType" -}}
+-  {{- or (eq (include "grafana.ingress.isStable" .) "true") (and (eq (include "grafana.ingress.apiVersion" .) "networking.k8s.io/v1beta1") (semverCompare ">= 1.18-0" .Capabilities.KubeVersion.Version)) -}}
+-{{- end -}}
++{{- or (eq (include "grafana.ingress.isStable" .) "true") (and (eq (include "grafana.ingress.apiVersion" .) "networking.k8s.io/v1beta1") (semverCompare ">= 1.18-0" .Capabilities.KubeVersion.Version)) }}
++{{- end }}
+diff --git a/charts/grafana/templates/_pod.tpl b/charts/grafana/templates/_pod.tpl
+index 358345d5..0253675f 100644
+--- a/charts/grafana/templates/_pod.tpl
++++ b/charts/grafana/templates/_pod.tpl
+@@ -1,8 +1,9 @@
+ {{- define "grafana.pod" -}}
+-{{- if .Values.schedulerName }}
+-schedulerName: "{{ .Values.schedulerName }}"
++{{- $root := . -}}
++{{- with .Values.schedulerName }}
++schedulerName: "{{ . }}"
+ {{- end }}
+-serviceAccountName: {{ template "grafana.serviceAccountName" . }}
++serviceAccountName: {{ include "grafana.serviceAccountName" . }}
+ automountServiceAccountToken: {{ .Values.serviceAccount.autoMount }}
+ {{- with .Values.securityContext }}
+ securityContext:
+@@ -12,8 +13,8 @@ securityContext:
+ hostAliases:
+   {{- toYaml . | nindent 2 }}
+ {{- end }}
+-{{- if .Values.priorityClassName }}
+-priorityClassName: {{ .Values.priorityClassName }}
++{{- with .Values.priorityClassName }}
++priorityClassName: {{ . }}
+ {{- end }}
+ {{- if ( or .Values.persistence.enabled .Values.dashboards .Values.extraInitContainers (and .Values.sidecar.datasources.enabled .Values.sidecar.datasources.initDatasources) (and .Values.sidecar.notifiers.enabled .Values.sidecar.notifiers.initNotifiers)) }}
+ initContainers:
+@@ -30,7 +31,11 @@ initContainers:
+     securityContext:
+       {{- toYaml . | nindent 6 }}
+     {{- end }}
+-    command: ["chown", "-R", "{{ .Values.securityContext.runAsUser }}:{{ .Values.securityContext.runAsGroup }}", "/var/lib/grafana"]
++    command:
++      - chown
++      - -R
++      - {{ .Values.securityContext.runAsUser }}:{{ .Values.securityContext.runAsGroup }}
++      - /var/lib/grafana
+     {{- with .Values.initChownData.resources }}
+     resources:
+       {{- toYaml . | nindent 6 }}
+@@ -38,9 +43,9 @@ initContainers:
+     volumeMounts:
+       - name: storage
+         mountPath: "/var/lib/grafana"
+-{{- if .Values.persistence.subPath }}
+-        subPath: {{ tpl .Values.persistence.subPath . }}
+-{{- end }}
++        {{- with .Values.persistence.subPath }}
++        subPath: {{ tpl . $root }}
++        {{- end }}
+ {{- end }}
+ {{- if .Values.dashboards }}
+   - name: download-dashboards
+@@ -57,36 +62,36 @@ initContainers:
+       {{- toYaml . | nindent 6 }}
+     {{- end }}
+     env:
+-{{- range $key, $value := .Values.downloadDashboards.env }}
++      {{- range $key, $value := .Values.downloadDashboards.env }}
+       - name: "{{ $key }}"
+         value: "{{ $value }}"
+-{{- end }}
++      {{- end }}
+     {{- with .Values.downloadDashboards.securityContext }}
+     securityContext:
+       {{- toYaml . | nindent 6 }}
+     {{- end }}
+-{{- if .Values.downloadDashboards.envFromSecret }}
++    {{- with .Values.downloadDashboards.envFromSecret }}
+     envFrom:
+       - secretRef:
+-          name: {{ tpl .Values.downloadDashboards.envFromSecret . }}
+-{{- end }}
++          name: {{ tpl . $root }}
++    {{- end }}
+     volumeMounts:
+       - name: config
+         mountPath: "/etc/grafana/download_dashboards.sh"
+         subPath: download_dashboards.sh
+       - name: storage
+         mountPath: "/var/lib/grafana"
+-{{- if .Values.persistence.subPath }}
+-        subPath: {{ tpl .Values.persistence.subPath . }}
+-{{- end }}
+-    {{- range .Values.extraSecretMounts }}
++        {{- with .Values.persistence.subPath }}
++        subPath: {{ tpl . $root }}
++        {{- end }}
++      {{- range .Values.extraSecretMounts }}
+       - name: {{ .name }}
+         mountPath: {{ .mountPath }}
+         readOnly: {{ .readOnly }}
+-    {{- end }}
++      {{- end }}
+ {{- end }}
+ {{- if and .Values.sidecar.datasources.enabled .Values.sidecar.datasources.initDatasources }}
+-  - name: {{ template "grafana.name" . }}-init-sc-datasources
++  - name: {{ include "grafana.name" . }}-init-sc-datasources
+     {{- if .Values.sidecar.image.sha }}
+     image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
+     {{- else }}
+@@ -106,9 +111,9 @@ initContainers:
+         value: "LIST"
+       - name: LABEL
+         value: "{{ .Values.sidecar.datasources.label }}"
+-      {{- if .Values.sidecar.datasources.labelValue }}
++      {{- with .Values.sidecar.datasources.labelValue }}
+       - name: LABEL_VALUE
+-        value: {{ quote .Values.sidecar.datasources.labelValue }}
++        value: {{ quote . }}
+       {{- end }}
+       {{- if or .Values.sidecar.logLevel .Values.sidecar.datasources.logLevel }}
+       - name: LOG_LEVEL
+@@ -118,17 +123,17 @@ initContainers:
+         value: "/etc/grafana/provisioning/datasources"
+       - name: RESOURCE
+         value: {{ quote .Values.sidecar.datasources.resource }}
+-      {{- if .Values.sidecar.enableUniqueFilenames }}
++      {{- with .Values.sidecar.enableUniqueFilenames }}
+       - name: UNIQUE_FILENAMES
+-        value: "{{ .Values.sidecar.enableUniqueFilenames }}"
++        value: "{{ . }}"
+       {{- end }}
+       {{- if .Values.sidecar.datasources.searchNamespace }}
+       - name: NAMESPACE
+         value: "{{ tpl (.Values.sidecar.datasources.searchNamespace | join ",") . }}"
+       {{- end }}
+-      {{- if .Values.sidecar.skipTlsVerify }}
++      {{- with .Values.sidecar.skipTlsVerify }}
+       - name: SKIP_TLS_VERIFY
+-        value: "{{ .Values.sidecar.skipTlsVerify }}"
++        value: "{{ . }}"
+       {{- end }}
+     {{- with .Values.sidecar.resources }}
+     resources:
+@@ -143,7 +148,7 @@ initContainers:
+         mountPath: "/etc/grafana/provisioning/datasources"
+ {{- end }}
+ {{- if and .Values.sidecar.notifiers.enabled .Values.sidecar.notifiers.initNotifiers }}
+-  - name: {{ template "grafana.name" . }}-init-sc-notifiers
++  - name: {{ include "grafana.name" . }}-init-sc-notifiers
+     {{- if .Values.sidecar.image.sha }}
+     image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
+     {{- else }}
+@@ -163,9 +168,9 @@ initContainers:
+         value: LIST
+       - name: LABEL
+         value: "{{ .Values.sidecar.notifiers.label }}"
+-      {{- if .Values.sidecar.notifiers.labelValue }}
++      {{- with .Values.sidecar.notifiers.labelValue }}
+       - name: LABEL_VALUE
+-        value: {{ quote .Values.sidecar.notifiers.labelValue }}
++        value: {{ quote . }}
+       {{- end }}
+       {{- if or .Values.sidecar.logLevel .Values.sidecar.notifiers.logLevel }}
+       - name: LOG_LEVEL
+@@ -175,17 +180,17 @@ initContainers:
+         value: "/etc/grafana/provisioning/notifiers"
+       - name: RESOURCE
+         value: {{ quote .Values.sidecar.notifiers.resource }}
+-      {{- if .Values.sidecar.enableUniqueFilenames }}
++      {{- with .Values.sidecar.enableUniqueFilenames }}
+       - name: UNIQUE_FILENAMES
+-        value: "{{ .Values.sidecar.enableUniqueFilenames }}"
++        value: "{{ . }}"
+       {{- end }}
+-      {{- if .Values.sidecar.notifiers.searchNamespace }}
++      {{- with .Values.sidecar.notifiers.searchNamespace }}
+       - name: NAMESPACE
+-        value: "{{ tpl (.Values.sidecar.notifiers.searchNamespace | join ",") . }}"
++        value: "{{ tpl (. | join ",") $root }}"
+       {{- end }}
+-      {{- if .Values.sidecar.skipTlsVerify }}
++      {{- with .Values.sidecar.skipTlsVerify }}
+       - name: SKIP_TLS_VERIFY
+-        value: "{{ .Values.sidecar.skipTlsVerify }}"
++        value: "{{ . }}"
+       {{- end }}
+     {{- with .Values.sidecar.livenessProbe }}
+     livenessProbe:
+@@ -207,22 +212,21 @@ initContainers:
+       - name: sc-notifiers-volume
+         mountPath: "/etc/grafana/provisioning/notifiers"
+ {{- end}}
+-{{- if .Values.extraInitContainers }}
+-{{ tpl (toYaml .Values.extraInitContainers) . | indent 2 }}
++{{- with .Values.extraInitContainers }}
++  {{- tpl (toYaml .) $root | nindent 2 }}
+ {{- end }}
+-{{- if .Values.image.pullSecrets }}
++{{- with .Values.image.pullSecrets }}
+ imagePullSecrets:
+-{{- $root := . }}
+-{{- range .Values.image.pullSecrets }}
++  {{- range . }}
+   - name: {{ tpl . $root }}
+-{{- end}}
++  {{- end}}
+ {{- end }}
+ {{- if not .Values.enableKubeBackwardCompatibility }}
+ enableServiceLinks: {{ .Values.enableServiceLinks }}
+ {{- end }}
+ containers:
+ {{- if .Values.sidecar.alerts.enabled }}
+-  - name: {{ template "grafana.name" . }}-sc-alerts
++  - name: {{ include "grafana.name" . }}-sc-alerts
+     {{- if .Values.sidecar.image.sha }}
+     image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
+     {{- else }}
+@@ -254,11 +258,11 @@ containers:
+         value: "/etc/grafana/provisioning/alerting"
+       - name: RESOURCE
+         value: {{ quote .Values.sidecar.alerts.resource }}
+-      {{- if .Values.sidecar.enableUniqueFilenames }}
++      {{- with .Values.sidecar.enableUniqueFilenames }}
+       - name: UNIQUE_FILENAMES
+-        value: "{{ .Values.sidecar.enableUniqueFilenames }}"
++        value: "{{ . }}"
+       {{- end }}
+-            {{- with .Values.sidecar.alerts.searchNamespace }}
++      {{- with .Values.sidecar.alerts.searchNamespace }}
+       - name: NAMESPACE
+         value: {{ . | join "," | quote }}
+       {{- end }}
+@@ -325,7 +329,7 @@ containers:
+         mountPath: "/etc/grafana/provisioning/alerting"
+ {{- end}}
+ {{- if .Values.sidecar.dashboards.enabled }}
+-  - name: {{ template "grafana.name" . }}-sc-dashboard
++  - name: {{ include "grafana.name" . }}-sc-dashboard
+     {{- if .Values.sidecar.image.sha }}
+     image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
+     {{- else }}
+@@ -345,9 +349,9 @@ containers:
+         value: {{ .Values.sidecar.dashboards.watchMethod }}
+       - name: LABEL
+         value: "{{ .Values.sidecar.dashboards.label }}"
+-      {{- if .Values.sidecar.dashboards.labelValue }}
++      {{- with .Values.sidecar.dashboards.labelValue }}
+       - name: LABEL_VALUE
+-        value: {{ quote .Values.sidecar.dashboards.labelValue }}
++        value: {{ quote . }}
+       {{- end }}
+       {{- if or .Values.sidecar.logLevel .Values.sidecar.dashboards.logLevel }}
+       - name: LOG_LEVEL
+@@ -357,25 +361,25 @@ containers:
+         value: "{{ .Values.sidecar.dashboards.folder }}{{- with .Values.sidecar.dashboards.defaultFolderName }}/{{ . }}{{- end }}"
+       - name: RESOURCE
+         value: {{ quote .Values.sidecar.dashboards.resource }}
+-      {{- if .Values.sidecar.enableUniqueFilenames }}
++      {{- with .Values.sidecar.enableUniqueFilenames }}
+       - name: UNIQUE_FILENAMES
+-        value: "{{ .Values.sidecar.enableUniqueFilenames }}"
++        value: "{{ . }}"
+       {{- end }}
+-      {{- if .Values.sidecar.dashboards.searchNamespace }}
++      {{- with .Values.sidecar.dashboards.searchNamespace }}
+       - name: NAMESPACE
+-        value: "{{ tpl (.Values.sidecar.dashboards.searchNamespace | join ",") . }}"
++        value: "{{ tpl (. | join ",") $root }}"
+       {{- end }}
+-      {{- if .Values.sidecar.skipTlsVerify }}
++      {{- with .Values.sidecar.skipTlsVerify }}
+       - name: SKIP_TLS_VERIFY
+-        value: "{{ .Values.sidecar.skipTlsVerify }}"
++        value: "{{ . }}"
+       {{- end }}
+-      {{- if .Values.sidecar.dashboards.folderAnnotation }}
++      {{- with .Values.sidecar.dashboards.folderAnnotation }}
+       - name: FOLDER_ANNOTATION
+-        value: "{{ .Values.sidecar.dashboards.folderAnnotation }}"
++        value: "{{ . }}"
+       {{- end }}
+-      {{- if .Values.sidecar.dashboards.script }}
++      {{- with .Values.sidecar.dashboards.script }}
+       - name: SCRIPT
+-        value: "{{ .Values.sidecar.dashboards.script }}"
++        value: "{{ . }}"
+       {{- end }}
+       {{- if .Values.sidecar.dashboards.watchServerTimeout }}
+       {{- if ne .Values.sidecar.dashboards.watchMethod "WATCH" }}
+@@ -389,7 +393,7 @@ containers:
+         {{- fail (printf "Cannot use .Values.sidecar.dashboards.watchClientTimeout with .Values.sidecar.dashboards.watchMethod %s" .Values.sidecar.dashboards.watchMethod) }}
+       {{- end }}
+       - name: WATCH_CLIENT_TIMEOUT
+-        value: "{{ .Values.sidecar.dashboards.watchClientTimeout }}"
++        value: {{ .Values.sidecar.dashboards.watchClientTimeout | quote }}
+       {{- end }}
+     {{- with .Values.sidecar.livenessProbe }}
+     livenessProbe:
+@@ -410,12 +414,12 @@ containers:
+     volumeMounts:
+       - name: sc-dashboard-volume
+         mountPath: {{ .Values.sidecar.dashboards.folder | quote }}
+-      {{- if .Values.sidecar.dashboards.extraMounts }}
+-      {{- toYaml .Values.sidecar.dashboards.extraMounts | trim | nindent 6}}
++      {{- with .Values.sidecar.dashboards.extraMounts }}
++      {{- toYaml . | trim | nindent 6 }}
+       {{- end }}
+ {{- end}}
+ {{- if .Values.sidecar.datasources.enabled }}
+-  - name: {{ template "grafana.name" . }}-sc-datasources
++  - name: {{ include "grafana.name" . }}-sc-datasources
+     {{- if .Values.sidecar.image.sha }}
+     image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
+     {{- else }}
+@@ -435,9 +439,9 @@ containers:
+         value: {{ .Values.sidecar.datasources.watchMethod }}
+       - name: LABEL
+         value: "{{ .Values.sidecar.datasources.label }}"
+-      {{- if .Values.sidecar.datasources.labelValue }}
++      {{- with .Values.sidecar.datasources.labelValue }}
+       - name: LABEL_VALUE
+-        value: {{ quote .Values.sidecar.datasources.labelValue }}
++        value: {{ quote . }}
+       {{- end }}
+       {{- if or .Values.sidecar.logLevel .Values.sidecar.datasources.logLevel }}
+       - name: LOG_LEVEL
+@@ -447,13 +451,13 @@ containers:
+         value: "/etc/grafana/provisioning/datasources"
+       - name: RESOURCE
+         value: {{ quote .Values.sidecar.datasources.resource }}
+-      {{- if .Values.sidecar.enableUniqueFilenames }}
++      {{- with .Values.sidecar.enableUniqueFilenames }}
+       - name: UNIQUE_FILENAMES
+-        value: "{{ .Values.sidecar.enableUniqueFilenames }}"
++        value: "{{ . }}"
+       {{- end }}
+-      {{- if .Values.sidecar.datasources.searchNamespace }}
++      {{- with .Values.sidecar.datasources.searchNamespace }}
+       - name: NAMESPACE
+-        value: "{{ tpl (.Values.sidecar.datasources.searchNamespace | join ",") . }}"
++        value: "{{ tpl (. | join ",") $root }}"
+       {{- end }}
+       {{- if .Values.sidecar.skipTlsVerify }}
+       - name: SKIP_TLS_VERIFY
+@@ -518,7 +522,7 @@ containers:
+         mountPath: "/etc/grafana/provisioning/datasources"
+ {{- end}}
+ {{- if .Values.sidecar.notifiers.enabled }}
+-  - name: {{ template "grafana.name" . }}-sc-notifiers
++  - name: {{ include "grafana.name" . }}-sc-notifiers
+     {{- if .Values.sidecar.image.sha }}
+     image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
+     {{- else }}
+@@ -538,9 +542,9 @@ containers:
+         value: {{ .Values.sidecar.notifiers.watchMethod }}
+       - name: LABEL
+         value: "{{ .Values.sidecar.notifiers.label }}"
+-      {{- if .Values.sidecar.notifiers.labelValue }}
++      {{- with .Values.sidecar.notifiers.labelValue }}
+       - name: LABEL_VALUE
+-        value: {{ quote .Values.sidecar.notifiers.labelValue }}
++        value: {{ quote . }}
+       {{- end }}
+       {{- if or .Values.sidecar.logLevel .Values.sidecar.notifiers.logLevel }}
+       - name: LOG_LEVEL
+@@ -556,11 +560,11 @@ containers:
+       {{- end }}
+       {{- if .Values.sidecar.notifiers.searchNamespace }}
+       - name: NAMESPACE
+-        value: "{{ tpl (.Values.sidecar.notifiers.searchNamespace | join ",") . }}"
++        value: "{{ tpl (. | join ",") $root }}"
+       {{- end }}
+-      {{- if .Values.sidecar.skipTlsVerify }}
++      {{- with .Values.sidecar.skipTlsVerify }}
+       - name: SKIP_TLS_VERIFY
+-        value: "{{ .Values.sidecar.skipTlsVerify }}"
++        value: "{{ . }}"
+       {{- end }}
+       {{- if .Values.sidecar.notifiers.script }}
+       - name: SCRIPT
+@@ -621,7 +625,7 @@ containers:
+         mountPath: "/etc/grafana/provisioning/notifiers"
+ {{- end}}
+ {{- if .Values.sidecar.plugins.enabled }}
+-  - name: {{ template "grafana.name" . }}-sc-plugins
++  - name: {{ include "grafana.name" . }}-sc-plugins
+     {{- if .Values.sidecar.image.sha }}
+     image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
+     {{- else }}
+@@ -653,21 +657,21 @@ containers:
+         value: "/etc/grafana/provisioning/plugins"
+       - name: RESOURCE
+         value: {{ quote .Values.sidecar.plugins.resource }}
+-      {{- if .Values.sidecar.enableUniqueFilenames }}
++      {{- with .Values.sidecar.enableUniqueFilenames }}
+       - name: UNIQUE_FILENAMES
+-        value: "{{ .Values.sidecar.enableUniqueFilenames }}"
++        value: "{{ . }}"
+       {{- end }}
+-      {{- if .Values.sidecar.plugins.searchNamespace }}
++      {{- with .Values.sidecar.plugins.searchNamespace }}
+       - name: NAMESPACE
+-        value: "{{ tpl (.Values.sidecar.plugins.searchNamespace | join ",") . }}"
++        value: "{{ tpl (. | join ",") $root }}"
+       {{- end }}
+-      {{- if .Values.sidecar.plugins.script }}
++      {{- with .Values.sidecar.plugins.script }}
+       - name: SCRIPT
+-        value: "{{ .Values.sidecar.plugins.script }}"
++        value: "{{ . }}"
+       {{- end }}
+-      {{- if .Values.sidecar.skipTlsVerify }}
++      {{- with .Values.sidecar.skipTlsVerify }}
+       - name: SKIP_TLS_VERIFY
+-        value: "{{ .Values.sidecar.skipTlsVerify }}"
++        value: "{{ . }}"
+       {{- end }}
+       {{- if and (not .Values.env.GF_SECURITY_ADMIN_USER) (not .Values.env.GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION) }}
+       - name: REQ_USERNAME
+@@ -730,12 +734,12 @@ containers:
+     image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+     {{- end }}
+     imagePullPolicy: {{ .Values.image.pullPolicy }}
+-  {{- if .Values.command }}
++    {{- if .Values.command }}
+     command:
+     {{- range .Values.command }}
+       - {{ . | quote }}
+     {{- end }}
+-  {{- end}}
++    {{- end}}
+     {{- with .Values.containerSecurityContext }}
+     securityContext:
+       {{- toYaml . | nindent 6 }}
+@@ -749,7 +753,6 @@ containers:
+         mountPath: "/etc/grafana/ldap.toml"
+         subPath: ldap.toml
+       {{- end }}
+-      {{- $root := . }}
+       {{- range .Values.extraConfigmapMounts }}
+       - name: {{ tpl .name $root }}
+         mountPath: {{ tpl .mountPath $root }}
+@@ -758,95 +761,95 @@ containers:
+       {{- end }}
+       - name: storage
+         mountPath: "/var/lib/grafana"
+-{{- if .Values.persistence.subPath }}
+-        subPath: {{ tpl .Values.persistence.subPath . }}
+-{{- end }}
+-{{- if .Values.dashboards }}
+-{{- range $provider, $dashboards := .Values.dashboards }}
+-{{- range $key, $value := $dashboards }}
+-{{- if (or (hasKey $value "json") (hasKey $value "file")) }}
++        {{- with .Values.persistence.subPath }}
++        subPath: {{ tpl . $root }}
++        {{- end }}
++      {{- with .Values.dashboards }}
++      {{- range $provider, $dashboards := . }}
++      {{- range $key, $value := $dashboards }}
++      {{- if (or (hasKey $value "json") (hasKey $value "file")) }}
+       - name: dashboards-{{ $provider }}
+         mountPath: "/var/lib/grafana/dashboards/{{ $provider }}/{{ $key }}.json"
+         subPath: "{{ $key }}.json"
+-{{- end }}
+-{{- end }}
+-{{- end }}
+-{{- end -}}
+-{{- if .Values.dashboardsConfigMaps }}
+-{{- range (keys .Values.dashboardsConfigMaps | sortAlpha) }}
++      {{- end }}
++      {{- end }}
++      {{- end }}
++      {{- end }}
++      {{- with .Values.dashboardsConfigMaps }}
++      {{- range (keys . | sortAlpha) }}
+       - name: dashboards-{{ . }}
+         mountPath: "/var/lib/grafana/dashboards/{{ . }}"
+-{{- end }}
+-{{- end }}
+-{{- if .Values.datasources }}
+-{{- range (keys .Values.datasources | sortAlpha) }}
++      {{- end }}
++      {{- end }}
++      {{- with .Values.datasources }}
++      {{- range (keys . | sortAlpha) }}
+       - name: config
+         mountPath: "/etc/grafana/provisioning/datasources/{{ . }}"
+         subPath: {{ . | quote }}
+-{{- end }}
+-{{- end }}
+-{{- if .Values.notifiers }}
+-{{- range (keys .Values.notifiers | sortAlpha) }}
++      {{- end }}
++      {{- end }}
++      {{- with .Values.notifiers }}
++      {{- range (keys . | sortAlpha) }}
+       - name: config
+         mountPath: "/etc/grafana/provisioning/notifiers/{{ . }}"
+         subPath: {{ . | quote }}
+-{{- end }}
+-{{- end }}
+-{{- if .Values.alerting }}
+-{{- range (keys .Values.alerting | sortAlpha) }}
++      {{- end }}
++      {{- end }}
++      {{- with .Values.alerting }}
++      {{- range (keys . | sortAlpha) }}
+       - name: config
+         mountPath: "/etc/grafana/provisioning/alerting/{{ . }}"
+         subPath: {{ . | quote }}
+-{{- end }}
+-{{- end }}
+-{{- if .Values.dashboardProviders }}
+-{{- range (keys .Values.dashboardProviders | sortAlpha) }}
++      {{- end }}
++      {{- end }}
++      {{- with .Values.dashboardProviders }}
++      {{- range (keys . | sortAlpha) }}
+       - name: config
+         mountPath: "/etc/grafana/provisioning/dashboards/{{ . }}"
+         subPath: {{ . | quote }}
+-{{- end }}
+-{{- end }}
+-{{- with .Values.sidecar.alerts.enabled }}
++      {{- end }}
++      {{- end }}
++      {{- with .Values.sidecar.alerts.enabled }}
+       - name: sc-alerts-volume
+         mountPath: "/etc/grafana/provisioning/alerting"
+-{{- end}}
+-{{- if .Values.sidecar.dashboards.enabled }}
++      {{- end}}
++      {{- if .Values.sidecar.dashboards.enabled }}
+       - name: sc-dashboard-volume
+         mountPath: {{ .Values.sidecar.dashboards.folder | quote }}
+-{{ if .Values.sidecar.dashboards.SCProvider }}
++      {{- if .Values.sidecar.dashboards.SCProvider }}
+       - name: sc-dashboard-provider
+         mountPath: "/etc/grafana/provisioning/dashboards/sc-dashboardproviders.yaml"
+         subPath: provider.yaml
+-{{- end}}
+-{{- end}}
+-{{- if .Values.sidecar.datasources.enabled }}
++      {{- end}}
++      {{- end}}
++      {{- if .Values.sidecar.datasources.enabled }}
+       - name: sc-datasources-volume
+         mountPath: "/etc/grafana/provisioning/datasources"
+-{{- end}}
+-{{- if .Values.sidecar.plugins.enabled }}
++      {{- end}}
++      {{- if .Values.sidecar.plugins.enabled }}
+       - name: sc-plugins-volume
+         mountPath: "/etc/grafana/provisioning/plugins"
+-{{- end}}
+-{{- if .Values.sidecar.notifiers.enabled }}
++      {{- end}}
++      {{- if .Values.sidecar.notifiers.enabled }}
+       - name: sc-notifiers-volume
+         mountPath: "/etc/grafana/provisioning/notifiers"
+-{{- end}}
+-    {{- range .Values.extraSecretMounts }}
++      {{- end}}
++      {{- range .Values.extraSecretMounts }}
+       - name: {{ .name }}
+         mountPath: {{ .mountPath }}
+         readOnly: {{ .readOnly }}
+         subPath: {{ .subPath | default "" }}
+-    {{- end }}
+-    {{- range .Values.extraVolumeMounts }}
++      {{- end }}
++      {{- range .Values.extraVolumeMounts }}
+       - name: {{ .name }}
+         mountPath: {{ .mountPath }}
+         subPath: {{ .subPath | default "" }}
+         readOnly: {{ .readOnly }}
+-    {{- end }}
+-    {{- range .Values.extraEmptyDirMounts }}
++      {{- end }}
++      {{- range .Values.extraEmptyDirMounts }}
+       - name: {{ .name }}
+         mountPath: {{ .mountPath }}
+-    {{- end }}
++      {{- end }}
+     ports:
+       - name: {{ .Values.podPortName }}
+         containerPort: {{ .Values.service.targetPort }}
+@@ -870,7 +873,7 @@ containers:
+       - name: GF_INSTALL_PLUGINS
+         valueFrom:
+           configMapKeyRef:
+-            name: {{ template "grafana.fullname" . }}
++            name: {{ include "grafana.fullname" . }}
+             key: plugins
+       {{- end }}
+       {{- if .Values.smtp.existingSecret }}
+@@ -887,9 +890,9 @@ containers:
+       {{- end }}
+       {{- if .Values.imageRenderer.enabled }}
+       - name: GF_RENDERING_SERVER_URL
+-        value: http://{{ template "grafana.fullname" . }}-image-renderer.{{ template "grafana.namespace" . }}:{{ .Values.imageRenderer.service.port }}/render
++        value: http://{{ include "grafana.fullname" . }}-image-renderer.{{ include "grafana.namespace" . }}:{{ .Values.imageRenderer.service.port }}/render
+       - name: GF_RENDERING_CALLBACK_URL
+-        value: {{ .Values.imageRenderer.grafanaProtocol }}://{{ template "grafana.fullname" . }}.{{ template "grafana.namespace" . }}:{{ .Values.service.port }}/{{ .Values.imageRenderer.grafanaSubPath }}
++        value: {{ .Values.imageRenderer.grafanaProtocol }}://{{ include "grafana.fullname" . }}.{{ include "grafana.namespace" . }}:{{ .Values.service.port }}/{{ .Values.imageRenderer.grafanaSubPath }}
+       {{- end }}
+       - name: GF_PATHS_DATA
+         value: {{ (get .Values "grafana.ini").paths.data }}
+@@ -899,35 +902,35 @@ containers:
+         value: {{ (get .Values "grafana.ini").paths.plugins }}
+       - name: GF_PATHS_PROVISIONING
+         value: {{ (get .Values "grafana.ini").paths.provisioning }}
+-    {{- range $key, $value := .Values.envValueFrom }}
++      {{- range $key, $value := .Values.envValueFrom }}
+       - name: {{ $key | quote }}
+         valueFrom:
+-{{ tpl (toYaml $value) $ | indent 10 }}
+-    {{- end }}
+-{{- range $key, $value := .Values.env }}
++          {{- tpl (toYaml $value) $ | nindent 10 }}
++      {{- end }}
++      {{- range $key, $value := .Values.env }}
+       - name: "{{ tpl $key $ }}"
+         value: "{{ tpl (print $value) $ }}"
+-{{- end }}
++      {{- end }}
+     {{- if or .Values.envFromSecret (or .Values.envRenderSecret .Values.envFromSecrets) .Values.envFromConfigMaps }}
+     envFrom:
+-    {{- if .Values.envFromSecret }}
++      {{- if .Values.envFromSecret }}
+       - secretRef:
+           name: {{ tpl .Values.envFromSecret . }}
+-    {{- end }}
+-    {{- if .Values.envRenderSecret }}
++      {{- end }}
++      {{- if .Values.envRenderSecret }}
+       - secretRef:
+-          name: {{ template "grafana.fullname" . }}-env
+-    {{- end }}
+-    {{- range .Values.envFromSecrets }}
++          name: {{ include "grafana.fullname" . }}-env
++      {{- end }}
++      {{- range .Values.envFromSecrets }}
+       - secretRef:
+           name: {{ tpl .name $ }}
+           optional: {{ .optional | default false }}
+-    {{- end }}
+-    {{- range .Values.envFromConfigMaps }}
++      {{- end }}
++      {{- range .Values.envFromConfigMaps }}
+       - configMapRef:
+           name: {{ tpl .name $ }}
+           optional: {{ .optional | default false }}
+-    {{- end }}
++      {{- end }}
+     {{- end }}
+     {{- with .Values.livenessProbe }}
+     livenessProbe:
+@@ -937,24 +940,24 @@ containers:
+     readinessProbe:
+       {{- toYaml . | nindent 6 }}
+     {{- end }}
+-{{- if .Values.lifecycleHooks }}
+-    lifecycle: {{ tpl (.Values.lifecycleHooks | toYaml) . | nindent 6 }}
+-{{- end }}
++    {{- with .Values.lifecycleHooks }}
++    lifecycle:
++      {{- tpl (toYaml .) $root | nindent 6 }}
++    {{- end }}
+     {{- with .Values.resources }}
+     resources:
+       {{- toYaml . | nindent 6 }}
+     {{- end }}
+ {{- with .Values.extraContainers }}
+-{{ tpl . $ | indent 2 }}
++  {{- tpl . $ | nindent 2 }}
+ {{- end }}
+ {{- with .Values.nodeSelector }}
+ nodeSelector:
+   {{- toYaml . | nindent 2 }}
+ {{- end }}
+-{{- $root := . }}
+ {{- with .Values.affinity }}
+ affinity:
+-{{ tpl (toYaml .) $root | indent 2 }}
++  {{- tpl (toYaml .) $root | nindent 2 }}
+ {{- end }}
+ {{- with .Values.topologySpreadConstraints }}
+ topologySpreadConstraints:
+@@ -967,30 +970,29 @@ tolerations:
+ volumes:
+   - name: config
+     configMap:
+-      name: {{ template "grafana.fullname" . }}
+-{{- $root := . }}
+-{{- range .Values.extraConfigmapMounts }}
++      name: {{ include "grafana.fullname" . }}
++  {{- range .Values.extraConfigmapMounts }}
+   - name: {{ tpl .name $root }}
+     configMap:
+       name: {{ tpl .configMap $root }}
+-      {{- if .items }}
+-      items: {{ toYaml .items | nindent 6 }}
++      {{- with .items }}
++      items:
++        {{- toYaml . | nindent 8 }}
+       {{- end }}
+-{{- end }}
++  {{- end }}
+   {{- if .Values.dashboards }}
+-    {{- range (keys .Values.dashboards | sortAlpha) }}
++  {{- range (keys .Values.dashboards | sortAlpha) }}
+   - name: dashboards-{{ . }}
+     configMap:
+-      name: {{ template "grafana.fullname" $ }}-dashboards-{{ . }}
+-    {{- end }}
++      name: {{ include "grafana.fullname" $ }}-dashboards-{{ . }}
++  {{- end }}
+   {{- end }}
+   {{- if .Values.dashboardsConfigMaps }}
+-    {{ $root := . }}
+-    {{- range $provider, $name := .Values.dashboardsConfigMaps }}
++  {{- range $provider, $name := .Values.dashboardsConfigMaps }}
+   - name: dashboards-{{ $provider }}
+     configMap:
+       name: {{ tpl $name $root }}
+-    {{- end }}
++  {{- end }}
+   {{- end }}
+   {{- if .Values.ldap.enabled }}
+   - name: ldap
+@@ -998,98 +1000,101 @@ volumes:
+       {{- if .Values.ldap.existingSecret }}
+       secretName: {{ .Values.ldap.existingSecret }}
+       {{- else }}
+-      secretName: {{ template "grafana.fullname" . }}
++      secretName: {{ include "grafana.fullname" . }}
+       {{- end }}
+       items:
+         - key: ldap-toml
+           path: ldap.toml
+   {{- end }}
+-{{- if and .Values.persistence.enabled (eq .Values.persistence.type "pvc") }}
++  {{- if and .Values.persistence.enabled (eq .Values.persistence.type "pvc") }}
+   - name: storage
+     persistentVolumeClaim:
+       claimName: {{ tpl (.Values.persistence.existingClaim | default (include "grafana.fullname" .)) . }}
+-{{- else if and .Values.persistence.enabled (eq .Values.persistence.type "statefulset") }}
+-# nothing
+-{{- else }}
++  {{- else if and .Values.persistence.enabled (eq .Values.persistence.type "statefulset") }}
++  # nothing
++  {{- else }}
+   - name: storage
+-{{- if .Values.persistence.inMemory.enabled }}
++    {{- if .Values.persistence.inMemory.enabled }}
+     emptyDir:
+       medium: Memory
+-{{- if .Values.persistence.inMemory.sizeLimit }}
+-      sizeLimit: {{ .Values.persistence.inMemory.sizeLimit }}
+-{{- end -}}
+-{{- else }}
++      {{- with .Values.persistence.inMemory.sizeLimit }}
++      sizeLimit: {{ . }}
++      {{- end }}
++    {{- else }}
+     emptyDir: {}
+-{{- end -}}
+-{{- end -}}
+-{{- if .Values.sidecar.alerts.enabled }}
++    {{- end }}
++  {{- end }}
++  {{- if .Values.sidecar.alerts.enabled }}
+   - name: sc-alerts-volume
+-{{- if .Values.sidecar.alerts.sizeLimit }}
+     emptyDir:
+-      sizeLimit: {{ .Values.sidecar.alerts.sizeLimit }}
+-{{- else }}
+-    emptyDir: {}
+-{{- end -}}
+-{{- end -}}
+-{{- if .Values.sidecar.dashboards.enabled }}
++      {{- with .Values.sidecar.alerts.sizeLimit }}
++      sizeLimit: {{ . }}
++      {{- else }}
++      {}
++      {{- end }}
++  {{- end }}
++  {{- if .Values.sidecar.dashboards.enabled }}
+   - name: sc-dashboard-volume
+-{{- if .Values.sidecar.dashboards.sizeLimit }}
+     emptyDir:
+-      sizeLimit: {{ .Values.sidecar.dashboards.sizeLimit }}
+-{{- else }}
+-    emptyDir: {}
+-{{- end -}}
+-{{- if .Values.sidecar.dashboards.SCProvider }}
++      {{- with .Values.sidecar.dashboards.sizeLimit }}
++      sizeLimit: {{ . }}
++      {{- else }}
++      {}
++      {{- end }}
++  {{- if .Values.sidecar.dashboards.SCProvider }}
+   - name: sc-dashboard-provider
+     configMap:
+-      name: {{ template "grafana.fullname" . }}-config-dashboards
+-{{- end }}
+-{{- end }}
+-{{- if .Values.sidecar.datasources.enabled }}
++      name: {{ include "grafana.fullname" . }}-config-dashboards
++  {{- end }}
++  {{- end }}
++  {{- if .Values.sidecar.datasources.enabled }}
+   - name: sc-datasources-volume
+-{{- if .Values.sidecar.datasources.sizeLimit }}
+     emptyDir:
+-      sizeLimit: {{ .Values.sidecar.datasources.sizeLimit }}
+-{{- else }}
+-    emptyDir: {}
+-{{- end -}}
+-{{- end -}}
+-{{- if .Values.sidecar.plugins.enabled }}
++      {{- with .Values.sidecar.datasources.sizeLimit }}
++      sizeLimit: {{ . }}
++      {{- else }}
++      {}
++      {{- end }}
++  {{- end }}
++  {{- if .Values.sidecar.plugins.enabled }}
+   - name: sc-plugins-volume
+-{{- if .Values.sidecar.plugins.sizeLimit }}
+     emptyDir:
+-      sizeLimit: {{ .Values.sidecar.plugins.sizeLimit }}
+-{{- else }}
+-    emptyDir: {}
+-{{- end -}}
+-{{- end -}}
+-{{- if .Values.sidecar.notifiers.enabled }}
++      {{- with .Values.sidecar.plugins.sizeLimit }}
++      sizeLimit: {{ . }}
++      {{- else }}
++      {}
++      {{- end }}
++  {{- end }}
++  {{- if .Values.sidecar.notifiers.enabled }}
+   - name: sc-notifiers-volume
+-{{- if .Values.sidecar.notifiers.sizeLimit }}
+     emptyDir:
+-      sizeLimit: {{ .Values.sidecar.notifiers.sizeLimit }}
+-{{- else }}
+-    emptyDir: {}
+-{{- end -}}
+-{{- end -}}
+-{{- range .Values.extraSecretMounts }}
+-{{- if .secretName }}
++      {{- with .Values.sidecar.notifiers.sizeLimit }}
++      sizeLimit: {{ . }}
++      {{- else }}
++      {}
++      {{- end }}
++  {{- end }}
++  {{- range .Values.extraSecretMounts }}
++  {{- if .secretName }}
+   - name: {{ .name }}
+     secret:
+       secretName: {{ .secretName }}
+       defaultMode: {{ .defaultMode }}
+-      {{- if .items }}
+-      items: {{ toYaml .items | nindent 6 }}
++      {{- with .items }}
++      items:
++        {{- toYaml . | nindent 8 }}
+       {{- end }}
+-{{- else if .projected }}
++  {{- else if .projected }}
+   - name: {{ .name }}
+-    projected: {{- toYaml .projected | nindent 6 }}
+-{{- else if .csi }}
++    projected:
++      {{- toYaml .projected | nindent 6 }}
++  {{- else if .csi }}
+   - name: {{ .name }}
+-    csi: {{- toYaml .csi | nindent 6 }}
+-{{- end }}
+-{{- end }}
+-{{- range .Values.extraVolumeMounts }}
++    csi:
++      {{- toYaml .csi | nindent 6 }}
++  {{- end }}
++  {{- end }}
++  {{- range .Values.extraVolumeMounts }}
+   - name: {{ .name }}
+     {{- if .existingClaim }}
+     persistentVolumeClaim:
+@@ -1100,16 +1105,16 @@ volumes:
+     {{- else if .csi }}
+     csi:
+       data:
+-        {{ toYaml .data | nindent 6 }}
++        {{- toYaml .data | nindent 8 }}
+     {{- else }}
+     emptyDir: {}
+     {{- end }}
+-{{- end }}
+-{{- range .Values.extraEmptyDirMounts }}
++  {{- end }}
++  {{- range .Values.extraEmptyDirMounts }}
+   - name: {{ .name }}
+     emptyDir: {}
+-{{- end -}}
+-{{- if .Values.extraContainerVolumes }}
+-{{ tpl (toYaml .Values.extraContainerVolumes) . | indent 2 }}
+-{{- end }}
++  {{- end }}
++  {{- with .Values.extraContainerVolumes }}
++  {{- tpl (toYaml .) $root | nindent 2 }}
++  {{- end }}
+ {{- end }}
+diff --git a/charts/grafana/templates/clusterrole.yaml b/charts/grafana/templates/clusterrole.yaml
+index 154658b5..3396713a 100644
+--- a/charts/grafana/templates/clusterrole.yaml
++++ b/charts/grafana/templates/clusterrole.yaml
+@@ -4,21 +4,21 @@ apiVersion: rbac.authorization.k8s.io/v1
+ metadata:
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+-{{- with .Values.annotations }}
++  {{- with .Values.annotations }}
+   annotations:
+-{{ toYaml . | indent 4 }}
+-{{- end }}
+-  name: {{ template "grafana.fullname" . }}-clusterrole
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++  name: {{ include "grafana.fullname" . }}-clusterrole
+ {{- if or .Values.sidecar.dashboards.enabled (or .Values.rbac.extraClusterRoleRules (or .Values.sidecar.datasources.enabled .Values.sidecar.plugins.enabled)) }}
+ rules:
+-{{- if or .Values.sidecar.dashboards.enabled (or .Values.sidecar.datasources.enabled .Values.sidecar.plugins.enabled) }}
+-- apiGroups: [""] # "" indicates the core API group
+-  resources: ["configmaps", "secrets"]
+-  verbs: ["get", "watch", "list"]
+-{{- end}}
+-{{- with .Values.rbac.extraClusterRoleRules }}
+-{{ toYaml . | indent 0 }}
+-{{- end}}
++  {{- if or .Values.sidecar.dashboards.enabled (or .Values.sidecar.datasources.enabled .Values.sidecar.plugins.enabled) }}
++  - apiGroups: [""] # "" indicates the core API group
++    resources: ["configmaps", "secrets"]
++    verbs: ["get", "watch", "list"]
++  {{- end}}
++  {{- with .Values.rbac.extraClusterRoleRules }}
++  {{- toYaml . | nindent 2 }}
++  {{- end}}
+ {{- else }}
+ rules: []
+ {{- end}}
+diff --git a/charts/grafana/templates/clusterrolebinding.yaml b/charts/grafana/templates/clusterrolebinding.yaml
+index 4accbfac..48411fe8 100644
+--- a/charts/grafana/templates/clusterrolebinding.yaml
++++ b/charts/grafana/templates/clusterrolebinding.yaml
+@@ -2,23 +2,23 @@
+ kind: ClusterRoleBinding
+ apiVersion: rbac.authorization.k8s.io/v1
+ metadata:
+-  name: {{ template "grafana.fullname" . }}-clusterrolebinding
++  name: {{ include "grafana.fullname" . }}-clusterrolebinding
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+-{{- with .Values.annotations }}
++  {{- with .Values.annotations }}
+   annotations:
+-{{ toYaml . | indent 4 }}
+-{{- end }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+ subjects:
+   - kind: ServiceAccount
+-    name: {{ template "grafana.serviceAccountName" . }}
+-    namespace: {{ template "grafana.namespace" . }}
++    name: {{ include "grafana.serviceAccountName" . }}
++    namespace: {{ include "grafana.namespace" . }}
+ roleRef:
+   kind: ClusterRole
+-{{- if (not .Values.rbac.useExistingRole) }}
+-  name: {{ template "grafana.fullname" . }}-clusterrole
+-{{- else }}
++  {{- if .Values.rbac.useExistingRole }}
+   name: {{ .Values.rbac.useExistingRole }}
+-{{- end }}
++  {{- else }}
++  name: {{ include "grafana.fullname" . }}-clusterrole
++  {{- end }}
+   apiGroup: rbac.authorization.k8s.io
+-{{- end -}}
++{{- end }}
+diff --git a/charts/grafana/templates/configmap-dashboard-provider.yaml b/charts/grafana/templates/configmap-dashboard-provider.yaml
+index ff78adb2..1f706a8b 100644
+--- a/charts/grafana/templates/configmap-dashboard-provider.yaml
++++ b/charts/grafana/templates/configmap-dashboard-provider.yaml
+@@ -4,26 +4,26 @@ kind: ConfigMap
+ metadata:
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+-{{- with .Values.annotations }}
++  {{- with .Values.annotations }}
+   annotations:
+-{{ toYaml . | indent 4 }}
+-{{- end }}
+-  name: {{ template "grafana.fullname" . }}-config-dashboards
+-  namespace: {{ template "grafana.namespace" . }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++  name: {{ include "grafana.fullname" . }}-config-dashboards
++  namespace: {{ include "grafana.namespace" . }}
+ data:
+   provider.yaml: |-
+     apiVersion: 1
+     providers:
+-    - name: '{{ .Values.sidecar.dashboards.provider.name }}'
+-      orgId: {{ .Values.sidecar.dashboards.provider.orgid }}
+-      {{- if not .Values.sidecar.dashboards.provider.foldersFromFilesStructure }}
+-      folder: '{{ .Values.sidecar.dashboards.provider.folder }}'
+-      {{- end}}
+-      type: {{ .Values.sidecar.dashboards.provider.type }}
+-      disableDeletion: {{ .Values.sidecar.dashboards.provider.disableDelete }}
+-      allowUiUpdates: {{ .Values.sidecar.dashboards.provider.allowUiUpdates }}
+-      updateIntervalSeconds: {{ .Values.sidecar.dashboards.provider.updateIntervalSeconds | default 30 }}
+-      options:
+-        foldersFromFilesStructure: {{ .Values.sidecar.dashboards.provider.foldersFromFilesStructure }}
+-        path: {{ .Values.sidecar.dashboards.folder }}{{- with .Values.sidecar.dashboards.defaultFolderName }}/{{ . }}{{- end }}
+-{{- end}}
++      - name: '{{ .Values.sidecar.dashboards.provider.name }}'
++        orgId: {{ .Values.sidecar.dashboards.provider.orgid }}
++        {{- if not .Values.sidecar.dashboards.provider.foldersFromFilesStructure }}
++        folder: '{{ .Values.sidecar.dashboards.provider.folder }}'
++        {{- end }}
++        type: {{ .Values.sidecar.dashboards.provider.type }}
++        disableDeletion: {{ .Values.sidecar.dashboards.provider.disableDelete }}
++        allowUiUpdates: {{ .Values.sidecar.dashboards.provider.allowUiUpdates }}
++        updateIntervalSeconds: {{ .Values.sidecar.dashboards.provider.updateIntervalSeconds | default 30 }}
++        options:
++          foldersFromFilesStructure: {{ .Values.sidecar.dashboards.provider.foldersFromFilesStructure }}
++          path: {{ .Values.sidecar.dashboards.folder }}{{- with .Values.sidecar.dashboards.defaultFolderName }}/{{ . }}{{- end }}
++{{- end }}
+diff --git a/charts/grafana/templates/configmap.yaml b/charts/grafana/templates/configmap.yaml
+index 1f3db0bd..99c11b65 100644
+--- a/charts/grafana/templates/configmap.yaml
++++ b/charts/grafana/templates/configmap.yaml
+@@ -1,21 +1,22 @@
+ {{- if .Values.createConfigmap }}
++{{- $root := . -}}
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+-  name: {{ template "grafana.fullname" . }}
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}
++  namespace: {{ include "grafana.namespace" . }}
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+-{{- with .Values.annotations }}
++  {{- with .Values.annotations }}
+   annotations:
+-{{ toYaml . | indent 4 }}
+-{{- end }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+ data:
+-{{- if .Values.plugins }}
+-  plugins: {{ join "," .Values.plugins }}
+-{{- end }}
++  {{- with .Values.plugins }}
++  plugins: {{ join "," . }}
++  {{- end }}
+   grafana.ini: |
+-{{- range $elem, $elemVal := index .Values "grafana.ini" }}
++  {{- range $elem, $elemVal := index .Values "grafana.ini" }}
+     {{- if not (kindIs "map" $elemVal) }}
+     {{- if kindIs "invalid" $elemVal }}
+     {{ $elem }} =
+@@ -25,8 +26,8 @@ data:
+     {{ $elem }} = {{ $elemVal }}
+     {{- end }}
+     {{- end }}
+-{{- end }}
+-{{- range $key, $value := index .Values "grafana.ini" }}
++  {{- end }}
++  {{- range $key, $value := index .Values "grafana.ini" }}
+     {{- if kindIs "map" $value }}
+     [{{ $key }}]
+     {{- range $elem, $elemVal := $value }}
+@@ -39,37 +40,27 @@ data:
+     {{- end }}
+     {{- end }}
+     {{- end }}
+-{{- end }}
++  {{- end }}
+ 
+-{{- if .Values.datasources }}
+-{{ $root := . }}
+   {{- range $key, $value := .Values.datasources }}
+-  {{ $key }}: |
+-{{ tpl (toYaml $value | indent 4) $root }}
+-  {{- end -}}
+-{{- end -}}
++  {{- $key | nindent 2 }}: |
++    {{- tpl (toYaml $value | nindent 4) $root }}
++  {{- end }}
+ 
+-{{- if .Values.notifiers }}
+   {{- range $key, $value := .Values.notifiers }}
+-  {{ $key }}: |
+-{{ toYaml $value | indent 4 }}
+-  {{- end -}}
+-{{- end -}}
++  {{- $key | nindent 2 }}: |
++    {{- toYaml $value | nindent 4 }}
++  {{- end }}
+ 
+-{{- if .Values.alerting }}
+-{{ $root := . }}
+   {{- range $key, $value := .Values.alerting }}
+-  {{ $key }}: |
+-{{ tpl (toYaml $value | indent 4) $root }}
+-  {{- end -}}
+-{{- end -}}
++  {{- $key | nindent 2 }}: |
++    {{- tpl (toYaml $value | indent 4) $root }}
++  {{- end }}
+ 
+-{{- if .Values.dashboardProviders }}
+   {{- range $key, $value := .Values.dashboardProviders }}
+-  {{ $key }}: |
+-{{ toYaml $value | indent 4 }}
+-  {{- end -}}
+-{{- end -}}
++  {{- $key | nindent 2 }}: |
++    {{- toYaml $value | nindent 4 }}
++  {{- end }}
+ 
+ {{- if .Values.dashboards  }}
+   download_dashboards.sh: |
+@@ -101,34 +92,34 @@ data:
+     -H "PRIVATE-TOKEN: {{ $value.gitlabToken }}" \
+         {{- end }}
+     -H "Content-Type: application/json;charset=UTF-8" \
+-      {{- end -}}
++      {{- end }}
+     {{- $dpPath := "" -}}
+-    {{- range $kd := (index $dashboardProviders "dashboardproviders.yaml").providers -}}
+-      {{- if eq $kd.name $provider -}}
+-      {{- $dpPath = $kd.options.path -}}
+-      {{- end -}}
+-    {{- end -}}
++    {{- range $kd := (index $dashboardProviders "dashboardproviders.yaml").providers }}
++      {{- if eq $kd.name $provider }}
++      {{- $dpPath = $kd.options.path }}
++      {{- end }}
++    {{- end }}
+     {{- if $value.url }}
+       "{{ $value.url }}" \
+     {{- else }}
+       "https://grafana.com/api/dashboards/{{ $value.gnetId }}/revisions/{{- if $value.revision -}}{{ $value.revision }}{{- else -}}1{{- end -}}/download" \
+-    {{- end -}}
++    {{- end }}
+     {{- if $value.datasource }}
+       {{- if kindIs "string" $value.datasource }}
+       | sed '/-- .* --/! s/"datasource":.*,/"datasource": "{{ $value.datasource }}",/g' \
+-      {{- end -}}
+-      {{- if kindIs "slice" $value.datasource -}}
++      {{- end }}
++      {{- if kindIs "slice" $value.datasource }}
+         {{- range $value.datasource }}
+           | sed '/-- .* --/! s/${{"{"}}{{ .name }}}/{{ .value }}/g' \
+-        {{- end -}}
+-      {{- end -}}
+-    {{- end -}}
++        {{- end }}
++      {{- end }}
++    {{- end }}
+     {{- if $value.b64content }}
+       | base64 -d \
+     {{- end }}
+     > "{{- if $dpPath -}}{{ $dpPath }}{{- else -}}/var/lib/grafana/dashboards/{{ $provider }}{{- end -}}/{{ $key }}.json"
+       {{ end }}
+-    {{- end -}}
++    {{- end }}
+   {{- end }}
+ {{- end }}
+ {{- end }}
+diff --git a/charts/grafana/templates/dashboards-json-configmap.yaml b/charts/grafana/templates/dashboards-json-configmap.yaml
+index 59e0be64..df0ed0d8 100644
+--- a/charts/grafana/templates/dashboards-json-configmap.yaml
++++ b/charts/grafana/templates/dashboards-json-configmap.yaml
+@@ -4,8 +4,8 @@
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+-  name: {{ template "grafana.fullname" $ }}-dashboards-{{ $provider }}
+-  namespace: {{ template "grafana.namespace" $ }}
++  name: {{ include "grafana.fullname" $ }}-dashboards-{{ $provider }}
++  namespace: {{ include "grafana.namespace" $ }}
+   labels:
+     {{- include "grafana.labels" $ | nindent 4 }}
+     dashboard-provider: {{ $provider }}
+@@ -15,14 +15,14 @@ data:
+ {{- range $key, $value := $dashboards }}
+ {{- if (or (hasKey $value "json") (hasKey $value "file")) }}
+ {{- $dashboardFound = true }}
+-{{ print $key | indent 2 }}.json:
+-{{- if hasKey $value "json" }}
++  {{- print $key | nindent 2 }}.json:
++    {{- if hasKey $value "json" }}
+     |-
+-{{ $value.json | indent 6 }}
+-{{- end }}
+-{{- if hasKey $value "file" }}
+-{{ toYaml ( $files.Get $value.file ) | indent 4}}
+-{{- end }}
++      {{- $value.json | nindent 6 }}
++    {{- end }}
++    {{- if hasKey $value "file" }}
++    {{- toYaml ( $files.Get $value.file ) | nindent 4}}
++    {{- end }}
+ {{- end }}
+ {{- end }}
+ {{- if not $dashboardFound }}
+diff --git a/charts/grafana/templates/deployment.yaml b/charts/grafana/templates/deployment.yaml
+index fee9c335..96eac4d2 100644
+--- a/charts/grafana/templates/deployment.yaml
++++ b/charts/grafana/templates/deployment.yaml
+@@ -1,18 +1,18 @@
+-{{ if (and (not .Values.useStatefulSet) (or (not .Values.persistence.enabled) (eq .Values.persistence.type "pvc"))) }}
++{{- if (and (not .Values.useStatefulSet) (or (not .Values.persistence.enabled) (eq .Values.persistence.type "pvc"))) }}
+ apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+-  name: {{ template "grafana.fullname" . }}
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}
++  namespace: {{ include "grafana.namespace" . }}
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+-{{- if .Values.labels }}
+-{{ toYaml .Values.labels | indent 4 }}
+-{{- end }}
+-{{- with .Values.annotations }}
++    {{- with .Values.labels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++  {{- with .Values.annotations }}
+   annotations:
+-{{ toYaml . | indent 4 }}
+-{{- end }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+ spec:
+   {{- if and (not .Values.autoscaling.enabled) (.Values.replicas) }}
+   replicas: {{ .Values.replicas }}
+@@ -21,30 +21,30 @@ spec:
+   selector:
+     matchLabels:
+       {{- include "grafana.selectorLabels" . | nindent 6 }}
+-{{- with .Values.deploymentStrategy }}
++  {{- with .Values.deploymentStrategy }}
+   strategy:
+-{{ toYaml . | trim | indent 4 }}
+-{{- end }}
++    {{- toYaml . | trim | nindent 4 }}
++  {{- end }}
+   template:
+     metadata:
+       labels:
+         {{- include "grafana.selectorLabels" . | nindent 8 }}
+-{{- with .Values.podLabels }}
+-{{ toYaml . | indent 8 }}
+-{{- end }}
++        {{- with .Values.podLabels }}
++        {{- toYaml . | nindent 8 }}
++        {{- end }}
+       annotations:
+         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+         checksum/dashboards-json-config: {{ include (print $.Template.BasePath "/dashboards-json-configmap.yaml") . | sha256sum }}
+         checksum/sc-dashboard-provider-config: {{ include (print $.Template.BasePath "/configmap-dashboard-provider.yaml") . | sha256sum }}
+-{{- if and (or (and (not .Values.admin.existingSecret) (not .Values.env.GF_SECURITY_ADMIN_PASSWORD__FILE) (not .Values.env.GF_SECURITY_ADMIN_PASSWORD)) (and .Values.ldap.enabled (not .Values.ldap.existingSecret))) (not .Values.env.GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION) }}
++        {{- if and (or (and (not .Values.admin.existingSecret) (not .Values.env.GF_SECURITY_ADMIN_PASSWORD__FILE) (not .Values.env.GF_SECURITY_ADMIN_PASSWORD)) (and .Values.ldap.enabled (not .Values.ldap.existingSecret))) (not .Values.env.GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION) }}
+         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+-{{- end }}
+-{{- if .Values.envRenderSecret }}
++        {{- end }}
++        {{- if .Values.envRenderSecret }}
+         checksum/secret-env: {{ include (print $.Template.BasePath "/secret-env.yaml") . | sha256sum }}
+-{{- end }}
+-{{- with .Values.podAnnotations }}
+-{{ toYaml . | indent 8 }}
+-{{- end }}
++        {{- end }}
++        {{- with .Values.podAnnotations }}
++        {{- toYaml . | nindent 8 }}
++        {{- end }}
+     spec:
+-      {{- include "grafana.pod" . | indent 6 }}
++      {{- include "grafana.pod" . | nindent 6 }}
+ {{- end }}
+diff --git a/charts/grafana/templates/headless-service.yaml b/charts/grafana/templates/headless-service.yaml
+index b5faddcf..1f08cf90 100644
+--- a/charts/grafana/templates/headless-service.yaml
++++ b/charts/grafana/templates/headless-service.yaml
+@@ -1,15 +1,15 @@
+-{{- if or .Values.headlessService (and .Values.persistence.enabled (not .Values.persistence.existingClaim) (eq .Values.persistence.type "statefulset"))}}
++{{- if or .Values.headlessService (and .Values.persistence.enabled (not .Values.persistence.existingClaim) (eq .Values.persistence.type "statefulset")) }}
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: {{ template "grafana.fullname" . }}-headless
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}-headless
++  namespace: {{ include "grafana.namespace" . }}
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+-{{- with .Values.annotations }}
++  {{- with .Values.annotations }}
+   annotations:
+-{{ toYaml . | indent 4 }}
+-{{- end }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+ spec:
+   clusterIP: None
+   selector:
+diff --git a/charts/grafana/templates/hpa.yaml b/charts/grafana/templates/hpa.yaml
+index 154fc52e..42d7c67f 100644
+--- a/charts/grafana/templates/hpa.yaml
++++ b/charts/grafana/templates/hpa.yaml
+@@ -1,25 +1,26 @@
++{{- $sts := list "sts" "StatefulSet" -}}
+ {{- if .Values.autoscaling.enabled }}
+ apiVersion: autoscaling/v2beta1
+ kind: HorizontalPodAutoscaler
+ metadata:
+-  name: {{ template "grafana.fullname" . }}
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}
++  namespace: {{ include "grafana.namespace" . }}
+   labels:
+-    app.kubernetes.io/name: {{ template "grafana.name" . }}
+-    helm.sh/chart: {{ template "grafana.chart" . }}
++    app.kubernetes.io/name: {{ include "grafana.name" . }}
++    helm.sh/chart: {{ include "grafana.chart" . }}
+     app.kubernetes.io/managed-by: {{ .Release.Service }}
+     app.kubernetes.io/instance: {{ .Release.Name }}
+ spec:
+   scaleTargetRef:
+     apiVersion: apps/v1
+-    {{- if eq .Values.persistence.type "statefulset" }}
++    {{- if has .Values.persistence.type $sts }}
+     kind: StatefulSet
+     {{- else }}
+     kind: Deployment
+     {{- end }}
+-    name: {{ template "grafana.fullname" . }}
++    name: {{ include "grafana.fullname" . }}
+   minReplicas: {{ .Values.autoscaling.minReplicas }}
+   maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+   metrics:
+-{{ toYaml .Values.autoscaling.metrics | indent 4 }}
++    {{- toYaml .Values.autoscaling.metrics | nindent 4 }}
+ {{- end }}
+diff --git a/charts/grafana/templates/image-renderer-deployment.yaml b/charts/grafana/templates/image-renderer-deployment.yaml
+index f1b9fc3a..b087179f 100644
+--- a/charts/grafana/templates/image-renderer-deployment.yaml
++++ b/charts/grafana/templates/image-renderer-deployment.yaml
+@@ -1,13 +1,14 @@
+ {{ if .Values.imageRenderer.enabled }}
++{{- $root := . -}}
+ apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+-  name: {{ template "grafana.fullname" . }}-image-renderer
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}-image-renderer
++  namespace: {{ include "grafana.namespace" . }}
+   labels:
+     {{- include "grafana.imageRenderer.labels" . | nindent 4 }}
+-    {{- if .Values.imageRenderer.labels }}
+-    {{ toYaml .Values.imageRenderer.labels | indent 4 }}
++    {{- with .Values.imageRenderer.labels }}
++    {{- toYaml . | nindent 4 }}
+     {{- end }}
+   {{- with .Values.imageRenderer.annotations }}
+   annotations:
+@@ -37,29 +38,28 @@ spec:
+         {{- toYaml . | nindent 8 }}
+         {{- end }}
+     spec:
+-      {{- if .Values.imageRenderer.schedulerName }}
+-      schedulerName: "{{ .Values.imageRenderer.schedulerName }}"
++      {{- with .Values.imageRenderer.schedulerName }}
++      schedulerName: "{{ . }}"
+       {{- end }}
+-      {{- if .Values.imageRenderer.serviceAccountName }}
+-      serviceAccountName: "{{ .Values.imageRenderer.serviceAccountName }}"
++      {{- with .Values.imageRenderer.serviceAccountName }}
++      serviceAccountName: "{{ . }}"
+       {{- end }}
+-      {{- if .Values.imageRenderer.securityContext }}
++      {{- with .Values.imageRenderer.securityContext }}
+       securityContext:
+-        {{- toYaml .Values.imageRenderer.securityContext | nindent 8 }}
++        {{- toYaml . | nindent 8 }}
+       {{- end }}
+-      {{- if .Values.imageRenderer.hostAliases }}
++      {{- with .Values.imageRenderer.hostAliases }}
+       hostAliases:
+-        {{- toYaml .Values.imageRenderer.hostAliases | nindent 8 }}
++        {{- toYaml . | nindent 8 }}
+       {{- end }}
+-      {{- if .Values.imageRenderer.priorityClassName }}
+-      priorityClassName: {{ .Values.imageRenderer.priorityClassName }}
++      {{- with .Values.imageRenderer.priorityClassName }}
++      priorityClassName: {{ . }}
+       {{- end }}
+-      {{- if .Values.imageRenderer.image.pullSecrets }}
++      {{- with .Values.imageRenderer.image.pullSecrets }}
+       imagePullSecrets:
+-      {{- $root := . }}
+-      {{- range .Values.imageRenderer.image.pullSecrets }}
++        {{- range . }}
+         - name: {{ tpl . $root }}
+-      {{- end}}
++        {{- end}}
+       {{- end }}
+       containers:
+         - name: {{ .Chart.Name }}-image-renderer
+@@ -69,12 +69,12 @@ spec:
+           image: "{{ .Values.imageRenderer.image.repository }}:{{ .Values.imageRenderer.image.tag }}"
+           {{- end }}
+           imagePullPolicy: {{ .Values.imageRenderer.image.pullPolicy }}
+-        {{- if .Values.imageRenderer.command }}
++          {{- if .Values.imageRenderer.command }}
+           command:
+-          {{- range .Values.imageRenderer.command }}
++            {{- range .Values.imageRenderer.command }}
+             - {{ . }}
+-          {{- end }}
+-        {{- end}}
++            {{- end }}
++          {{- end}}
+           ports:
+             - name: {{ .Values.imageRenderer.service.portName }}
+               containerPort: {{ .Values.imageRenderer.service.targetPort }}
+@@ -105,7 +105,6 @@ spec:
+       nodeSelector:
+         {{- toYaml . | nindent 8 }}
+       {{- end }}
+-      {{- $root := . }}
+       {{- with .Values.imageRenderer.affinity }}
+       affinity:
+         {{- tpl (toYaml .) $root | nindent 8 }}
+diff --git a/charts/grafana/templates/image-renderer-network-policy.yaml b/charts/grafana/templates/image-renderer-network-policy.yaml
+index 0d9bdfe4..0fc6ac2d 100644
+--- a/charts/grafana/templates/image-renderer-network-policy.yaml
++++ b/charts/grafana/templates/image-renderer-network-policy.yaml
+@@ -1,18 +1,18 @@
+-{{- if and (.Values.imageRenderer.enabled) (.Values.imageRenderer.networkPolicy.limitIngress) }}
++{{- if and .Values.imageRenderer.enabled .Values.imageRenderer.networkPolicy.limitIngress }}
+ ---
+ apiVersion: networking.k8s.io/v1
+ kind: NetworkPolicy
+ metadata:
+-  name: {{ template "grafana.fullname" . }}-image-renderer-ingress
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}-image-renderer-ingress
++  namespace: {{ include "grafana.namespace" . }}
+   annotations:
+     comment: Limit image-renderer ingress traffic from grafana
+ spec:
+   podSelector:
+     matchLabels:
+       {{- include "grafana.imageRenderer.selectorLabels" . | nindent 6 }}
+-      {{- if .Values.imageRenderer.podLabels }}
+-        {{ toYaml .Values.imageRenderer.podLabels | nindent 6 }}
++      {{- with .Values.imageRenderer.podLabels }}
++      {{- toYaml . | nindent 6 }}
+       {{- end }}
+ 
+   policyTypes:
+@@ -24,30 +24,30 @@ spec:
+       from:
+         - namespaceSelector:
+             matchLabels:
+-              name: {{ template "grafana.namespace" . }}
++              name: {{ include "grafana.namespace" . }}
+           podSelector:
+             matchLabels:
+               {{- include "grafana.selectorLabels" . | nindent 14 }}
+-              {{- if .Values.podLabels }}
+-                {{ toYaml .Values.podLabels | nindent 14 }}
++              {{- with .Values.podLabels }}
++              {{- toYaml . | nindent 14 }}
+               {{- end }}
+-{{ end }}
++{{- end }}
+ 
+-{{- if and (.Values.imageRenderer.enabled) (.Values.imageRenderer.networkPolicy.limitEgress) }}
++{{- if and .Values.imageRenderer.enabled .Values.imageRenderer.networkPolicy.limitEgress }}
+ ---
+ apiVersion: networking.k8s.io/v1
+ kind: NetworkPolicy
+ metadata:
+-  name: {{ template "grafana.fullname" . }}-image-renderer-egress
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}-image-renderer-egress
++  namespace: {{ include "grafana.namespace" . }}
+   annotations:
+     comment: Limit image-renderer egress traffic to grafana
+ spec:
+   podSelector:
+     matchLabels:
+       {{- include "grafana.imageRenderer.selectorLabels" . | nindent 6 }}
+-      {{- if .Values.imageRenderer.podLabels }}
+-        {{ toYaml .Values.imageRenderer.podLabels | nindent 6 }}
++      {{- with .Values.imageRenderer.podLabels }}
++      {{- toYaml . | nindent 6 }}
+       {{- end }}
+ 
+   policyTypes:
+@@ -67,7 +67,7 @@ spec:
+         - podSelector:
+             matchLabels:
+               {{- include "grafana.selectorLabels" . | nindent 14 }}
+-              {{- if .Values.podLabels }}
+-                {{ toYaml .Values.podLabels | nindent 14 }}
++              {{- with .Values.podLabels }}
++              {{- toYaml . | nindent 14 }}
+               {{- end }}
+-{{ end }}
++{{- end }}
+diff --git a/charts/grafana/templates/image-renderer-service.yaml b/charts/grafana/templates/image-renderer-service.yaml
+index fcf707a3..f8da127c 100644
+--- a/charts/grafana/templates/image-renderer-service.yaml
++++ b/charts/grafana/templates/image-renderer-service.yaml
+@@ -1,33 +1,31 @@
+-{{ if .Values.imageRenderer.enabled }}
+-{{ if .Values.imageRenderer.service.enabled }}
++{{- if and .Values.imageRenderer.enabled .Values.imageRenderer.service.enabled }}
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: {{ template "grafana.fullname" . }}-image-renderer
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}-image-renderer
++  namespace: {{ include "grafana.namespace" . }}
+   labels:
+     {{- include "grafana.imageRenderer.labels" . | nindent 4 }}
+-{{- if .Values.imageRenderer.service.labels }}
+-{{ toYaml .Values.imageRenderer.service.labels | indent 4 }}
+-{{- end }}
+-{{- with .Values.imageRenderer.service.annotations }}
++    {{- with .Values.imageRenderer.service.labels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++  {{- with .Values.imageRenderer.service.annotations }}
+   annotations:
+-{{ toYaml . | indent 4 }}
+-{{- end }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+ spec:
+   type: ClusterIP
+-  {{- if .Values.imageRenderer.service.clusterIP }}
+-  clusterIP: {{ .Values.imageRenderer.service.clusterIP }}
+-  {{end}}
++  {{- with .Values.imageRenderer.service.clusterIP }}
++  clusterIP: {{ . }}
++  {{- end }}
+   ports:
+     - name: {{ .Values.imageRenderer.service.portName }}
+       port: {{ .Values.imageRenderer.service.port }}
+       protocol: TCP
+       targetPort: {{ .Values.imageRenderer.service.targetPort }}
+-      {{- if .Values.imageRenderer.appProtocol }}
+-      appProtocol: {{ .Values.imageRenderer.appProtocol }}
++      {{- with .Values.imageRenderer.appProtocol }}
++      appProtocol: {{ . }}
+       {{- end }}
+   selector:
+     {{- include "grafana.imageRenderer.selectorLabels" . | nindent 4 }}
+-{{ end }}
+-{{ end }}
++{{- end }}
+diff --git a/charts/grafana/templates/ingress.yaml b/charts/grafana/templates/ingress.yaml
+index 7699ceca..2a26fe49 100644
+--- a/charts/grafana/templates/ingress.yaml
++++ b/charts/grafana/templates/ingress.yaml
+@@ -11,15 +11,15 @@ apiVersion: {{ include "grafana.ingress.apiVersion" . }}
+ kind: Ingress
+ metadata:
+   name: {{ $fullName }}
+-  namespace: {{ template "grafana.namespace" . }}
++  namespace: {{ include "grafana.namespace" . }}
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+-{{- if .Values.ingress.labels }}
+-{{ toYaml .Values.ingress.labels | indent 4 }}
+-{{- end }}
+-  {{- if .Values.ingress.annotations }}
++    {{- with .Values.ingress.labels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++  {{- with .Values.ingress.annotations }}
+   annotations:
+-    {{- range $key, $value := .Values.ingress.annotations }}
++    {{- range $key, $value := . }}
+     {{ $key }}: {{ tpl $value $ | quote }}
+     {{- end }}
+   {{- end }}
+@@ -27,19 +27,19 @@ spec:
+   {{- if and $ingressSupportsIngressClassName .Values.ingress.ingressClassName }}
+   ingressClassName: {{ .Values.ingress.ingressClassName }}
+   {{- end -}}
+-{{- if .Values.ingress.tls }}
++  {{- with .Values.ingress.tls }}
+   tls:
+-{{ tpl (toYaml .Values.ingress.tls) $ | indent 4 }}
+-{{- end }}
++    {{- tpl (toYaml .) $ | nindent 4 }}
++  {{- end }}
+   rules:
+   {{- if .Values.ingress.hosts  }}
+   {{- range .Values.ingress.hosts }}
+-    - host: {{ tpl . $}}
++    - host: {{ tpl . $ }}
+       http:
+         paths:
+-{{- if $extraPaths }}
+-{{ toYaml $extraPaths | indent 10 }}
+-{{- end }}
++          {{- with $extraPaths }}
++          {{- toYaml . | indent 10 }}
++          {{- end }}
+           - path: {{ $ingressPath }}
+             {{- if $ingressSupportsPathType }}
+             pathType: {{ $ingressPathType }}
+@@ -68,11 +68,11 @@ spec:
+               serviceName: {{ $fullName }}
+               servicePort: {{ $servicePort }}
+               {{- end }}
+-            {{- if $ingressPath }}
+-            path: {{ $ingressPath }}
++            {{- with $ingressPath }}
++            path: {{ . }}
+             {{- end }}
+-            {{- if $ingressSupportsPathType }}
+-            pathType: {{ $ingressPathType }}
++            {{- with $ingressSupportsPathType }}
++            pathType: {{ . }}
+             {{- end }}
+   {{- end -}}
+ {{- end }}
+diff --git a/charts/grafana/templates/networkpolicy.yaml b/charts/grafana/templates/networkpolicy.yaml
+index b751d943..ea4578be 100644
+--- a/charts/grafana/templates/networkpolicy.yaml
++++ b/charts/grafana/templates/networkpolicy.yaml
+@@ -2,12 +2,12 @@
+ apiVersion: networking.k8s.io/v1
+ kind: NetworkPolicy
+ metadata:
+-  name: {{ template "grafana.fullname" . }}
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}
++  namespace: {{ include "grafana.namespace" . }}
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+     {{- with .Values.labels }}
+-    {{ toYaml . | nindent 4 }}
++    {{- toYaml . | nindent 4 }}
+     {{- end }}
+   {{- with .Values.annotations }}
+   annotations:
+@@ -23,7 +23,7 @@ spec:
+     {{- end }}
+   podSelector:
+     matchLabels:
+-    {{- include "grafana.selectorLabels" . | nindent 6 }}
++      {{- include "grafana.selectorLabels" . | nindent 6 }}
+ 
+   {{- if .Values.networkPolicy.egress.enabled }}
+   egress:
+@@ -38,7 +38,7 @@ spec:
+       from:
+         - podSelector:
+             matchLabels:
+-              {{ template "grafana.fullname" . }}-client: "true"
++              {{ include "grafana.fullname" . }}-client: "true"
+         {{- with .Values.networkPolicy.explicitNamespacesSelector }}
+         - namespaceSelector:
+             {{- toYaml . | nindent 12 }}
+diff --git a/charts/grafana/templates/poddisruptionbudget.yaml b/charts/grafana/templates/poddisruptionbudget.yaml
+index 70901b70..05251214 100644
+--- a/charts/grafana/templates/poddisruptionbudget.yaml
++++ b/charts/grafana/templates/poddisruptionbudget.yaml
+@@ -2,20 +2,20 @@
+ apiVersion: {{ include "grafana.podDisruptionBudget.apiVersion" . }}
+ kind: PodDisruptionBudget
+ metadata:
+-  name: {{ template "grafana.fullname" . }}
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}
++  namespace: {{ include "grafana.namespace" . }}
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+-{{- if .Values.labels }}
+-{{ toYaml .Values.labels | indent 4 }}
+-{{- end }}
++    {{- with .Values.labels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
+ spec:
+-{{- if .Values.podDisruptionBudget.minAvailable }}
+-  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+-{{- end }}
+-{{- if .Values.podDisruptionBudget.maxUnavailable }}
+-  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+-{{- end }}
++  {{- with .Values.podDisruptionBudget.minAvailable }}
++  minAvailable: {{ . }}
++  {{- end }}
++  {{- with .Values.podDisruptionBudget.maxUnavailable }}
++  maxUnavailable: {{ . }}
++  {{- end }}
+   selector:
+     matchLabels:
+       {{- include "grafana.selectorLabels" . | nindent 6 }}
+diff --git a/charts/grafana/templates/podsecuritypolicy.yaml b/charts/grafana/templates/podsecuritypolicy.yaml
+index d9905c62..eed7af95 100644
+--- a/charts/grafana/templates/podsecuritypolicy.yaml
++++ b/charts/grafana/templates/podsecuritypolicy.yaml
+@@ -1,9 +1,8 @@
+-{{- if .Values.rbac.pspEnabled }}
+-{{- if .Capabilities.APIVersions.Has "policy/v1beta1/PodSecurityPolicy" }}
++{{- if and .Values.rbac.pspEnabled (.Capabilities.APIVersions.Has "policy/v1beta1/PodSecurityPolicy") }}
+ apiVersion: policy/v1beta1
+ kind: PodSecurityPolicy
+ metadata:
+-  name: {{ template "grafana.fullname" . }}
++  name: {{ include "grafana.fullname" . }}
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+   annotations:
+@@ -48,4 +47,3 @@ spec:
+         max: 65535
+   readOnlyRootFilesystem: false
+ {{- end }}
+-{{- end }}
+diff --git a/charts/grafana/templates/pvc.yaml b/charts/grafana/templates/pvc.yaml
+index 65dd1002..eb8f87f0 100644
+--- a/charts/grafana/templates/pvc.yaml
++++ b/charts/grafana/templates/pvc.yaml
+@@ -2,8 +2,8 @@
+ apiVersion: v1
+ kind: PersistentVolumeClaim
+ metadata:
+-  name: {{ template "grafana.fullname" . }}
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}
++  namespace: {{ include "grafana.namespace" . }}
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+     {{- with .Values.persistence.extraPvcLabels }}
+@@ -11,11 +11,11 @@ metadata:
+     {{- end }}
+   {{- with .Values.persistence.annotations  }}
+   annotations:
+-{{ toYaml . | indent 4 }}
++    {{- toYaml . | nindent 4 }}
+   {{- end }}
+   {{- with .Values.persistence.finalizers  }}
+   finalizers:
+-{{ toYaml . | indent 4 }}
++    {{- toYaml . | nindent 4 }}
+   {{- end }}
+ spec:
+   accessModes:
+@@ -25,12 +25,12 @@ spec:
+   resources:
+     requests:
+       storage: {{ .Values.persistence.size | quote }}
+-  {{- if .Values.persistence.storageClassName }}
+-  storageClassName: {{ .Values.persistence.storageClassName }}
+-  {{- end -}}
++  {{- with .Values.persistence.storageClassName }}
++  storageClassName: {{ . }}
++  {{- end }}
+   {{- with .Values.persistence.selectorLabels }}
+   selector:
+     matchLabels:
+-{{ toYaml . | indent 6 }}
++    {{- toYaml . | nindent 6 }}
+   {{- end }}
+-{{- end -}}
++{{- end }}
+diff --git a/charts/grafana/templates/role.yaml b/charts/grafana/templates/role.yaml
+index ff2160f4..ffdb16f6 100644
+--- a/charts/grafana/templates/role.yaml
++++ b/charts/grafana/templates/role.yaml
+@@ -1,31 +1,31 @@
+ {{- if and .Values.rbac.create (not .Values.rbac.useExistingRole) -}}
+-apiVersion: {{ template "grafana.rbac.apiVersion" . }}
++apiVersion: {{ include "grafana.rbac.apiVersion" . }}
+ kind: Role
+ metadata:
+-  name: {{ template "grafana.fullname" . }}
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}
++  namespace: {{ include "grafana.namespace" . }}
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+-{{- with .Values.annotations }}
++  {{- with .Values.annotations }}
+   annotations:
+-{{ toYaml . | indent 4 }}
+-{{- end }}
+-{{- if or .Values.rbac.pspEnabled (and .Values.rbac.namespaced (or .Values.sidecar.dashboards.enabled (or .Values.sidecar.datasources.enabled (or .Values.sidecar.plugins.enabled .Values.rbac.extraRoleRules)))) }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++{{- if or .Values.rbac.pspEnabled (and .Values.rbac.namespaced (or .Values.sidecar.dashboards.enabled .Values.sidecar.datasources.enabled .Values.sidecar.plugins.enabled .Values.rbac.extraRoleRules)) }}
+ rules:
+-{{- if .Values.rbac.pspEnabled }}
+-- apiGroups:      ['extensions']
+-  resources:      ['podsecuritypolicies']
+-  verbs:          ['use']
+-  resourceNames:  [{{ template "grafana.fullname" . }}]
+-{{- end }}
+-{{- if and .Values.rbac.namespaced (or .Values.sidecar.dashboards.enabled (or .Values.sidecar.datasources.enabled .Values.sidecar.plugins.enabled)) }}
+-- apiGroups: [""] # "" indicates the core API group
+-  resources: ["configmaps", "secrets"]
+-  verbs: ["get", "watch", "list"]
+-{{- end }}
+-{{- with .Values.rbac.extraRoleRules }}
+-{{ toYaml . | indent 0 }}
+-{{- end}}
++  {{- if .Values.rbac.pspEnabled }}
++  - apiGroups:      ['extensions']
++    resources:      ['podsecuritypolicies']
++    verbs:          ['use']
++    resourceNames:  [{{ include "grafana.fullname" . }}]
++  {{- end }}
++  {{- if and .Values.rbac.namespaced (or .Values.sidecar.dashboards.enabled .Values.sidecar.datasources.enabled .Values.sidecar.plugins.enabled) }}
++  - apiGroups: [""] # "" indicates the core API group
++    resources: ["configmaps", "secrets"]
++    verbs: ["get", "watch", "list"]
++  {{- end }}
++  {{- with .Values.rbac.extraRoleRules }}
++  {{- toYaml . | nindent 2 }}
++  {{- end}}
+ {{- else }}
+ rules: []
+ {{- end }}
+diff --git a/charts/grafana/templates/rolebinding.yaml b/charts/grafana/templates/rolebinding.yaml
+index e0107255..cc07bd9a 100644
+--- a/charts/grafana/templates/rolebinding.yaml
++++ b/charts/grafana/templates/rolebinding.yaml
+@@ -1,25 +1,25 @@
+-{{- if .Values.rbac.create -}}
+-apiVersion: {{ template "grafana.rbac.apiVersion" . }}
++{{- if .Values.rbac.create }}
++apiVersion: {{ include "grafana.rbac.apiVersion" . }}
+ kind: RoleBinding
+ metadata:
+-  name: {{ template "grafana.fullname" . }}
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}
++  namespace: {{ include "grafana.namespace" . }}
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+-{{- with .Values.annotations }}
++  {{- with .Values.annotations }}
+   annotations:
+-{{ toYaml . | indent 4 }}
+-{{- end }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: Role
+-{{- if (not .Values.rbac.useExistingRole) }}
+-  name: {{ template "grafana.fullname" . }}
+-{{- else }}
++  {{- if .Values.rbac.useExistingRole }}
+   name: {{ .Values.rbac.useExistingRole }}
+-{{- end }}
++  {{- else }}
++  name: {{ include "grafana.fullname" . }}
++  {{- end }}
+ subjects:
+ - kind: ServiceAccount
+-  name: {{ template "grafana.serviceAccountName" . }}
+-  namespace: {{ template "grafana.namespace" . }}
+-{{- end -}}
++  name: {{ include "grafana.serviceAccountName" . }}
++  namespace: {{ include "grafana.namespace" . }}
++{{- end }}
+diff --git a/charts/grafana/templates/secret-env.yaml b/charts/grafana/templates/secret-env.yaml
+index 5c09313e..c7655671 100644
+--- a/charts/grafana/templates/secret-env.yaml
++++ b/charts/grafana/templates/secret-env.yaml
+@@ -2,13 +2,13 @@
+ apiVersion: v1
+ kind: Secret
+ metadata:
+-  name: {{ template "grafana.fullname" . }}-env
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}-env
++  namespace: {{ include "grafana.namespace" . }}
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+ type: Opaque
+ data:
+ {{- range $key, $val := .Values.envRenderSecret }}
+   {{ $key }}: {{ $val | b64enc | quote }}
+-{{- end -}}
++{{- end }}
+ {{- end }}
+diff --git a/charts/grafana/templates/secret.yaml b/charts/grafana/templates/secret.yaml
+index c8aa750a..5cbd5274 100644
+--- a/charts/grafana/templates/secret.yaml
++++ b/charts/grafana/templates/secret.yaml
+@@ -2,14 +2,14 @@
+ apiVersion: v1
+ kind: Secret
+ metadata:
+-  name: {{ template "grafana.fullname" . }}
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}
++  namespace: {{ include "grafana.namespace" . }}
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+-{{- with .Values.annotations }}
++  {{- with .Values.annotations }}
+   annotations:
+-{{ toYaml . | indent 4 }}
+-{{- end }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+ type: Opaque
+ data:
+   {{- if and (not .Values.env.GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION) (not .Values.admin.existingSecret) (not .Values.env.GF_SECURITY_ADMIN_PASSWORD__FILE) (not .Values.env.GF_SECURITY_ADMIN_PASSWORD) }}
+@@ -17,7 +17,7 @@ data:
+   {{- if .Values.adminPassword }}
+   admin-password: {{ .Values.adminPassword | b64enc | quote }}
+   {{- else }}
+-  admin-password: {{ template "grafana.password" . }}
++  admin-password: {{ include "grafana.password" . }}
+   {{- end }}
+   {{- end }}
+   {{- if not .Values.ldap.existingSecret }}
+diff --git a/charts/grafana/templates/service.yaml b/charts/grafana/templates/service.yaml
+index d0a1756c..43d360b5 100644
+--- a/charts/grafana/templates/service.yaml
++++ b/charts/grafana/templates/service.yaml
+@@ -1,55 +1,55 @@
+-{{ if .Values.service.enabled }}
++{{- if .Values.service.enabled }}
++{{- $root := . }}
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: {{ template "grafana.fullname" . }}
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}
++  namespace: {{ include "grafana.namespace" . }}
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+-{{- if .Values.service.labels }}
+-{{ toYaml .Values.service.labels | indent 4 }}
+-{{- end }}
+-{{- $root := . }}
+-{{- with .Values.service.annotations }}
++    {{- with .Values.service.labels }}
++    {{- toYaml . | nindent 4 }}
++    {{- end }}
++  {{- with .Values.service.annotations }}
+   annotations:
+-{{ tpl (toYaml . | indent 4) $root }}
+-{{- end }}
++    {{- tpl (toYaml . | nindent 4) $root }}
++  {{- end }}
+ spec:
+-{{- if (or (eq .Values.service.type "ClusterIP") (empty .Values.service.type)) }}
++  {{- if (or (eq .Values.service.type "ClusterIP") (empty .Values.service.type)) }}
+   type: ClusterIP
+-  {{- if .Values.service.clusterIP }}
+-  clusterIP: {{ .Values.service.clusterIP }}
+-  {{end}}
+-{{- else if eq .Values.service.type "LoadBalancer" }}
++  {{- with .Values.service.clusterIP }}
++  clusterIP: {{ . }}
++  {{- end }}
++  {{- else if eq .Values.service.type "LoadBalancer" }}
+   type: {{ .Values.service.type }}
+-  {{- if .Values.service.loadBalancerIP }}
+-  loadBalancerIP: {{ .Values.service.loadBalancerIP }}
++  {{- with .Values.service.loadBalancerIP }}
++  loadBalancerIP: {{ . }}
+   {{- end }}
+-  {{- if .Values.service.loadBalancerSourceRanges }}
++  {{- with .Values.service.loadBalancerSourceRanges }}
+   loadBalancerSourceRanges:
+-{{ toYaml .Values.service.loadBalancerSourceRanges | indent 4 }}
+-  {{- end -}}
+-{{- else }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
++  {{- else }}
+   type: {{ .Values.service.type }}
+-{{- end }}
+-{{- if .Values.service.externalIPs }}
++  {{- end }}
++  {{- with .Values.service.externalIPs }}
+   externalIPs:
+-{{ toYaml .Values.service.externalIPs | indent 4 }}
+-{{- end }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+   ports:
+     - name: {{ .Values.service.portName }}
+       port: {{ .Values.service.port }}
+       protocol: TCP
+       targetPort: {{ .Values.service.targetPort }}
+-      {{- if .Values.service.appProtocol }}
+-      appProtocol: {{ .Values.service.appProtocol }}
++      {{- with .Values.service.appProtocol }}
++      appProtocol: {{ . }}
+       {{- end }}
+       {{- if (and (eq .Values.service.type "NodePort") (not (empty .Values.service.nodePort))) }}
+-      nodePort: {{.Values.service.nodePort}}
+-      {{ end }}
+-      {{- if .Values.extraExposePorts }}
+-      {{- tpl (toYaml .Values.extraExposePorts) . | nindent 4 }}
++      nodePort: {{ .Values.service.nodePort }}
++      {{- end }}
++      {{- with .Values.extraExposePorts }}
++      {{- tpl (toYaml . | nindent 4) $root }}
+       {{- end }}
+   selector:
+     {{- include "grafana.selectorLabels" . | nindent 4 }}
+-{{ end }}
++{{- end }}
+diff --git a/charts/grafana/templates/serviceaccount.yaml b/charts/grafana/templates/serviceaccount.yaml
+index 1a401fe4..6c5cb758 100644
+--- a/charts/grafana/templates/serviceaccount.yaml
++++ b/charts/grafana/templates/serviceaccount.yaml
+@@ -1,17 +1,17 @@
+ {{- if .Values.serviceAccount.create }}
++{{- $root := . -}}
+ apiVersion: v1
+ kind: ServiceAccount
+ metadata:
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+-  {{- with .Values.serviceAccount.labels }}
++    {{- with .Values.serviceAccount.labels }}
+     {{- toYaml . | nindent 4 }}
+-  {{- end }}
+-{{- $root := . }}
+-{{- with .Values.serviceAccount.annotations }}
++    {{- end }}
++  {{- with .Values.serviceAccount.annotations }}
+   annotations:
+-{{ tpl (toYaml . | indent 4) $root }}
+-{{- end }}
+-  name: {{ template "grafana.serviceAccountName" . }}
+-  namespace: {{ template "grafana.namespace" . }}
++    {{- tpl (toYaml . | indent 4) $root }}
++  {{- end }}
++  name: {{ include "grafana.serviceAccountName" . }}
++  namespace: {{ include "grafana.namespace" . }}
+ {{- end }}
+diff --git a/charts/grafana/templates/servicemonitor.yaml b/charts/grafana/templates/servicemonitor.yaml
+index 0876a637..6575fb9a 100644
+--- a/charts/grafana/templates/servicemonitor.yaml
++++ b/charts/grafana/templates/servicemonitor.yaml
+@@ -3,16 +3,16 @@
+ apiVersion: monitoring.coreos.com/v1
+ kind: ServiceMonitor
+ metadata:
+-  name: {{ template "grafana.fullname" . }}
++  name: {{ include "grafana.fullname" . }}
+   {{- if .Values.serviceMonitor.namespace }}
+   namespace: {{ tpl .Values.serviceMonitor.namespace . }}
+   {{- else }}
+-  namespace: {{ template "grafana.namespace" . }}
++  namespace: {{ include "grafana.namespace" . }}
+   {{- end }}
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+-    {{- if .Values.serviceMonitor.labels }}
+-    {{- toYaml .Values.serviceMonitor.labels | nindent 4 }}
++    {{- with .Values.serviceMonitor.labels }}
++    {{- toYaml . | nindent 4 }}
+     {{- end }}
+ spec:
+   endpoints:
+@@ -26,19 +26,19 @@ spec:
+     honorLabels: true
+     path: {{ .Values.serviceMonitor.path }}
+     scheme: {{ .Values.serviceMonitor.scheme }}
+-    {{- if .Values.serviceMonitor.tlsConfig }}
++    {{- with .Values.serviceMonitor.tlsConfig }}
+     tlsConfig:
+-    {{- toYaml .Values.serviceMonitor.tlsConfig | nindent 6 }}
++      {{- toYaml . | nindent 6 }}
+     {{- end }}
+-    {{- if .Values.serviceMonitor.relabelings }}
++    {{- with .Values.serviceMonitor.relabelings }}
+     relabelings:
+-    {{- toYaml .Values.serviceMonitor.relabelings | nindent 4 }}
++      {{- toYaml . | nindent 6 }}
+     {{- end }}
+   jobLabel: "{{ .Release.Name }}"
+   selector:
+     matchLabels:
+-      {{- include "grafana.selectorLabels" . | nindent 8 }}
++      {{- include "grafana.selectorLabels" . | nindent 6 }}
+   namespaceSelector:
+     matchNames:
+-      - {{ template "grafana.namespace" . }}
++      - {{ include "grafana.namespace" . }}
+ {{- end }}
+diff --git a/charts/grafana/templates/statefulset.yaml b/charts/grafana/templates/statefulset.yaml
+index b308dec4..4cde0eb2 100644
+--- a/charts/grafana/templates/statefulset.yaml
++++ b/charts/grafana/templates/statefulset.yaml
+@@ -1,38 +1,39 @@
+-{{- if (or (.Values.useStatefulSet) (and .Values.persistence.enabled (not .Values.persistence.existingClaim) (eq .Values.persistence.type "statefulset")))}}
++{{- $sts := list "sts" "StatefulSet" -}}
++{{- if (or (.Values.useStatefulSet) (and .Values.persistence.enabled (not .Values.persistence.existingClaim) (has .Values.persistence.type $sts)))}}
+ apiVersion: apps/v1
+ kind: StatefulSet
+ metadata:
+-  name: {{ template "grafana.fullname" . }}
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}
++  namespace: {{ include "grafana.namespace" . }}
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+-{{- with .Values.annotations }}
++  {{- with .Values.annotations }}
+   annotations:
+-{{ toYaml . | indent 4 }}
+-{{- end }}
++    {{- toYaml . | nindent 4 }}
++  {{- end }}
+ spec:
+   replicas: {{ .Values.replicas }}
+   selector:
+     matchLabels:
+       {{- include "grafana.selectorLabels" . | nindent 6 }}
+-  serviceName: {{ template "grafana.fullname" . }}-headless
++  serviceName: {{ include "grafana.fullname" . }}-headless
+   template:
+     metadata:
+       labels:
+         {{- include "grafana.selectorLabels" . | nindent 8 }}
+-{{- with .Values.podLabels }}
+-{{ toYaml . | indent 8 }}
+-{{- end }}
++        {{- with .Values.podLabels }}
++        {{- toYaml . | nindent 8 }}
++        {{- end }}
+       annotations:
+         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+         checksum/dashboards-json-config: {{ include (print $.Template.BasePath "/dashboards-json-configmap.yaml") . | sha256sum }}
+         checksum/sc-dashboard-provider-config: {{ include (print $.Template.BasePath "/configmap-dashboard-provider.yaml") . | sha256sum }}
+-  {{- if and (or (and (not .Values.admin.existingSecret) (not .Values.env.GF_SECURITY_ADMIN_PASSWORD__FILE) (not .Values.env.GF_SECURITY_ADMIN_PASSWORD)) (and .Values.ldap.enabled (not .Values.ldap.existingSecret))) (not .Values.env.GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION) }}
++        {{- if and (or (and (not .Values.admin.existingSecret) (not .Values.env.GF_SECURITY_ADMIN_PASSWORD__FILE) (not .Values.env.GF_SECURITY_ADMIN_PASSWORD)) (and .Values.ldap.enabled (not .Values.ldap.existingSecret))) (not .Values.env.GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION) }}
+         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+-{{- end }}
+-{{- with .Values.podAnnotations }}
+-{{ toYaml . | indent 8 }}
+-{{- end }}
++        {{- end }}
++        {{- with .Values.podAnnotations }}
++        {{- toYaml . | nindent 8 }}
++        {{- end }}
+     spec:
+       {{- include "grafana.pod" . | nindent 6 }}
+   {{- if .Values.persistence.enabled}}
+@@ -48,7 +49,7 @@ spec:
+       {{- with .Values.persistence.selectorLabels }}
+       selector:
+         matchLabels:
+-{{ toYaml . | indent 10 }}
++          {{- toYaml . | nindent 10 }}
+       {{- end }}
+   {{- end }}
+ {{- end }}
+diff --git a/charts/grafana/templates/tests/test-configmap.yaml b/charts/grafana/templates/tests/test-configmap.yaml
+index bdf2917b..01c96c92 100644
+--- a/charts/grafana/templates/tests/test-configmap.yaml
++++ b/charts/grafana/templates/tests/test-configmap.yaml
+@@ -2,8 +2,8 @@
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+-  name: {{ template "grafana.fullname" . }}-test
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}-test
++  namespace: {{ include "grafana.namespace" . }}
+   annotations:
+     "helm.sh/hook": test-success
+     "helm.sh/hook-delete-policy": "before-hook-creation,hook-succeeded"
+@@ -12,7 +12,7 @@ metadata:
+ data:
+   run.sh: |-
+     @test "Test Health" {
+-      url="http://{{ template "grafana.fullname" . }}/api/health"
++      url="http://{{ include "grafana.fullname" . }}/api/health"
+ 
+       code=$(wget --server-response --spider --timeout 90 --tries 10 ${url} 2>&1 | awk '/^  HTTP/{print $2}')
+       [ "$code" == "200" ]
+diff --git a/charts/grafana/templates/tests/test-podsecuritypolicy.yaml b/charts/grafana/templates/tests/test-podsecuritypolicy.yaml
+index 2e664c07..6fae3923 100644
+--- a/charts/grafana/templates/tests/test-podsecuritypolicy.yaml
++++ b/charts/grafana/templates/tests/test-podsecuritypolicy.yaml
+@@ -1,9 +1,8 @@
+-{{- if and .Values.testFramework.enabled .Values.rbac.pspEnabled }}
+-{{- if .Capabilities.APIVersions.Has "policy/v1beta1/PodSecurityPolicy" }}
++{{- if and .Values.testFramework.enabled .Values.rbac.pspEnabled (.Capabilities.APIVersions.Has "policy/v1beta1/PodSecurityPolicy") }}
+ apiVersion: policy/v1beta1
+ kind: PodSecurityPolicy
+ metadata:
+-  name: {{ template "grafana.fullname" . }}-test
++  name: {{ include "grafana.fullname" . }}-test
+   annotations:
+     "helm.sh/hook": test-success
+     "helm.sh/hook-delete-policy": "before-hook-creation,hook-succeeded"
+@@ -24,11 +23,10 @@ spec:
+   runAsUser:
+     rule: RunAsAny
+   volumes:
+-  - configMap
+-  - downwardAPI
+-  - emptyDir
+-  - projected
+-  - csi
+-  - secret
+-{{- end }}
++    - configMap
++    - downwardAPI
++    - emptyDir
++    - projected
++    - csi
++    - secret
+ {{- end }}
+diff --git a/charts/grafana/templates/tests/test-role.yaml b/charts/grafana/templates/tests/test-role.yaml
+index 772a09f3..cdace2c1 100644
+--- a/charts/grafana/templates/tests/test-role.yaml
++++ b/charts/grafana/templates/tests/test-role.yaml
+@@ -1,17 +1,17 @@
+-{{- if and .Values.testFramework.enabled .Values.rbac.pspEnabled -}}
++{{- if and .Values.testFramework.enabled .Values.rbac.pspEnabled }}
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: Role
+ metadata:
+-  name: {{ template "grafana.fullname" . }}-test
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}-test
++  namespace: {{ include "grafana.namespace" . }}
+   annotations:
+     "helm.sh/hook": test-success
+     "helm.sh/hook-delete-policy": "before-hook-creation,hook-succeeded"
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+ rules:
+-- apiGroups:      ['policy']
+-  resources:      ['podsecuritypolicies']
+-  verbs:          ['use']
+-  resourceNames:  [{{ template "grafana.fullname" . }}-test]
++  - apiGroups:      ['policy']
++    resources:      ['podsecuritypolicies']
++    verbs:          ['use']
++    resourceNames:  [{{ include "grafana.fullname" . }}-test]
+ {{- end }}
+diff --git a/charts/grafana/templates/tests/test-rolebinding.yaml b/charts/grafana/templates/tests/test-rolebinding.yaml
+index 3405ffb1..91d45242 100644
+--- a/charts/grafana/templates/tests/test-rolebinding.yaml
++++ b/charts/grafana/templates/tests/test-rolebinding.yaml
+@@ -1,9 +1,9 @@
+-{{- if and .Values.testFramework.enabled .Values.rbac.pspEnabled -}}
++{{- if and .Values.testFramework.enabled .Values.rbac.pspEnabled }}
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: RoleBinding
+ metadata:
+-  name: {{ template "grafana.fullname" . }}-test
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.fullname" . }}-test
++  namespace: {{ include "grafana.namespace" . }}
+   annotations:
+     "helm.sh/hook": test-success
+     "helm.sh/hook-delete-policy": "before-hook-creation,hook-succeeded"
+@@ -12,9 +12,9 @@ metadata:
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+   kind: Role
+-  name: {{ template "grafana.fullname" . }}-test
++  name: {{ include "grafana.fullname" . }}-test
+ subjects:
+-- kind: ServiceAccount
+-  name: {{ template "grafana.serviceAccountNameTest" . }}
+-  namespace: {{ template "grafana.namespace" . }}
++  - kind: ServiceAccount
++    name: {{ include "grafana.serviceAccountNameTest" . }}
++    namespace: {{ include "grafana.namespace" . }}
+ {{- end }}
+diff --git a/charts/grafana/templates/tests/test-serviceaccount.yaml b/charts/grafana/templates/tests/test-serviceaccount.yaml
+index 3145c2eb..38fba359 100644
+--- a/charts/grafana/templates/tests/test-serviceaccount.yaml
++++ b/charts/grafana/templates/tests/test-serviceaccount.yaml
+@@ -4,8 +4,8 @@ kind: ServiceAccount
+ metadata:
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+-  name: {{ template "grafana.serviceAccountNameTest" . }}
+-  namespace: {{ template "grafana.namespace" . }}
++  name: {{ include "grafana.serviceAccountNameTest" . }}
++  namespace: {{ include "grafana.namespace" . }}
+   annotations:
+     "helm.sh/hook": test-success
+     "helm.sh/hook-delete-policy": "before-hook-creation,hook-succeeded"
+diff --git a/charts/grafana/templates/tests/test.yaml b/charts/grafana/templates/tests/test.yaml
+index ef43d80d..6815fa7a 100644
+--- a/charts/grafana/templates/tests/test.yaml
++++ b/charts/grafana/templates/tests/test.yaml
+@@ -1,38 +1,38 @@
+ {{- if .Values.testFramework.enabled }}
++{{- $root := . }}
+ apiVersion: v1
+ kind: Pod
+ metadata:
+-  name: {{ template "grafana.fullname" . }}-test
++  name: {{ include "grafana.fullname" . }}-test
+   labels:
+     {{- include "grafana.labels" . | nindent 4 }}
+   annotations:
+     "helm.sh/hook": test-success
+     "helm.sh/hook-delete-policy": "before-hook-creation,hook-succeeded"
+-  namespace: {{ template "grafana.namespace" . }}
++  namespace: {{ include "grafana.namespace" . }}
+ spec:
+-  serviceAccountName: {{ template "grafana.serviceAccountNameTest" . }}
+-  {{- if .Values.testFramework.securityContext }}
+-  securityContext: {{ toYaml .Values.testFramework.securityContext | nindent 4 }}
++  serviceAccountName: {{ include "grafana.serviceAccountNameTest" . }}
++  {{- with .Values.testFramework.securityContext }}
++  securityContext:
++    {{- toYaml . | nindent 4 }}
+   {{- end }}
+-  {{- $root := . }}
+-  {{- if .Values.image.pullSecrets }}
++  {{- with .Values.image.pullSecrets }}
+   imagePullSecrets:
+-  {{- range .Values.image.pullSecrets }}
++    {{- range . }}
+     - name: {{ tpl . $root }}
+-  {{- end}}
++    {{- end}}
+   {{- end }}
+   {{- with .Values.nodeSelector }}
+   nodeSelector:
+-{{ toYaml . | indent 4 }}
++    {{- toYaml . | nindent 4 }}
+   {{- end }}
+-  {{- $root := . }}
+   {{- with .Values.affinity }}
+   affinity:
+-{{ tpl (toYaml .) $root | indent 4 }}
++    {{- tpl (toYaml .) $root | nindent 4 }}
+   {{- end }}
+   {{- with .Values.tolerations }}
+   tolerations:
+-{{ toYaml . | indent 4 }}
++    {{- toYaml . | nindent 4 }}
+   {{- end }}
+   containers:
+     - name: {{ .Release.Name }}-test
+@@ -44,8 +44,8 @@ spec:
+           name: tests
+           readOnly: true
+   volumes:
+-  - name: tests
+-    configMap:
+-      name: {{ template "grafana.fullname" . }}-test
++    - name: tests
++      configMap:
++        name: {{ include "grafana.fullname" . }}-test
+   restartPolicy: Never
+ {{- end }}
+diff --git a/charts/grafana/values.yaml b/charts/grafana/values.yaml
+index a519cd0f..4bb763af 100644
+--- a/charts/grafana/values.yaml
++++ b/charts/grafana/values.yaml
+@@ -101,8 +101,7 @@ securityContext:
+   runAsGroup: 472
+   fsGroup: 472
+ 
+-containerSecurityContext:
+-  {}
++containerSecurityContext: {}
+ 
+ # Enable creating the grafana configmap
+ createConfigmap: true
+@@ -370,11 +369,6 @@ admin:
+ # - "sh"
+ # - "/run.sh"
+ 
+-## Use an alternate scheduler, e.g. "stork".
+-## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
+-##
+-# schedulerName:
+-
+ ## Extra environment variables that will be pass onto deployment pods
+ ##
+ ## to provide grafana with access to CloudWatch on AWS EKS:
+@@ -588,7 +582,7 @@ alerting: {}
+   #             component: Grafana
+   #             group: app-stack
+   #             summary: |
+-  #               {{ `{{ template "default.message" . }}` }}
++  #               {{ `{{ include "default.message" . }}` }}
+ 
+ ## Configure notifiers
+ ## ref: http://docs.grafana.org/administration/provisioning/#alert-notification-channels
+@@ -1072,6 +1066,11 @@ imageRenderer:
+   ##
+   affinity: {}
+ 
++  ## Use an alternate scheduler, e.g. "stork".
++  ## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
++  ##
++  # schedulerName: "default-scheduler"
++
+ networkPolicy:
+   ## @param networkPolicy.enabled Enable creation of NetworkPolicy resources. Only Ingress traffic is filtered for now.
+   ##

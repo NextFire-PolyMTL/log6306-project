@@ -1,0 +1,442 @@
+commit 61c032df1cc55fc6c123b9c6863aa28894f55a53
+Author: Sasha (Alejandro Vicente Grabovetsky) <a.vicente.grab@gmail.com>
+Date:   Tue Aug 7 15:22:42 2018 +0300
+
+    [stable/chaoskube] Refactor Chaoskube (#6579)
+    
+    * [stable/chaoskube] Refactor Chaoskube to enable affinities, tolerations, and flexible resource selection
+    
+    Signed-off-by: Alejandro Vicente Grabovetsky <sasha@aid.technology>
+    
+    * Fix NOTES.txt to provide method to get first pod if replication > 1
+    
+    Signed-off-by: Alejandro Vicente Grabovetsky <sasha@aid.technology>
+    
+    * Update to latest Docker image for chaoskube
+    
+    Signed-off-by: Alejandro Vicente Grabovetsky <sasha@aid.technology>
+    
+    * Add debug mode for logging
+    
+    Signed-off-by: Alejandro Vicente Grabovetsky <sasha@aid.technology>
+    
+    * Small edits in NOTES.txt
+    
+    Signed-off-by: Alejandro Vicente Grabovetsky <sasha@aid.technology>
+
+diff --git a/stable/chaoskube/.helmignore b/stable/chaoskube/.helmignore
+new file mode 100644
+index 000000000..f0c131944
+--- /dev/null
++++ b/stable/chaoskube/.helmignore
+@@ -0,0 +1,21 @@
++# Patterns to ignore when building packages.
++# This supports shell glob matching, relative path matching, and
++# negation (prefixed with !). Only one pattern per line.
++.DS_Store
++# Common VCS dirs
++.git/
++.gitignore
++.bzr/
++.bzrignore
++.hg/
++.hgignore
++.svn/
++# Common backup files
++*.swp
++*.bak
++*.tmp
++*~
++# Various IDEs
++.project
++.idea/
++*.tmproj
+diff --git a/stable/chaoskube/Chart.yaml b/stable/chaoskube/Chart.yaml
+index d9b59cb38..9559486eb 100755
+--- a/stable/chaoskube/Chart.yaml
++++ b/stable/chaoskube/Chart.yaml
+@@ -1,10 +1,11 @@
++apiVersion: v1
+ name: chaoskube
+-version: 0.8.0
+-appVersion: 0.8.0
++version: 0.8.1
++appVersion: 0.9.0
+ description: Chaoskube periodically kills random pods in your Kubernetes cluster.
+ home: https://github.com/linki/chaoskube
+ sources:
+-- https://github.com/linki/chaoskube
++  - https://github.com/linki/chaoskube
+ maintainers:
+ - name: linki
+   email: linki+kubernetes.io@posteo.de
+diff --git a/stable/chaoskube/README.md b/stable/chaoskube/README.md
+index ad75d207d..8c91e013a 100644
+--- a/stable/chaoskube/README.md
++++ b/stable/chaoskube/README.md
+@@ -37,27 +37,30 @@ If you're sure you want to use it run `helm` with:
+ $ helm install stable/chaoskube --set dryRun=false
+ ```
+ 
+-| Parameter                 | Description                                         | Default                           |
+-|---------------------------|-----------------------------------------------------|-----------------------------------|
+-| `name`                    | container name                                      | chaoskube                         |
+-| `image`                   | docker image                                        | quay.io/linki/chaoskube           |
+-| `imageTag`                | docker image tag                                    | v0.8.0                            |
+-| `replicas`                | number of replicas to run                           | 1                                 |
+-| `interval`                | interval between pod terminations                   | 10m                               |
+-| `labels`                  | label selector to filter pods by                    | "" (matches everything)           |
+-| `annotations`             | annotation selector to filter pods by               | "" (matches everything)           |
+-| `namespaces`              | namespace selector to filter pods by                | "" (all namespaces)               |
+-| `dryRun`                  | don't kill pods, only log what would have been done | true                              |
+-| `timezone`                | Set timezone for running actions (Optional)         | "" (UTC)                          |
+-| `excludedWeekdays`        | Set Days of the Week to avoid actions (Optional)    | "" (Don't skip any weekdays)      |
+-| `excludedTimesOfDay`      | Set Time Range to avoid actions (Optional)          | "" (Don't skip any times of day)  |
+-| `excludedDaysOfYear`      | Set Days of the Year to avoid actions (Optional)    | "" (Don't skip any days)          |
+-| `resources.cpu`           | cpu resource requests and limits                    | 10m                               |
+-| `resources.memory`        | memory resource requests and limits                 | 16Mi                              |
+-| `priorityClassName`       | priorityClassName                                   | `nil`                             |
+-| `rbac.create`             | create rbac service account and roles               | false                             |
+-| `rbac.serviceAccountName` | name of serviceAccount to use when create is false  | default                           |
+-| `nodeSelector`            | node labels for pod assignment                      | `{}`                              |
++| Parameter                 | Description                                         | Default                          |
++|---------------------------|-----------------------------------------------------|----------------------------------|
++| `name`                    | container name                                      | chaoskube                        |
++| `image`                   | docker image                                        | quay.io/linki/chaoskube          |
++| `imageTag`                | docker image tag                                    | v0.9.0                           |
++| `replicas`                | number of replicas to run                           | 1                                |
++| `interval`                | interval between pod terminations                   | 10m                              |
++| `labels`                  | label selector to filter pods by                    | "" (matches everything)          |
++| `annotations`             | annotation selector to filter pods by               | "" (matches everything)          |
++| `namespaces`              | namespace selector to filter pods by                | "" (all namespaces)              |
++| `dryRun`                  | don't kill pods, only log what would have been done | true                             |
++| `debug`                   | Enable debug logging mode, for detailed logs        | false                            |
++| `timezone`                | Set timezone for running actions (Optional)         | "" (UTC)                         |
++| `excludedWeekdays`        | Set Days of the Week to avoid actions (Optional)    | "" (Don't skip any weekdays)     |
++| `excludedTimesOfDay`      | Set Time Range to avoid actions (Optional)          | "" (Don't skip any times of day) |
++| `excludedDaysOfYear`      | Set Days of the Year to avoid actions (Optional)    | "" (Don't skip any days)         |
++| `priorityClassName`       | priorityClassName                                   | `nil`                            |
++| `rbac.create`             | create rbac service account and roles               | false                            |
++| `rbac.serviceAccountName` | name of serviceAccount to use when create is false  | default                          |
++| `resources`               | CPU/Memory resource requests/limits                 | `{}`                             |
++| `nodeSelector`            | Node labels for pod assignment                      | `{}`                             |
++| `tolerations`             | Toleration labels for pod assignment                | `[]`                             |
++| `affinity`                | Affinity settings for pod assignment                | `{}`                             |
++
+ 
+ Setting label and namespaces selectors from the shell can be tricky but is possible (example with zsh):
+ 
+diff --git a/stable/chaoskube/templates/NOTES.txt b/stable/chaoskube/templates/NOTES.txt
+index 9912c6e60..1e9fc3bed 100644
+--- a/stable/chaoskube/templates/NOTES.txt
++++ b/stable/chaoskube/templates/NOTES.txt
+@@ -2,8 +2,8 @@ chaoskube is running and will kill arbitrary pods every {{ .Values.interval }}.
+ 
+ You can follow the logs to see what chaoskube does:
+ 
+-    POD=$(kubectl get pods -l app={{ printf "%s-%s" .Release.Name .Values.name }} --namespace {{ .Release.Namespace }} --output name)
+-    kubectl logs -f $POD --namespace={{ .Release.Namespace }}
++    POD=$(kubectl -n {{ .Release.Namespace }} get pods -l='release={{ template "chaoskube.fullname" . }}' --output=jsonpath='{.items[0].metadata.name}')
++    kubectl -n {{ .Release.Namespace }} logs -f $POD 
+ {{ if .Values.dryRun }}
+ You are running in dry-run mode. No pod is actually terminated.
+ {{ end -}}
+diff --git a/stable/chaoskube/templates/_helpers.tpl b/stable/chaoskube/templates/_helpers.tpl
+new file mode 100644
+index 000000000..ced36d7cf
+--- /dev/null
++++ b/stable/chaoskube/templates/_helpers.tpl
+@@ -0,0 +1,45 @@
++{{/* vim: set filetype=mustache: */}}
++{{/*
++Expand the name of the chart.
++*/}}
++{{- define "chaoskube.name" -}}
++{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++{{/*
++Create a default fully qualified app name.
++We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
++If release name contains chart name it will be used as a full name.
++*/}}
++{{- define "chaoskube.fullname" -}}
++{{- if .Values.fullnameOverride -}}
++{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- $name := default .Chart.Name .Values.nameOverride -}}
++{{- if contains $name .Release.Name -}}
++{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
++{{- else -}}
++{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++{{- end -}}
++{{- end -}}
++
++{{/*
++Create chart name and version as used by the chart label.
++*/}}
++{{- define "chaoskube.chart" -}}
++{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
++{{- end -}}
++
++{{- /*
++Credit: @technosophos
++https://github.com/technosophos/common-chart/
++labels.standard prints the standard Helm labels.
++The standard labels are frequently used in metadata.
++*/ -}}
++{{- define "labels.standard" -}}
++app: {{ include "chaoskube.name" . }}
++heritage: {{ .Release.Service | quote }}
++release: {{ .Release.Name | quote }}
++chart: {{ include "chaoskube.chart" . }}
++{{- end -}}
+diff --git a/stable/chaoskube/templates/clusterrole.yaml b/stable/chaoskube/templates/clusterrole.yaml
+index 9271a9a51..a04d865c3 100644
+--- a/stable/chaoskube/templates/clusterrole.yaml
++++ b/stable/chaoskube/templates/clusterrole.yaml
+@@ -1,12 +1,9 @@
+ {{- if .Values.rbac.create -}}
+-apiVersion: rbac.authorization.k8s.io/v1beta1
++apiVersion: rbac.authorization.k8s.io/v1
+ kind: ClusterRole
+ metadata:
+   labels:
+-    app: {{ printf "%s-%s" .Release.Name .Values.name }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++{{ include "labels.standard" . | indent 4 }}
+   name: {{ printf "%s-%s" .Release.Name .Values.name }}
+ rules:
+   - apiGroups:
+diff --git a/stable/chaoskube/templates/clusterrolebinding.yaml b/stable/chaoskube/templates/clusterrolebinding.yaml
+index ec62a5558..4059930c6 100644
+--- a/stable/chaoskube/templates/clusterrolebinding.yaml
++++ b/stable/chaoskube/templates/clusterrolebinding.yaml
+@@ -1,12 +1,9 @@
+ {{- if .Values.rbac.create -}}
+-apiVersion: rbac.authorization.k8s.io/v1beta1
++apiVersion: rbac.authorization.k8s.io/v1
+ kind: ClusterRoleBinding
+ metadata:
+   labels:
+-    app: {{ printf "%s-%s" .Release.Name .Values.name }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++{{ include "labels.standard" . | indent 4 }}
+   name: {{ printf "%s-%s" .Release.Name .Values.name }}
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+diff --git a/stable/chaoskube/templates/deployment.yaml b/stable/chaoskube/templates/deployment.yaml
+index cc3f1c704..e6b5c30e9 100644
+--- a/stable/chaoskube/templates/deployment.yaml
++++ b/stable/chaoskube/templates/deployment.yaml
+@@ -1,49 +1,53 @@
+-apiVersion: extensions/v1beta1
++apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+-  name: {{ printf "%s-%s" .Release.Name .Values.name }}
++  name: {{ include "chaoskube.fullname" . }}
+   labels:
+-    app: {{ printf "%s-%s" .Release.Name .Values.name }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+-    release: {{ .Release.Name }}
+-    heritage: {{ .Release.Service }}
++{{ include "labels.standard" . | indent 4 }}
+ spec:
+   replicas: {{ .Values.replicas }}
++  selector:
++    matchLabels:
++      app: {{ include "chaoskube.name" . }}
++      release: {{ .Release.Name }}
+   template:
+     metadata:
+       labels:
+-        app: {{ printf "%s-%s" .Release.Name .Values.name }}
+-        chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+-        release: {{ .Release.Name }}
+-        heritage: {{ .Release.Service }}
++{{ include "labels.standard" . | indent 8 }}
+     spec:
+       containers:
+-      - name: {{ .Values.name }}
+-        image: {{ .Values.image }}:{{ .Values.imageTag }}
+-        args:
+-        - --interval={{ .Values.interval }}
+-        - --labels={{ .Values.labels }}
+-        - --annotations={{ .Values.annotations }}
+-        - --namespaces={{ .Values.namespaces }}
+-        {{- if not .Values.dryRun }}
+-        - --no-dry-run
+-        {{- end }}
+-        - --excluded-weekdays={{ .Values.excludedWeekdays }}
+-        - --excluded-times-of-day={{ .Values.excludedTimesOfDay }}
+-        - --excluded-days-of-year={{ .Values.excludedDaysOfYear }}
+-        - --timezone={{ .Values.timezone }}
+-        resources:
+-          requests:
+-            cpu: {{ .Values.resources.cpu }}
+-            memory: {{ .Values.resources.memory }}
+-          limits:
+-            cpu: {{ .Values.resources.cpu }}
+-            memory: {{ .Values.resources.memory }}
++        - name: {{ .Values.name }}
++          image: {{ .Values.image }}:{{ .Values.imageTag }}
++          args:
++            - --interval={{ .Values.interval }}
++            - --labels={{ .Values.labels }}
++            - --annotations={{ .Values.annotations }}
++            - --namespaces={{ .Values.namespaces }}
++            {{- if not .Values.dryRun }}
++            - --no-dry-run
++            {{- end }}
++            - --excluded-weekdays={{ .Values.excludedWeekdays }}
++            - --excluded-times-of-day={{ .Values.excludedTimesOfDay }}
++            - --excluded-days-of-year={{ .Values.excludedDaysOfYear }}
++            - --timezone={{ .Values.timezone }}
++            {{- if .Values.debug }}
++            - --debug
++            {{- end }}
++          resources:
++{{ toYaml .Values.resources | indent 12 }}
+ {{- if .Values.priorityClassName }}
+       priorityClassName: "{{ .Values.priorityClassName }}"
+ {{- end }}
+       serviceAccountName: {{ if .Values.rbac.create }}{{ printf "%s-%s" .Release.Name .Values.name }}{{ else }}"{{ .Values.rbac.serviceAccountName }}"{{ end }}
+-{{- if .Values.nodeSelector }}
++    {{- with .Values.nodeSelector }}
+       nodeSelector:
+-{{ toYaml .Values.nodeSelector | indent 8 }}
+-{{- end -}}
++{{ toYaml . | indent 8 }}
++    {{- end }}
++    {{- with .Values.affinity }}
++      affinity:
++{{ toYaml . | indent 8 }}
++    {{- end }}
++    {{- with .Values.tolerations }}
++      tolerations:
++{{ toYaml . | indent 8 }}
++    {{- end }}
+diff --git a/stable/chaoskube/templates/role.yaml b/stable/chaoskube/templates/role.yaml
+index 40d223449..5d2ef2155 100644
+--- a/stable/chaoskube/templates/role.yaml
++++ b/stable/chaoskube/templates/role.yaml
+@@ -1,12 +1,9 @@
+ {{- if .Values.rbac.create -}}
+-apiVersion: rbac.authorization.k8s.io/v1beta1
++apiVersion: rbac.authorization.k8s.io/v1
+ kind: Role
+ metadata:
+   labels:
+-    app: {{ printf "%s-%s" .Release.Name .Values.name }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++{{ include "labels.standard" . | indent 4 }}
+   name: {{ printf "%s-%s" .Release.Name .Values.name }}
+ rules:
+   - apiGroups:
+diff --git a/stable/chaoskube/templates/rolebinding.yaml b/stable/chaoskube/templates/rolebinding.yaml
+index 87e09d121..a72ac7901 100644
+--- a/stable/chaoskube/templates/rolebinding.yaml
++++ b/stable/chaoskube/templates/rolebinding.yaml
+@@ -1,12 +1,9 @@
+ {{- if .Values.rbac.create -}}
+-apiVersion: rbac.authorization.k8s.io/v1beta1
++apiVersion: rbac.authorization.k8s.io/v1
+ kind: RoleBinding
+ metadata:
+   labels:
+-    app: {{ printf "%s-%s" .Release.Name .Values.name }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++{{ include "labels.standard" . | indent 4 }}
+   name: {{ printf "%s-%s" .Release.Name .Values.name }}
+ roleRef:
+   apiGroup: rbac.authorization.k8s.io
+diff --git a/stable/chaoskube/templates/serviceaccount.yaml b/stable/chaoskube/templates/serviceaccount.yaml
+index a101fe0f4..ad5069733 100644
+--- a/stable/chaoskube/templates/serviceaccount.yaml
++++ b/stable/chaoskube/templates/serviceaccount.yaml
+@@ -3,9 +3,6 @@ apiVersion: v1
+ kind: ServiceAccount
+ metadata:
+   labels:
+-    app: {{ printf "%s-%s" .Release.Name .Values.name }}
+-    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+-    heritage: {{ .Release.Service }}
+-    release: {{ .Release.Name }}
++{{ include "labels.standard" . | indent 4 }}
+   name: {{ printf "%s-%s" .Release.Name .Values.name }}
+ {{- end -}}
+diff --git a/stable/chaoskube/values.yaml b/stable/chaoskube/values.yaml
+index f95e8397a..a71a88613 100644
+--- a/stable/chaoskube/values.yaml
++++ b/stable/chaoskube/values.yaml
+@@ -5,7 +5,7 @@ name: chaoskube
+ image: quay.io/linki/chaoskube
+ 
+ # docker image tag
+-imageTag: v0.8.0
++imageTag: v0.9.0
+ 
+ # number of replicas to run
+ replicas: 1
+@@ -25,6 +25,9 @@ namespaces:
+ # don't kill pods, only log what would have been done
+ dryRun: true
+ 
++# Enable debug logging
++debug: false
++
+ # Set values for exempting specific week days from Chaoskube Actions
+ excludedWeekdays:
+ 
+@@ -37,11 +40,6 @@ excludedDaysOfYear:
+ # Set specific Timezone for Actions to take place
+ timezone: UTC
+ 
+-# resource requests and limits
+-resources:
+-  cpu: 10m
+-  memory: 16Mi
+-
+ priorityClassName: ""
+ 
+ # create service account with permission to list and kill pods
+@@ -51,6 +49,27 @@ rbac:
+   # only used when create is false
+   serviceAccountName: default
+ 
+-# Node labels for pod assignment
+-# Ref: https://kubernetes.io/docs/user-guide/node-selection/
++resources: {}
++  ## We usually recommend not to specify default resources and to leave this as a conscious
++  ## choice for the user. This also increases chances charts run on environments with little
++  ## resources, such as Minikube. If you do want to specify resources, uncomment the following
++  ## lines, adjust them as necessary, and remove the curly braces after 'resources:'.
++  # limits:
++  #   cpu: 100m
++  #   memory: 128Mi
++  # requests:
++  #   cpu: 100m
++  #   memory: 128Mi
++
+ nodeSelector: {}
++
++tolerations: []
++
++affinity: {}
++  ## Suggested antiAffinity, as each CA should be on a separate Node for resilience
++  # podAntiAffinity:
++  #   requiredDuringSchedulingIgnoredDuringExecution:
++  #     - topologyKey: "kubernetes.io/hostname"
++  #       labelSelector:
++  #         matchLabels:
++  #           app: chaoskube

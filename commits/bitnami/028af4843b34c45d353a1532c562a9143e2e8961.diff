@@ -1,0 +1,546 @@
+commit 028af4843b34c45d353a1532c562a9143e2e8961
+Author: tompizmor <tompizmor@gmail.com>
+Date:   Fri Feb 16 17:57:24 2018 +0100
+
+    Refactor node chart to be production ready
+
+diff --git a/incubator/node/README.md b/incubator/node/README.md
+index bea09118a0..2b097220e7 100644
+--- a/incubator/node/README.md
++++ b/incubator/node/README.md
+@@ -5,14 +5,14 @@
+ ## TL;DR;
+ 
+ ```console
+-$ helm install incubator/node
++$ helm repo add bitnami-incubator https://charts.bitnami.com/incubator
++$ helm install bitnami-incubator/node
+ ```
+-
+ ## Introduction
+ 
+ This chart bootstraps a [Node](https://github.com/bitnami/bitnami-docker-node) deployment on a [Kubernetes](http://kubernetes.io) cluster using the [Helm](https://helm.sh) package manager.
+ 
+-It clones and deploys a Node.js application from a git repository.
++It clones and deploys a Node.js application from a git repository. Optionally you can set un an Ingress resource to access your application and provision an external database using the k8s service catalog and the Open Service Broker for Azure.
+ 
+ ## Prerequisites
+ 
+@@ -24,7 +24,7 @@ It clones and deploys a Node.js application from a git repository.
+ To install the chart with the release name `my-release`:
+ 
+ ```console
+-$ helm install --name my-release incubator/node
++$ helm install --name my-release bitnami-incubator/node
+ ```
+ 
+ The command deploys Node.js on the Kubernetes cluster in the default configuration. The [configuration](#configuration) section lists the parameters that can be configured during installation. Also includes support for MariaDB chart out of the box.
+@@ -47,15 +47,27 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following tables lists the configurable parameters of the Node chart and their default values.
+ 
+-|           Parameter           |             Description             |                        Default                        |
+-|-------------------------------|-------------------------------------|-------------------------------------------------------|
+-| `image`                       | Node image                          | `bitnami/node:{VERSION}`                              |
+-| `imagePullPolicy`             | Image pull policy                   | `IfNotPresent`                                        |
+-| `repository`                  | Repo of the application             | `git@github.com:jbianquetti-nami/simple-node-app.git` |
+-| `revision`                    | Revision  to checkout               | `master`                                              |
+-| `mariadb.mariadbRootPassword` | MariaDB admin password              | `nil`                                                 |
+-| `serviceType`                 | Kubernetes Service type             | `LoadBalancer`                                        |
+-| `resources`                   | CPU/Memory resource requests/limits | Memory: `512Mi`, CPU: `300m`                          |
++|              Parameter               |            Description                                    |                        Default                            |
++|--------------------------------------|-----------------------------------------------------------|-----------------------------------------------------------|
++| `image`                              | Node image                                                | `bitnami/node:{VERSION}`                                  |
++| `devImage`                           | Image used for initContainers                             | `bitnami/node:{VERSION}`                                  |
++| `imagePullPolicy`                    | Image pull policy                                         | `IfNotPresent`                                            |
++| `repository`                         | Repo of the application                                   | `https://github.com/jbianquetti-nami/simple-node-app.git` |
++| `revision`                           | Revision  to checkout                                     | `master`                                                  |
++| `replicas`                           | Number of replicas for the application                    | `1`                                                       |
++| `applicationPort`                    | Port where the application will be running                | `3000`                                                    |
++| `serviceType`                        | Kubernetes Service type                                   | `LoadBalancer`                                            |
++| `persistence.enabled`                | Enable persistence using PVC                              | `false`                                                   |
++| `persistence.path`                   | Path to persisted directory                               | `/app/data`                                               |
++| `persistence.accessMode`             | PVC Access Mode                                           | `ReadWriteOnce`                                           |
++| `persistence.size`                   | PVC Storage Request                                       | `1Gi`                                                     |
++| `externalDatabase.azure.enabled`     | Create a database on Azure cloud with k8s service catalog | `false`                                                   |
++| `externalDatabase.azure.location`    | The Azure region in which to deploy the database          | `eastus`                                                  |
++| `externalDatabase.azure.servicePlan` | The plan to request for the Azure database                | `mongo-db`                                                |
++| `ingress.enabled`                    | Enable ingress creation                                   | `false`                                                   |
++| `ingress.path`                       | Ingress path                                              | `/`                                                       |
++| `ingress.host`                       | Ingress host                                              | `example.local`                                           |
++| `ingress.tls`                        | TLS configuration for the ingress                         | `{}`                                                      |
+ 
+ The above parameters map to the env variables defined in [bitnami/node](http://github.com/bitnami/bitnami-docker-node). For more information please refer to the [bitnami/node](http://github.com/bitnami/bitnami-docker-node) image documentation.
+ 
+@@ -63,11 +75,11 @@ Specify each parameter using the `--set key=value[,key=value]` argument to `helm
+ 
+ ```console
+ $ helm install --name my-release \
+-  --set repository=https://github.com/jbianquetti-nami/simple-node-app.git,mariadb.mariadbRootPassword=secretpassword \
+-    incubator/node
++  --set repository=https://github.com/jbianquetti-nami/simple-node-app.git,replicas=2 \
++    bitnami-incubator/node
+ ```
+ 
+-The above command clones the remote git  repository to the `/app/` directory  of the container. Additionally it sets the MariaDB `root` user password to `secretpassword`.
++The above command clones the remote git  repository to the `/app/` directory  of the container. Additionally it sets the number or `replicas` to `2`.
+ 
+ Alternatively, a YAML file that specifies the values for the above parameters can be provided while installing the chart. For example,
+ 
+@@ -83,3 +95,58 @@ The [Bitnami Node](https://github.com/bitnami/bitnami-docker-node) image stores
+ 
+ Persistent Volume Claims are used to keep the data across deployments. This is known to work in GCE, AWS, and minikube.
+ See the [Configuration](#configuration) section to configure the PVC or to disable persistence.
++
++## Set an Ingress
++
++First install the nginx-ingress controller via helm:
++
++```
++$ helm install stable/nginx-ingress
++```
++
++Now deploy the node helm chart:
++
++```
++$ helm install --name my-release bitnami-incubator/node --set ingress.enabled=true,ingress.host=example.com,serviceType=ClusterIP
++```
++
++### Configure TLS termination for your ingress controller
++
++You must manually create a secret containing the certificate and key for your domain. You can do it with this command:
++
++```
++$ kubectl create secret tls my-tls-secret --cert=path/to/file.cert --key=path/to/file.key
++```
++
++Then ensure you deploy the Helm chart with the following ingress configuration:
++
++```
++ingress:
++  enabled: false
++  path: /
++  host: example.com
++  annotations:
++    kubernetes.io/ingress.class: nginx
++  tls:
++      hosts:
++        - example.com
++```
++
++## Provision a database using the Open Source Broker for Azure
++
++1. Install Service Catalog in your Kubernetes cluster following [this instructions](https://kubernetes.io/docs/tasks/service-catalog/install-service-catalog-using-helm/)
++2. Install the Open Service Broker for Azure in your Kubernetes cluster following [this instructions](https://github.com/Azure/helm-charts/tree/master/open-service-broker-azure)
++3. Deploy the helm chart:
++
++    ```
++    $ helm install --name node-app --set externalDatabase.azure.enabled=true bitnami-incubator/node
++    ```
++
++Setting `externalDatabase.azure.enabled` to `true` makes the chart to create a `ServiceInstance` and a `ServiceBinding` kubernetes resources.
++Once the instance has been provisioned in Azure, a new secret should have been automatically created with the connection parameters for your application.
++
++Deploy the helm chart enabling the Azure external database makes the following assumptions:
++  - You would want an Azure Cosmos MongoDB database
++  - Your application uses DATABASE_HOST, DATABASE_PORT, DATABASE_USER and DATABASE_PASSWORD environment variables to connect to the database.
++
++You can read more about the kubernetes service catalog at https://github.com/kubernetes-incubator/service-catalog 
+\ No newline at end of file
+diff --git a/incubator/node/templates/NOTES.txt b/incubator/node/templates/NOTES.txt
+index a83ebdb1da..51a7c2c1c7 100644
+--- a/incubator/node/templates/NOTES.txt
++++ b/incubator/node/templates/NOTES.txt
+@@ -3,20 +3,20 @@
+ 
+ {{- if contains "NodePort" .Values.serviceType }}
+ 
+-  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ template "fullname" . }})
++  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ template "node.fullname" . }})
+   export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+   echo http://$NODE_IP:$NODE_PORT/
+ 
+ {{- else if contains "LoadBalancer" .Values.serviceType }}
+ 
+   NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+-        Watch the status with: 'kubectl get svc -w {{ template "fullname" . }} --namespace {{ .Release.Namespace }}'
++        Watch the status with: 'kubectl get svc -w {{ template "node.fullname" . }} --namespace {{ .Release.Namespace }}'
+ 
+-  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "fullname" . }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
++  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "node.fullname" . }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+   echo http://$SERVICE_IP/
+ {{- else if contains "ClusterIP"  .Values.serviceType }}
+ 
+-  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app={{ template "fullname" . }}" -o jsonpath="{.items[0].metadata.name}")
++  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app={{ template "node.name" . }}" -o jsonpath="{.items[0].metadata.name}")
+   echo http://127.0.0.1:8080/
+   kubectl port-forward $POD_NAME 8080:80
+ {{- end }}
+diff --git a/incubator/node/templates/_helpers.tpl b/incubator/node/templates/_helpers.tpl
+index d21e7fa110..2cb82ad2ce 100644
+--- a/incubator/node/templates/_helpers.tpl
++++ b/incubator/node/templates/_helpers.tpl
+@@ -2,7 +2,7 @@
+ {{/*
+ Expand the name of the chart.
+ */}}
+-{{- define "name" -}}
++{{- define "node.name" -}}
+ {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
+ 
+@@ -10,7 +10,7 @@ Expand the name of the chart.
+ Create a default fully qualified app name.
+ We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+ */}}
+-{{- define "fullname" -}}
++{{- define "node.fullname" -}}
+ {{- $name := default .Chart.Name .Values.nameOverride -}}
+ {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+ {{- end -}}
+diff --git a/incubator/node/templates/deployment.yaml b/incubator/node/templates/deployment.yaml
+index a3254c3d83..20ca9877c6 100644
+--- a/incubator/node/templates/deployment.yaml
++++ b/incubator/node/templates/deployment.yaml
+@@ -1,71 +1,86 @@
+ apiVersion: extensions/v1beta1
+ kind: Deployment
+ metadata:
+-  name: {{ template "fullname" . }}
++  name: {{ template "node.fullname" . }}
+   labels:
+-    app: {{ template "fullname" . }}
++    app: {{ template "node.name" . }}
+     chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+     release: "{{ .Release.Name }}"
+     heritage: "{{ .Release.Service }}"
+ spec:
+-  replicas: 1
++  replicas: {{ .Values.replicas }}
+   template:
+     metadata:
+       labels:
+-        app: {{ template "fullname" . }}
+-      annotations:
+-        pod.beta.kubernetes.io/init-containers: '[
+-          {
+-            "name": "git-clone-app",
+-            "image": "{{ .Values.image }}",
+-            "imagePullPolicy": "{{ .Values.imagePullPolicy }}",
+-            "command": [ "/bin/sh", "-c" , "git clone {{ .Values.repository }} /app && git checkout {{ .Values.revision }}" ],
+-            "volumeMounts": [
+-              {
+-                "name": "app",
+-                "mountPath": "/app"
+-              }
+-            ]
+-          },
+-          {
+-            "name": "npm-install",
+-            "image": "{{ .Values.image }}",
+-            "imagePullPolicy": "{{ .Values.imagePullPolicy }}",
+-            "command": [ "npm", "install" ],
+-            "volumeMounts": [
+-              {
+-                "name": "app",
+-                "mountPath": "/app"
+-              }
+-            ]
+-          }
+-        ]'
++        app: {{ template "node.name" . }}
++        release: {{ .Release.Name | quote }}
+     spec:
++      initContainers:
++      - name: git-clone-app
++        image: {{ .Values.devImage }}
++        imagePullPolicy: {{ .Values.imagePullPolicy }}
++        command: [ '/bin/sh', '-c' , 'git clone {{ .Values.repository }} /app && git checkout {{ .Values.revision }}']
++        volumeMounts:
++        - name: app
++          mountPath: /app
++      - name: npm-install
++        image: {{ .Values.image }}
++        imagePullPolicy: {{ .Values.imagePullPolicy }}
++        workingDir: /app
++        command: ['/bin/bash', '-c', 'useradd bitnami && chown -R bitnami:bitnami /app && npm install']
++        volumeMounts:
++        - name: app
++          mountPath: /app
+       containers:
+-      - name: {{ template "fullname" . }}
++      - name: {{ template "node.fullname" . }}
+         securityContext:
+           readOnlyRootFilesystem: true
+         image: "{{ .Values.image }}"
+         imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
+         env:
+-        - name: GIT_REPO
+-          value: {{ .Values.repository }}
+-        command: [ "npm", "start" ]
++        {{- if .Values.externalDatabase.azure.enabled }}
++        - name: DATABASE_HOST
++          valueFrom:
++            secretKeyRef:
++              name: {{ template "node.fullname" . }}-mongodb-secret
++              key: host
++        - name: DATABASE_PORT
++          valueFrom:
++            secretKeyRef:
++              name: {{ template "node.fullname" . }}-mongodb-secret
++              key: port
++        - name: DATABASE_USER
++          valueFrom:
++            secretKeyRef:
++              name: {{ template "node.fullname" . }}-mongodb-secret
++              key: username
++        - name: DATABASE_PASSWORD
++          valueFrom:
++            secretKeyRef:
++              name: {{ template "node.fullname" . }}-mongodb-secret
++              key: password
++        - name: DATABASE_CONNECTION_OPTIONS
++          value: "ssl=true&replicaSet=globaldb"
++        {{- end }}
++        - name: DATA_FOLDER
++          value: "/app"
++        workingDir: /app
++        command: ['/bin/bash', '-c', 'useradd bitnami && su bitnami -c "PATH=/opt/bitnami/node/bin:$PATH npm start"']
+         ports:
+         - name: http
+-          containerPort: 3000
++          containerPort: {{ .Values.applicationPort }}
+         livenessProbe:
+           httpGet:
+             path: /
+             port: http
+-          initialDelaySeconds: 180
++          initialDelaySeconds: 60
+           timeoutSeconds: 5
+           failureThreshold: 6
+         readinessProbe:
+           httpGet:
+             path: /
+             port: http
+-          initialDelaySeconds: 30
++          initialDelaySeconds: 10
+           timeoutSeconds: 3
+           periodSeconds: 5
+         resources:
+diff --git a/incubator/node/templates/ingres.yaml b/incubator/node/templates/ingres.yaml
+new file mode 100644
+index 0000000000..d8f68898bb
+--- /dev/null
++++ b/incubator/node/templates/ingres.yaml
+@@ -0,0 +1,28 @@
++{{- if .Values.ingress.enabled -}}
++apiVersion: extensions/v1beta1
++kind: Ingress
++metadata:
++  labels:
++    app: {{ template "node.name" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    heritage: {{ .Release.Service }}
++    release: {{ .Release.Name }}
++  name: {{ template "node.fullname" . }}
++  annotations:
++    {{- range $key, $value := .Values.ingress.annotations }}
++      {{ $key }}: {{ $value | quote }}
++    {{- end }}
++spec:
++  rules:
++    - host: {{ .Values.ingress.host }}
++      http:
++        paths:
++          - path: {{ .Values.ingress.path }}
++            backend:
++              serviceName: {{ include "node.fullname" . }}
++              servicePort: 80
++  {{- if .Values.ingress.tls }}
++  tls:
++{{ toYaml .Values.ingress.tls | indent 4 }}
++  {{- end -}}
++{{- end -}}
+diff --git a/incubator/node/templates/mongodb-binding.yaml b/incubator/node/templates/mongodb-binding.yaml
+new file mode 100644
+index 0000000000..8eb49d4a83
+--- /dev/null
++++ b/incubator/node/templates/mongodb-binding.yaml
+@@ -0,0 +1,15 @@
++{{- if .Values.externalDatabase.azure.enabled }}
++apiVersion: servicecatalog.k8s.io/v1beta1
++kind: ServiceBinding
++metadata:
++  name: {{ template "node.fullname" . }}-mongodb-binding
++  labels:
++    app: {{ template "node.name" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++spec:
++  instanceRef:
++    name: {{ template "node.fullname" . }}-mongodb-instance
++  secretName: {{ template "node.fullname" . }}-mongodb-secret
++{{- end }}
+diff --git a/incubator/node/templates/mongodb-instance.yaml b/incubator/node/templates/mongodb-instance.yaml
+new file mode 100644
+index 0000000000..4a9e812814
+--- /dev/null
++++ b/incubator/node/templates/mongodb-instance.yaml
+@@ -0,0 +1,20 @@
++{{- if .Values.externalDatabase.azure.enabled }}
++apiVersion: servicecatalog.k8s.io/v1beta1
++kind: ServiceInstance
++metadata:
++  name: {{ template "node.fullname" . }}-mongodb-instance
++  labels:
++    app: {{ template "node.name" . }}
++    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
++    release: "{{ .Release.Name }}"
++    heritage: "{{ .Release.Service }}"
++spec:
++  clusterServiceClassExternalName: azure-cosmos-mongo-db
++  clusterServicePlanExternalName: {{ .Values.externalDatabase.azure.servicePlan }}
++  parameters:
++    location: {{ .Values.externalDatabase.azure.location }}
++    resourceGroup: {{ .Release.Namespace }}
++    sslEnforcement: disabled
++    firewallStartIPAddress: 0.0.0.0
++    firewallEndIPAddress: 255.255.255.255
++{{- end }}
+diff --git a/incubator/node/templates/pvc.yaml b/incubator/node/templates/pvc.yaml
+index 6a21fe551b..1606ae61f4 100644
+--- a/incubator/node/templates/pvc.yaml
++++ b/incubator/node/templates/pvc.yaml
+@@ -2,9 +2,9 @@
+ kind: PersistentVolumeClaim
+ apiVersion: v1
+ metadata:
+-  name: {{ template "fullname" . }}
++  name: {{ template "node.fullname" . }}
+   labels:
+-    app: {{ template "fullname" . }}
++    app: {{ template "node.name" . }}
+     chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+     release: "{{ .Release.Name }}"
+     heritage: "{{ .Release.Service }}"
+diff --git a/incubator/node/templates/svc.yaml b/incubator/node/templates/svc.yaml
+index cf77abe82e..1be77fa903 100644
+--- a/incubator/node/templates/svc.yaml
++++ b/incubator/node/templates/svc.yaml
+@@ -1,9 +1,9 @@
+ apiVersion: v1
+ kind: Service
+ metadata:
+-  name: {{ template "fullname" . }}
++  name: {{ template "node.fullname" . }}
+   labels:
+-    app: {{ template "fullname" . }}
++    app: {{ template "node.name" . }}
+     chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+     release: "{{ .Release.Name }}"
+     heritage: "{{ .Release.Service }}"
+@@ -14,4 +14,5 @@ spec:
+     port: 80
+     targetPort: http
+   selector:
+-    app: {{ template "fullname" . }}
++    app: {{ template "node.name" . }}
++    release: "{{ .Release.Name }}"
+diff --git a/incubator/node/values.yaml b/incubator/node/values.yaml
+index 9ae48ba4ef..fea1d4af81 100644
+--- a/incubator/node/values.yaml
++++ b/incubator/node/values.yaml
+@@ -1,7 +1,13 @@
+ ## Bitnami node image version
+ ## ref: https://hub.docker.com/r/bitnami/node/tags/
+ ##
+-image: bitnami/node:6.12.3-r0
++image: bitnami/node:9.5.0-r0-prod
++devImage: bitnami/node:9.5.0-r0
++
++## Specify a imagePullPolicy
++## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++##
++imagePullPolicy: IfNotPresent
+ 
+ ## Git repository http/https
+ ##
+@@ -11,30 +17,13 @@ repository:  https://github.com/jbianquetti-nami/simple-node-app.git
+ ##
+ revision: 26679f6
+ 
+-## Specify a imagePullPolicy
+-## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
++## Specify the number of replicas for the application
+ ##
+-imagePullPolicy: IfNotPresent
++replicas: 1
+ 
++## Specify the port where your applucation will be running
+ ##
+-## MariaDB chart configuration
+-##
+-mariadb:
+-  ## MariaDB admin password
+-  ## ref: https://github.com/bitnami/bitnami-docker-mariadb/blob/master/README.md#setting-the-root-password-on-first-run
+-  ## mariadbRootPassword:
+-
+-  ## Enable persistence using Persistent Volume Claims
+-  ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+-  ##
+-  persistence:
+-    enabled: true
+-    ## If defined, volume.beta.kubernetes.io/storage-class: <storageClass>
+-    ## Default: volume.alpha.kubernetes.io/storage-class: default
+-    ##
+-    # storageClass:
+-    accessMode: ReadWriteOnce
+-    size: 8Gi
++applicationPort: 3000
+ 
+ ## Kubernetes configuration
+ ## For minikube, set this to NodePort, elsewhere use LoadBalancer
+@@ -57,7 +46,38 @@ persistence:
+ ## Configure resource requests and limits
+ ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+ ##
+-resources:
+-  requests:
+-    memory: 512Mi
+-    cpu: 300m
++resources: {}
++  # limits:
++  #   cpu: 500m
++  #   memory: 512Mi
++  # requests:
++  #   cpu: 500m
++  #   memory: 512Mi
++
++## Provision an external database using kubernetes service catalog and the Open Service Broker for Azure 
++##
++externalDatabase:
++## All of these values are only used when mariadb.enabled is set to false
++  azure:
++    enabled: false
++    ## The Azure region in which to deploy Azure Cosmos MongoDB
++    location: eastus
++    ## The plan to request for Azure Cosmos MongoDB
++    servicePlan: mongo-db
++
++## Configure ingress resource that allow you to access the application. 
++## ref: http://kubernetes.io/docs/user-guide/ingress/
++##
++ingress:
++  enabled: false
++  path: /
++  # Used to create an Ingress record.
++  host: example.local
++  # annotations:
++  #   kubernetes.io/ingress.class: nginx
++  #   kubernetes.io/tls-acme: "true"
++  # tls:
++  #   Secrets must be manually created in the namespace.
++  #   - secretName: your-tls-cert
++  #     hosts:
++  #       - example.local

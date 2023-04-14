@@ -1,0 +1,98 @@
+commit 9f5f50e779a5cabec555b9cad14a8f0cc8da54b1
+Author: Andrés Álvarez <1671935+kir4h@users.noreply.github.com>
+Date:   Thu Apr 18 18:24:14 2019 +0200
+
+    [stable/traefik] Allow skipping secret creation for dns providers (#12465)
+    
+    * Allow skipping secret creation for dns providers
+    
+    Signed-off-by: Andres Alvarez <1671935+kir4h@users.noreply.github.com>
+    
+    * Refactor to reference an existing secret name
+    
+    Signed-off-by: Andres Alvarez <1671935+kir4h@users.noreply.github.com>
+    
+    * Add dreamhost DNS provider environment variable to values.yaml
+    
+    Signed-off-by: Andres Alvarez <1671935+kir4h@users.noreply.github.com>
+    
+    * Bump Chart version
+    
+    Signed-off-by: Andres Alvarez <1671935+kir4h@users.noreply.github.com>
+
+diff --git a/stable/traefik/Chart.yaml b/stable/traefik/Chart.yaml
+index 4992fc14d..a8fe6c2bd 100644
+--- a/stable/traefik/Chart.yaml
++++ b/stable/traefik/Chart.yaml
+@@ -1,6 +1,6 @@
+ apiVersion: v1
+ name: traefik
+-version: 1.66.0
++version: 1.67.0
+ appVersion: 1.7.9
+ description: A Traefik based Kubernetes ingress controller with Let's Encrypt support
+ keywords:
+diff --git a/stable/traefik/README.md b/stable/traefik/README.md
+index e821e5dd8..db70357c6 100644
+--- a/stable/traefik/README.md
++++ b/stable/traefik/README.md
+@@ -134,6 +134,7 @@ The following table lists the configurable parameters of the Traefik chart and t
+ | `acme.challengeType`                   | Type of ACME challenge to perform domain validation. `tls-sni-01` (deprecated), `tls-alpn-01` (recommended), `http-01` or `dns-01` | `tls-sni-01`                                |
+ | `acme.delayBeforeCheck`         | By default, the provider will verify the TXT DNS challenge record before letting ACME verify. If delayBeforeCheck is greater than zero, this check is delayed for the configured duration in seconds. Useful when Traefik cannot resolve external DNS queries. | `0` |
+ | `acme.dnsProvider.name`                | Which DNS provider to use. See [here](https://github.com/xenolf/lego/tree/master/providers/dns) for the list of possible values. | `nil`                                         |
++| `acme.dnsProvider.existingSecretName`  | Don't create a secret for DNS provider configuration environment variables, but use the specified one instead. Secret should contain the required environment variables. Useful to avoid storing secrets in helm | `""`                   |
+ | `acme.dnsProvider.$name`               | The configuration environment variables (encoded as a secret) needed for the DNS provider to do DNS challenge. Example configuration: [AWS Route 53](#example-aws-route-53), [Google Cloud DNS](#example-gcloud). | `{}` |
+ | `acme.email`                           | Email address to be used in certificates obtained from Let's Encrypt                                                         | `admin@example.com`                               |
+ | `acme.onHostRule`                      | Whether to generate a certificate for each frontend with Host rule                                                           | `true`                                            |
+diff --git a/stable/traefik/templates/deployment.yaml b/stable/traefik/templates/deployment.yaml
+index 1a00d07a0..5ca37705a 100644
+--- a/stable/traefik/templates/deployment.yaml
++++ b/stable/traefik/templates/deployment.yaml
+@@ -94,11 +94,15 @@ spec:
+         {{- if or (and .Values.acme.enabled (eq .Values.acme.challengeType "dns-01") .Values.acme.dnsProvider.name) .Values.env }}
+         env:
+         {{- range $k, $v := (index .Values.acme.dnsProvider .Values.acme.dnsProvider.name) }}
+-          {{- if $v }}
++          {{- if or $v $.Values.acme.dnsProvider.existingSecretName }}
+           - name: {{ $k }}
+             valueFrom:
+               secretKeyRef:
++              {{- if $.Values.acme.dnsProvider.existingSecretName }}
++                name: {{ $.Values.acme.dnsProvider.existingSecretName }}
++              {{- else }}
+                 name: {{ template "traefik.fullname" $ }}-dnsprovider-config
++              {{- end }}
+                 key: {{ $k }}
+           {{- end }}
+         {{- end }}
+diff --git a/stable/traefik/templates/dns-provider-secret.yaml b/stable/traefik/templates/dns-provider-secret.yaml
+index 671b7317c..39d952f99 100644
+--- a/stable/traefik/templates/dns-provider-secret.yaml
++++ b/stable/traefik/templates/dns-provider-secret.yaml
+@@ -1,4 +1,4 @@
+-{{- if and .Values.acme.enabled (eq .Values.acme.challengeType "dns-01") .Values.acme.dnsProvider.name }}
++{{- if and .Values.acme.enabled (eq .Values.acme.challengeType "dns-01") .Values.acme.dnsProvider.name (not .Values.acme.dnsProvider.existingSecretName) }}
+ apiVersion: v1
+ kind: Secret
+ metadata:
+diff --git a/stable/traefik/values.yaml b/stable/traefik/values.yaml
+index 9856bc080..c76233552 100644
+--- a/stable/traefik/values.yaml
++++ b/stable/traefik/values.yaml
+@@ -201,6 +201,7 @@ acme:
+     # - 8.8.8.8:53
+   dnsProvider:
+     name: nil
++    existingSecretName: ""
+     auroradns:
+       AURORA_USER_ID: ""
+       AURORA_KEY: ""
+@@ -225,6 +226,8 @@ acme:
+       DNSMADEEASY_SANDBOX: ""
+     dnspod:
+       DNSPOD_API_KEY: ""
++    dreamhost:
++      DREAMHOST_API_KEY: ""
+     dyn:
+       DYN_CUSTOMER_NAME: ""
+       DYN_USER_NAME: ""

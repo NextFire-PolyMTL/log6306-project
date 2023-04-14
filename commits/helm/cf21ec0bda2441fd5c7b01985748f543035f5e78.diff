@@ -1,0 +1,59 @@
+commit cf21ec0bda2441fd5c7b01985748f543035f5e78
+Author: Tomas Pizarro <tompizmor@users.noreply.github.com>
+Date:   Thu Nov 8 15:20:49 2018 +0100
+
+    [stable/postgresql] Refactor init-container to support more scenarios (#9104)
+    
+    Signed-off-by: tompizmor <tompizmor@gmail.com>
+
+diff --git a/stable/postgresql/Chart.yaml b/stable/postgresql/Chart.yaml
+index 055909a6f..7d3b317ef 100644
+--- a/stable/postgresql/Chart.yaml
++++ b/stable/postgresql/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: postgresql
+-version: 2.3.1
++version: 2.3.2
+ appVersion: 10.5.0
+ description: Chart for PostgreSQL, an object-relational database management system (ORDBMS) with an emphasis on extensibility and on standards-compliance.
+ keywords:
+diff --git a/stable/postgresql/templates/statefulset-slaves.yaml b/stable/postgresql/templates/statefulset-slaves.yaml
+index 37d527a3f..051e45186 100644
+--- a/stable/postgresql/templates/statefulset-slaves.yaml
++++ b/stable/postgresql/templates/statefulset-slaves.yaml
+@@ -52,7 +52,14 @@ spec:
+       - name: init-chmod-data
+         image: {{ template "postgresql.volumePermissions.image" . }}
+         imagePullPolicy: "{{ .Values.volumePermissions.image.pullPolicy }}"
+-        command: ['sh' , '-c' , 'if [ -d /bitnami/postgresql/data ]; then chmod  0700 /bitnami/postgresql/data; fi']
++        command:
++          - sh
++          - -c
++          - |
++            chown -R {{ .Values.securityContext.runAsUser }}:{{ .Values.securityContext.fsGroup }} /bitnami
++            if [ -d /bitnami/postgresql/data ]; then
++              chmod  0700 /bitnami/postgresql/data;
++            fi
+         securityContext:
+           runAsUser: {{ .Values.volumePermissions.securityContext.runAsUser }}
+         volumeMounts:
+diff --git a/stable/postgresql/templates/statefulset.yaml b/stable/postgresql/templates/statefulset.yaml
+index d2845652d..45445a175 100644
+--- a/stable/postgresql/templates/statefulset.yaml
++++ b/stable/postgresql/templates/statefulset.yaml
+@@ -54,7 +54,14 @@ spec:
+       - name: init-chmod-data
+         image: {{ template "postgresql.volumePermissions.image" . }}
+         imagePullPolicy: "{{ .Values.volumePermissions.image.pullPolicy }}"
+-        command: ['sh' , '-c' , 'if [ -d /bitnami/postgresql/data ]; then chmod  0700 /bitnami/postgresql/data; fi']
++        command:
++          - sh
++          - -c
++          - |
++            chown -R {{ .Values.securityContext.runAsUser }}:{{ .Values.securityContext.fsGroup }} /bitnami
++            if [ -d /bitnami/postgresql/data ]; then
++              chmod  0700 /bitnami/postgresql/data;
++            fi
+         securityContext:
+           runAsUser: {{ .Values.volumePermissions.securityContext.runAsUser }}
+         volumeMounts:

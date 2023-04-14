@@ -1,0 +1,243 @@
+commit 026e29958ccd5988c8cc28f84027d8add14b6910
+Author: tompizmor <tompizmor@users.noreply.github.com>
+Date:   Fri Dec 1 12:42:47 2017 +0100
+
+    [stable/ghost] allow use of external database (#2816)
+    
+    * Allow Ghost helm chart to use an existing database
+    
+    * Fix wrong docker image
+    
+    * Fix wrong database name and username
+    
+    * Refactor properties to configure external database
+    
+    * update requirements.lock
+    
+    * add guide in README for external dbs
+
+diff --git a/stable/ghost/Chart.yaml b/stable/ghost/Chart.yaml
+index 8c94aebf0..419339e15 100644
+--- a/stable/ghost/Chart.yaml
++++ b/stable/ghost/Chart.yaml
+@@ -1,5 +1,5 @@
+ name: ghost
+-version: 2.0.4
++version: 2.1.0
+ appVersion: 1.17.3
+ description: A simple, powerful publishing platform that allows you to share your
+   stories with the world
+diff --git a/stable/ghost/README.md b/stable/ghost/README.md
+index 9cabd2e1b..dd99a9481 100644
+--- a/stable/ghost/README.md
++++ b/stable/ghost/README.md
+@@ -45,24 +45,33 @@ The command removes all the Kubernetes components associated with the chart and
+ 
+ The following tables lists the configurable parameters of the Ghost chart and their default values.
+ 
+-| Parameter                         | Description                                           | Default                                                   |
+-| --------------------------------- | ----------------------------------------------------- | --------------------------------------------------------- |
+-| `image`                           | Ghost image                                           | `bitnami/ghost:{VERSION}`                                 |
+-| `imagePullPolicy`                 | Image pull policy                                     | `Always` if `image` tag is `latest`, else `IfNotPresent`  |
+-| `ghostHost`                       | Ghost host to create application URLs                 | `nil`                                                     |
+-| `ghostPort`                       | Ghost port to create application URLs along with host | `80`                                                      |
+-| `ghostLoadBalancerIP`             | `loadBalancerIP` for the Ghost Service                | `nil`                                                     |
+-| `ghostUsername`                   | User of the application                               | `user@example.com`                                        |
+-| `ghostPassword`                   | Application password                                  | Randomly generated                                        |
+-| `ghostEmail`                      | Admin email                                           | `user@example.com`                                        |
+-| `ghostBlogTitle`                  | Ghost Blog name                                       | `User's Blog`                                             |
+-| `mariadb.mariadbRootPassword`     | MariaDB admin password                                | `nil`                                                     |
+-| `serviceType`                     | Kubernetes Service type                               | `LoadBalancer`                                            |
+-| `persistence.enabled`             | Enable persistence using PVC                          | `true`                                                    |
+-| `persistence.storageClass`        | PVC Storage Class for Ghost volume                    | `nil` (uses alpha storage annotation)                     |
+-| `persistence.accessMode`          | PVC Access Mode for Ghost volume                      | `ReadWriteOnce`                                           |
+-| `persistence.size`                | PVC Storage Request for Ghost volume                  | `8Gi`                                                     |
+-| `resources`                       | CPU/Memory resource requests/limits                   | Memory: `512Mi`, CPU: `300m`                              |
++| Parameter                     | Description                                                   | Default                                                  |
++|-------------------------------|---------------------------------------------------------------|----------------------------------------------------------|
++| `image`                       | Ghost image                                                   | `bitnami/ghost:{VERSION}`                                |
++| `imagePullPolicy`             | Image pull policy                                             | `Always` if `image` tag is `latest`, else `IfNotPresent` |
++| `ghostHost`                   | Ghost host to create application URLs                         | `nil`                                                    |
++| `ghostPort`                   | Ghost port to create application URLs along with host         | `80`                                                     |
++| `ghostLoadBalancerIP`         | `loadBalancerIP` for the Ghost Service                        | `nil`                                                    |
++| `ghostUsername`               | User of the application                                       | `user@example.com`                                       |
++| `ghostPassword`               | Application password                                          | Randomly generated                                       |
++| `ghostEmail`                  | Admin email                                                   | `user@example.com`                                       |
++| `ghostBlogTitle`              | Ghost Blog name                                               | `User's Blog`                                            |
++| `allowEmptyPassword`          | Allow DB blank passwords                                      | `yes`                                                    |
++| `externalDatabase.host`       | Host of the external database                                 | `nil`                                                    |
++| `externalDatabase.user`       | Existing username in the external db                          | `bn_ghost`                                               |
++| `externalDatabase.password`   | Password for the above username                               | `nil`                                                    |
++| `externalDatabase.database`   | Name of the existing database                                 | `bitnami_ghost`                                          |
++| `mariadb.enabled`             | Whether or not to install MariaDB (disable if using external) | `true`                                                   |
++| `mariadb.mariadbRootPassword` | MariaDB admin password                                        | `nil`                                                    |
++| `mariadb.mariadbDatabase`     | MariaDB Database name to create                               | `bitnami_ghost`                                          |
++| `mariadb.mariadbUser`         | MariaDB Database user to create                               | `bn_ghost`                                               |
++| `mariadb.mariadbPassword`     | MariaDB Password for user                                     | _random 10 character long alphanumeric string_           |
++| `serviceType`                 | Kubernetes Service type                                       | `LoadBalancer`                                           |
++| `persistence.enabled`         | Enable persistence using PVC                                  | `true`                                                   |
++| `persistence.storageClass`    | PVC Storage Class for Ghost volume                            | `nil` (uses alpha storage annotation)                    |
++| `persistence.accessMode`      | PVC Access Mode for Ghost volume                              | `ReadWriteOnce`                                          |
++| `persistence.size`            | PVC Storage Request for Ghost volume                          | `8Gi`                                                    |
++| `resources`                   | CPU/Memory resource requests/limits                           | Memory: `512Mi`, CPU: `300m`                             |
+ 
+ The above parameters map to the env variables defined in [bitnami/ghost](http://github.com/bitnami/bitnami-docker-ghost). For more information please refer to the [bitnami/ghost](http://github.com/bitnami/bitnami-docker-ghost) image documentation.
+ 
+@@ -98,6 +107,15 @@ $ helm install --name my-release -f values.yaml stable/ghost
+ 
+ > **Tip**: You can use the default [values.yaml](values.yaml)
+ 
++## Using an existing database
++
++Sometimes you may want to have Ghost connect to an external database rather than installing one inside your cluster, e.g. to use a managed database service, or use run a single database server for all your applications. To do this, the chart allows you to specify credentials for an external database under the [`externalDatabase` parameter](#configuration). You should also disable the MariaDB installation with the `mariadb.enabled` option. For example:
++
++```console
++$ helm install stable/ghost \
++    --set mariadb.enabled=false,externalDatabase.host=myexternalhost,externalDatabase.user=myuser,externalDatabase.password=mypassword,externalDatabase.database=mydatabase
++```
++
+ ## Persistence
+ 
+ The [Bitnami Ghost](https://github.com/bitnami/bitnami-docker-ghost) image stores the Ghost data and configurations at the `/bitnami/ghost` and `/bitnami/apache` paths of the container.
+diff --git a/stable/ghost/requirements.lock b/stable/ghost/requirements.lock
+index 431450344..3670004a5 100644
+--- a/stable/ghost/requirements.lock
++++ b/stable/ghost/requirements.lock
+@@ -2,5 +2,5 @@ dependencies:
+ - name: mariadb
+   repository: https://kubernetes-charts.storage.googleapis.com/
+   version: 0.7.0
+-digest: sha256:e1af13ac4ac21f67582006f12d2b4eb78a1a2a59b34338fac850f2bec0b08b41
+-generated: 2017-08-09T22:52:49.011896557-04:00
++digest: sha256:f59f68030aa5c50b9e776b813804875fac911f91c2aa384e991f37a795c5ae34
++generated: 2017-11-27T16:40:56.867665764Z
+diff --git a/stable/ghost/requirements.yaml b/stable/ghost/requirements.yaml
+index 4896aa89d..7c0c6a88a 100644
+--- a/stable/ghost/requirements.yaml
++++ b/stable/ghost/requirements.yaml
+@@ -2,3 +2,4 @@ dependencies:
+ - name: mariadb
+   version: 0.7.0
+   repository: https://kubernetes-charts.storage.googleapis.com/
++  condition: mariadb.enabled
+diff --git a/stable/ghost/templates/deployment.yaml b/stable/ghost/templates/deployment.yaml
+index 5b2928532..955d4fbb7 100644
+--- a/stable/ghost/templates/deployment.yaml
++++ b/stable/ghost/templates/deployment.yaml
+@@ -28,15 +28,41 @@ spec:
+         image: "{{ .Values.image }}"
+         imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
+         env:
++        - name: ALLOW_EMPTY_PASSWORD
++        {{- if .Values.allowEmptyPassword }}
++          value: "yes"
++        {{- else }}
++          value: "no"
++        {{- end }}
+         - name: MARIADB_HOST
++        {{- if .Values.mariadb.enabled }}
+           value: {{ template "ghost.mariadb.fullname" . }}
++        {{- else }}
++          value: {{ default "" .Values.externalDatabase.host | quote }}
++        {{- end }}
+         - name: MARIADB_PORT_NUMBER
+           value: "3306"
+-        - name: MARIADB_PASSWORD
++        - name: GHOST_DATABASE_NAME
++        {{- if .Values.mariadb.enabled }}
++          value: {{ default "" .Values.mariadb.mariadbDatabase | quote }}
++        {{- else }}
++          value: {{ default "" .Values.externalDatabase.database | quote }}
++        {{- end }}
++        - name: GHOST_DATABASE_USER
++        {{- if .Values.mariadb.enabled }}
++          value: {{ default "" .Values.mariadb.mariadbUser | quote }}
++        {{- else }}
++          value: {{ default "" .Values.externalDatabase.user | quote }}
++        {{- end }}
++        - name: GHOST_DATABASE_PASSWORD
++        {{- if .Values.mariadb.enabled }}
+           valueFrom:
+             secretKeyRef:
+               name: {{ template "ghost.mariadb.fullname" . }}
+-              key: mariadb-root-password
++              key: mariadb-password
++        {{- else }}
++          value: {{ default "" .Values.externalDatabase.password | quote }}
++        {{- end }}
+         - name: GHOST_HOST
+           value: {{ include "ghost.host" . | quote }}
+         - name: GHOST_PORT_NUMBER
+diff --git a/stable/ghost/values.yaml b/stable/ghost/values.yaml
+index 7dc848ddd..58eb2135c 100644
+--- a/stable/ghost/values.yaml
++++ b/stable/ghost/values.yaml
+@@ -1,7 +1,7 @@
+ ## Bitnami Ghost image version
+ ## ref: https://hub.docker.com/r/bitnami/ghost/tags/
+ ##
+-image: bitnami/ghost:1.17.3-r0
++image: bitnami/ghost:1.17.3-r1
+ 
+ ## Busybox image used to configure volume permissions
+ ##
+@@ -53,6 +53,10 @@ ghostEmail: user@example.com
+ ##
+ ghostBlogTitle: User's Blog
+ 
++## Set to `yes` to allow the container to be started with blank passwords
++## ref: https://github.com/bitnami/bitnami-docker-wordpress#environment-variables
++allowEmptyPassword: yes
++
+ ## SMTP mail delivery configuration
+ ## ref: https://github.com/bitnami/bitnami-docker-redmine/#smtp-configuration
+ ##
+@@ -62,14 +66,48 @@ ghostBlogTitle: User's Blog
+ # smtpPassword:
+ # smtpService:
+ 
++##
++## External database configuration
++##
++externalDatabase:
++  ## Database host
++  # host:
++
++  ## Database user
++  # user: bn_ghost
++
++  ## Database password
++  # password:
++
++  ## Database name
++  # database: bitnami_ghost
++
+ ##
+ ## MariaDB chart configuration
+ ##
+ mariadb:
++  ## Whether to use the database specified as a requirement or not. For example, to configure the chart with an existing database server.
++  enabled: true
++
+   ## MariaDB admin password
+   ## ref: https://github.com/bitnami/bitnami-docker-mariadb/blob/master/README.md#setting-the-root-password-on-first-run
+   ##
+   # mariadbRootPassword:
++  ## Create a database
++
++  ## ref: https://github.com/bitnami/bitnami-docker-mariadb/blob/master/README.md#creating-a-database-on-first-run
++  ##
++  mariadbDatabase: bitnami_ghost
++
++  ## Create a database user
++  ## ref: https://github.com/bitnami/bitnami-docker-mariadb/blob/master/README.md#creating-a-database-user-on-first-run
++  ##
++  mariadbUser: bn_ghost
++
++  ## Password for mariadbUser
++  ## ref: https://github.com/bitnami/bitnami-docker-mariadb/blob/master/README.md#creating-a-database-user-on-first-run
++  ##
++  # mariadbPassword:
+ 
+   ## Enable persistence using Persistent Volume Claims
+   ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/

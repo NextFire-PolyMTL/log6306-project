@@ -1,0 +1,3110 @@
+commit 482f9e4cfb0c9163f378cec779a412c9c8cc6ae4 (from 74f9d8ed72a134f1c62594b6adbd396c529b7285)
+Merge: 74f9d8ed7 6909c7784
+Author: jetstack-bot <32282838+jetstack-bot@users.noreply.github.com>
+Date:   Wed Oct 7 11:47:40 2020 +0100
+
+    Merge pull request #2966 from meyskens/e2e-venafi-cloud
+    
+    Venafi Cloud e2e tests + e2e refactor
+
+diff --git a/test/e2e/framework/config/venafi.go b/test/e2e/framework/config/venafi.go
+index f3398edc7..eba85bb01 100644
+--- a/test/e2e/framework/config/venafi.go
++++ b/test/e2e/framework/config/venafi.go
+@@ -23,7 +23,8 @@ import (
+ 
+ // Venafi global configuration for Venafi TPP/Cloud instances
+ type Venafi struct {
+-	TPP VenafiTPPConfiguration
++	TPP   VenafiTPPConfiguration
++	Cloud VenafiCloudConfiguration
+ }
+ 
+ type VenafiTPPConfiguration struct {
+@@ -33,12 +34,18 @@ type VenafiTPPConfiguration struct {
+ 	Password string
+ }
+ 
++type VenafiCloudConfiguration struct {
++	Zone     string
++	APIToken string
++}
++
+ func (v *Venafi) AddFlags(fs *flag.FlagSet) {
+ 	v.TPP.AddFlags(fs)
++	v.Cloud.AddFlags(fs)
+ }
+ 
+ func (v *Venafi) Validate() []error {
+-	return v.TPP.Validate()
++	return append(v.TPP.Validate(), v.Cloud.Validate()...)
+ }
+ 
+ func (v *VenafiTPPConfiguration) AddFlags(fs *flag.FlagSet) {
+@@ -48,7 +55,15 @@ func (v *VenafiTPPConfiguration) AddFlags(fs *flag.FlagSet) {
+ 	fs.StringVar(&v.Password, "global.venafi-tpp-password", os.Getenv("VENAFI_TPP_PASSWORD"), "Password to use when authenticating with the Venafi TPP instance")
+ }
+ 
+-// TODO: make missing venafi vars not fail validation (i.e. skip venafi tests)
+ func (v *VenafiTPPConfiguration) Validate() []error {
+ 	return nil
+ }
++
++func (v *VenafiCloudConfiguration) AddFlags(fs *flag.FlagSet) {
++	fs.StringVar(&v.Zone, "global.venafi-cloud-zone", os.Getenv("VENAFI_CLOUD_ZONE"), "Zone to use during Venafi Cloud end-to-end tests")
++	fs.StringVar(&v.APIToken, "global.venafi-cloud-apitoken", os.Getenv("VENAFI_CLOUD_APITOKEN"), "API token to use when authenticating with the Venafi Cloud instance")
++}
++
++func (v *VenafiCloudConfiguration) Validate() []error {
++	return nil
++}
+diff --git a/test/e2e/framework/helper/BUILD.bazel b/test/e2e/framework/helper/BUILD.bazel
+index 54529a291..0f00cc706 100644
+--- a/test/e2e/framework/helper/BUILD.bazel
++++ b/test/e2e/framework/helper/BUILD.bazel
+@@ -9,6 +9,7 @@ go_library(
+         "kubectl.go",
+         "pod_start.go",
+         "secret.go",
++        "validate.go",
+     ],
+     importpath = "github.com/jetstack/cert-manager/test/e2e/framework/helper",
+     tags = ["manual"],
+@@ -21,6 +22,8 @@ go_library(
+         "//pkg/util:go_default_library",
+         "//pkg/util/pki:go_default_library",
+         "//test/e2e/framework/config:go_default_library",
++        "//test/e2e/framework/helper/featureset:go_default_library",
++        "//test/e2e/framework/helper/validations:go_default_library",
+         "//test/e2e/framework/log:go_default_library",
+         "@com_github_onsi_ginkgo//:go_default_library",
+         "@io_k8s_api//core/v1:go_default_library",
+@@ -39,7 +42,11 @@ filegroup(
+ 
+ filegroup(
+     name = "all-srcs",
+-    srcs = [":package-srcs"],
++    srcs = [
++        ":package-srcs",
++        "//test/e2e/framework/helper/featureset:all-srcs",
++        "//test/e2e/framework/helper/validations:all-srcs",
++    ],
+     tags = ["automanaged"],
+     visibility = ["//visibility:public"],
+ )
+diff --git a/test/e2e/framework/helper/certificates.go b/test/e2e/framework/helper/certificates.go
+index 549138bb7..ec1f69d15 100644
+--- a/test/e2e/framework/helper/certificates.go
++++ b/test/e2e/framework/helper/certificates.go
+@@ -26,6 +26,7 @@ import (
+ 	"time"
+ 
+ 	corev1 "k8s.io/api/core/v1"
++
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+ 	"k8s.io/apimachinery/pkg/util/wait"
+ 
+@@ -263,8 +264,15 @@ func (h *Helper) deduplicateExtKeyUsages(us []x509.ExtKeyUsage) []x509.ExtKeyUsa
+ 	return us
+ }
+ 
+-func (h *Helper) WaitCertificateIssuedValid(ns, name string, timeout time.Duration) error {
+-	return h.WaitCertificateIssuedValidTLS(ns, name, timeout, nil)
++func (h *Helper) WaitCertificateIssued(ns, name string, timeout time.Duration) error {
++	certificate, err := h.WaitForCertificateReady(ns, name, timeout)
++	if err != nil {
++		log.Logf("Error waiting for Certificate to become Ready: %v", err)
++		h.Kubectl(ns).DescribeResource("certificate", name)
++		h.Kubectl(ns).Describe("order", "challenge")
++		h.describeCertificateRequestFromCertificate(ns, certificate)
++	}
++	return err
+ }
+ 
+ func (h *Helper) defaultKeyUsagesToAdd(ns string, issuerRef *cmmeta.ObjectReference) (x509.KeyUsage, []x509.ExtKeyUsage, error) {
+@@ -337,28 +345,6 @@ func (h *Helper) keyUsagesMatch(aKU x509.KeyUsage, aEKU []x509.ExtKeyUsage,
+ 	return true
+ }
+ 
+-func (h *Helper) WaitCertificateIssuedValidTLS(ns, name string, timeout time.Duration, rootCAPEM []byte) error {
+-	certificate, err := h.WaitForCertificateReady(ns, name, timeout)
+-	if err != nil {
+-		log.Logf("Error waiting for Certificate to become Ready: %v", err)
+-		h.Kubectl(ns).DescribeResource("certificate", name)
+-		h.Kubectl(ns).Describe("order", "challenge")
+-		h.describeCertificateRequestFromCertificate(ns, certificate)
+-		return err
+-	}
+-
+-	_, err = h.ValidateIssuedCertificate(certificate, rootCAPEM)
+-	if err != nil {
+-		log.Logf("Error validating issued certificate: %v", err)
+-		h.Kubectl(ns).DescribeResource("certificate", name)
+-		h.Kubectl(ns).Describe("order", "challenge")
+-		h.describeCertificateRequestFromCertificate(ns, certificate)
+-		return err
+-	}
+-
+-	return nil
+-}
+-
+ func (h *Helper) describeCertificateRequestFromCertificate(ns string, certificate *cmapi.Certificate) {
+ 	if certificate == nil {
+ 		return
+diff --git a/test/e2e/framework/helper/featureset/BUILD.bazel b/test/e2e/framework/helper/featureset/BUILD.bazel
+new file mode 100644
+index 000000000..b1ec0ac2d
+--- /dev/null
++++ b/test/e2e/framework/helper/featureset/BUILD.bazel
+@@ -0,0 +1,22 @@
++load("@io_bazel_rules_go//go:def.bzl", "go_library")
++
++go_library(
++    name = "go_default_library",
++    srcs = ["featureset.go"],
++    importpath = "github.com/jetstack/cert-manager/test/e2e/framework/helper/featureset",
++    visibility = ["//visibility:public"],
++)
++
++filegroup(
++    name = "package-srcs",
++    srcs = glob(["**"]),
++    tags = ["automanaged"],
++    visibility = ["//visibility:private"],
++)
++
++filegroup(
++    name = "all-srcs",
++    srcs = [":package-srcs"],
++    tags = ["automanaged"],
++    visibility = ["//visibility:public"],
++)
+diff --git a/test/e2e/suite/conformance/certificates/featureset.go b/test/e2e/framework/helper/featureset/featureset.go
+similarity index 93%
+rename from test/e2e/suite/conformance/certificates/featureset.go
+rename to test/e2e/framework/helper/featureset/featureset.go
+index 48d500575..31346c663 100644
+--- a/test/e2e/suite/conformance/certificates/featureset.go
++++ b/test/e2e/framework/helper/featureset/featureset.go
+@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
+ 
+-package certificates
++package featureset
+ 
+ import "strings"
+ 
+@@ -83,6 +83,12 @@ const (
+ 	// will never pass tests that validate the duration is as expected.
+ 	DurationFeature Feature = "Duration"
+ 
++	// UsagesFeature denotes tests that set the 'usages' field to some
++	// custom value.
++	// Some issuers enforce key usages, meaning they
++	// will never pass tests that validate the duration is as expected.
++	UsagesFeature Feature = "Usages"
++
+ 	// WildcardsFeature denotes tests that request certificates for wildcard
+ 	// domains. Some issuer's disable wildcard certificate issuance, so this
+ 	// feature allows runs of the suite to exclude those tests that utilise
+diff --git a/test/e2e/framework/helper/validate.go b/test/e2e/framework/helper/validate.go
+new file mode 100644
+index 000000000..c047f9a4d
+--- /dev/null
++++ b/test/e2e/framework/helper/validate.go
+@@ -0,0 +1,95 @@
++/*
++Copyright 2020 The Jetstack cert-manager contributors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package helper
++
++import (
++	"context"
++
++	v1 "k8s.io/api/core/v1"
++	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++
++	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
++	"github.com/jetstack/cert-manager/test/e2e/framework/helper/featureset"
++	"github.com/jetstack/cert-manager/test/e2e/framework/helper/validations"
++)
++
++// ValidationFunc describes a certificate validation helper function
++type ValidationFunc func(certificate *cmapi.Certificate, secret *v1.Secret) error
++
++func (h *Helper) DefaultValidationSet() []ValidationFunc {
++	return []ValidationFunc{
++		validations.Expect2Or3KeysInSecret,
++		validations.ExpectValidAnnotations,
++		validations.ExpectValidPrivateKeyData,
++		validations.ExpectValidCertificate,
++		validations.ExpectCertificateDNSNamesToMatch,
++		validations.ExpectCertificateURIsToMatch,
++		validations.ExpectValidCommonName,
++		validations.ExpectValidNotAfterDate,
++		validations.ExpectEmailsToMatch,
++		validations.ExpectCorrectTrustChain,
++	}
++}
++
++func (h *Helper) ValidationSetForUnsupportedFeatureSet(fs featureset.FeatureSet) []ValidationFunc {
++	// basics
++	out := []ValidationFunc{
++		validations.Expect2Or3KeysInSecret,
++		validations.ExpectValidAnnotations,
++		validations.ExpectValidPrivateKeyData,
++		validations.ExpectValidCertificate,
++		validations.ExpectCertificateOrganizationToMatch,
++		validations.ExpectCertificateDNSNamesToMatch,
++		validations.ExpectValidCommonName,
++		validations.ExpectValidNotAfterDate,
++		validations.ExpectCorrectTrustChain,
++	}
++
++	if !fs.Contains(featureset.URISANsFeature) {
++		out = append(out, validations.ExpectCertificateURIsToMatch)
++	}
++
++	if !fs.Contains(featureset.EmailSANsFeature) {
++		out = append(out, validations.ExpectEmailsToMatch)
++	}
++
++	return out
++}
++
++// ValidateCertificate retreives the issued certificate and runs all validation functions
++func (h *Helper) ValidateCertificate(ns, name string, validations ...ValidationFunc) error {
++	if len(validations) == 0 {
++		validations = h.DefaultValidationSet()
++	}
++	certificate, err := h.CMClient.CertmanagerV1().Certificates(ns).Get(context.TODO(), name, metav1.GetOptions{})
++	if err != nil {
++		return err
++	}
++	secret, err := h.KubeClient.CoreV1().Secrets(certificate.Namespace).Get(context.TODO(), certificate.Spec.SecretName, metav1.GetOptions{})
++	if err != nil {
++		return err
++	}
++
++	for _, fn := range validations {
++		err := fn(certificate, secret)
++		if err != nil {
++			return err
++		}
++	}
++
++	return nil
++}
+diff --git a/test/e2e/framework/helper/validations/BUILD.bazel b/test/e2e/framework/helper/validations/BUILD.bazel
+new file mode 100644
+index 000000000..22f89e28c
+--- /dev/null
++++ b/test/e2e/framework/helper/validations/BUILD.bazel
+@@ -0,0 +1,29 @@
++load("@io_bazel_rules_go//go:def.bzl", "go_library")
++
++go_library(
++    name = "go_default_library",
++    srcs = ["certificates.go"],
++    importpath = "github.com/jetstack/cert-manager/test/e2e/framework/helper/validations",
++    visibility = ["//visibility:public"],
++    deps = [
++        "//pkg/apis/certmanager/v1:go_default_library",
++        "//pkg/apis/meta/v1:go_default_library",
++        "//pkg/util:go_default_library",
++        "//pkg/util/pki:go_default_library",
++        "@io_k8s_api//core/v1:go_default_library",
++    ],
++)
++
++filegroup(
++    name = "package-srcs",
++    srcs = glob(["**"]),
++    tags = ["automanaged"],
++    visibility = ["//visibility:private"],
++)
++
++filegroup(
++    name = "all-srcs",
++    srcs = [":package-srcs"],
++    tags = ["automanaged"],
++    visibility = ["//visibility:public"],
++)
+diff --git a/test/e2e/framework/helper/validations/certificates.go b/test/e2e/framework/helper/validations/certificates.go
+new file mode 100644
+index 000000000..eafbbc7ff
+--- /dev/null
++++ b/test/e2e/framework/helper/validations/certificates.go
+@@ -0,0 +1,310 @@
++/*
++Copyright 2020 The Jetstack cert-manager contributors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package validations
++
++import (
++	"crypto/ecdsa"
++	"crypto/rsa"
++	"crypto/x509"
++	"fmt"
++
++	corev1 "k8s.io/api/core/v1"
++
++	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
++	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
++	"github.com/jetstack/cert-manager/pkg/util"
++	"github.com/jetstack/cert-manager/pkg/util/pki"
++)
++
++// Expect2Or3KeysInSecret checks if the secret resource has the correct amount of fields in the secret data
++func Expect2Or3KeysInSecret(_ *cmapi.Certificate, secret *corev1.Secret) error {
++	if !(len(secret.Data) == 2 || len(secret.Data) == 3) {
++		return fmt.Errorf("Expected 2 or 3 keys in certificate secret, but there was %d", len(secret.Data))
++	}
++
++	return nil
++}
++
++// ExpectValidAnnotations checks if the correct annotations on the secret are present
++func ExpectValidAnnotations(certificate *cmapi.Certificate, secret *corev1.Secret) error {
++	label, ok := secret.Annotations[cmapi.CertificateNameKey]
++	if !ok {
++		return fmt.Errorf("Expected secret to have certificate-name label, but had none")
++	}
++
++	if label != certificate.Name {
++		return fmt.Errorf("Expected secret to have certificate-name label with a value of %q, but got %q", certificate.Name, label)
++	}
++
++	return nil
++}
++
++// ExpectValidPrivateKeyData checks of the secret's private key matches the request
++func ExpectValidPrivateKeyData(certificate *cmapi.Certificate, secret *corev1.Secret) error {
++	keyBytes, ok := secret.Data[corev1.TLSPrivateKeyKey]
++	if !ok {
++		return fmt.Errorf("No private key data found for Certificate %q (secret %q)", certificate.Name, certificate.Spec.SecretName)
++	}
++	key, err := pki.DecodePrivateKeyBytes(keyBytes)
++	if err != nil {
++		return err
++	}
++
++	// validate private key is of the correct type (rsa or ecdsa)
++	if certificate.Spec.PrivateKey != nil {
++		switch certificate.Spec.PrivateKey.Algorithm {
++		case cmapi.PrivateKeyAlgorithm(""),
++			cmapi.RSAKeyAlgorithm:
++			_, ok := key.(*rsa.PrivateKey)
++			if !ok {
++				return fmt.Errorf("Expected private key of type RSA, but it was: %T", key)
++			}
++		case cmapi.ECDSAKeyAlgorithm:
++			_, ok := key.(*ecdsa.PrivateKey)
++			if !ok {
++				return fmt.Errorf("Expected private key of type ECDSA, but it was: %T", key)
++			}
++		default:
++			return fmt.Errorf("unrecognised requested private key algorithm %q", certificate.Spec.PrivateKey.Algorithm)
++		}
++	}
++
++	// TODO: validate private key KeySize
++	return nil
++}
++
++// ExpectValidCertificate checks if the certificate is a valid x509 certificate
++func ExpectValidCertificate(certificate *cmapi.Certificate, secret *corev1.Secret) error {
++	certBytes, ok := secret.Data[corev1.TLSCertKey]
++	if !ok {
++		return fmt.Errorf("No certificate data found for Certificate %q (secret %q)", certificate.Name, certificate.Spec.SecretName)
++	}
++
++	_, err := pki.DecodeX509CertificateBytes(certBytes)
++	if err != nil {
++		return err
++	}
++
++	return nil
++}
++
++// ExpectCertificateOrganizationToMatch checks if the issued certificate has the same Organization as the requested one
++func ExpectCertificateOrganizationToMatch(certificate *cmapi.Certificate, secret *corev1.Secret) error {
++	cert, err := pki.DecodeX509CertificateBytes(secret.Data[corev1.TLSCertKey])
++	if err != nil {
++		return err
++	}
++
++	expectedOrganization := pki.OrganizationForCertificate(certificate)
++	if !util.EqualUnsorted(cert.Subject.Organization, expectedOrganization) {
++		return fmt.Errorf("Expected certificate valid for O %v, but got a certificate valid for O %v", expectedOrganization, cert.Subject.Organization)
++	}
++
++	return nil
++}
++
++// ExpectCertificateDNSNamesToMatch checks if the issued certificate has all DNS names it requested
++func ExpectCertificateDNSNamesToMatch(certificate *cmapi.Certificate, secret *corev1.Secret) error {
++	cert, err := pki.DecodeX509CertificateBytes(secret.Data[corev1.TLSCertKey])
++	if err != nil {
++		return err
++	}
++
++	expectedDNSNames := certificate.Spec.DNSNames
++	if !util.Subset(cert.DNSNames, expectedDNSNames) {
++		return fmt.Errorf("Expected certificate valid for DNSNames %v, but got a certificate valid for DNSNames %v", expectedDNSNames, cert.DNSNames)
++	}
++
++	return nil
++}
++
++// ExpectCertificateURIsToMatch checks if the issued certificate has all URI SANs names it requested
++func ExpectCertificateURIsToMatch(certificate *cmapi.Certificate, secret *corev1.Secret) error {
++	cert, err := pki.DecodeX509CertificateBytes(secret.Data[corev1.TLSCertKey])
++	if err != nil {
++		return err
++	}
++
++	uris, err := pki.URIsForCertificate(certificate)
++	if err != nil {
++		return fmt.Errorf("failed to parse URIs: %s", err)
++	}
++	actualURIs := pki.URLsToString(cert.URIs)
++	expectedURIs := pki.URLsToString(uris)
++	if !util.EqualUnsorted(actualURIs, expectedURIs) {
++		return fmt.Errorf("Expected certificate valid for URIs %v, but got a certificate valid for URIs %v", expectedURIs, pki.URLsToString(cert.URIs))
++	}
++
++	return nil
++}
++
++// ExpectValidCommonName checks if the issued certificate has the requested CN or one of the DNS SANs
++func ExpectValidCommonName(certificate *cmapi.Certificate, secret *corev1.Secret) error {
++	cert, err := pki.DecodeX509CertificateBytes(secret.Data[corev1.TLSCertKey])
++	if err != nil {
++		return err
++	}
++
++	expectedCN := certificate.Spec.CommonName
++
++	if len(expectedCN) == 0 && len(cert.Subject.CommonName) > 0 {
++		// no CN is specified but our CA set one, checking if it is one of our DNS names
++		if !util.Contains(cert.DNSNames, cert.Subject.CommonName) {
++			return fmt.Errorf("Expected a common name for one of our DNSNames %v, but got a CN of %v", cert.DNSNames, cert.Subject.CommonName)
++		}
++	} else if expectedCN != cert.Subject.CommonName {
++		return fmt.Errorf("Expected a common name of %v, but got a CN of %v", expectedCN, cert.Subject.CommonName)
++	}
++
++	return nil
++}
++
++// ExpectValidNotAfterDate checks if the issued certificate matches the requested duration
++func ExpectValidNotAfterDate(certificate *cmapi.Certificate, secret *corev1.Secret) error {
++	cert, err := pki.DecodeX509CertificateBytes(secret.Data[corev1.TLSCertKey])
++	if err != nil {
++		return err
++	}
++	if certificate.Status.NotAfter == nil {
++		return fmt.Errorf("No certificate expiration found for Certificate %q", certificate.Name)
++	}
++
++	if !cert.NotAfter.Equal(certificate.Status.NotAfter.Time) {
++		return fmt.Errorf("Expected certificate expiry date to be %v, but got %v", certificate.Status.NotAfter, cert.NotAfter)
++	}
++
++	return nil
++}
++
++func containsExtKeyUsage(s []x509.ExtKeyUsage, e x509.ExtKeyUsage) bool {
++	for _, a := range s {
++		if a == e {
++			return true
++		}
++	}
++	return false
++}
++
++// ExpectKeyUsageExtKeyUsageServerAuth checks if the issued certificate has the extended key usage of server auth
++func ExpectKeyUsageExtKeyUsageServerAuth(certificate *cmapi.Certificate, secret *corev1.Secret) error {
++	cert, err := pki.DecodeX509CertificateBytes(secret.Data[corev1.TLSCertKey])
++	if err != nil {
++		return err
++	}
++
++	if !containsExtKeyUsage(cert.ExtKeyUsage, x509.ExtKeyUsageServerAuth) {
++		return fmt.Errorf("Expected certificate to have ExtKeyUsageServerAuth, but got %v", cert.ExtKeyUsage)
++	}
++	return nil
++}
++
++// ExpectKeyUsageExtKeyUsageClientAuth checks if the issued certificate has the extended key usage of client auth
++func ExpectKeyUsageExtKeyUsageClientAuth(certificate *cmapi.Certificate, secret *corev1.Secret) error {
++	cert, err := pki.DecodeX509CertificateBytes(secret.Data[corev1.TLSCertKey])
++	if err != nil {
++		return err
++	}
++
++	if !containsExtKeyUsage(cert.ExtKeyUsage, x509.ExtKeyUsageClientAuth) {
++		return fmt.Errorf("Expected certificate to have ExtKeyUsageClientAuth, but got %v", cert.ExtKeyUsage)
++	}
++	return nil
++}
++
++// UsageDigitalSignature checks if a cert has the KeyUsageDigitalSignature key usage set
++func ExpectKeyUsageUsageDigitalSignature(certificate *cmapi.Certificate, secret *corev1.Secret) error {
++	cert, err := pki.DecodeX509CertificateBytes(secret.Data[corev1.TLSCertKey])
++	if err != nil {
++		return err
++	}
++
++	// taking the key usage here and use a binary OR to flip all non KeyUsageCertSign bits to 0
++	// so if KeyUsageCertSign the value will be exacty x509.KeyUsageCertSign
++	usage := cert.KeyUsage
++	usage &= x509.KeyUsageDigitalSignature
++	if usage != x509.KeyUsageDigitalSignature {
++		return fmt.Errorf("Expected certificate to have KeyUsageDigitalSignature %#b, but got %v %#b", x509.KeyUsageDigitalSignature, usage, usage)
++	}
++
++	return nil
++}
++
++// ExpectKeyUsageUsageDataEncipherment checks if a cert has the KeyUsageDataEncipherment key usage set
++func ExpectKeyUsageUsageDataEncipherment(certificate *cmapi.Certificate, secret *corev1.Secret) error {
++	cert, err := pki.DecodeX509CertificateBytes(secret.Data[corev1.TLSCertKey])
++	if err != nil {
++		return err
++	}
++
++	// taking the key usage here and use a binary OR to flip all non KeyUsageDataEncipherment bits to 0
++	// so if KeyUsageDataEncipherment the value will be exacty x509.KeyUsageDataEncipherment
++	usage := cert.KeyUsage
++	usage &= x509.KeyUsageDataEncipherment
++	if usage != x509.KeyUsageDataEncipherment {
++		return fmt.Errorf("Expected certificate to have KeyUsageDataEncipherment %#b, but got %v %#b", x509.KeyUsageDataEncipherment, usage, usage)
++	}
++
++	return nil
++}
++
++// ExpectEmailsToMatch check if the issued certificate has all requested email SANs
++func ExpectEmailsToMatch(certificate *cmapi.Certificate, secret *corev1.Secret) error {
++	cert, err := pki.DecodeX509CertificateBytes(secret.Data[corev1.TLSCertKey])
++	if err != nil {
++		return err
++	}
++
++	if !util.EqualUnsorted(cert.EmailAddresses, certificate.Spec.EmailAddresses) {
++		return fmt.Errorf("certificate doesn't contain Email SANs: exp=%v got=%v", certificate.Spec.EmailAddresses, cert.EmailAddresses)
++	}
++
++	return nil
++}
++
++// ExpectCorrectTrustChain checks if the cert is signed by the root CA if one is provided
++func ExpectCorrectTrustChain(certificate *cmapi.Certificate, secret *corev1.Secret) error {
++	// if we don't know the root CA we will skip this tests and return no errors.
++	if secret.Data[cmmeta.TLSCAKey] == nil {
++		return nil
++	}
++
++	cert, err := pki.DecodeX509CertificateBytes(secret.Data[corev1.TLSCertKey])
++	if err != nil {
++		return err
++	}
++
++	var dnsName string
++	if len(certificate.Spec.DNSNames) > 0 {
++		dnsName = certificate.Spec.DNSNames[0]
++	}
++
++	rootCertPool := x509.NewCertPool()
++	rootCertPool.AppendCertsFromPEM(secret.Data[cmmeta.TLSCAKey])
++	intermediateCertPool := x509.NewCertPool()
++	intermediateCertPool.AppendCertsFromPEM(secret.Data[corev1.TLSCertKey])
++	opts := x509.VerifyOptions{
++		DNSName:       dnsName,
++		Intermediates: intermediateCertPool,
++		Roots:         rootCertPool,
++	}
++
++	if _, err := cert.Verify(opts); err != nil {
++		return err
++	}
++
++	return nil
++}
+diff --git a/test/e2e/suite/conformance/BUILD.bazel b/test/e2e/suite/conformance/BUILD.bazel
+index 2d342f18c..5dc6d206a 100644
+--- a/test/e2e/suite/conformance/BUILD.bazel
++++ b/test/e2e/suite/conformance/BUILD.bazel
+@@ -2,7 +2,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
+ 
+ go_library(
+     name = "go_default_library",
+-    srcs = ["doc.go"],
++    srcs = ["import.go"],
+     importpath = "github.com/jetstack/cert-manager/test/e2e/suite/conformance",
+     tags = ["manual"],
+     visibility = ["//visibility:public"],
+@@ -12,6 +12,7 @@ go_library(
+         "//test/e2e/suite/conformance/certificates/selfsigned:go_default_library",
+         "//test/e2e/suite/conformance/certificates/vault:go_default_library",
+         "//test/e2e/suite/conformance/certificates/venafi:go_default_library",
++        "//test/e2e/suite/conformance/certificates/venaficloud:go_default_library",
+         "//test/e2e/suite/conformance/rbac:go_default_library",
+     ],
+ )
+diff --git a/test/e2e/suite/conformance/certificates/BUILD.bazel b/test/e2e/suite/conformance/certificates/BUILD.bazel
+index 26b53711e..e15a63969 100644
+--- a/test/e2e/suite/conformance/certificates/BUILD.bazel
++++ b/test/e2e/suite/conformance/certificates/BUILD.bazel
+@@ -3,8 +3,8 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
+ go_library(
+     name = "go_default_library",
+     srcs = [
+-        "featureset.go",
+         "suite.go",
++        "tests.go",
+     ],
+     importpath = "github.com/jetstack/cert-manager/test/e2e/suite/conformance/certificates",
+     visibility = ["//visibility:public"],
+@@ -14,6 +14,9 @@ go_library(
+         "//pkg/util:go_default_library",
+         "//pkg/util/pki:go_default_library",
+         "//test/e2e/framework:go_default_library",
++        "//test/e2e/framework/helper:go_default_library",
++        "//test/e2e/framework/helper/featureset:go_default_library",
++        "//test/e2e/framework/helper/validations:go_default_library",
+         "//test/e2e/util:go_default_library",
+         "@com_github_onsi_ginkgo//:go_default_library",
+         "@com_github_onsi_gomega//:go_default_library",
+@@ -38,6 +41,7 @@ filegroup(
+         "//test/e2e/suite/conformance/certificates/selfsigned:all-srcs",
+         "//test/e2e/suite/conformance/certificates/vault:all-srcs",
+         "//test/e2e/suite/conformance/certificates/venafi:all-srcs",
++        "//test/e2e/suite/conformance/certificates/venaficloud:all-srcs",
+     ],
+     tags = ["automanaged"],
+     visibility = ["//visibility:public"],
+diff --git a/test/e2e/suite/conformance/certificates/acme/BUILD.bazel b/test/e2e/suite/conformance/certificates/acme/BUILD.bazel
+index 960462c44..f5cccb97d 100644
+--- a/test/e2e/suite/conformance/certificates/acme/BUILD.bazel
++++ b/test/e2e/suite/conformance/certificates/acme/BUILD.bazel
+@@ -10,6 +10,7 @@ go_library(
+         "//pkg/apis/certmanager/v1:go_default_library",
+         "//pkg/apis/meta/v1:go_default_library",
+         "//test/e2e/framework:go_default_library",
++        "//test/e2e/framework/helper/featureset:go_default_library",
+         "//test/e2e/suite/conformance/certificates:go_default_library",
+         "@com_github_onsi_ginkgo//:go_default_library",
+         "@com_github_onsi_gomega//:go_default_library",
+diff --git a/test/e2e/suite/conformance/certificates/acme/acme.go b/test/e2e/suite/conformance/certificates/acme/acme.go
+index 413e39f79..988660a1d 100644
+--- a/test/e2e/suite/conformance/certificates/acme/acme.go
++++ b/test/e2e/suite/conformance/certificates/acme/acme.go
+@@ -30,6 +30,7 @@ import (
+ 	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
++	"github.com/jetstack/cert-manager/test/e2e/framework/helper/featureset"
+ 	"github.com/jetstack/cert-manager/test/e2e/suite/conformance/certificates"
+ )
+ 
+@@ -46,25 +47,25 @@ var _ = framework.ConformanceDescribe("Certificates with External Account Bindin
+ func runACMEIssuerTests(eab *cmacme.ACMEExternalAccountBinding) {
+ 	// unsupportedHTTP01Features is a list of features that are not supported by the ACME
+ 	// issuer type using HTTP01
+-	var unsupportedHTTP01Features = certificates.NewFeatureSet(
+-		certificates.IPAddressFeature,
+-		certificates.DurationFeature,
+-		certificates.WildcardsFeature,
+-		certificates.URISANsFeature,
+-		certificates.CommonNameFeature,
+-		certificates.KeyUsagesFeature,
+-		certificates.EmailSANsFeature,
++	var unsupportedHTTP01Features = featureset.NewFeatureSet(
++		featureset.IPAddressFeature,
++		featureset.DurationFeature,
++		featureset.WildcardsFeature,
++		featureset.URISANsFeature,
++		featureset.CommonNameFeature,
++		featureset.KeyUsagesFeature,
++		featureset.EmailSANsFeature,
+ 	)
+ 
+ 	// unsupportedDNS01Features is a list of features that are not supported by the ACME
+ 	// issuer type using DNS01
+-	var unsupportedDNS01Features = certificates.NewFeatureSet(
+-		certificates.IPAddressFeature,
+-		certificates.DurationFeature,
+-		certificates.URISANsFeature,
+-		certificates.CommonNameFeature,
+-		certificates.KeyUsagesFeature,
+-		certificates.EmailSANsFeature,
++	var unsupportedDNS01Features = featureset.NewFeatureSet(
++		featureset.IPAddressFeature,
++		featureset.DurationFeature,
++		featureset.URISANsFeature,
++		featureset.CommonNameFeature,
++		featureset.KeyUsagesFeature,
++		featureset.EmailSANsFeature,
+ 	)
+ 
+ 	provisionerHTTP01 := &acmeIssuerProvisioner{
+diff --git a/test/e2e/suite/conformance/certificates/ca/ca.go b/test/e2e/suite/conformance/certificates/ca/ca.go
+index d97ba5748..a239310ab 100644
+--- a/test/e2e/suite/conformance/certificates/ca/ca.go
++++ b/test/e2e/suite/conformance/certificates/ca/ca.go
+@@ -18,6 +18,7 @@ package ca
+ 
+ import (
+ 	"context"
++
+ 	. "github.com/onsi/ginkgo"
+ 	. "github.com/onsi/gomega"
+ 	corev1 "k8s.io/api/core/v1"
+diff --git a/test/e2e/suite/conformance/certificates/selfsigned/selfsigned.go b/test/e2e/suite/conformance/certificates/selfsigned/selfsigned.go
+index e38c293c8..df973c47c 100644
+--- a/test/e2e/suite/conformance/certificates/selfsigned/selfsigned.go
++++ b/test/e2e/suite/conformance/certificates/selfsigned/selfsigned.go
+@@ -18,6 +18,7 @@ package selfsigned
+ 
+ import (
+ 	"context"
++
+ 	. "github.com/onsi/ginkgo"
+ 	. "github.com/onsi/gomega"
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+diff --git a/test/e2e/suite/conformance/certificates/suite.go b/test/e2e/suite/conformance/certificates/suite.go
+index a00c2f670..581a15cf3 100644
+--- a/test/e2e/suite/conformance/certificates/suite.go
++++ b/test/e2e/suite/conformance/certificates/suite.go
+@@ -17,22 +17,15 @@ limitations under the License.
+ package certificates
+ 
+ import (
+-	"context"
+ 	"fmt"
+ 	"strings"
+-	"time"
+ 
+ 	. "github.com/onsi/ginkgo"
+-	. "github.com/onsi/gomega"
+-	corev1 "k8s.io/api/core/v1"
+-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+ 
+-	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	"github.com/jetstack/cert-manager/pkg/util"
+-	"github.com/jetstack/cert-manager/pkg/util/pki"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+-	e2eutil "github.com/jetstack/cert-manager/test/e2e/util"
++	"github.com/jetstack/cert-manager/test/e2e/framework/helper/featureset"
+ )
+ 
+ // Suite defines a reusable conformance test suite that can be used against any
+@@ -67,7 +60,7 @@ type Suite struct {
+ 	// invocation of the test suite.
+ 	// This is useful if a particular issuers explicitly does not support
+ 	// certain features due to restrictions in their implementation.
+-	UnsupportedFeatures FeatureSet
++	UnsupportedFeatures featureset.FeatureSet
+ 
+ 	// completed is used internally to track whether Complete() has been called
+ 	completed bool
+@@ -84,464 +77,28 @@ func (s *Suite) complete(f *framework.Framework) {
+ 	}
+ 
+ 	if s.UnsupportedFeatures == nil {
+-		s.UnsupportedFeatures = make(FeatureSet)
++		s.UnsupportedFeatures = make(featureset.FeatureSet)
+ 	}
+ 
+ 	s.completed = true
+ }
+ 
+-// Defines simple conformance tests that can be run against any issuer type.
+-// If Complete has not been called on this Suite before Define, it will be
+-// automatically called.
+-func (s *Suite) Define() {
+-	Describe("with issuer type "+s.Name, func() {
+-		f := framework.NewDefaultFramework("certificates")
+-
+-		// wrap this in a BeforeEach else flags will not have been parsed at
+-		// the time that the `complete` function is called.
+-		BeforeEach(func() {
+-			if !s.completed {
+-				s.complete(f)
+-			}
+-		})
+-
+-		it := func(name string, fn func(cmmeta.ObjectReference), requiredFeatures ...Feature) {
+-			if !s.checkFeatures(requiredFeatures...) {
+-				fmt.Fprintln(GinkgoWriter, "skipping case due to unsupported features")
+-				return
+-			}
+-			It(name, func() {
+-				By("Creating an issuer resource")
+-				issuerRef := s.CreateIssuerFunc(f)
+-				defer func() {
+-					if s.DeleteIssuerFunc != nil {
+-						By("Cleaning up the issuer resource")
+-						s.DeleteIssuerFunc(f, issuerRef)
+-					}
+-				}()
+-				fn(issuerRef)
+-			})
+-		}
+-
+-		By("Running test suite with the following unsupported features: " + s.UnsupportedFeatures.String())
+-		ctx := context.Background()
+-
+-		it("should issue a basic, defaulted certificate for a single distinct DNS Name", func(issuerRef cmmeta.ObjectReference) {
+-			testCertificate := &cmapi.Certificate{
+-				ObjectMeta: metav1.ObjectMeta{
+-					Name:      "testcert",
+-					Namespace: f.Namespace.Name,
+-				},
+-				Spec: cmapi.CertificateSpec{
+-					SecretName: "testcert-tls",
+-					IssuerRef:  issuerRef,
+-					DNSNames:   []string{s.newDomain()},
+-				},
+-			}
+-			By("Creating a Certificate")
+-			err := f.CRClient.Create(ctx, testCertificate)
+-			Expect(err).NotTo(HaveOccurred())
+-
+-			By("Waiting for the Certificate to be issued...")
+-			err = f.Helper().WaitCertificateIssuedValid(f.Namespace.Name, "testcert", time.Minute*5)
+-			Expect(err).NotTo(HaveOccurred())
+-		}, OnlySAN)
+-
+-		it("should issue an ECDSA, defaulted certificate for a single distinct dnsName", func(issuerRef cmmeta.ObjectReference) {
+-			testCertificate := &cmapi.Certificate{
+-				ObjectMeta: metav1.ObjectMeta{
+-					Name:      "testcert",
+-					Namespace: f.Namespace.Name,
+-				},
+-				Spec: cmapi.CertificateSpec{
+-					SecretName: "testcert-tls",
+-					PrivateKey: &cmapi.CertificatePrivateKey{
+-						Algorithm: cmapi.ECDSAKeyAlgorithm,
+-					},
+-					DNSNames:  []string{s.newDomain()},
+-					IssuerRef: issuerRef,
+-				},
+-			}
+-			By("Creating a Certificate")
+-			err := f.CRClient.Create(ctx, testCertificate)
+-			Expect(err).NotTo(HaveOccurred())
+-
+-			By("Waiting for the Certificate to be issued...")
+-			err = f.Helper().WaitCertificateIssuedValid(f.Namespace.Name, "testcert", time.Minute*5)
+-			Expect(err).NotTo(HaveOccurred())
+-		}, ECDSAFeature, OnlySAN)
+-
+-		it("should issue a basic, defaulted certificate for a single Common Name", func(issuerRef cmmeta.ObjectReference) {
+-			// Some issuers use the CN to define the cert's "ID"
+-			// if one cert manages to be in an error state in the issuer it might throw an error
+-			// this makes the CN more unique
+-			cn := "test-common-name-" + util.RandStringRunes(10)
+-			testCertificate := &cmapi.Certificate{
+-				ObjectMeta: metav1.ObjectMeta{
+-					Name:      "testcert",
+-					Namespace: f.Namespace.Name,
+-				},
+-				Spec: cmapi.CertificateSpec{
+-					SecretName: "testcert-tls",
+-					IssuerRef:  issuerRef,
+-					CommonName: cn,
+-				},
+-			}
+-			By("Creating a Certificate")
+-			err := f.CRClient.Create(ctx, testCertificate)
+-			Expect(err).NotTo(HaveOccurred())
+-
+-			By("Waiting for the Certificate to be issued...")
+-			err = f.Helper().WaitCertificateIssuedValid(f.Namespace.Name, "testcert", time.Minute*5)
+-			Expect(err).NotTo(HaveOccurred())
+-		}, CommonNameFeature)
+-
+-		it("should issue an ECDSA, defaulted certificate for a single Common Name", func(issuerRef cmmeta.ObjectReference) {
+-			// Some issuers use the CN to define the cert's "ID"
+-			// if one cert manages to be in an error state in the issuer it might throw an error
+-			// this makes the CN more unique
+-			cn := "test-common-name-" + util.RandStringRunes(10)
+-			testCertificate := &cmapi.Certificate{
+-				ObjectMeta: metav1.ObjectMeta{
+-					Name:      "testcert",
+-					Namespace: f.Namespace.Name,
+-				},
+-				Spec: cmapi.CertificateSpec{
+-					SecretName: "testcert-tls",
+-					PrivateKey: &cmapi.CertificatePrivateKey{
+-						Algorithm: cmapi.ECDSAKeyAlgorithm,
+-					},
+-					CommonName: cn,
+-					IssuerRef:  issuerRef,
+-				},
+-			}
+-			By("Creating a Certificate")
+-			err := f.CRClient.Create(ctx, testCertificate)
+-			Expect(err).NotTo(HaveOccurred())
+-
+-			By("Waiting for the Certificate to be issued...")
+-			err = f.Helper().WaitCertificateIssuedValid(f.Namespace.Name, "testcert", time.Minute*5)
+-			Expect(err).NotTo(HaveOccurred())
+-		}, ECDSAFeature, CommonNameFeature)
+-
+-		it("should issue a certificate that defines a Common Name and IP Address", func(issuerRef cmmeta.ObjectReference) {
+-			testCertificate := &cmapi.Certificate{
+-				ObjectMeta: metav1.ObjectMeta{
+-					Name:      "testcert",
+-					Namespace: f.Namespace.Name,
+-				},
+-				Spec: cmapi.CertificateSpec{
+-					SecretName:  "testcert-tls",
+-					CommonName:  "test-common-name",
+-					IPAddresses: []string{"127.0.0.1"},
+-					IssuerRef:   issuerRef,
+-				},
+-			}
+-			By("Creating a Certificate")
+-			err := f.CRClient.Create(ctx, testCertificate)
+-			Expect(err).NotTo(HaveOccurred())
+-
+-			By("Waiting for the Certificate to be issued...")
+-			err = f.Helper().WaitCertificateIssuedValid(f.Namespace.Name, "testcert", time.Minute*5)
+-			Expect(err).NotTo(HaveOccurred())
+-		}, CommonNameFeature, IPAddressFeature)
+-
+-		it("should issue a certificate that defines an Email Address", func(issuerRef cmmeta.ObjectReference) {
+-			testCertificate := &cmapi.Certificate{
+-				ObjectMeta: metav1.ObjectMeta{
+-					Name:      "testcert",
+-					Namespace: f.Namespace.Name,
+-				},
+-				Spec: cmapi.CertificateSpec{
+-					SecretName:     "testcert-tls",
+-					EmailAddresses: []string{"alice@example.com"},
+-					IssuerRef:      issuerRef,
+-				},
+-			}
+-			By("Creating a Certificate")
+-			err := f.CRClient.Create(ctx, testCertificate)
+-			Expect(err).NotTo(HaveOccurred())
+-
+-			By("Waiting for the Certificate to be issued...")
+-			err = f.Helper().WaitCertificateIssuedValid(f.Namespace.Name, "testcert", time.Minute*5)
+-			Expect(err).NotTo(HaveOccurred())
+-		}, EmailSANsFeature, OnlySAN)
+-
+-		it("should issue a certificate that defines a CommonName and URI SAN", func(issuerRef cmmeta.ObjectReference) {
+-			testCertificate := &cmapi.Certificate{
+-				ObjectMeta: metav1.ObjectMeta{
+-					Name:      "testcert",
+-					Namespace: f.Namespace.Name,
+-				},
+-				Spec: cmapi.CertificateSpec{
+-					SecretName: "testcert-tls",
+-					CommonName: "test-common-name",
+-					URIs:       []string{"spiffe://cluster.local/ns/sandbox/sa/foo"},
+-					IssuerRef:  issuerRef,
+-				},
+-			}
+-			By("Creating a Certificate")
+-			err := f.CRClient.Create(ctx, testCertificate)
+-			Expect(err).NotTo(HaveOccurred())
+-
+-			By("Waiting for the Certificate to be issued...")
+-			err = f.Helper().WaitCertificateIssuedValid(f.Namespace.Name, "testcert", time.Minute*5)
+-			Expect(err).NotTo(HaveOccurred())
+-		}, URISANsFeature, CommonNameFeature)
+-
+-		it("should issue a certificate that defines a 2 distinct DNS Name with one copied to the Common Name", func(issuerRef cmmeta.ObjectReference) {
+-			testCertificate := &cmapi.Certificate{
+-				ObjectMeta: metav1.ObjectMeta{
+-					Name:      "testcert",
+-					Namespace: f.Namespace.Name,
+-				},
+-				Spec: cmapi.CertificateSpec{
+-					SecretName: "testcert-tls",
+-					CommonName: s.newDomain(),
+-					IssuerRef:  issuerRef,
+-				},
+-			}
+-			testCertificate.Spec.DNSNames = []string{
+-				testCertificate.Spec.CommonName, s.newDomain(),
+-			}
+-
+-			By("Creating a Certificate")
+-			err := f.CRClient.Create(ctx, testCertificate)
+-			Expect(err).NotTo(HaveOccurred())
+-
+-			By("Waiting for the Certificate to be issued...")
+-			err = f.Helper().WaitCertificateIssuedValid(f.Namespace.Name, "testcert", time.Minute*5)
+-			Expect(err).NotTo(HaveOccurred())
+-		}, CommonNameFeature)
+-
+-		it("should issue a certificate that defines a distinct DNS Name and another distinct Common Name", func(issuerRef cmmeta.ObjectReference) {
+-			testCertificate := &cmapi.Certificate{
+-				ObjectMeta: metav1.ObjectMeta{
+-					Name:      "testcert",
+-					Namespace: f.Namespace.Name,
+-				},
+-				Spec: cmapi.CertificateSpec{
+-					SecretName: "testcert-tls",
+-					CommonName: s.newDomain(),
+-					IssuerRef:  issuerRef,
+-					DNSNames:   []string{s.newDomain()},
+-				},
+-			}
+-
+-			By("Creating a Certificate")
+-			err := f.CRClient.Create(ctx, testCertificate)
+-			Expect(err).NotTo(HaveOccurred())
+-
+-			By("Waiting for the Certificate to be issued...")
+-			err = f.Helper().WaitCertificateIssuedValid(f.Namespace.Name, "testcert", time.Minute*5)
+-			Expect(err).NotTo(HaveOccurred())
+-		}, CommonNameFeature)
+-
+-		it("should issue a certificate that defines a DNS Name and sets a duration", func(issuerRef cmmeta.ObjectReference) {
+-			testCertificate := &cmapi.Certificate{
+-				ObjectMeta: metav1.ObjectMeta{
+-					Name:      "testcert",
+-					Namespace: f.Namespace.Name,
+-				},
+-				Spec: cmapi.CertificateSpec{
+-					SecretName: "testcert-tls",
+-					IssuerRef:  issuerRef,
+-					DNSNames:   []string{s.newDomain()},
+-					Duration: &metav1.Duration{
+-						Duration: time.Hour * 896,
+-					},
+-				},
+-			}
+-			By("Creating a Certificate")
+-			err := f.CRClient.Create(ctx, testCertificate)
+-			Expect(err).NotTo(HaveOccurred())
+-
+-			By("Waiting for the Certificate to be issued...")
+-			err = f.Helper().WaitCertificateIssuedValid(f.Namespace.Name, "testcert", time.Minute*5)
+-			Expect(err).NotTo(HaveOccurred())
+-
+-			// We set a weird time here as the duration with should never be used as
+-			// a default by an issuer. This lets us test issuers are using our given
+-			// duration.
+-			// We set a 30 second buffer time here since Vault issues certificates
+-			// with an extra 30 seconds on its duration.
+-			f.CertificateDurationValid(testCertificate, time.Hour*896, 30*time.Second)
+-		}, DurationFeature, OnlySAN)
+-
+-		it("should issue a certificate which has a wildcard DNS name defined", func(issuerRef cmmeta.ObjectReference) {
+-			testCertificate := &cmapi.Certificate{
+-				ObjectMeta: metav1.ObjectMeta{
+-					Name:      "testcert",
+-					Namespace: f.Namespace.Name,
+-				},
+-				Spec: cmapi.CertificateSpec{
+-					SecretName: "testcert-tls",
+-					IssuerRef:  issuerRef,
+-					DNSNames:   []string{"foo." + s.newDomain()},
+-				},
+-			}
+-			By("Creating a Certificate")
+-			err := f.CRClient.Create(ctx, testCertificate)
+-			Expect(err).NotTo(HaveOccurred())
+-
+-			By("Waiting for the Certificate to be issued...")
+-			err = f.Helper().WaitCertificateIssuedValid(f.Namespace.Name, "testcert", time.Minute*5)
+-			Expect(err).NotTo(HaveOccurred())
+-		}, WildcardsFeature, OnlySAN)
+-
+-		it("should issue a certificate that includes only a URIs name", func(issuerRef cmmeta.ObjectReference) {
+-			testCertificate := &cmapi.Certificate{
+-				ObjectMeta: metav1.ObjectMeta{
+-					Name:      "testcert",
+-					Namespace: f.Namespace.Name,
+-				},
+-				Spec: cmapi.CertificateSpec{
+-					SecretName: "testcert-tls",
+-					URIs: []string{
+-						"spiffe://cluster.local/ns/sandbox/sa/foo",
+-					},
+-					IssuerRef: issuerRef,
+-				},
+-			}
+-			By("Creating a Certificate")
+-			err := f.CRClient.Create(ctx, testCertificate)
+-			Expect(err).NotTo(HaveOccurred())
+-
+-			By("Waiting for the Certificate to be issued...")
+-			err = f.Helper().WaitCertificateIssuedValid(f.Namespace.Name, "testcert", time.Minute*5)
+-			Expect(err).NotTo(HaveOccurred())
+-		}, URISANsFeature, OnlySAN)
+-
+-		it("should issue a certificate that includes arbitrary key usages", func(issuerRef cmmeta.ObjectReference) {
+-			testCertificate := &cmapi.Certificate{
+-				ObjectMeta: metav1.ObjectMeta{
+-					Name:      "testcert",
+-					Namespace: f.Namespace.Name,
+-				},
+-				Spec: cmapi.CertificateSpec{
+-					SecretName: "testcert-tls",
+-					DNSNames:   []string{s.newDomain()},
+-					IssuerRef:  issuerRef,
+-					Usages: []cmapi.KeyUsage{
+-						cmapi.UsageSigning,
+-						cmapi.UsageDataEncipherment,
+-					},
+-				},
+-			}
+-			By("Creating a Certificate")
+-			err := f.CRClient.Create(ctx, testCertificate)
+-			Expect(err).NotTo(HaveOccurred())
+-
+-			By("Waiting for the Certificate to be issued...")
+-			err = f.Helper().WaitCertificateIssuedValid(f.Namespace.Name, "testcert", time.Minute*5)
+-			Expect(err).NotTo(HaveOccurred())
+-		}, KeyUsagesFeature, OnlySAN)
+-
+-		it("should issue another certificate with the same private key if the existing certificate and CertificateRequest are deleted", func(issuerRef cmmeta.ObjectReference) {
+-			testCertificate := &cmapi.Certificate{
+-				ObjectMeta: metav1.ObjectMeta{
+-					Name:      "testcert",
+-					Namespace: f.Namespace.Name,
+-				},
+-				Spec: cmapi.CertificateSpec{
+-					SecretName: "testcert-tls",
+-					DNSNames:   []string{s.newDomain()},
+-					IssuerRef:  issuerRef,
+-				},
+-			}
+-			By("Creating a Certificate")
+-			err := f.CRClient.Create(ctx, testCertificate)
+-			Expect(err).NotTo(HaveOccurred())
+-
+-			By("Waiting for the Certificate to be issued...")
+-			err = f.Helper().WaitCertificateIssuedValid(f.Namespace.Name, "testcert", time.Minute*5)
+-			Expect(err).NotTo(HaveOccurred())
+-
+-			By("Deleting existing certificate data in Secret")
+-			sec, err := f.KubeClientSet.CoreV1().Secrets(f.Namespace.Name).
+-				Get(context.TODO(), testCertificate.Spec.SecretName, metav1.GetOptions{})
+-			Expect(err).NotTo(HaveOccurred(), "failed to get secret containing signed certificate key pair data")
+-
+-			sec = sec.DeepCopy()
+-			crtPEM1 := sec.Data[corev1.TLSCertKey]
+-			crt1, err := pki.DecodeX509CertificateBytes(crtPEM1)
+-			Expect(err).NotTo(HaveOccurred(), "failed to get decode first signed certificate data")
+-
+-			sec.Data[corev1.TLSCertKey] = []byte{}
+-
+-			_, err = f.KubeClientSet.CoreV1().Secrets(f.Namespace.Name).Update(context.TODO(), sec, metav1.UpdateOptions{})
+-			Expect(err).NotTo(HaveOccurred(), "failed to update secret by deleting the signed certificate data")
+-
+-			By("Waiting for the Certificate to re-issue a certificate")
+-			sec, err = f.Helper().WaitForSecretCertificateData(f.Namespace.Name, sec.Name, time.Minute*5)
+-			Expect(err).NotTo(HaveOccurred(), "failed to wait for secret to have a valid 2nd certificate")
+-
+-			crtPEM2 := sec.Data[corev1.TLSCertKey]
+-			crt2, err := pki.DecodeX509CertificateBytes(crtPEM2)
+-			Expect(err).NotTo(HaveOccurred(), "failed to get decode second signed certificate data")
+-
+-			By("Ensuing both certificates are signed by same private key")
+-			match, err := pki.PublicKeysEqual(crt1.PublicKey, crt2.PublicKey)
+-			Expect(err).NotTo(HaveOccurred(), "failed to check public keys of both signed certificates")
+-
+-			if !match {
+-				Fail("Both signed certificates not signed by same private key")
+-			}
+-		}, ReusePrivateKeyFeature, OnlySAN)
+-
+-		it("should issue a basic certificate for a single distinct dnsName defined by an ingress with annotations", func(issuerRef cmmeta.ObjectReference) {
+-			ingClient := f.KubeClientSet.ExtensionsV1beta1().Ingresses(f.Namespace.Name)
+-
+-			name := "testcert-ingress"
+-			secretName := "testcert-ingress-tls"
+-
+-			By("Creating an Ingress with the issuer name annotation set")
+-			ingress, err := ingClient.Create(context.TODO(), e2eutil.NewIngress(name, secretName, map[string]string{
+-				"cert-manager.io/issuer":       issuerRef.Name,
+-				"cert-manager.io/issuer-kind":  issuerRef.Kind,
+-				"cert-manager.io/issuer-group": issuerRef.Group,
+-			}, s.newDomain()), metav1.CreateOptions{})
+-			Expect(err).NotTo(HaveOccurred())
+-
+-			certName := ingress.Spec.TLS[0].SecretName
+-
+-			By("Waiting for the Certificate to exist...")
+-			Expect(e2eutil.WaitForCertificateToExist(
+-				f.CertManagerClientSet.CertmanagerV1().Certificates(f.Namespace.Name), certName, time.Minute,
+-			)).NotTo(HaveOccurred())
+-
+-			By("Waiting for the Certificate to be issued...")
+-			err = f.Helper().WaitCertificateIssuedValid(f.Namespace.Name, certName, time.Minute*5)
+-			Expect(err).NotTo(HaveOccurred())
+-		}, OnlySAN)
+-
+-		it("should issue a basic certificate for a single commonName and distinct dnsName defined by an ingress with annotations", func(issuerRef cmmeta.ObjectReference) {
+-			ingClient := f.KubeClientSet.ExtensionsV1beta1().Ingresses(f.Namespace.Name)
+-
+-			name := "testcert-ingress"
+-			secretName := "testcert-ingress-tls"
+-			domain := s.newDomain()
+-
+-			By("Creating an Ingress with the issuer name annotation set")
+-			ingress, err := ingClient.Create(context.TODO(), e2eutil.NewIngress(name, secretName, map[string]string{
+-				"cert-manager.io/issuer":       issuerRef.Name,
+-				"cert-manager.io/issuer-kind":  issuerRef.Kind,
+-				"cert-manager.io/issuer-group": issuerRef.Group,
+-				"cert-manager.io/common-name":  domain,
+-			}, domain), metav1.CreateOptions{})
+-			Expect(err).NotTo(HaveOccurred())
+-
+-			certName := ingress.Spec.TLS[0].SecretName
+-
+-			By("Waiting for the Certificate to exist...")
+-			Expect(e2eutil.WaitForCertificateToExist(
+-				f.CertManagerClientSet.CertmanagerV1().Certificates(f.Namespace.Name), certName, time.Minute,
+-			)).NotTo(HaveOccurred())
+-
+-			By("Waiting for the Certificate to be issued...")
+-			err = f.Helper().WaitCertificateIssuedValid(f.Namespace.Name, certName, time.Minute*5)
+-			Expect(err).NotTo(HaveOccurred())
+-		})
++// it is called by the tests to in Define() to setup and run the test
++func (s *Suite) it(f *framework.Framework, name string, fn func(cmmeta.ObjectReference), requiredFeatures ...featureset.Feature) {
++	if !s.checkFeatures(requiredFeatures...) {
++		fmt.Fprintln(GinkgoWriter, "skipping case due to unsupported features")
++		return
++	}
++	It(name, func() {
++		By("Creating an issuer resource")
++		issuerRef := s.CreateIssuerFunc(f)
++		defer func() {
++			if s.DeleteIssuerFunc != nil {
++				By("Cleaning up the issuer resource")
++				s.DeleteIssuerFunc(f, issuerRef)
++			}
++		}()
++		fn(issuerRef)
+ 	})
+ }
+ 
+@@ -549,8 +106,8 @@ func (s *Suite) Define() {
+ // required for a given test case are supported by the suite.
+ // It will return 'true' if all features are supported and the test should run,
+ // or return 'false' if any required feature is not supported.
+-func (s *Suite) checkFeatures(fs ...Feature) bool {
+-	unsupported := make(FeatureSet)
++func (s *Suite) checkFeatures(fs ...featureset.Feature) bool {
++	unsupported := make(featureset.FeatureSet)
+ 	for _, f := range fs {
+ 		if s.UnsupportedFeatures.Contains(f) {
+ 			unsupported.Add(f)
+diff --git a/test/e2e/suite/conformance/certificates/tests.go b/test/e2e/suite/conformance/certificates/tests.go
+new file mode 100644
+index 000000000..8e71e5846
+--- /dev/null
++++ b/test/e2e/suite/conformance/certificates/tests.go
+@@ -0,0 +1,557 @@
++/*
++Copyright 2020 The Jetstack cert-manager contributors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package certificates
++
++import (
++	"context"
++	"time"
++
++	"github.com/jetstack/cert-manager/test/e2e/framework/helper"
++	"github.com/jetstack/cert-manager/test/e2e/framework/helper/validations"
++
++	. "github.com/onsi/ginkgo"
++	. "github.com/onsi/gomega"
++
++	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
++	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
++	"github.com/jetstack/cert-manager/pkg/util"
++	"github.com/jetstack/cert-manager/pkg/util/pki"
++	"github.com/jetstack/cert-manager/test/e2e/framework"
++	"github.com/jetstack/cert-manager/test/e2e/framework/helper/featureset"
++	e2eutil "github.com/jetstack/cert-manager/test/e2e/util"
++	corev1 "k8s.io/api/core/v1"
++	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++)
++
++// Defines simple conformance tests that can be run against any issuer type.
++// If Complete has not been called on this Suite before Define, it will be
++// automatically called.
++func (s *Suite) Define() {
++	Describe("with issuer type "+s.Name, func() {
++		ctx := context.Background()
++		f := framework.NewDefaultFramework("certificates")
++
++		// wrap this in a BeforeEach else flags will not have been parsed at
++		// the time that the `complete` function is called.
++		BeforeEach(func() {
++			if !s.completed {
++				s.complete(f)
++			}
++		})
++		By("Running test suite with the following unsupported features: " + s.UnsupportedFeatures.String())
++
++		s.it(f, "should issue a basic, defaulted certificate for a single distinct DNS Name", func(issuerRef cmmeta.ObjectReference) {
++			testCertificate := &cmapi.Certificate{
++				ObjectMeta: metav1.ObjectMeta{
++					Name:      "testcert",
++					Namespace: f.Namespace.Name,
++				},
++				Spec: cmapi.CertificateSpec{
++					SecretName: "testcert-tls",
++					IssuerRef:  issuerRef,
++					DNSNames:   []string{s.newDomain()},
++				},
++			}
++			By("Creating a Certificate")
++			err := f.CRClient.Create(ctx, testCertificate)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, "testcert", time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, "testcert", f.Helper().ValidationSetForUnsupportedFeatureSet(s.UnsupportedFeatures)...)
++			Expect(err).NotTo(HaveOccurred())
++		}, featureset.OnlySAN)
++
++		s.it(f, "should issue an ECDSA, defaulted certificate for a single distinct dnsName", func(issuerRef cmmeta.ObjectReference) {
++			testCertificate := &cmapi.Certificate{
++				ObjectMeta: metav1.ObjectMeta{
++					Name:      "testcert",
++					Namespace: f.Namespace.Name,
++				},
++				Spec: cmapi.CertificateSpec{
++					SecretName: "testcert-tls",
++					PrivateKey: &cmapi.CertificatePrivateKey{
++						Algorithm: cmapi.ECDSAKeyAlgorithm,
++					},
++					DNSNames:  []string{s.newDomain()},
++					IssuerRef: issuerRef,
++				},
++			}
++			By("Creating a Certificate")
++			err := f.CRClient.Create(ctx, testCertificate)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, "testcert", time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, "testcert", f.Helper().ValidationSetForUnsupportedFeatureSet(s.UnsupportedFeatures)...)
++			Expect(err).NotTo(HaveOccurred())
++		}, featureset.ECDSAFeature, featureset.OnlySAN)
++
++		s.it(f, "should issue a basic, defaulted certificate for a single Common Name", func(issuerRef cmmeta.ObjectReference) {
++			// Some issuers use the CN to define the cert's "ID"
++			// if one cert manages to be in an error state in the issuer it might throw an error
++			// this makes the CN more unique
++			cn := "test-common-name-" + util.RandStringRunes(10)
++			testCertificate := &cmapi.Certificate{
++				ObjectMeta: metav1.ObjectMeta{
++					Name:      "testcert",
++					Namespace: f.Namespace.Name,
++				},
++				Spec: cmapi.CertificateSpec{
++					SecretName: "testcert-tls",
++					IssuerRef:  issuerRef,
++					CommonName: cn,
++				},
++			}
++			By("Creating a Certificate")
++			err := f.CRClient.Create(ctx, testCertificate)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, "testcert", time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, "testcert", f.Helper().ValidationSetForUnsupportedFeatureSet(s.UnsupportedFeatures)...)
++			Expect(err).NotTo(HaveOccurred())
++		}, featureset.CommonNameFeature)
++
++		s.it(f, "should issue an ECDSA, defaulted certificate for a single Common Name", func(issuerRef cmmeta.ObjectReference) {
++			// Some issuers use the CN to define the cert's "ID"
++			// if one cert manages to be in an error state in the issuer it might throw an error
++			// this makes the CN more unique
++			cn := "test-common-name-" + util.RandStringRunes(10)
++			testCertificate := &cmapi.Certificate{
++				ObjectMeta: metav1.ObjectMeta{
++					Name:      "testcert",
++					Namespace: f.Namespace.Name,
++				},
++				Spec: cmapi.CertificateSpec{
++					SecretName: "testcert-tls",
++					PrivateKey: &cmapi.CertificatePrivateKey{
++						Algorithm: cmapi.ECDSAKeyAlgorithm,
++					},
++					CommonName: cn,
++					IssuerRef:  issuerRef,
++				},
++			}
++			By("Creating a Certificate")
++			err := f.CRClient.Create(ctx, testCertificate)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, "testcert", time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, "testcert", f.Helper().ValidationSetForUnsupportedFeatureSet(s.UnsupportedFeatures)...)
++			Expect(err).NotTo(HaveOccurred())
++		}, featureset.ECDSAFeature, featureset.CommonNameFeature)
++
++		s.it(f, "should issue a certificate that defines a Common Name and IP Address", func(issuerRef cmmeta.ObjectReference) {
++			// Some issuers use the CN to define the cert's "ID"
++			// if one cert manages to be in an error state in the issuer it might throw an error
++			// this makes the CN more unique
++			cn := "test-common-name-" + util.RandStringRunes(10)
++			testCertificate := &cmapi.Certificate{
++				ObjectMeta: metav1.ObjectMeta{
++					Name:      "testcert",
++					Namespace: f.Namespace.Name,
++				},
++				Spec: cmapi.CertificateSpec{
++					SecretName:  "testcert-tls",
++					CommonName:  cn,
++					IPAddresses: []string{"127.0.0.1"},
++					IssuerRef:   issuerRef,
++				},
++			}
++			By("Creating a Certificate")
++			err := f.CRClient.Create(ctx, testCertificate)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, "testcert", time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, "testcert", f.Helper().ValidationSetForUnsupportedFeatureSet(s.UnsupportedFeatures)...)
++			Expect(err).NotTo(HaveOccurred())
++		}, featureset.CommonNameFeature, featureset.IPAddressFeature)
++
++		s.it(f, "should issue a certificate that defines an Email Address", func(issuerRef cmmeta.ObjectReference) {
++			testCertificate := &cmapi.Certificate{
++				ObjectMeta: metav1.ObjectMeta{
++					Name:      "testcert",
++					Namespace: f.Namespace.Name,
++				},
++				Spec: cmapi.CertificateSpec{
++					SecretName:     "testcert-tls",
++					EmailAddresses: []string{"alice@example.com"},
++					IssuerRef:      issuerRef,
++				},
++			}
++			By("Creating a Certificate")
++			err := f.CRClient.Create(ctx, testCertificate)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, "testcert", time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, "testcert", f.Helper().ValidationSetForUnsupportedFeatureSet(s.UnsupportedFeatures)...)
++			Expect(err).NotTo(HaveOccurred())
++		}, featureset.EmailSANsFeature, featureset.OnlySAN)
++
++		s.it(f, "should issue a certificate that defines a CommonName and URI SAN", func(issuerRef cmmeta.ObjectReference) {
++			// Some issuers use the CN to define the cert's "ID"
++			// if one cert manages to be in an error state in the issuer it might throw an error
++			// this makes the CN more unique
++			cn := "test-common-name-" + util.RandStringRunes(10)
++			testCertificate := &cmapi.Certificate{
++				ObjectMeta: metav1.ObjectMeta{
++					Name:      "testcert",
++					Namespace: f.Namespace.Name,
++				},
++				Spec: cmapi.CertificateSpec{
++					SecretName: "testcert-tls",
++					CommonName: cn,
++					URIs:       []string{"spiffe://cluster.local/ns/sandbox/sa/foo"},
++					IssuerRef:  issuerRef,
++				},
++			}
++			By("Creating a Certificate")
++			err := f.CRClient.Create(ctx, testCertificate)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, "testcert", time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, "testcert", f.Helper().ValidationSetForUnsupportedFeatureSet(s.UnsupportedFeatures)...)
++			Expect(err).NotTo(HaveOccurred())
++		}, featureset.URISANsFeature, featureset.CommonNameFeature)
++
++		s.it(f, "should issue a certificate that defines a 2 distinct DNS Name with one copied to the Common Name", func(issuerRef cmmeta.ObjectReference) {
++			testCertificate := &cmapi.Certificate{
++				ObjectMeta: metav1.ObjectMeta{
++					Name:      "testcert",
++					Namespace: f.Namespace.Name,
++				},
++				Spec: cmapi.CertificateSpec{
++					SecretName: "testcert-tls",
++					CommonName: s.newDomain(),
++					IssuerRef:  issuerRef,
++				},
++			}
++			testCertificate.Spec.DNSNames = []string{
++				testCertificate.Spec.CommonName, s.newDomain(),
++			}
++
++			By("Creating a Certificate")
++			err := f.CRClient.Create(ctx, testCertificate)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, "testcert", time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, "testcert", f.Helper().ValidationSetForUnsupportedFeatureSet(s.UnsupportedFeatures)...)
++			Expect(err).NotTo(HaveOccurred())
++		}, featureset.CommonNameFeature)
++
++		s.it(f, "should issue a certificate that defines a distinct DNS Name and another distinct Common Name", func(issuerRef cmmeta.ObjectReference) {
++			testCertificate := &cmapi.Certificate{
++				ObjectMeta: metav1.ObjectMeta{
++					Name:      "testcert",
++					Namespace: f.Namespace.Name,
++				},
++				Spec: cmapi.CertificateSpec{
++					SecretName: "testcert-tls",
++					CommonName: s.newDomain(),
++					IssuerRef:  issuerRef,
++					DNSNames:   []string{s.newDomain()},
++				},
++			}
++
++			By("Creating a Certificate")
++			err := f.CRClient.Create(ctx, testCertificate)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, "testcert", time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, "testcert", f.Helper().ValidationSetForUnsupportedFeatureSet(s.UnsupportedFeatures)...)
++			Expect(err).NotTo(HaveOccurred())
++		}, featureset.CommonNameFeature)
++
++		s.it(f, "should issue a certificate that defines a DNS Name and sets a duration", func(issuerRef cmmeta.ObjectReference) {
++			testCertificate := &cmapi.Certificate{
++				ObjectMeta: metav1.ObjectMeta{
++					Name:      "testcert",
++					Namespace: f.Namespace.Name,
++				},
++				Spec: cmapi.CertificateSpec{
++					SecretName: "testcert-tls",
++					IssuerRef:  issuerRef,
++					DNSNames:   []string{s.newDomain()},
++					Duration: &metav1.Duration{
++						Duration: time.Hour * 896,
++					},
++				},
++			}
++			By("Creating a Certificate")
++			err := f.CRClient.Create(ctx, testCertificate)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, "testcert", time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, "testcert", f.Helper().ValidationSetForUnsupportedFeatureSet(s.UnsupportedFeatures)...)
++			Expect(err).NotTo(HaveOccurred())
++
++			// We set a weird time here as the duration with should never be used as
++			// a default by an issuer. This lets us test issuers are using our given
++			// duration.
++			// We set a 30 second buffer time here since Vault issues certificates
++			// with an extra 30 seconds on its duration.
++			f.CertificateDurationValid(testCertificate, time.Hour*896, 30*time.Second)
++		}, featureset.DurationFeature, featureset.OnlySAN)
++
++		s.it(f, "should issue a certificate which has a wildcard DNS name defined", func(issuerRef cmmeta.ObjectReference) {
++			testCertificate := &cmapi.Certificate{
++				ObjectMeta: metav1.ObjectMeta{
++					Name:      "testcert",
++					Namespace: f.Namespace.Name,
++				},
++				Spec: cmapi.CertificateSpec{
++					SecretName: "testcert-tls",
++					IssuerRef:  issuerRef,
++					DNSNames:   []string{"foo." + s.newDomain()},
++				},
++			}
++			By("Creating a Certificate")
++			err := f.CRClient.Create(ctx, testCertificate)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, "testcert", time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, "testcert", f.Helper().ValidationSetForUnsupportedFeatureSet(s.UnsupportedFeatures)...)
++			Expect(err).NotTo(HaveOccurred())
++		}, featureset.WildcardsFeature, featureset.OnlySAN)
++
++		s.it(f, "should issue a certificate that includes only a URISANs name", func(issuerRef cmmeta.ObjectReference) {
++			testCertificate := &cmapi.Certificate{
++				ObjectMeta: metav1.ObjectMeta{
++					Name:      "testcert",
++					Namespace: f.Namespace.Name,
++				},
++				Spec: cmapi.CertificateSpec{
++					SecretName: "testcert-tls",
++					URIs: []string{
++						"spiffe://cluster.local/ns/sandbox/sa/foo",
++					},
++					IssuerRef: issuerRef,
++				},
++			}
++			By("Creating a Certificate")
++			err := f.CRClient.Create(ctx, testCertificate)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, "testcert", time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, "testcert", f.Helper().ValidationSetForUnsupportedFeatureSet(s.UnsupportedFeatures)...)
++			Expect(err).NotTo(HaveOccurred())
++		}, featureset.URISANsFeature, featureset.OnlySAN)
++
++		s.it(f, "should issue a certificate that includes arbitrary key usages", func(issuerRef cmmeta.ObjectReference) {
++			testCertificate := &cmapi.Certificate{
++				ObjectMeta: metav1.ObjectMeta{
++					Name:      "testcert",
++					Namespace: f.Namespace.Name,
++				},
++				Spec: cmapi.CertificateSpec{
++					SecretName: "testcert-tls",
++					DNSNames:   []string{s.newDomain()},
++					IssuerRef:  issuerRef,
++					Usages: []cmapi.KeyUsage{
++						cmapi.UsageSigning,
++						cmapi.UsageDataEncipherment,
++						cmapi.UsageServerAuth,
++						cmapi.UsageClientAuth,
++					},
++				},
++			}
++			By("Creating a Certificate")
++			err := f.CRClient.Create(ctx, testCertificate)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, "testcert", time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++
++			validations := []helper.ValidationFunc{
++				validations.ExpectKeyUsageExtKeyUsageClientAuth,
++				validations.ExpectKeyUsageExtKeyUsageServerAuth,
++				validations.ExpectKeyUsageUsageDigitalSignature,
++				validations.ExpectKeyUsageUsageDataEncipherment,
++			}
++			validations = append(validations, f.Helper().ValidationSetForUnsupportedFeatureSet(s.UnsupportedFeatures)...)
++
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, "testcert", validations...)
++			Expect(err).NotTo(HaveOccurred())
++		}, featureset.KeyUsagesFeature, featureset.OnlySAN)
++
++		s.it(f, "should issue another certificate with the same private key if the existing certificate and CertificateRequest are deleted", func(issuerRef cmmeta.ObjectReference) {
++			testCertificate := &cmapi.Certificate{
++				ObjectMeta: metav1.ObjectMeta{
++					Name:      "testcert",
++					Namespace: f.Namespace.Name,
++				},
++				Spec: cmapi.CertificateSpec{
++					SecretName: "testcert-tls",
++					DNSNames:   []string{s.newDomain()},
++					IssuerRef:  issuerRef,
++				},
++			}
++			By("Creating a Certificate")
++			err := f.CRClient.Create(ctx, testCertificate)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, "testcert", time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, "testcert", f.Helper().ValidationSetForUnsupportedFeatureSet(s.UnsupportedFeatures)...)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Deleting existing certificate data in Secret")
++			sec, err := f.KubeClientSet.CoreV1().Secrets(f.Namespace.Name).
++				Get(context.TODO(), testCertificate.Spec.SecretName, metav1.GetOptions{})
++			Expect(err).NotTo(HaveOccurred(), "failed to get secret containing signed certificate key pair data")
++
++			sec = sec.DeepCopy()
++			crtPEM1 := sec.Data[corev1.TLSCertKey]
++			crt1, err := pki.DecodeX509CertificateBytes(crtPEM1)
++			Expect(err).NotTo(HaveOccurred(), "failed to get decode first signed certificate data")
++
++			sec.Data[corev1.TLSCertKey] = []byte{}
++
++			_, err = f.KubeClientSet.CoreV1().Secrets(f.Namespace.Name).Update(context.TODO(), sec, metav1.UpdateOptions{})
++			Expect(err).NotTo(HaveOccurred(), "failed to update secret by deleting the signed certificate data")
++
++			By("Waiting for the Certificate to re-issue a certificate")
++			sec, err = f.Helper().WaitForSecretCertificateData(f.Namespace.Name, sec.Name, time.Minute*5)
++			Expect(err).NotTo(HaveOccurred(), "failed to wait for secret to have a valid 2nd certificate")
++
++			crtPEM2 := sec.Data[corev1.TLSCertKey]
++			crt2, err := pki.DecodeX509CertificateBytes(crtPEM2)
++			Expect(err).NotTo(HaveOccurred(), "failed to get decode second signed certificate data")
++
++			By("Ensuing both certificates are signed by same private key")
++			match, err := pki.PublicKeysEqual(crt1.PublicKey, crt2.PublicKey)
++			Expect(err).NotTo(HaveOccurred(), "failed to check public keys of both signed certificates")
++
++			if !match {
++				Fail("Both signed certificates not signed by same private key")
++			}
++		}, featureset.ReusePrivateKeyFeature, featureset.OnlySAN)
++
++		s.it(f, "should issue a basic certificate for a single distinct dnsName defined by an ingress with annotations", func(issuerRef cmmeta.ObjectReference) {
++			ingClient := f.KubeClientSet.ExtensionsV1beta1().Ingresses(f.Namespace.Name)
++
++			name := "testcert-ingress"
++			secretName := "testcert-ingress-tls"
++
++			By("Creating an Ingress with the issuer name annotation set")
++			ingress, err := ingClient.Create(context.TODO(), e2eutil.NewIngress(name, secretName, map[string]string{
++				"cert-manager.io/issuer":       issuerRef.Name,
++				"cert-manager.io/issuer-kind":  issuerRef.Kind,
++				"cert-manager.io/issuer-group": issuerRef.Group,
++			}, s.newDomain()), metav1.CreateOptions{})
++			Expect(err).NotTo(HaveOccurred())
++
++			certName := ingress.Spec.TLS[0].SecretName
++
++			By("Waiting for the Certificate to exist...")
++			Expect(e2eutil.WaitForCertificateToExist(
++				f.CertManagerClientSet.CertmanagerV1().Certificates(f.Namespace.Name), certName, time.Minute,
++			)).NotTo(HaveOccurred())
++
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certName, time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, certName, f.Helper().ValidationSetForUnsupportedFeatureSet(s.UnsupportedFeatures)...)
++			Expect(err).NotTo(HaveOccurred())
++		}, featureset.OnlySAN)
++
++		s.it(f, "should issue a basic certificate for a single commonName and distinct dnsName defined by an ingress with annotations", func(issuerRef cmmeta.ObjectReference) {
++			ingClient := f.KubeClientSet.ExtensionsV1beta1().Ingresses(f.Namespace.Name)
++
++			name := "testcert-ingress"
++			secretName := "testcert-ingress-tls"
++			domain := s.newDomain()
++
++			By("Creating an Ingress with the issuer name annotation set")
++			ingress, err := ingClient.Create(context.TODO(), e2eutil.NewIngress(name, secretName, map[string]string{
++				"cert-manager.io/issuer":       issuerRef.Name,
++				"cert-manager.io/issuer-kind":  issuerRef.Kind,
++				"cert-manager.io/issuer-group": issuerRef.Group,
++				"cert-manager.io/common-name":  domain,
++			}, domain), metav1.CreateOptions{})
++			Expect(err).NotTo(HaveOccurred())
++
++			certName := ingress.Spec.TLS[0].SecretName
++
++			By("Waiting for the Certificate to exist...")
++			Expect(e2eutil.WaitForCertificateToExist(
++				f.CertManagerClientSet.CertmanagerV1().Certificates(f.Namespace.Name), certName, time.Minute,
++			)).NotTo(HaveOccurred())
++
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certName, time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, certName, f.Helper().ValidationSetForUnsupportedFeatureSet(s.UnsupportedFeatures)...)
++			Expect(err).NotTo(HaveOccurred())
++		})
++	})
++}
+diff --git a/test/e2e/suite/conformance/certificates/vault/BUILD.bazel b/test/e2e/suite/conformance/certificates/vault/BUILD.bazel
+index 75d2cd7ad..53059700a 100644
+--- a/test/e2e/suite/conformance/certificates/vault/BUILD.bazel
++++ b/test/e2e/suite/conformance/certificates/vault/BUILD.bazel
+@@ -11,6 +11,7 @@ go_library(
+         "//test/e2e/framework:go_default_library",
+         "//test/e2e/framework/addon:go_default_library",
+         "//test/e2e/framework/addon/vault:go_default_library",
++        "//test/e2e/framework/helper/featureset:go_default_library",
+         "//test/e2e/suite/conformance/certificates:go_default_library",
+         "@com_github_onsi_ginkgo//:go_default_library",
+         "@com_github_onsi_gomega//:go_default_library",
+diff --git a/test/e2e/suite/conformance/certificates/vault/vault_approle.go b/test/e2e/suite/conformance/certificates/vault/vault_approle.go
+index 326613291..51b2440e6 100644
+--- a/test/e2e/suite/conformance/certificates/vault/vault_approle.go
++++ b/test/e2e/suite/conformance/certificates/vault/vault_approle.go
+@@ -29,6 +29,7 @@ import (
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/addon"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/addon/vault"
++	"github.com/jetstack/cert-manager/test/e2e/framework/helper/featureset"
+ 	"github.com/jetstack/cert-manager/test/e2e/suite/conformance/certificates"
+ )
+ 
+@@ -40,8 +41,8 @@ const (
+ )
+ 
+ var _ = framework.ConformanceDescribe("Certificates", func() {
+-	var unsupportedFeatures = certificates.NewFeatureSet(
+-		certificates.KeyUsagesFeature,
++	var unsupportedFeatures = featureset.NewFeatureSet(
++		featureset.KeyUsagesFeature,
+ 	)
+ 
+ 	provisioner := new(vaultAppRoleProvisioner)
+diff --git a/test/e2e/suite/conformance/certificates/venafi/BUILD.bazel b/test/e2e/suite/conformance/certificates/venafi/BUILD.bazel
+index b11ca4921..709ecd240 100644
+--- a/test/e2e/suite/conformance/certificates/venafi/BUILD.bazel
++++ b/test/e2e/suite/conformance/certificates/venafi/BUILD.bazel
+@@ -9,6 +9,7 @@ go_library(
+         "//pkg/apis/certmanager/v1:go_default_library",
+         "//pkg/apis/meta/v1:go_default_library",
+         "//test/e2e/framework:go_default_library",
++        "//test/e2e/framework/helper/featureset:go_default_library",
+         "//test/e2e/framework/util/errors:go_default_library",
+         "//test/e2e/suite/conformance/certificates:go_default_library",
+         "//test/e2e/suite/issuers/venafi/addon:go_default_library",
+diff --git a/test/e2e/suite/conformance/certificates/venafi/venafi.go b/test/e2e/suite/conformance/certificates/venafi/venafi.go
+index c5726543b..d050dafd5 100644
+--- a/test/e2e/suite/conformance/certificates/venafi/venafi.go
++++ b/test/e2e/suite/conformance/certificates/venafi/venafi.go
+@@ -19,8 +19,6 @@ package venafi
+ import (
+ 	"context"
+ 
+-	"github.com/jetstack/cert-manager/test/e2e/suite/conformance/certificates"
+-
+ 	. "github.com/onsi/ginkgo"
+ 	. "github.com/onsi/gomega"
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+@@ -28,23 +26,29 @@ import (
+ 	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
++	"github.com/jetstack/cert-manager/test/e2e/framework/helper/featureset"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/util/errors"
++	"github.com/jetstack/cert-manager/test/e2e/suite/conformance/certificates"
+ 	vaddon "github.com/jetstack/cert-manager/test/e2e/suite/issuers/venafi/addon"
+ )
+ 
+ var _ = framework.ConformanceDescribe("Certificates", func() {
+ 	// unsupportedFeatures is a list of features that are not supported by the
+ 	// Venafi issuer.
+-	var unsupportedFeatures = certificates.NewFeatureSet(
+-		certificates.DurationFeature,
++	var unsupportedFeatures = featureset.NewFeatureSet(
++		// Venafi TPP doesn't allow setting a duration
++		featureset.DurationFeature,
+ 		// Due to the current configuration of the test environment, it does not
+ 		// support signing certificates that pair with an elliptic curve private
+-		// key or using the same private key multiple times.
+-		certificates.ECDSAFeature,
+-		certificates.EmailSANsFeature,
+-		certificates.URISANsFeature,
+-		certificates.IPAddressFeature,
+-		certificates.OnlySAN,
++		// key
++		featureset.ECDSAFeature,
++		// Our Venafi TPP doesn't allow setting non DNS SANs
++		// TODO: investigate options to enable these
++		featureset.EmailSANsFeature,
++		featureset.URISANsFeature,
++		featureset.IPAddressFeature,
++		// Venafi doesn't allow certs with empty CN & DN
++		featureset.OnlySAN,
+ 	)
+ 
+ 	provisioner := new(venafiProvisioner)
+diff --git a/test/e2e/suite/conformance/certificates/venaficloud/BUILD.bazel b/test/e2e/suite/conformance/certificates/venaficloud/BUILD.bazel
+new file mode 100644
+index 000000000..4046d2505
+--- /dev/null
++++ b/test/e2e/suite/conformance/certificates/venaficloud/BUILD.bazel
+@@ -0,0 +1,34 @@
++load("@io_bazel_rules_go//go:def.bzl", "go_library")
++
++go_library(
++    name = "go_default_library",
++    srcs = ["cloud.go"],
++    importpath = "github.com/jetstack/cert-manager/test/e2e/suite/conformance/certificates/venaficloud",
++    visibility = ["//visibility:public"],
++    deps = [
++        "//pkg/apis/certmanager/v1:go_default_library",
++        "//pkg/apis/meta/v1:go_default_library",
++        "//test/e2e/framework:go_default_library",
++        "//test/e2e/framework/helper/featureset:go_default_library",
++        "//test/e2e/framework/util/errors:go_default_library",
++        "//test/e2e/suite/conformance/certificates:go_default_library",
++        "//test/e2e/suite/issuers/venafi/addon:go_default_library",
++        "@com_github_onsi_ginkgo//:go_default_library",
++        "@com_github_onsi_gomega//:go_default_library",
++        "@io_k8s_apimachinery//pkg/apis/meta/v1:go_default_library",
++    ],
++)
++
++filegroup(
++    name = "package-srcs",
++    srcs = glob(["**"]),
++    tags = ["automanaged"],
++    visibility = ["//visibility:private"],
++)
++
++filegroup(
++    name = "all-srcs",
++    srcs = [":package-srcs"],
++    tags = ["automanaged"],
++    visibility = ["//visibility:public"],
++)
+diff --git a/test/e2e/suite/conformance/certificates/venaficloud/cloud.go b/test/e2e/suite/conformance/certificates/venaficloud/cloud.go
+new file mode 100644
+index 000000000..fda0c6b70
+--- /dev/null
++++ b/test/e2e/suite/conformance/certificates/venaficloud/cloud.go
+@@ -0,0 +1,130 @@
++/*
++Copyright 2020 The Jetstack cert-manager contributors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package venaficloud
++
++import (
++	"context"
++
++	. "github.com/onsi/ginkgo"
++	. "github.com/onsi/gomega"
++	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++
++	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
++	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
++	"github.com/jetstack/cert-manager/test/e2e/framework"
++	"github.com/jetstack/cert-manager/test/e2e/framework/helper/featureset"
++	"github.com/jetstack/cert-manager/test/e2e/framework/util/errors"
++	"github.com/jetstack/cert-manager/test/e2e/suite/conformance/certificates"
++	vaddon "github.com/jetstack/cert-manager/test/e2e/suite/issuers/venafi/addon"
++)
++
++var _ = framework.ConformanceDescribe("Certificates", func() {
++	// unsupportedFeatures is a list of features that are not supported by the
++	// Venafi Cloud issuer.
++	var unsupportedFeatures = featureset.NewFeatureSet(
++		// Venafi Cloud does not allow setting duration in request
++		featureset.DurationFeature,
++		// Venafi Cloud has no ECDSA support
++		featureset.ECDSAFeature,
++		// Alternate SANS are currently not suppored in Venafi Cloud
++		featureset.EmailSANsFeature,
++		featureset.IPAddressFeature,
++		featureset.URISANsFeature,
++		// Venafi doesn't allow certs with empty CN & DN
++		featureset.OnlySAN,
++	)
++
++	provisioner := new(venafiProvisioner)
++	(&certificates.Suite{
++		Name:                "Venafi Cloud Issuer",
++		CreateIssuerFunc:    provisioner.createIssuer,
++		DeleteIssuerFunc:    provisioner.delete,
++		UnsupportedFeatures: unsupportedFeatures,
++	}).Define()
++
++	(&certificates.Suite{
++		Name:                "Venafi Cloud ClusterIssuer",
++		CreateIssuerFunc:    provisioner.createClusterIssuer,
++		DeleteIssuerFunc:    provisioner.delete,
++		UnsupportedFeatures: unsupportedFeatures,
++	}).Define()
++})
++
++type venafiProvisioner struct {
++	cloud *vaddon.VenafiCloud
++}
++
++func (v *venafiProvisioner) delete(f *framework.Framework, ref cmmeta.ObjectReference) {
++	Expect(v.cloud.Deprovision()).NotTo(HaveOccurred(), "failed to deprovision cloud venafi")
++
++	if ref.Kind == "ClusterIssuer" {
++		err := f.CertManagerClientSet.CertmanagerV1alpha2().ClusterIssuers().Delete(context.TODO(), ref.Name, metav1.DeleteOptions{})
++		Expect(err).NotTo(HaveOccurred())
++	}
++}
++
++func (v *venafiProvisioner) createIssuer(f *framework.Framework) cmmeta.ObjectReference {
++	By("Creating a Venafi Cloud Issuer")
++
++	v.cloud = &vaddon.VenafiCloud{
++		Namespace: f.Namespace.Name,
++	}
++
++	err := v.cloud.Setup(f.Config)
++	if errors.IsSkip(err) {
++		framework.Skipf("Skipping test as addon could not be setup: %v", err)
++	}
++	Expect(err).NotTo(HaveOccurred(), "failed to provision venafi cloud issuer")
++
++	Expect(v.cloud.Provision()).NotTo(HaveOccurred(), "failed to provision tpp venafi")
++
++	issuer := v.cloud.Details().BuildIssuer()
++	issuer, err = f.CertManagerClientSet.CertmanagerV1().Issuers(f.Namespace.Name).Create(context.TODO(), issuer, metav1.CreateOptions{})
++	Expect(err).NotTo(HaveOccurred(), "failed to create issuer for venafi")
++
++	return cmmeta.ObjectReference{
++		Group: cmapi.SchemeGroupVersion.Group,
++		Kind:  cmapi.IssuerKind,
++		Name:  issuer.Name,
++	}
++}
++
++func (v *venafiProvisioner) createClusterIssuer(f *framework.Framework) cmmeta.ObjectReference {
++	By("Creating a Venafi ClusterIssuer")
++
++	v.cloud = &vaddon.VenafiCloud{
++		Namespace: f.Config.Addons.CertManager.ClusterResourceNamespace,
++	}
++
++	err := v.cloud.Setup(f.Config)
++	if errors.IsSkip(err) {
++		framework.Skipf("Skipping test as addon could not be setup: %v", err)
++	}
++	Expect(err).NotTo(HaveOccurred(), "failed to setup tpp venafi")
++
++	Expect(v.cloud.Provision()).NotTo(HaveOccurred(), "failed to provision tpp venafi")
++
++	issuer := v.cloud.Details().BuildClusterIssuer()
++	issuer, err = f.CertManagerClientSet.CertmanagerV1().ClusterIssuers().Create(context.TODO(), issuer, metav1.CreateOptions{})
++	Expect(err).NotTo(HaveOccurred(), "failed to create issuer for venafi")
++
++	return cmmeta.ObjectReference{
++		Group: cmapi.SchemeGroupVersion.Group,
++		Kind:  cmapi.ClusterIssuerKind,
++		Name:  issuer.Name,
++	}
++}
+diff --git a/test/e2e/suite/conformance/doc.go b/test/e2e/suite/conformance/import.go
+similarity index 92%
+rename from test/e2e/suite/conformance/doc.go
+rename to test/e2e/suite/conformance/import.go
+index a050d7419..158c8dbe4 100644
+--- a/test/e2e/suite/conformance/doc.go
++++ b/test/e2e/suite/conformance/import.go
+@@ -22,5 +22,6 @@ import (
+ 	_ "github.com/jetstack/cert-manager/test/e2e/suite/conformance/certificates/selfsigned"
+ 	_ "github.com/jetstack/cert-manager/test/e2e/suite/conformance/certificates/vault"
+ 	_ "github.com/jetstack/cert-manager/test/e2e/suite/conformance/certificates/venafi"
++	_ "github.com/jetstack/cert-manager/test/e2e/suite/conformance/certificates/venaficloud"
+ 	_ "github.com/jetstack/cert-manager/test/e2e/suite/conformance/rbac"
+ )
+diff --git a/test/e2e/suite/issuers/acme/certificate/dns01.go b/test/e2e/suite/issuers/acme/certificate/dns01.go
+index 015301a02..fe1109718 100644
+--- a/test/e2e/suite/issuers/acme/certificate/dns01.go
++++ b/test/e2e/suite/issuers/acme/certificate/dns01.go
+@@ -25,7 +25,7 @@ import (
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+ 
+ 	cmacme "github.com/jetstack/cert-manager/pkg/apis/acme/v1"
+-	"github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
++	v1 "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework/addon"
+@@ -48,7 +48,6 @@ func testRFC2136DNSProvider() bool {
+ 	name := "rfc2136"
+ 	return Context("With "+name+" credentials configured", func() {
+ 		f := framework.NewDefaultFramework("create-acme-certificate-dns01-" + name)
+-		h := f.Helper()
+ 
+ 		issuerName := "test-acme-issuer"
+ 		certificateName := "test-acme-certificate"
+@@ -128,7 +127,13 @@ func testRFC2136DNSProvider() bool {
+ 
+ 			cert, err := certClient.Create(context.TODO(), cert, metav1.CreateOptions{})
+ 			Expect(err).NotTo(HaveOccurred())
+-			err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*5)
++
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 			Expect(err).NotTo(HaveOccurred())
+ 		})
+ 
+@@ -144,7 +149,13 @@ func testRFC2136DNSProvider() bool {
+ 
+ 			cert, err := f.CertManagerClientSet.CertmanagerV1().Certificates(f.Namespace.Name).Create(context.TODO(), cert, metav1.CreateOptions{})
+ 			Expect(err).NotTo(HaveOccurred())
+-			err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*5)
++
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 			Expect(err).NotTo(HaveOccurred())
+ 		})
+ 
+@@ -161,7 +172,12 @@ func testRFC2136DNSProvider() bool {
+ 			cert, err := f.CertManagerClientSet.CertmanagerV1().Certificates(f.Namespace.Name).Create(context.TODO(), cert, metav1.CreateOptions{})
+ 			Expect(err).NotTo(HaveOccurred())
+ 			// use a longer timeout for this, as it requires performing 2 dns validations in serial
+-			err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*10)
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*10)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 			Expect(err).NotTo(HaveOccurred())
+ 		})
+ 	})
+diff --git a/test/e2e/suite/issuers/acme/certificate/http01.go b/test/e2e/suite/issuers/acme/certificate/http01.go
+index 89b743e20..efe408d85 100644
+--- a/test/e2e/suite/issuers/acme/certificate/http01.go
++++ b/test/e2e/suite/issuers/acme/certificate/http01.go
+@@ -31,7 +31,7 @@ import (
+ 	"k8s.io/apimachinery/pkg/util/wait"
+ 
+ 	cmacme "github.com/jetstack/cert-manager/pkg/apis/acme/v1"
+-	"github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
++	v1 "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	cmutil "github.com/jetstack/cert-manager/pkg/util"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+@@ -134,8 +134,13 @@ var _ = framework.CertManagerDescribe("ACME Certificate (HTTP01)", func() {
+ 
+ 		_, err := certClient.Create(context.TODO(), cert, metav1.CreateOptions{})
+ 		Expect(err).NotTo(HaveOccurred())
+-		By("Verifying the Certificate is valid")
+-		err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*5)
++
++		By("Waiting for the Certificate to be issued...")
++		err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++		Expect(err).NotTo(HaveOccurred())
++
++		By("Validating the issued Certificate...")
++		err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 		Expect(err).NotTo(HaveOccurred())
+ 	})
+ 
+@@ -154,8 +159,13 @@ var _ = framework.CertManagerDescribe("ACME Certificate (HTTP01)", func() {
+ 		cert.Namespace = f.Namespace.Name
+ 		_, err := certClient.Create(context.TODO(), cert, metav1.CreateOptions{})
+ 		Expect(err).NotTo(HaveOccurred())
+-		By("Verifying the Certificate is valid and of type ECDSA")
+-		err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*5)
++
++		By("Waiting for the Certificate to be issued...")
++		err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++		Expect(err).NotTo(HaveOccurred())
++
++		By("Validating the issued Certificate...")
++		err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 		Expect(err).NotTo(HaveOccurred())
+ 	})
+ 
+@@ -176,7 +186,13 @@ var _ = framework.CertManagerDescribe("ACME Certificate (HTTP01)", func() {
+ 
+ 		_, err := certClient.Create(context.TODO(), cert, metav1.CreateOptions{})
+ 		Expect(err).NotTo(HaveOccurred())
+-		err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*5)
++
++		By("Waiting for the Certificate to be issued...")
++		err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++		Expect(err).NotTo(HaveOccurred())
++
++		By("Validating the issued Certificate...")
++		err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 		Expect(err).NotTo(HaveOccurred())
+ 	})
+ 
+@@ -194,7 +210,13 @@ var _ = framework.CertManagerDescribe("ACME Certificate (HTTP01)", func() {
+ 		_, err := certClient.Create(context.TODO(), cert, metav1.CreateOptions{})
+ 		Expect(err).NotTo(HaveOccurred())
+ 		By("Verifying the Certificate is valid")
+-		err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*5)
++
++		By("Waiting for the Certificate to be issued...")
++		err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++		Expect(err).NotTo(HaveOccurred())
++
++		By("Validating the issued Certificate...")
++		err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 		Expect(err).NotTo(HaveOccurred())
+ 	})
+ 
+@@ -213,7 +235,13 @@ var _ = framework.CertManagerDescribe("ACME Certificate (HTTP01)", func() {
+ 		Expect(err).NotTo(HaveOccurred())
+ 
+ 		By("Verifying the Certificate is valid")
+-		err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*5)
++
++		By("Waiting for the Certificate to be issued...")
++		err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++		Expect(err).NotTo(HaveOccurred())
++
++		By("Validating the issued Certificate...")
++		err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 		Expect(err).NotTo(HaveOccurred())
+ 
+ 		By("Getting the latest version of the Certificate")
+@@ -233,7 +261,13 @@ var _ = framework.CertManagerDescribe("ACME Certificate (HTTP01)", func() {
+ 		Expect(err).NotTo(HaveOccurred())
+ 
+ 		By("Waiting for the Certificate to become ready & valid")
+-		err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*5)
++
++		By("Waiting for the Certificate to be issued...")
++		err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++		Expect(err).NotTo(HaveOccurred())
++
++		By("Validating the issued Certificate...")
++		err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 		Expect(err).NotTo(HaveOccurred())
+ 	})
+ 
+@@ -272,8 +306,12 @@ var _ = framework.CertManagerDescribe("ACME Certificate (HTTP01)", func() {
+ 		err = util.WaitForCertificateToExist(certClient, certificateSecretName, foreverTestTimeout)
+ 		Expect(err).NotTo(HaveOccurred())
+ 
+-		By("Verifying the Certificate is valid")
+-		err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*5)
++		By("Waiting for the Certificate to be issued...")
++		err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++		Expect(err).NotTo(HaveOccurred())
++
++		By("Validating the issued Certificate...")
++		err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 		Expect(err).NotTo(HaveOccurred())
+ 	})
+ 
+@@ -302,7 +340,13 @@ var _ = framework.CertManagerDescribe("ACME Certificate (HTTP01)", func() {
+ 		selfcert := util.NewCertManagerBasicCertificate("dummy-tls", secretname, "selfsign", v1.IssuerKind, nil, nil, acmeIngressDomain)
+ 		_, err = certClient.Create(context.TODO(), selfcert, metav1.CreateOptions{})
+ 		Expect(err).NotTo(HaveOccurred())
+-		err = h.WaitCertificateIssuedValid(f.Namespace.Name, dummycert, time.Minute*5)
++
++		By("Waiting for the Certificate to be issued...")
++		err = f.Helper().WaitCertificateIssued(f.Namespace.Name, dummycert, time.Minute*5)
++		Expect(err).NotTo(HaveOccurred())
++
++		By("Validating the issued Certificate...")
++		err = f.Helper().ValidateCertificate(f.Namespace.Name, dummycert)
+ 		Expect(err).NotTo(HaveOccurred())
+ 
+ 		// create an ingress that points at nothing, but has the TLS redirect annotation set
+@@ -362,8 +406,12 @@ var _ = framework.CertManagerDescribe("ACME Certificate (HTTP01)", func() {
+ 		_, err = certClient.Create(context.TODO(), cert, metav1.CreateOptions{})
+ 		Expect(err).NotTo(HaveOccurred())
+ 
+-		By("Verifying the Certificate is valid")
+-		err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*5)
++		By("Waiting for the Certificate to be issued...")
++		err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++		Expect(err).NotTo(HaveOccurred())
++
++		By("Validating the issued Certificate...")
++		err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 		Expect(err).NotTo(HaveOccurred())
+ 	})
+ 
+@@ -412,8 +460,12 @@ var _ = framework.CertManagerDescribe("ACME Certificate (HTTP01)", func() {
+ 		// Killing the pod could potentially make the validation invalid if pebble
+ 		// were to ask us for the challenge after the pod was killed, but because
+ 		// we kill it so early, we should always be in the self-check phase
+-		By("Verifying the Certificate is valid")
+-		err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*5)
++		By("Waiting for the Certificate to be issued...")
++		err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++		Expect(err).NotTo(HaveOccurred())
++
++		By("Validating the issued Certificate...")
++		err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 		Expect(err).NotTo(HaveOccurred())
+ 	})
+ 
+diff --git a/test/e2e/suite/issuers/ca/certificate.go b/test/e2e/suite/issuers/ca/certificate.go
+index db9af2261..a6d9f6ac4 100644
+--- a/test/e2e/suite/issuers/ca/certificate.go
++++ b/test/e2e/suite/issuers/ca/certificate.go
+@@ -23,7 +23,7 @@ import (
+ 	. "github.com/onsi/ginkgo"
+ 	. "github.com/onsi/gomega"
+ 
+-	"github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
++	v1 "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+ 	"github.com/jetstack/cert-manager/test/e2e/util"
+@@ -33,7 +33,6 @@ import (
+ 
+ var _ = framework.CertManagerDescribe("CA Certificate", func() {
+ 	f := framework.NewDefaultFramework("create-ca-certificate")
+-	h := f.Helper()
+ 
+ 	issuerName := "test-ca-issuer"
+ 	issuerSecretName := "ca-issuer-signing-keypair"
+@@ -74,7 +73,12 @@ var _ = framework.CertManagerDescribe("CA Certificate", func() {
+ 			_, err := certClient.Create(context.TODO(), util.NewCertManagerBasicCertificate(certificateName, certificateSecretName, issuerName, v1.IssuerKind, nil, nil), metav1.CreateOptions{})
+ 			Expect(err).NotTo(HaveOccurred())
+ 			By("Verifying the Certificate is valid")
+-			err = h.WaitCertificateIssuedValidTLS(f.Namespace.Name, certificateName, time.Second*30, []byte(rootCert))
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 			Expect(err).NotTo(HaveOccurred())
+ 		})
+ 
+@@ -89,8 +93,12 @@ var _ = framework.CertManagerDescribe("CA Certificate", func() {
+ 			_, err := certClient.Create(context.TODO(), crt, metav1.CreateOptions{})
+ 			Expect(err).NotTo(HaveOccurred())
+ 
+-			By("Verifying the Certificate is valid")
+-			err = h.WaitCertificateIssuedValidTLS(f.Namespace.Name, certificateName, time.Second*30, []byte(rootCert))
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 			Expect(err).NotTo(HaveOccurred())
+ 		})
+ 
+@@ -121,9 +129,14 @@ var _ = framework.CertManagerDescribe("CA Certificate", func() {
+ 				By("Creating a Certificate")
+ 				cert, err := certClient.Create(context.TODO(), util.NewCertManagerBasicCertificate(certificateName, certificateSecretName, issuerName, v1.IssuerKind, v.inputDuration, v.inputRenewBefore), metav1.CreateOptions{})
+ 				Expect(err).NotTo(HaveOccurred())
+-				By("Verifying the Certificate is valid")
+-				err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Second*30)
++				By("Waiting for the Certificate to be issued...")
++				err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++				Expect(err).NotTo(HaveOccurred())
++
++				By("Validating the issued Certificate...")
++				err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 				Expect(err).NotTo(HaveOccurred())
++
+ 				f.CertificateDurationValid(cert, v.expectedDuration, 0)
+ 			})
+ 		}
+@@ -142,8 +155,12 @@ var _ = framework.CertManagerDescribe("CA Certificate", func() {
+ 			By("Creating a Certificate")
+ 			_, err := certClient.Create(context.TODO(), util.NewCertManagerBasicCertificate(certificateName, certificateSecretName, issuerName, v1.IssuerKind, nil, nil), metav1.CreateOptions{})
+ 			Expect(err).NotTo(HaveOccurred())
+-			By("Verifying the Certificate is valid")
+-			err = h.WaitCertificateIssuedValidTLS(f.Namespace.Name, certificateName, time.Second*30, []byte(rootCert))
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 			Expect(err).NotTo(HaveOccurred())
+ 		})
+ 	})
+@@ -161,8 +178,12 @@ var _ = framework.CertManagerDescribe("CA Certificate", func() {
+ 			By("Creating a Certificate with Usages")
+ 			_, err := certClient.Create(context.TODO(), gen.Certificate(certificateName, gen.SetCertificateNamespace(f.Namespace.Name), gen.SetCertificateCommonName("test.domain.com"), gen.SetCertificateSecretName(certificateSecretName), gen.SetCertificateIssuer(cmmeta.ObjectReference{Name: issuerName, Kind: v1.IssuerKind}), gen.SetCertificateKeyUsages(v1.UsageServerAuth, v1.UsageClientAuth)), metav1.CreateOptions{})
+ 			Expect(err).NotTo(HaveOccurred())
+-			By("Verifying the Certificate is valid")
+-			err = h.WaitCertificateIssuedValidTLS(f.Namespace.Name, certificateName, time.Second*30, []byte(rootCert))
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 			Expect(err).NotTo(HaveOccurred())
+ 		})
+ 	})
+diff --git a/test/e2e/suite/issuers/selfsigned/certificate.go b/test/e2e/suite/issuers/selfsigned/certificate.go
+index 520cab679..cc50e609b 100644
+--- a/test/e2e/suite/issuers/selfsigned/certificate.go
++++ b/test/e2e/suite/issuers/selfsigned/certificate.go
+@@ -24,7 +24,7 @@ import (
+ 	. "github.com/onsi/ginkgo"
+ 	. "github.com/onsi/gomega"
+ 
+-	"github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
++	v1 "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
+ 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
+ 	"github.com/jetstack/cert-manager/test/e2e/framework"
+ 	"github.com/jetstack/cert-manager/test/e2e/util"
+@@ -33,7 +33,6 @@ import (
+ 
+ var _ = framework.CertManagerDescribe("Self Signed Certificate", func() {
+ 	f := framework.NewDefaultFramework("create-selfsigned-certificate")
+-	h := f.Helper()
+ 
+ 	issuerName := "test-selfsigned-issuer"
+ 	certificateName := "test-selfsigned-certificate"
+@@ -57,7 +56,12 @@ var _ = framework.CertManagerDescribe("Self Signed Certificate", func() {
+ 		By("Creating a Certificate")
+ 		_, err = certClient.Create(context.TODO(), util.NewCertManagerBasicCertificate(certificateName, certificateSecretName, issuerName, v1.IssuerKind, nil, nil), metav1.CreateOptions{})
+ 		Expect(err).NotTo(HaveOccurred())
+-		err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*5)
++		By("Waiting for the Certificate to be issued...")
++		err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++		Expect(err).NotTo(HaveOccurred())
++
++		By("Validating the issued Certificate...")
++		err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 		Expect(err).NotTo(HaveOccurred())
+ 	})
+ 
+@@ -101,8 +105,14 @@ var _ = framework.CertManagerDescribe("Self Signed Certificate", func() {
+ 			By("Creating a Certificate")
+ 			cert, err := certClient.Create(context.TODO(), util.NewCertManagerBasicCertificate(certificateName, certificateSecretName, issuerDurationName, v1.IssuerKind, v.inputDuration, v.inputRenewBefore), metav1.CreateOptions{})
+ 			Expect(err).NotTo(HaveOccurred())
+-			err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Second*30)
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 			Expect(err).NotTo(HaveOccurred())
++
+ 			f.CertificateDurationValid(cert, v.expectedDuration, 0)
+ 		})
+ 	}
+@@ -122,8 +132,12 @@ var _ = framework.CertManagerDescribe("Self Signed Certificate", func() {
+ 		_, err = certClient.Create(context.TODO(), crt, metav1.CreateOptions{})
+ 		Expect(err).NotTo(HaveOccurred())
+ 
+-		By("Verifying the Certificate is valid")
+-		err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*5)
++		By("Waiting for the Certificate to be issued...")
++		err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++		Expect(err).NotTo(HaveOccurred())
++
++		By("Validating the issued Certificate...")
++		err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 		Expect(err).NotTo(HaveOccurred())
+ 	})
+ })
+diff --git a/test/e2e/suite/issuers/vault/BUILD.bazel b/test/e2e/suite/issuers/vault/BUILD.bazel
+index 34cc6199c..d409ef804 100644
+--- a/test/e2e/suite/issuers/vault/BUILD.bazel
++++ b/test/e2e/suite/issuers/vault/BUILD.bazel
+@@ -3,7 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
+ go_library(
+     name = "go_default_library",
+     srcs = [
+-        "doc.go",
++        "import.go",
+         "issuer.go",
+     ],
+     importpath = "github.com/jetstack/cert-manager/test/e2e/suite/issuers/vault",
+diff --git a/test/e2e/suite/issuers/vault/certificate/approle.go b/test/e2e/suite/issuers/vault/certificate/approle.go
+index 9166007a4..24672f57f 100644
+--- a/test/e2e/suite/issuers/vault/certificate/approle.go
++++ b/test/e2e/suite/issuers/vault/certificate/approle.go
+@@ -44,7 +44,6 @@ var _ = framework.CertManagerDescribe("Vault ClusterIssuer Certificate (AppRole)
+ 
+ func runVaultAppRoleTests(issuerKind string) {
+ 	f := framework.NewDefaultFramework("create-vault-certificate")
+-	h := f.Helper()
+ 
+ 	var (
+ 		vault = &vaultaddon.Vault{
+@@ -155,7 +154,12 @@ func runVaultAppRoleTests(issuerKind string) {
+ 		_, err = certClient.Create(context.TODO(), util.NewCertManagerVaultCertificate(certificateName, certificateSecretName, vaultIssuerName, issuerKind, nil, nil), metav1.CreateOptions{})
+ 		Expect(err).NotTo(HaveOccurred())
+ 
+-		err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*5)
++		By("Waiting for the Certificate to be issued...")
++		err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++		Expect(err).NotTo(HaveOccurred())
++
++		By("Validating the issued Certificate...")
++		err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 		Expect(err).NotTo(HaveOccurred())
+ 
+ 	})
+@@ -234,7 +238,12 @@ func runVaultAppRoleTests(issuerKind string) {
+ 			cert, err := f.CertManagerClientSet.CertmanagerV1().Certificates(f.Namespace.Name).Create(context.TODO(), util.NewCertManagerVaultCertificate(certificateName, certificateSecretName, vaultIssuerName, issuerKind, v.inputDuration, v.inputRenewBefore), metav1.CreateOptions{})
+ 			Expect(err).NotTo(HaveOccurred())
+ 
+-			err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*5)
++			By("Waiting for the Certificate to be issued...")
++			err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++			Expect(err).NotTo(HaveOccurred())
++
++			By("Validating the issued Certificate...")
++			err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 			Expect(err).NotTo(HaveOccurred())
+ 
+ 			// Vault substract 30 seconds to the NotBefore date.
+diff --git a/test/e2e/suite/issuers/vault/certificate/approle_custom_mount.go b/test/e2e/suite/issuers/vault/certificate/approle_custom_mount.go
+index 2d849fb37..efa1c72d4 100644
+--- a/test/e2e/suite/issuers/vault/certificate/approle_custom_mount.go
++++ b/test/e2e/suite/issuers/vault/certificate/approle_custom_mount.go
+@@ -43,7 +43,6 @@ var _ = framework.CertManagerDescribe("Vault ClusterIssuer Certificate (AppRole
+ 
+ func runVaultCustomAppRoleTests(issuerKind string) {
+ 	f := framework.NewDefaultFramework("create-vault-certificate")
+-	h := f.Helper()
+ 
+ 	var (
+ 		vault = &vaultaddon.Vault{
+@@ -153,7 +152,12 @@ func runVaultCustomAppRoleTests(issuerKind string) {
+ 		_, err = certClient.Create(context.TODO(), util.NewCertManagerVaultCertificate(certificateName, certificateSecretName, vaultIssuerName, issuerKind, nil, nil), metav1.CreateOptions{})
+ 		Expect(err).NotTo(HaveOccurred())
+ 
+-		err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*5)
++		By("Waiting for the Certificate to be issued...")
++		err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++		Expect(err).NotTo(HaveOccurred())
++
++		By("Validating the issued Certificate...")
++		err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 		Expect(err).NotTo(HaveOccurred())
+ 	})
+ }
+diff --git a/test/e2e/suite/issuers/vault/doc.go b/test/e2e/suite/issuers/vault/import.go
+similarity index 100%
+rename from test/e2e/suite/issuers/vault/doc.go
+rename to test/e2e/suite/issuers/vault/import.go
+diff --git a/test/e2e/suite/issuers/venafi/BUILD.bazel b/test/e2e/suite/issuers/venafi/BUILD.bazel
+index 84465031b..b3e1ab599 100644
+--- a/test/e2e/suite/issuers/venafi/BUILD.bazel
++++ b/test/e2e/suite/issuers/venafi/BUILD.bazel
+@@ -2,9 +2,8 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
+ 
+ go_library(
+     name = "go_default_library",
+-    srcs = ["doc.go"],
++    srcs = ["import.go"],
+     importpath = "github.com/jetstack/cert-manager/test/e2e/suite/issuers/venafi",
+-    tags = ["manual"],
+     visibility = ["//visibility:public"],
+     deps = ["//test/e2e/suite/issuers/venafi/tpp:go_default_library"],
+ )
+@@ -21,6 +20,7 @@ filegroup(
+     srcs = [
+         ":package-srcs",
+         "//test/e2e/suite/issuers/venafi/addon:all-srcs",
++        "//test/e2e/suite/issuers/venafi/cloud:all-srcs",
+         "//test/e2e/suite/issuers/venafi/tpp:all-srcs",
+     ],
+     tags = ["automanaged"],
+diff --git a/test/e2e/suite/issuers/venafi/addon/BUILD.bazel b/test/e2e/suite/issuers/venafi/addon/BUILD.bazel
+index 39db6d229..eea2e15ac 100644
+--- a/test/e2e/suite/issuers/venafi/addon/BUILD.bazel
++++ b/test/e2e/suite/issuers/venafi/addon/BUILD.bazel
+@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
+ go_library(
+     name = "go_default_library",
+     srcs = [
++        "cloud.go",
+         "doc.go",
+         "tpp.go",
+     ],
+diff --git a/test/e2e/suite/issuers/venafi/addon/cloud.go b/test/e2e/suite/issuers/venafi/addon/cloud.go
+new file mode 100644
+index 000000000..6dfc3849d
+--- /dev/null
++++ b/test/e2e/suite/issuers/venafi/addon/cloud.go
+@@ -0,0 +1,137 @@
++/*
++Copyright 2018 The Jetstack cert-manager contributors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package addon
++
++import (
++	"context"
++	"fmt"
++
++	corev1 "k8s.io/api/core/v1"
++	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++
++	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
++	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
++	"github.com/jetstack/cert-manager/test/e2e/framework/addon/base"
++	"github.com/jetstack/cert-manager/test/e2e/framework/config"
++	"github.com/jetstack/cert-manager/test/e2e/framework/util/errors"
++)
++
++type VenafiCloud struct {
++	Base   *base.Base
++	config *config.Config
++
++	// Namespace to create supporting credential resources in
++	Namespace string
++
++	details CloudDetails
++
++	createdSecret *corev1.Secret
++}
++
++type CloudDetails struct {
++	issuerTemplate cmapi.VenafiIssuer
++}
++
++func (v *VenafiCloud) Setup(cfg *config.Config) error {
++	v.config = cfg
++
++	if v.Base == nil {
++		v.Base = &base.Base{}
++		err := v.Base.Setup(cfg)
++		if err != nil {
++			return err
++		}
++	}
++
++	if v.config.Addons.Venafi.Cloud.Zone == "" {
++		return errors.NewSkip(fmt.Errorf("Venafi Cloud Zone must be set"))
++	}
++	if v.config.Addons.Venafi.Cloud.APIToken == "" {
++		return errors.NewSkip(fmt.Errorf("Venafi Cloud APIToken must be set"))
++	}
++
++	return nil
++}
++
++func (v *VenafiCloud) Provision() error {
++	secret := &corev1.Secret{
++		ObjectMeta: metav1.ObjectMeta{
++			GenerateName: "cm-e2e-venafi-cloud-",
++			Namespace:    v.Namespace,
++		},
++		Data: map[string][]byte{
++			"apikey": []byte(v.config.Addons.Venafi.Cloud.APIToken),
++		},
++	}
++
++	s, err := v.Base.Details().KubeClient.CoreV1().Secrets(v.Namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
++	if err != nil {
++		return err
++	}
++
++	v.createdSecret = s
++	v.details.issuerTemplate = cmapi.VenafiIssuer{
++		Zone: v.config.Addons.Venafi.Cloud.Zone,
++		Cloud: &cmapi.VenafiCloud{
++			APITokenSecretRef: cmmeta.SecretKeySelector{
++				LocalObjectReference: cmmeta.LocalObjectReference{
++					Name: s.Name,
++				},
++				Key: "apikey",
++			},
++		},
++	}
++	return nil
++}
++
++func (v *VenafiCloud) Details() *CloudDetails {
++	return &v.details
++}
++
++func (v *VenafiCloud) Deprovision() error {
++	return v.Base.Details().KubeClient.CoreV1().Secrets(v.createdSecret.Namespace).Delete(context.TODO(), v.createdSecret.Name, metav1.DeleteOptions{})
++}
++
++func (v *VenafiCloud) SupportsGlobal() bool {
++	return true
++}
++
++func (t *CloudDetails) BuildIssuer() *cmapi.Issuer {
++	return &cmapi.Issuer{
++		ObjectMeta: metav1.ObjectMeta{
++			GenerateName: "venafi-cloud-",
++		},
++		Spec: cmapi.IssuerSpec{
++			IssuerConfig: cmapi.IssuerConfig{
++				Venafi: &t.issuerTemplate,
++			},
++		},
++	}
++}
++
++func (t *CloudDetails) BuildClusterIssuer() *cmapi.ClusterIssuer {
++	return &cmapi.ClusterIssuer{
++		ObjectMeta: metav1.ObjectMeta{
++			GenerateName: "venafi-cloud-",
++		},
++		Spec: cmapi.IssuerSpec{
++			IssuerConfig: cmapi.IssuerConfig{
++				Venafi: &t.issuerTemplate,
++			},
++		},
++	}
++}
+diff --git a/test/e2e/suite/issuers/venafi/cloud/BUILD.bazel b/test/e2e/suite/issuers/venafi/cloud/BUILD.bazel
+new file mode 100644
+index 000000000..8ca76694a
+--- /dev/null
++++ b/test/e2e/suite/issuers/venafi/cloud/BUILD.bazel
+@@ -0,0 +1,23 @@
++load("@io_bazel_rules_go//go:def.bzl", "go_library")
++
++go_library(
++    name = "go_default_library",
++    srcs = ["doc.go"],
++    importpath = "github.com/jetstack/cert-manager/test/e2e/suite/issuers/venafi/cloud",
++    visibility = ["//visibility:public"],
++    deps = ["//test/e2e/framework:go_default_library"],
++)
++
++filegroup(
++    name = "package-srcs",
++    srcs = glob(["**"]),
++    tags = ["automanaged"],
++    visibility = ["//visibility:private"],
++)
++
++filegroup(
++    name = "all-srcs",
++    srcs = [":package-srcs"],
++    tags = ["automanaged"],
++    visibility = ["//visibility:public"],
++)
+diff --git a/test/e2e/suite/issuers/venafi/cloud/doc.go b/test/e2e/suite/issuers/venafi/cloud/doc.go
+new file mode 100644
+index 000000000..c4bbfcb1a
+--- /dev/null
++++ b/test/e2e/suite/issuers/venafi/cloud/doc.go
+@@ -0,0 +1,26 @@
++/*
++Copyright 2018 The Jetstack cert-manager contributors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++// Package tpp implements tests for the Venafi TPP issuer
++package tpp
++
++import (
++	"github.com/jetstack/cert-manager/test/e2e/framework"
++)
++
++func CloudDescribe(name string, body func()) bool {
++	return framework.CertManagerDescribe("[Venafi] [Cloud] "+name, body)
++}
+diff --git a/test/e2e/suite/issuers/venafi/doc.go b/test/e2e/suite/issuers/venafi/import.go
+similarity index 100%
+rename from test/e2e/suite/issuers/venafi/doc.go
+rename to test/e2e/suite/issuers/venafi/import.go
+diff --git a/test/e2e/suite/issuers/venafi/tpp/certificate.go b/test/e2e/suite/issuers/venafi/tpp/certificate.go
+index bbde3f872..b295d2f08 100644
+--- a/test/e2e/suite/issuers/venafi/tpp/certificate.go
++++ b/test/e2e/suite/issuers/venafi/tpp/certificate.go
+@@ -34,7 +34,6 @@ import (
+ 
+ var _ = TPPDescribe("Certificate with a properly configured Issuer", func() {
+ 	f := framework.NewDefaultFramework("venafi-tpp-certificate")
+-	h := f.Helper()
+ 
+ 	var (
+ 		issuer                *cmapi.Issuer
+@@ -83,8 +82,12 @@ var _ = TPPDescribe("Certificate with a properly configured Issuer", func() {
+ 		_, err := certClient.Create(context.TODO(), crt, metav1.CreateOptions{})
+ 		Expect(err).NotTo(HaveOccurred())
+ 
+-		By("Verifying the Certificate is valid")
+-		err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Second*90)
++		By("Waiting for the Certificate to be issued...")
++		err = f.Helper().WaitCertificateIssued(f.Namespace.Name, certificateName, time.Minute*5)
++		Expect(err).NotTo(HaveOccurred())
++
++		By("Validating the issued Certificate...")
++		err = f.Helper().ValidateCertificate(f.Namespace.Name, certificateName)
+ 		Expect(err).NotTo(HaveOccurred())
+ 	})
+ })
+
+commit 482f9e4cfb0c9163f378cec779a412c9c8cc6ae4 (from 6909c778423725009cbc09e6396bb8788c503bf7)
+Merge: 74f9d8ed7 6909c7784
+Author: jetstack-bot <32282838+jetstack-bot@users.noreply.github.com>
+Date:   Wed Oct 7 11:47:40 2020 +0100
+
+    Merge pull request #2966 from meyskens/e2e-venafi-cloud
+    
+    Venafi Cloud e2e tests + e2e refactor
+
+diff --git a/CONTRIBUTING.md b/CONTRIBUTING.md
+index 2f397ad2d..3e5fc3170 100644
+--- a/CONTRIBUTING.md
++++ b/CONTRIBUTING.md
+@@ -1,4 +1,7 @@
+ # Contributing
++
++You can find our full contributing guide on [our website](https://cert-manager.io/docs/contributing/).
++
+ ## DCO Sign off
+ 
+ All authors to the project retain copyright to their work. However, to ensure
+diff --git a/cmd/controller/app/controller.go b/cmd/controller/app/controller.go
+index 7581efb3c..c5d347067 100644
+--- a/cmd/controller/app/controller.go
++++ b/cmd/controller/app/controller.go
+@@ -216,6 +216,7 @@ func buildControllerContext(ctx context.Context, stopCh <-chan struct{}, opts *o
+ 			DNS01CheckAuthoritative:           !opts.DNS01RecursiveNameserversOnly,
+ 			DNS01Nameservers:                  nameservers,
+ 			AccountRegistry:                   acmeAccountRegistry,
++			DNS01CheckRetryPeriod:             opts.DNS01CheckRetryPeriod,
+ 		},
+ 		IssuerOptions: controller.IssuerOptions{
+ 			ClusterIssuerAmbientCredentials: opts.ClusterIssuerAmbientCredentials,
+diff --git a/cmd/controller/app/options/options.go b/cmd/controller/app/options/options.go
+index e4c03d691..5fc47c9e6 100644
+--- a/cmd/controller/app/options/options.go
++++ b/cmd/controller/app/options/options.go
+@@ -87,6 +87,8 @@ type ControllerOptions struct {
+ 	// The host and port address, separated by a ':', that the Prometheus server
+ 	// should expose metrics on.
+ 	MetricsListenAddress string
++
++	DNS01CheckRetryPeriod time.Duration
+ }
+ 
+ const (
+@@ -115,6 +117,8 @@ const (
+ 	defaultMaxConcurrentChallenges = 60
+ 
+ 	defaultPrometheusMetricsServerAddress = "0.0.0.0:9402"
++
++	defaultDNS01CheckRetryPeriod = 10 * time.Second
+ )
+ 
+ var (
+@@ -169,6 +173,7 @@ func NewControllerOptions() *ControllerOptions {
+ 		DNS01RecursiveNameserversOnly:     defaultDNS01RecursiveNameserversOnly,
+ 		EnableCertificateOwnerRef:         defaultEnableCertificateOwnerRef,
+ 		MetricsListenAddress:              defaultPrometheusMetricsServerAddress,
++		DNS01CheckRetryPeriod:             defaultDNS01CheckRetryPeriod,
+ 	}
+ }
+ 
+@@ -264,6 +269,9 @@ func (s *ControllerOptions) AddFlags(fs *pflag.FlagSet) {
+ 		"When this flag is enabled, the secret will be automatically removed when the certificate resource is deleted.")
+ 	fs.IntVar(&s.MaxConcurrentChallenges, "max-concurrent-challenges", defaultMaxConcurrentChallenges, ""+
+ 		"The maximum number of challenges that can be scheduled as 'processing' at once.")
++	fs.DurationVar(&s.DNS01CheckRetryPeriod, "dns01-check-retry-period", defaultDNS01CheckRetryPeriod, ""+
++		"The duration the controller should wait between checking if a ACME dns entry exists."+
++		"This should be a valid duration string, for example 180s or 1h")
+ 
+ 	fs.StringVar(&s.MetricsListenAddress, "metrics-listen-address", defaultPrometheusMetricsServerAddress, ""+
+ 		"The host and port that the metrics endpoint should listen on.")
+diff --git a/deploy/charts/cert-manager/README.template.md b/deploy/charts/cert-manager/README.template.md
+index 174bc0188..e35d3342b 100644
+--- a/deploy/charts/cert-manager/README.template.md
++++ b/deploy/charts/cert-manager/README.template.md
+@@ -133,6 +133,7 @@ The following table lists the configurable parameters of the cert-manager chart
+ | `https_proxy` | Value of the `HTTPS_PROXY` environment variable in the cert-manager pod | |
+ | `no_proxy` | Value of the `NO_PROXY` environment variable in the cert-manager pod | |
+ | `webhook.replicaCount` | Number of cert-manager webhook replicas | `1` |
++| `webhook.timeoutSeconds` | Seconds the API server should wait the webhook to respond before treating the call as a failure. | `10` |
+ | `webhook.podAnnotations` | Annotations to add to the webhook pods | `{}` |
+ | `webhook.deploymentAnnotations` | Annotations to add to the webhook deployment | `{}` |
+ | `webhook.mutatingWebhookConfigurationAnnotations` | Annotations to add to the mutating webhook configuration | `{}` |
+diff --git a/deploy/charts/cert-manager/templates/webhook-mutating-webhook.yaml b/deploy/charts/cert-manager/templates/webhook-mutating-webhook.yaml
+index b02e19679..56ff07b74 100644
+--- a/deploy/charts/cert-manager/templates/webhook-mutating-webhook.yaml
++++ b/deploy/charts/cert-manager/templates/webhook-mutating-webhook.yaml
+@@ -35,6 +35,7 @@ webhooks:
+           - "*/*"
+     {{- if $isV1AdmissionRegistration }}
+     admissionReviewVersions: ["v1", "v1beta1"]
++    timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
+     {{- end }}
+     failurePolicy: Fail
+ {{- if (semverCompare ">=1.12-0" .Capabilities.KubeVersion.GitVersion) }}
+diff --git a/deploy/charts/cert-manager/templates/webhook-validating-webhook.yaml b/deploy/charts/cert-manager/templates/webhook-validating-webhook.yaml
+index 77d7526bc..c45461e05 100644
+--- a/deploy/charts/cert-manager/templates/webhook-validating-webhook.yaml
++++ b/deploy/charts/cert-manager/templates/webhook-validating-webhook.yaml
+@@ -45,6 +45,7 @@ webhooks:
+           - "*/*"
+     {{- if $isV1AdmissionRegistration }}
+     admissionReviewVersions: ["v1", "v1beta1"]
++    timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
+     {{- end }}
+     failurePolicy: Fail
+ {{- if (semverCompare ">=1.12-0" .Capabilities.KubeVersion.GitVersion) }}
+diff --git a/deploy/charts/cert-manager/values.yaml b/deploy/charts/cert-manager/values.yaml
+index 35f3615f2..2cb976e8f 100644
+--- a/deploy/charts/cert-manager/values.yaml
++++ b/deploy/charts/cert-manager/values.yaml
+@@ -178,6 +178,7 @@ tolerations: []
+ 
+ webhook:
+   replicaCount: 1
++  timeoutSeconds: 10
+ 
+   strategy: {}
+     # type: RollingUpdate
+diff --git a/pkg/controller/acmechallenges/controller.go b/pkg/controller/acmechallenges/controller.go
+index 073fab415..beb15c3b7 100644
+--- a/pkg/controller/acmechallenges/controller.go
++++ b/pkg/controller/acmechallenges/controller.go
+@@ -77,6 +77,8 @@ type controller struct {
+ 	log logr.Logger
+ 
+ 	dns01Nameservers []string
++
++	DNS01CheckRetryPeriod time.Duration
+ }
+ 
+ func (c *controller) Register(ctx *controllerpkg.Context) (workqueue.RateLimitingInterface, []cache.InformerSynced, error) {
+@@ -137,6 +139,7 @@ func (c *controller) Register(ctx *controllerpkg.Context) (workqueue.RateLimitin
+ 
+ 	// read options from context
+ 	c.dns01Nameservers = ctx.ACMEOptions.DNS01Nameservers
++	c.DNS01CheckRetryPeriod = ctx.ACMEOptions.DNS01CheckRetryPeriod
+ 
+ 	return c.queue, mustSync, nil
+ }
+diff --git a/pkg/controller/acmechallenges/sync.go b/pkg/controller/acmechallenges/sync.go
+index c09bea24c..e71c16f9e 100644
+--- a/pkg/controller/acmechallenges/sync.go
++++ b/pkg/controller/acmechallenges/sync.go
+@@ -20,7 +20,6 @@ import (
+ 	"context"
+ 	"fmt"
+ 	"reflect"
+-	"time"
+ 
+ 	acmeapi "golang.org/x/crypto/acme"
+ 	corev1 "k8s.io/api/core/v1"
+@@ -189,8 +188,7 @@ func (c *controller) Sync(ctx context.Context, ch *cmacme.Challenge) (err error)
+ 			return err
+ 		}
+ 
+-		// retry after 10s
+-		c.queue.AddAfter(key, time.Second*10)
++		c.queue.AddAfter(key, c.DNS01CheckRetryPeriod)
+ 
+ 		return nil
+ 	}
+diff --git a/pkg/controller/context.go b/pkg/controller/context.go
+index c3f370aff..111f5539a 100644
+--- a/pkg/controller/context.go
++++ b/pkg/controller/context.go
+@@ -126,6 +126,9 @@ type ACMEOptions struct {
+ 	// AccountRegistry is used as a cache of ACME accounts between various
+ 	// components of cert-manager
+ 	AccountRegistry accounts.Registry
++
++	// DNS01CheckRetryPeriod is the time the controller should wait between checking if a ACME dns entry exists.
++	DNS01CheckRetryPeriod time.Duration
+ }
+ 
+ type IngressShimOptions struct {
