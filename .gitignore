@@ -1,3 +1,5 @@
 .DS_Store
 .venv/
-*.synctex.gz
+/report/*.synctex.gz
+/report/*.blg
+/report/*.log
